@@ -3365,6 +3365,85 @@ extension StatusItemControllerTests {
         XCTAssertEqual(refresh.title, tr(.keyStatusItemControllerRefreshNow))
     }
 
+    /// The greyed item's explanation: its subtitle from macOS 14.4, its tooltip before.
+    private func explanation(_ item: NSMenuItem) -> String? {
+        if #available(macOS 14.4, *) { return item.subtitle }
+        return item.toolTip
+    }
+
+    @MainActor
+    func testRefreshItemIsGreyedOutWithTheReasonOnHoverWhenAClickWouldBeSkipped() throws {
+        var reason: String?
+        var notice: ClaudeManualRefreshNotice?
+        var refreshes = 0
+        let controller = StatusItemController(actions: .init(manualRefresh: { refreshes += 1 }, openDashboard: {}, openChatGPT: {},
+            openCCSwitch: {}, quit: {}, switchProvider: { _ in }, openProviderWebsite: {}, openStatusLink: { _ in },
+            iconChanged: { _ in }, manualRefreshNotice: { notice }, manualRefreshBlockReason: { reason }))
+        defer { controller.teardown() }
+        let input = StatusItemController.MenuInput(choices: [], quickSwitchSummaries: [:], activeClient: .claude,
+            openAIAccount: nil, statusLinks: [], showQuickSwitchMenu: false, showOpenChatGPTMenu: false,
+            showOpenCCSwitchMenu: false, showStatusMenu: false, directProviderID: "claude-official")
+        controller.start(snapshot: .placeholder, refreshDate: Date(), menuInput: input, settings: makeSettings())
+        let refresh = try XCTUnwrap(controller.statusMenuForTesting.items.first { $0.title == tr(.keyStatusItemControllerRefreshNow) })
+
+        XCTAssertTrue(controller.validateMenuItem(refresh))
+        XCTAssertNil(refresh.toolTip)
+
+        reason = ClaudeRefreshText.menuBlockSubtitle(.noPoints(remaining: 40))
+        XCTAssertFalse(controller.validateMenuItem(refresh), "a click would be skipped")
+        XCTAssertEqual(explanation(refresh), reason, "why and when, in the system's own subtitle")
+        XCTAssertNil(refresh.view, "a standard item, drawn by AppKit")
+        XCTAssertEqual(refresh.title, tr(.keyStatusItemControllerRefreshNow))
+        _ = refresh.target?.perform(refresh.action)
+        XCTAssertEqual(refreshes, 0, "⌘R does nothing either")
+
+        notice = .rateLimited(until: Date().addingTimeInterval(900))
+        reason = ClaudeRefreshText.menuBlockSubtitle(.rateLimited(remaining: 900))
+        XCTAssertFalse(controller.validateMenuItem(refresh))
+        XCTAssertEqual(refresh.title, tr(.keyStatusItemControllerRefreshNow), "the subtitle says it; the title stays plain")
+        XCTAssertEqual(explanation(refresh), reason)
+
+        notice = nil
+        reason = nil
+        XCTAssertTrue(controller.validateMenuItem(refresh))
+        XCTAssertNil(refresh.toolTip)
+        XCTAssertNil(explanation(refresh), "back to a plain item")
+    }
+
+    func testTheSubtitleSaysWhyThenWhenAndFitsTheMenu() {
+        AppLanguage.selected = .simplifiedChinese
+        defer { AppLanguage.selected = .system }
+        XCTAssertEqual(ClaudeRefreshText.menuBlockSubtitle(.justRead(remaining: 32), language: .simplifiedChinese),
+                       "刚刷新过不到 1 分钟，数据已是最新\n" + tr(.keyRefreshMenuAvailableIn,
+                           arguments: [ClaudeRefreshText.duration(32, language: .simplifiedChinese)], language: .simplifiedChinese))
+        XCTAssertEqual(ClaudeRefreshText.menuBlockSubtitle(.reading, language: .simplifiedChinese), "正在刷新，马上就好",
+                       "no time to promise while a refresh is in flight")
+        let font = NSFont.systemFont(ofSize: 12)
+        for language in AppLanguage.allCases where language != .system {
+            for manual in [ClaudeRefreshStatus.ManualRefresh.reading, .alreadyFresh, .justRead(remaining: 59),
+                           .noPoints(remaining: 179), .rateLimited(remaining: 3_599)] {
+                let subtitle = try? XCTUnwrap(ClaudeRefreshText.menuBlockSubtitle(manual, language: language))
+                for line in (subtitle ?? "").components(separatedBy: "\n") {
+                    XCTAssertLessThanOrEqual((line as NSString).size(withAttributes: [.font: font]).width,
+                                             ClaudeRefreshText.menuSubtitleWidth, "\(language) \(manual): \(line)")
+                }
+            }
+        }
+    }
+
+    func testOnlyAClickThatWouldBeSkippedGreysRefreshNowOut() {
+        XCTAssertNil(ClaudeRefreshText.menuBlockReason(.now))
+        XCTAssertNil(ClaudeRefreshText.menuBlockReason(.loginExpired), "after running claude, a click re-reads the credentials")
+        for manual in [ClaudeRefreshStatus.ManualRefresh.reading, .alreadyFresh, .justRead(remaining: 30),
+                       .noPoints(remaining: 90), .rateLimited(remaining: 900)] {
+            for language in AppLanguage.allCases where language != .system {
+                let text = ClaudeRefreshText.menuBlockReason(manual, language: language)
+                XCTAssertFalse(text?.isEmpty ?? true, "\(language) \(manual)")
+                XCTAssertFalse(text?.contains("%1$@") ?? false, "\(language) \(manual)")
+            }
+        }
+    }
+
     @MainActor
     func testRealtimeBoostRowFollowsTheMenuInputAndOpensItsDestinations() throws {
         var windowRequests = 0

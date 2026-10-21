@@ -466,11 +466,9 @@ final class DashboardGeneralPage {
             contentViews: [
                 SettingsRowView(title: tr(.keyDashboardOfficialQuotaRefreshFrequency),
                     detail: tr(.keyDashboardRefreshOfficialScope),
-                    titleAccessory: RefreshRateHelpButton(selectedInterval: { [weak officialActivePopup] in
-                        (officialActivePopup?.selectedItem?.representedObject as? TimeInterval)
-                            ?? input.preferences.officialUsageRefreshInterval
-                    }, status: { [weak relay = input.relay] in relay?.claudeRefreshStatus?() },
-                    openRealtimeBoost: { [weak relay = input.relay] in relay?.openAdvancedSettings?() }),
+                    titleAccessory: RefreshRateHelpButton(
+                        status: { [weak relay = input.relay] in relay?.claudeRefreshStatus?() },
+                        openRealtimeBoost: { [weak relay = input.relay] in relay?.openAdvancedSettings?() }),
                     accessoryView: refreshControls(officialActivePopup)),
                 SettingsRowView(
                     title: tr(.keyDashboardGeneralAndRefreshPagesBalanceUpdatesDuringTasks),

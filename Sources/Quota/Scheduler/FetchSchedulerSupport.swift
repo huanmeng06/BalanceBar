@@ -170,6 +170,9 @@ public struct FetchSchedulerStatus: Equatable {
     /// A read for the current account that failed (transport or server error) after the last success; `nil` once a
     /// read succeeds again. 429 and 401 have their own fields.
     public var lastFailureAt: Date? = nil
+    /// What a manual refresh costs, and how soon after a success it is skipped as unnecessary.
+    public var manualTokenCost: Int = QuotaConstants.manualRequestTokenCost
+    public var manualRefreshWindow: TimeInterval = QuotaConstants.manualRefreshWindow
     /// Remaining 429 cooldown at `at`.
     public var cooldownRemaining: TimeInterval
     public var isUnauthorizedPaused: Bool

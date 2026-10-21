@@ -975,6 +975,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                     guard let self, self.activeClient == .claude, self.currentProviderIsOfficialCache else { return nil }
                     return self.claudeQuota.manualRefreshNotice()
                 },
+                manualRefreshBlockReason: { [weak self] in
+                    guard let self, self.activeClient == .claude, self.currentProviderIsOfficialCache,
+                          let manual = self.claudeQuota.manualRefreshAvailability() else { return nil }
+                    return ClaudeRefreshText.menuBlockSubtitle(manual)
+                },
                 showModOnboarding: { [weak self] in self?.modOnboarding.showWindow() }
             ),
             codexAnimationBackend: MenuBarCodexAnimationBackend(

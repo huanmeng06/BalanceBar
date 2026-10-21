@@ -329,6 +329,12 @@ final class ClaudeQuotaPipeline {
         return nil
     }
 
+    /// Whether "Refresh Now" would read right now, from the scheduler's own snapshot. Briefly waits on the scheduler
+    /// queue, like the Settings status; never call it from there.
+    func manualRefreshAvailability() -> ClaudeRefreshStatus.ManualRefresh? {
+        refreshStatus()?.manualRefresh(now: now())
+    }
+
     /// Starts account monitoring and builds the merge engine off the caller's thread.
     func start() {
         queue.async { [self] in startOnQueue() }

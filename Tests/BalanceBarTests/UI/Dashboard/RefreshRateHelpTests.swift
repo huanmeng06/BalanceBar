@@ -27,13 +27,13 @@ final class RefreshRateHelpTests: XCTestCase {
 
     private func content(_ sample: Sample?, language: AppLanguage = .english, onInstall: (() -> Void)? = nil) -> RefreshRateHelpContentView {
         RefreshRateHelpContentView(
-            selectedInterval: 60, language: language, now: { self.base },
+            language: language, now: { self.base },
             status: sample.map { sample in { self.status(sample) } }, onInstall: onInstall)
     }
 
     /// A popover whose state can be changed between ticks.
     private func content(following sample: @escaping () -> Sample) -> RefreshRateHelpContentView {
-        RefreshRateHelpContentView(selectedInterval: 60, language: .english, now: { self.base }, status: { self.status(sample()) })
+        RefreshRateHelpContentView(language: .english, now: { self.base }, status: { self.status(sample()) })
     }
 
     func testTheExplanationAndTheModPitchAreWordedInEveryLanguage() {
@@ -44,7 +44,6 @@ final class RefreshRateHelpTests: XCTestCase {
             XCTAssertTrue(texts.contains(tr(.keyRefreshHelpLine1, language: language)), "\(language) explanation")
             XCTAssertTrue(texts.contains(tr(.keyRefreshHelpModFooter, language: language)), "\(language) pitch")
             XCTAssertTrue(texts.contains(tr(.keyRefreshHelpOtherTools, language: language)), "\(language) other tools share the endpoint")
-            XCTAssertTrue(texts.contains(tr(.keyRefreshHelpRowActual, language: language)), "\(language) BalanceBar's own pace")
             XCTAssertEqual(view.frame.width, RefreshRateHelpContentView.width)
             XCTAssertLessThan(view.frame.height, 600, "\(language) stays compact")
         }
@@ -64,14 +63,12 @@ final class RefreshRateHelpTests: XCTestCase {
         let view = content(.waiting)
         XCTAssertTrue(view.isMetaVisible)
         XCTAssertTrue(view.isExplanationVisible)
-        XCTAssertFalse(view.isModTimelineVisible, "no Mod line before the Mod delivers")
         XCTAssertTrue(view.isFooterVisible, "the install pitch is shown")
         XCTAssertFalse(allText(in: view).contains("Right now"), "no extra heading above the card")
     }
 
     func testWithFreshModDataThePitchGivesWayToTheModLine() {
         let view = content(.live)
-        XCTAssertTrue(view.isModTimelineVisible)
         XCTAssertFalse(view.isFooterVisible, "already installed")
         XCTAssertTrue(view.isExplanationVisible)
     }
@@ -79,48 +76,19 @@ final class RefreshRateHelpTests: XCTestCase {
     func testAnInstalledModWhoseDataWentStaleGetsNoInstallPitchEither() {
         let view = content(.staleMod)
         XCTAssertFalse(view.isFooterVisible)
-        XCTAssertFalse(view.isModTimelineVisible)
         XCTAssertTrue(view.isModAgeVisible, "how old the Mod's data is, since the sentence no longer says it")
     }
 
-    func testEveryTimelineHeadingFitsOnOneLineInEveryLanguage() {
-        let contentWidth = RefreshRateHelpContentView.width - 32
-        func width(_ text: String, _ weight: NSFont.Weight) -> CGFloat {
-            (text as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 11, weight: weight)]).width
-        }
+    func testTheCardSaysWhetherRefreshNowWouldReadInsteadOfShowingTheBudget() {
+        // Read 60 s ago, one point left: a manual read is possible, the automatic one waits.
+        let waiting = RefreshRateLiveStatusView(width: 308, language: .english, now: { self.base }, provider: { self.status(.waiting) })
+        XCTAssertEqual(waiting.manualRefreshText, tr(.keyRefreshStatusManualNow, language: .english))
+        let reading = RefreshRateLiveStatusView(width: 308, language: .english, now: { self.base }, provider: { self.status(.reading) })
+        XCTAssertNil(reading.manualRefreshText, "nothing to offer while a read is in flight")
         for language in AppLanguage.allCases where language != .system {
-            let rows: [(LocalizationKey, String)] = [
-                (.keyRefreshHelpRowSetting, tr(.keyDashboardOfficialEverySeconds, arguments: ["600"], language: language)),
-                (.keyRefreshHelpRowActual, tr(.keyRefreshHelpRowActualHint, language: language)),
-                (.keyRefreshHelpRowModNow, tr(.keyRefreshHelpRowModHint, language: language)),
-            ]
-            for (label, hint) in rows {
-                let needed = width(tr(label, language: language), .medium) + width(hint, .regular) + 8
-                XCTAssertLessThanOrEqual(needed, contentWidth, "\(language) \(label.rawValue) is cut off")
-            }
+            let card = RefreshRateLiveStatusView(width: 308, language: language, now: { self.base }, provider: { self.status(.waiting) })
+            XCTAssertTrue(allText(in: card).contains(tr(.keyRefreshStatusManualLabel, language: language)), "\(language) Refresh Now")
         }
-    }
-
-        /// The dots are points, not reads: every sentence about them says what an automatic read costs, and that cost
-    /// is the scheduler's.
-    func testThePointSentencesStateTheRealCostInEveryLanguage() {
-        let automatic = String(QuotaConstants.automaticRequestTokenCost)
-        let manual = String(QuotaConstants.manualRequestTokenCost)
-        let capacity = String(QuotaConstants.requestTokenBucketCapacity)
-        for language in AppLanguage.allCases where language != .system {
-            XCTAssertTrue(tr(.keyRefreshStatusPhaseTokens, arguments: ["1 min"], language: language).contains(automatic), "\(language) tokens")
-            XCTAssertTrue(tr(.keyRefreshStatusPhaseReady, language: language).contains(automatic), "\(language) ready")
-            let hint = tr(.keyRefreshStatusTokensHint, language: language)
-            for number in [automatic, manual, capacity] {
-                XCTAssertTrue(hint.contains(number), "\(language) hint lacks \(number)")
-            }
-        }
-    }
-
-    func testTheReadsRowExplainsItsRulesOnHover() {
-        let card = RefreshRateLiveStatusView(width: 308, language: .english, now: { self.base }, provider: { self.status(.waiting) })
-        func tips(_ view: NSView) -> [String] { [view.toolTip].compactMap { $0 } + view.subviews.flatMap(tips) }
-        XCTAssertTrue(tips(card).contains(tr(.keyRefreshStatusTokensHint, language: .english)))
     }
 
     func testTheOverviewSaysCodexFollowsTheSettingAndTheRestIsAboutClaudeInEveryLanguage() {
@@ -138,9 +106,9 @@ final class RefreshRateHelpTests: XCTestCase {
         let formatter = DateFormatter()
         formatter.locale = AppLanguage.english.formattingLocale
         formatter.dateStyle = .none
-        formatter.timeStyle = .short
+        formatter.timeStyle = .medium
         let expected = tr(.keyRefreshStatusLastFailed, arguments: [formatter.string(from: base.addingTimeInterval(-20))], language: .english)
-        XCTAssertTrue(allText(in: failed).contains(expected), "names when the failed read was")
+        XCTAssertTrue(allText(in: failed).contains { $0.hasSuffix(expected) }, "names when the failed read was")
         XCTAssertFalse(content(.waiting).isLastFailureVisible)
         XCTAssertFalse(content(.loginExpired).isLastFailureVisible)
         for language in AppLanguage.allCases where language != .system {
@@ -211,7 +179,7 @@ final class RefreshRateHelpTests: XCTestCase {
     }
 
     func testTheButtonOpensAndClosesThePopover() throws {
-        let button = RefreshRateHelpButton(selectedInterval: { 90 })
+        let button = RefreshRateHelpButton()
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 300, height: 120), styleMask: [.titled], backing: .buffered, defer: false)
         window.contentView = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 120))
         window.contentView?.addSubview(button)

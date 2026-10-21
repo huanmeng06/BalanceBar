@@ -2219,6 +2219,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         /// Why a manual refresh would be skipped for the visible official quota;
         /// read when the menu validates its items.
         let manualRefreshNotice: () -> ClaudeManualRefreshNotice?
+        /// Why "Refresh Now" could not read right now and when it can again (the greyed item's subtitle), nil when
+        /// it can, or when a click is still the way forward (an expired sign-in is retried on click).
+        let manualRefreshBlockReason: () -> String?
         /// Opens the real-time boost explanation window.
         let showModOnboarding: () -> Void
 
@@ -2240,10 +2243,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             visibilityChanged: @escaping (StatusItemVisibility) -> Void = { _ in },
             manualRefreshBlockedUntil: @escaping () -> Date? = { nil },
             manualRefreshNotice: @escaping () -> ClaudeManualRefreshNotice? = { nil },
+            manualRefreshBlockReason: @escaping () -> String? = { nil },
             showModOnboarding: @escaping () -> Void = {}
         ) {
             self.manualRefreshBlockedUntil = manualRefreshBlockedUntil
             self.manualRefreshNotice = manualRefreshNotice
+            self.manualRefreshBlockReason = manualRefreshBlockReason
             self.showModOnboarding = showModOnboarding
             self.manualRefresh = manualRefresh
             self.openDashboard = openDashboard
@@ -2491,6 +2496,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var statusItemAttachmentCheckScheduled = false
     private var statusItemReanchorAttempts = 0
     private var isStatusMenuTracking = false
+    private weak var manualRefreshItem: NSMenuItem?
+    private var manualRefreshTicker: Timer?
     private var statusMenuNeedsRebuild = false
     private var statusMenuNeedsNativeStructureRebuild = false
     private var menuDismissalTrace: MenuDismissalTrace?
@@ -3069,6 +3076,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         isStatusMenuTracking = false
         overviewMenuWasSeen = false
         stopBankedResetCountdownTimer()
+        stopManualRefreshTicker()
         stopQuotaPaceTracking()
         cancelPendingOverviewNumericTransitions()
         lastSeenOverviewNumerics = [:]
@@ -3423,6 +3431,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         (statusMenu.items.first?.view as? MenuHoverLinkHostView)?.setDismissalTrace(menuDismissalTrace)
         isStatusMenuTracking = true
+        startManualRefreshTicker()
         statusMenu.items.first { $0.action == #selector(openChatGPT) }?.title = openCurrentAgentMenuTitle()
         logAggregationLifecycle(reason: "will-open")
         if let view = statusMenu.items.first?.view {
@@ -3457,6 +3466,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             (view as? AggregationOverviewScrollView)?.setMenuContentVisible(false)
         }
         stopBankedResetCountdownTimer()
+        stopManualRefreshTicker()
         stopQuotaPaceTracking()
         cancelPendingOverviewNumericTransitions()
         refreshNativeCodexIconAppearance()
@@ -6086,9 +6096,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     /// Re-evaluated whenever the menu opens or ⌘R is pressed, so the item
-    /// becomes available again as soon as the rate-limit wait ends.
+    /// becomes available again as soon as the rate-limit wait ends. Greyed out
+    /// whenever a click would be skipped, with the reason on hover.
     var isManualRefreshAvailable: Bool {
-        actions.manualRefreshBlockedUntil().map { Date() >= $0 } ?? true
+        (actions.manualRefreshBlockedUntil().map { Date() >= $0 } ?? true) && actions.manualRefreshBlockReason() == nil
     }
 
     /// The refresh item explains a skipped refresh up front, since the menu closes on click.
@@ -6125,14 +6136,44 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let full = manualRefreshMenuTitle()
         // "Just refreshed" is not a warning, and it only holds for a few seconds (a tooltip would be gone by the
         // time anyone hovers): the card header already shows the refresh time, so the item keeps its plain name.
+        let reason = actions.manualRefreshBlockReason()
+        // A greyed-out item says why and when right under its plain title, in the system's own subtitle.
+        if #available(macOS 14.4, *) {
+            item.subtitle = reason
+            if reason != nil {
+                item.title = tr(.keyStatusItemControllerRefreshNow)
+                item.toolTip = nil
+                return
+            }
+        }
         if case .justRefreshed? = actions.manualRefreshNotice() {
             item.title = tr(.keyStatusItemControllerRefreshNow)
-            item.toolTip = nil
+            item.toolTip = reason
             return
         }
         let fitted = Self.fittedMenuTitle(full)
         item.title = fitted
-        item.toolTip = fitted == full ? nil : full
+        // Before macOS 14.4 the reason goes to the tooltip; otherwise only a cut title needs its full text there.
+        item.toolTip = reason ?? (fitted == full ? nil : full)
+    }
+
+    /// While the menu is open, the greyed "Refresh Now" counts down and turns back on by itself.
+    private func startManualRefreshTicker() {
+        manualRefreshTicker?.invalidate()
+        guard let item = manualRefreshItem, actions.manualRefreshBlockReason() != nil else { return }
+        let timer = Timer(timeInterval: 1, repeats: true) { [weak self, weak item] _ in
+            guard let self, let item else { return }
+            self.applyManualRefreshTitle(to: item)
+            item.menu?.update()
+            if self.actions.manualRefreshBlockReason() == nil { self.stopManualRefreshTicker() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        manualRefreshTicker = timer
+    }
+
+    private func stopManualRefreshTicker() {
+        manualRefreshTicker?.invalidate()
+        manualRefreshTicker = nil
     }
 
     @objc private func manualRefresh() {
@@ -6270,6 +6311,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             keyEquivalent: "r"
         )
         refreshItem.target = self
+        manualRefreshItem = refreshItem
         applyManualRefreshTitle(to: refreshItem)
         menu.addItem(.separator())
         menu.addItem(makeOpenDashboardMenuItem())

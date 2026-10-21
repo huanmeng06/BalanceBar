@@ -1,51 +1,5 @@
 import AppKit
 
-/// A line with dots on it: the chosen frequency (many small dots), what Claude's official endpoint allows
-/// (a few dots) and, once the Mod delivers, a dot after every reply.
-final class RefreshRateTimelineView: NSView {
-    enum Style { case wished, actual, mod }
-
-    private let style: Style
-    /// Dot positions as fractions of the line, 0...1.
-    private let positions: [CGFloat]
-
-    init(style: Style) {
-        self.style = style
-        switch style {
-        case .wished: positions = (0...10).map { CGFloat($0) / 10 }
-        case .actual: positions = [0.0, 0.3, 0.6, 0.95]
-        case .mod: positions = [0.04, 0.12, 0.3, 0.38, 0.55, 0.7, 0.78, 0.93]
-        }
-        super.init(frame: .zero)
-        translatesAutoresizingMaskIntoConstraints = false
-        heightAnchor.constraint(equalToConstant: 14).isActive = true
-    }
-
-    required init?(coder: NSCoder) { nil }
-
-    override func draw(_ dirtyRect: NSRect) {
-        let diameter: CGFloat = style == .wished ? 6 : 9
-        let y = bounds.midY
-        effectiveAppearance.performAsCurrentDrawingAppearance {
-            NSColor.separatorColor.setFill()
-            NSBezierPath(roundedRect: NSRect(x: 0, y: y - 0.5, width: bounds.width, height: 1), xRadius: 0.5, yRadius: 0.5).fill()
-            let color: NSColor = {
-                switch style {
-                case .wished: return .tertiaryLabelColor
-                case .actual: return .systemOrange
-                case .mod: return .systemGreen
-                }
-            }()
-            color.setFill()
-            let usable = bounds.width - diameter
-            for position in positions {
-                let dot = NSRect(x: position * usable, y: y - diameter / 2, width: diameter, height: diameter)
-                NSBezierPath(ovalIn: dot).fill()
-            }
-        }
-    }
-}
-
 private extension NSBox {
     static func separator(width: CGFloat) -> NSBox {
         let box = NSBox()
@@ -53,40 +7,6 @@ private extension NSBox {
         box.translatesAutoresizingMaskIntoConstraints = false
         box.widthAnchor.constraint(equalToConstant: width).isActive = true
         return box
-    }
-}
-
-/// The read points left out of the bucket's capacity (an automatic read spends 2, a manual one 1). Plain label
-/// color, so color only ever means a state.
-final class RefreshTokenDotsView: NSView {
-    var filled = 0 { didSet { if filled != oldValue { needsDisplay = true } } }
-    private let total: Int
-
-    init(total: Int) {
-        self.total = total
-        super.init(frame: .zero)
-        translatesAutoresizingMaskIntoConstraints = false
-        widthAnchor.constraint(equalToConstant: CGFloat(total) * 14).isActive = true
-        heightAnchor.constraint(equalToConstant: 12).isActive = true
-    }
-
-    required init?(coder: NSCoder) { nil }
-
-    override func draw(_ dirtyRect: NSRect) {
-        effectiveAppearance.performAsCurrentDrawingAppearance {
-            for index in 0..<total {
-                let dot = NSRect(x: CGFloat(index) * 14 + 1, y: bounds.midY - 5, width: 10, height: 10)
-                if index < filled {
-                    NSColor.labelColor.setFill()
-                    NSBezierPath(ovalIn: dot).fill()
-                } else {
-                    NSColor.tertiaryLabelColor.setStroke()
-                    let path = NSBezierPath(ovalIn: dot.insetBy(dx: 0.75, dy: 0.75))
-                    path.lineWidth = 1.5
-                    path.stroke()
-                }
-            }
-        }
     }
 }
 
@@ -116,6 +36,100 @@ final class RefreshProgressBarView: NSView {
     }
 }
 
+/// Words shared by the Settings status card and the menu's "Refresh Now".
+enum ClaudeRefreshText {
+    /// "2 min 5 s", "40 s": short, in the language's own units.
+    static func duration(_ seconds: TimeInterval, language: AppLanguage = .selected) -> String {
+        let formatter = DateComponentsFormatter()
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.locale = language.formattingLocale
+        formatter.calendar = calendar
+        formatter.unitsStyle = .abbreviated
+        formatter.allowedUnits = seconds >= 60 ? [.minute, .second] : [.second]
+        formatter.maximumUnitCount = 2
+        formatter.zeroFormattingBehavior = .dropAll
+        return formatter.string(from: max(1, seconds.rounded(.up))) ?? "\(Int(seconds))s"
+    }
+
+    /// Why the menu's "Refresh Now" is greyed out, in a sentence, or nil when it is not. An expired sign-in keeps
+    /// the item enabled: after running `claude`, a click is what re-reads the credentials.
+    static func menuBlockReason(_ manual: ClaudeRefreshStatus.ManualRefresh, language: AppLanguage = .selected) -> String? {
+        let key: LocalizationKey
+        switch manual {
+        case .now, .loginExpired: return nil
+        case .rateLimited: key = .keyRefreshMenuBlockedRate
+        case .reading: key = .keyRefreshMenuBlockedReading
+        case .justRead: key = .keyRefreshMenuBlockedJustRead
+        case .alreadyFresh: key = .keyRefreshMenuBlockedFresh
+        case .noPoints: key = .keyRefreshMenuBlockedWait
+        }
+        return tr(key, language: language)
+    }
+
+    /// The greyed "Refresh Now"'s subtitle: why, then when it can refresh again (when that is known), each wrapped
+    /// to the menu's width so a long translation does not widen the menu.
+    static func menuBlockSubtitle(_ manual: ClaudeRefreshStatus.ManualRefresh, language: AppLanguage = .selected,
+                                  width: CGFloat = menuSubtitleWidth) -> String? {
+        guard let reason = menuBlockReason(manual, language: language) else { return nil }
+        let remaining: TimeInterval?
+        switch manual {
+        case let .justRead(seconds), let .noPoints(seconds), let .rateLimited(seconds): remaining = seconds
+        case .now, .loginExpired, .reading, .alreadyFresh: remaining = nil
+        }
+        var lines = [reason]
+        if let remaining {
+            lines.append(tr(.keyRefreshMenuAvailableIn, arguments: [duration(remaining, language: language)], language: language))
+        }
+        return lines.map { wrapped($0, width: width) }.joined(separator: "\n")
+    }
+
+    /// Room for a subtitle line in the 304 pt menu, after the title inset and the trailing margin.
+    static let menuSubtitleWidth: CGFloat = 240
+    /// A little larger than AppKit's subtitle font, so the measured lines never come out wider than the menu.
+    private static let subtitleFont = NSFont.systemFont(ofSize: 12)
+
+    /// Greedy line breaking: between any two Chinese or Japanese characters, at spaces elsewhere (Latin, Cyrillic,
+    /// Korean), so mixed text such as "公式 API が…" still wraps.
+    static func wrapped(_ text: String, width: CGFloat) -> String {
+        func fits(_ line: String) -> Bool { (line as NSString).size(withAttributes: [.font: subtitleFont]).width <= width }
+        func breaksAnywhere(_ character: Character) -> Bool {
+            character.unicodeScalars.contains { scalar in
+                switch scalar.value {
+                case 0x3000...0x303F, 0x3040...0x30FF, 0x3400...0x4DBF, 0x4E00...0x9FFF, 0xFF00...0xFFEF: return true
+                default: return false
+                }
+            }
+        }
+        guard !fits(text) else { return text }
+        var lines: [String] = []
+        var current = ""
+        for character in text {
+            let candidate = current + String(character)
+            if fits(candidate) || current.isEmpty {
+                current = candidate
+                continue
+            }
+            // Keep a word together: move it to the next line when it started after the last space.
+            if !breaksAnywhere(character), let space = current.lastIndex(of: " "),
+               !current[current.index(after: space)...].contains(where: breaksAnywhere) {
+                lines.append(String(current[..<space]))
+                current = String(current[current.index(after: space)...]) + String(character)
+            } else if let mark = current.lastIndex(where: { "，、。；：）」』,.;:)".contains($0) }),
+                      current.distance(from: current.startIndex, to: mark) >= current.count / 4 {
+                // Rather after the last comma or full stop (unless it leaves a very short line) than mid-phrase.
+                let next = current.index(after: mark)
+                lines.append(String(current[..<next]).trimmingCharacters(in: .whitespaces))
+                current = String(current[next...]).trimmingCharacters(in: .whitespaces) + String(character)
+            } else {
+                lines.append(current.trimmingCharacters(in: .whitespaces))
+                current = character == " " ? "" : String(character)
+            }
+        }
+        if !current.isEmpty { lines.append(current) }
+        return lines.joined(separator: "\n")
+    }
+}
+
 /// How the popover treats the current state of the official read.
 enum RefreshHelpMood: Equatable {
     /// Waiting, ready or reading, no Mod data in play.
@@ -135,8 +149,8 @@ enum RefreshHelpMood: Equatable {
 }
 
 /// The status card: what is holding the next official read back, a bar that fills while it waits, when it was last
-/// read and how many reads are available (one line), and how old the Mod's data is once it went stale. Refreshes
-/// itself every second on screen.
+/// read and whether "Refresh Now" would read right now (one line), a read that failed, and how old the Mod's data is
+/// once it went stale. The request budget behind it stays internal. Refreshes itself every second on screen.
 final class RefreshRateLiveStatusView: NSView {
     /// What to run in a terminal to sign in again.
     static let loginCommand = "claude"
@@ -148,23 +162,26 @@ final class RefreshRateLiveStatusView: NSView {
     private let sentence = NSTextField(wrappingLabelWithString: "")
     private let bar = RefreshProgressBarView()
     private let lastReadValue = NSTextField(labelWithString: "")
-    private let tokenDots = RefreshTokenDotsView(total: QuotaConstants.requestTokenBucketCapacity)
+    private let manualValue = NSTextField(labelWithString: "")
+    private var manualRow = NSView()
+    private var manualSeparator = NSView()
     private let modValue = NSTextField(labelWithString: "")
     private let copyButton = NSButton()
     private let copyRow = NSStackView()
     private var meta = NSStackView()
     private var modRow = NSView()
-    private let failureValue = NSTextField(labelWithString: "")
+    private let failureValue = NSTextField(wrappingLabelWithString: "")
     private var failureRow = NSView()
     private var timer: Timer?
     private var copiedResetTimer: Timer?
     private var tint = NSColor.systemGreen
     private(set) var phase: ClaudeRefreshStatus.Phase = .ready
-    /// Whether the last-read / reads-available line is shown (hidden while something is wrong).
+    /// Whether the last-read / Refresh Now line is shown (hidden while something is wrong).
     var showsDetails: Bool { !meta.isHidden }
     var showsCopyCommand: Bool { !copyRow.isHidden }
     var showsModAge: Bool { !modRow.isHidden }
     var showsLastFailure: Bool { !failureRow.isHidden }
+    var manualRefreshText: String? { manualRow.isHidden ? nil : manualValue.stringValue }
     /// Called after every update, so the popover can re-arrange itself and follow the card's height.
     var onUpdate: (() -> Void)?
     private(set) var mood: RefreshHelpMood = .normal
@@ -226,45 +243,44 @@ final class RefreshRateLiveStatusView: NSView {
             row.setHuggingPriority(.required, for: .horizontal)
             return row
         }
-        for field in [lastReadValue, modValue] {
+        for field in [lastReadValue, manualValue, modValue] {
             field.font = .systemFont(ofSize: 11)
             field.lineBreakMode = .byClipping
             field.setContentCompressionResistancePriority(.required, for: .horizontal)
             field.setContentHuggingPriority(.required, for: .horizontal)
         }
         let lastReadCaption = caption(localize(.keyRefreshStatusLastRead))
-        let readsCaption = caption(localize(.keyRefreshStatusTokensLabel))
+        let manualCaption = caption(localize(.keyRefreshStatusManualLabel))
         let lastRead = row([lastReadCaption, lastReadValue])
-        let reads = row([readsCaption, tokenDots])
-        // The rules behind the dots, on hover: the explanation below only says why there are rules at all.
-        reads.toolTip = localize(.keyRefreshStatusTokensHint)
-        readsCaption.toolTip = reads.toolTip
-        tokenDots.toolTip = reads.toolTip
-        // One line when it fits ("Last read 15:02 (1 min ago) · Available reads ●○○"), otherwise two.
+        manualRow = row([manualCaption, manualValue])
+        // One line when it fits ("Last read 15:02 (1 min ago) · Refresh Now available now"), otherwise two.
         let separator = caption("·")
-        let sample = NSTextField(labelWithString: tr(.keyRefreshStatusLastReadValue, arguments: ["88:88", "59 min"], language: language))
-        sample.font = lastReadValue.font
-        let oneLine = lastReadCaption.fittingSize.width + sample.fittingSize.width + separator.fittingSize.width
-            + readsCaption.fittingSize.width + CGFloat(QuotaConstants.requestTokenBucketCapacity) * 14 + 5 * 8
+        manualSeparator = separator
+        func textWidth(_ string: String) -> CGFloat {
+            let field = NSTextField(labelWithString: string)
+            field.font = lastReadValue.font
+            return field.fittingSize.width
+        }
+        let widestManual = [localize(.keyRefreshStatusManualNow), localize(.keyRefreshStatusManualFresh),
+                            tr(.keyRefreshStatusManualWait, arguments: [duration(59)], language: language)].map(textWidth).max() ?? 0
+        let oneLine = lastReadCaption.fittingSize.width + textWidth(tr(.keyRefreshStatusLastReadValue, arguments: ["88:88:88 PM", "59 min"], language: language))
+            + separator.fittingSize.width + manualCaption.fittingSize.width + widestManual + 5 * 8
         if oneLine <= inner {
-            meta = row([lastRead, separator, reads])
+            meta = row([lastRead, separator, manualRow])
         } else {
-            meta = NSStackView(views: [lastRead, reads])
+            meta = NSStackView(views: [lastRead, manualRow])
             meta.orientation = .vertical
             meta.alignment = .leading
             meta.spacing = 6
         }
         modRow = row([caption(localize(.keyRefreshStatusModLabel)), modValue])
-        // A read that failed quietly: otherwise "last read" just stays old and nothing says why.
-        let warning = NSImageView()
-        warning.image = NSImage(systemSymbolName: "exclamationmark.triangle.fill", accessibilityDescription: nil)?
-            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 10, weight: .regular))
-        warning.contentTintColor = .systemOrange
+        // A read that failed quietly: otherwise "last read" just stays old and nothing says why. One wrapping label
+        // (the sign is part of the text), so long translations wrap instead of being cut off.
         failureValue.font = .systemFont(ofSize: 11)
         failureValue.textColor = .systemOrange
-        failureValue.lineBreakMode = .byTruncatingTail
-        failureRow = row([warning, failureValue])
-        (failureRow as? NSStackView)?.spacing = 4
+        failureValue.isSelectable = false
+        failureValue.preferredMaxLayoutWidth = inner
+        failureRow = failureValue
         failureRow.isHidden = true
 
         // Under the sentence, not under the dot.
@@ -312,24 +328,14 @@ final class RefreshRateLiveStatusView: NSView {
         copiedResetTimer?.invalidate()
     }
 
-    private func duration(_ seconds: TimeInterval) -> String {
-        let formatter = DateComponentsFormatter()
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.locale = language.formattingLocale
-        formatter.calendar = calendar
-        formatter.unitsStyle = .abbreviated
-        formatter.allowedUnits = seconds >= 60 ? [.minute, .second] : [.second]
-        formatter.maximumUnitCount = 2
-        formatter.zeroFormattingBehavior = .dropAll
-        return formatter.string(from: max(1, seconds.rounded(.up))) ?? "\(Int(seconds))s"
-    }
+    private func duration(_ seconds: TimeInterval) -> String { ClaudeRefreshText.duration(seconds, language: language) }
 
-    /// "15:02" in the language's own short time style (no seconds: the relative age is right next to it).
+    /// "15:02:07" in the language's own time style, to the second, so two reads a few seconds apart can be told apart.
     private func clockTime(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.locale = language.formattingLocale
         formatter.dateStyle = .none
-        formatter.timeStyle = .short
+        formatter.timeStyle = .medium
         return formatter.string(from: date)
     }
 
@@ -370,11 +376,9 @@ final class RefreshRateLiveStatusView: NSView {
             text = localize(.keyRefreshStatusPhaseLive, [duration(age)]); tint = .systemGreen
             // Fills up towards the moment the official endpoint is asked again.
             progress = age / max(1, status.realtimeFreshnessWindow)
-        case let .waitingInterval(remaining, total):
-            text = localize(.keyRefreshStatusPhaseInterval, [duration(remaining)]); tint = .systemOrange
-            progress = 1 - remaining / max(1, total)
-        case let .waitingTokens(remaining, total):
-            text = localize(.keyRefreshStatusPhaseTokens, [duration(remaining)]); tint = .systemOrange
+        // Why it has to wait (just read, or the request budget) is the scheduler's business; when is what matters.
+        case let .waiting(remaining, total):
+            text = localize(.keyRefreshStatusPhaseWaiting, [duration(remaining)]); tint = .systemOrange
             progress = 1 - remaining / max(1, total)
         case .ready:
             text = localize(.keyRefreshStatusPhaseReady); tint = .systemGreen
@@ -395,9 +399,20 @@ final class RefreshRateLiveStatusView: NSView {
         } else {
             lastReadValue.stringValue = localize(.keyRefreshStatusLastReadNone)
         }
-        tokenDots.filled = status.tokensAvailable(at: date)
+        let manual = status.manualRefresh(now: date)
+        var manualHidden = false
+        switch manual {
+        case .now: manualValue.stringValue = localize(.keyRefreshStatusManualNow)
+        case let .justRead(remaining), let .noPoints(remaining):
+            manualValue.stringValue = localize(.keyRefreshStatusManualWait, [duration(remaining)])
+        case .alreadyFresh: manualValue.stringValue = localize(.keyRefreshStatusManualFresh)
+        // The status sentence already says what is going on.
+        case .reading, .rateLimited, .loginExpired: manualHidden = true
+        }
+        manualRow.isHidden = manualHidden
+        manualSeparator.isHidden = manualRow.isHidden
         if let failedAt = status.scheduler.lastFailureAt, newMood == .normal {
-            failureValue.stringValue = localize(.keyRefreshStatusLastFailed, [clockTime(failedAt)])
+            failureValue.stringValue = "⚠︎ " + localize(.keyRefreshStatusLastFailed, [clockTime(failedAt)])
             failureRow.isHidden = false
         } else {
             failureRow.isHidden = true
@@ -410,6 +425,8 @@ final class RefreshRateLiveStatusView: NSView {
             modRow.isHidden = true
         }
         lastReadValue.invalidateIntrinsicContentSize()
+        manualValue.invalidateIntrinsicContentSize()
+        failureValue.invalidateIntrinsicContentSize()
         modValue.invalidateIntrinsicContentSize()
         mood = newMood
         hasModData = status.realtimeAt != nil
@@ -427,7 +444,6 @@ final class RefreshRateHelpContentView: NSView {
     private let hasStatusSource: Bool
     private let explanation = NSStackView()
     private let expandButton = NSButton()
-    private let modTimeline = NSStackView()
     private let footer = NSStackView()
     private let stack = NSStackView()
     private var mood: RefreshHelpMood = .normal
@@ -437,10 +453,9 @@ final class RefreshRateHelpContentView: NSView {
     var onSizeChange: ((NSSize) -> Void)?
 
     /// - Parameters:
-    ///   - selectedInterval: the frequency currently chosen in Settings, shown next to the first timeline.
     ///   - status: the live look at the scheduler; without it only the explanation is shown.
     ///   - onInstall: opens the Mod's settings (the "install" button in the footer).
-    init(selectedInterval: TimeInterval, language: AppLanguage = .selected, now: @escaping () -> Date = Date.init,
+    init(language: AppLanguage = .selected, now: @escaping () -> Date = Date.init,
          status: (() -> ClaudeRefreshStatus?)? = nil, onInstall: (() -> Void)? = nil) {
         self.language = language
         self.onInstall = onInstall
@@ -459,45 +474,11 @@ final class RefreshRateHelpContentView: NSView {
             field.preferredMaxLayoutWidth = contentWidth
             return field
         }
-        func timeline(_ label: String, hint: String, style: RefreshRateTimelineView.Style) -> NSStackView {
-            let caption = NSTextField(labelWithString: label)
-            caption.font = .systemFont(ofSize: 11, weight: .medium)
-            caption.textColor = .secondaryLabelColor
-            let hintLabel = NSTextField(labelWithString: hint)
-            hintLabel.font = .systemFont(ofSize: 11)
-            hintLabel.textColor = .secondaryLabelColor
-            hintLabel.alignment = .right
-            hintLabel.setContentHuggingPriority(.init(1), for: .horizontal)
-            let header = NSStackView(views: [caption, hintLabel])
-            header.orientation = .horizontal
-            let stack = NSStackView(views: [header, RefreshRateTimelineView(style: style)])
-            stack.orientation = .vertical
-            stack.alignment = .leading
-            stack.spacing = 4
-            header.widthAnchor.constraint(equalToConstant: contentWidth).isActive = true
-            stack.arrangedSubviews[1].widthAnchor.constraint(equalToConstant: contentWidth).isActive = true
-            return stack
-        }
-
-        // ② The explanation: two timelines (a third once the Mod delivers) and one paragraph.
-        let seconds = tr(.keyDashboardOfficialEverySeconds, arguments: [String(Int(selectedInterval))], language: language)
-        let timelines = NSStackView(views: [
-            timeline(localize(.keyRefreshHelpRowSetting), hint: seconds, style: .wished),
-            timeline(localize(.keyRefreshHelpRowActual), hint: localize(.keyRefreshHelpRowActualHint), style: .actual),
-        ])
-        modTimeline.setViews([timeline(localize(.keyRefreshHelpRowModNow), hint: localize(.keyRefreshHelpRowModHint), style: .mod)], in: .top)
-        modTimeline.orientation = .vertical
-        modTimeline.alignment = .leading
-        modTimeline.isHidden = true
-        timelines.addArrangedSubview(modTimeline)
-        timelines.orientation = .vertical
-        timelines.alignment = .leading
-        timelines.spacing = 10
+        // ② The explanation: why Claude is slower than the setting, and why other tools make it worse.
         explanation.setViews([
             text(localize(.keyRefreshHelpTitle), size: 12, weight: .semibold),
-            timelines,
             text(localize(.keyRefreshHelpLine1), size: 12),
-            text(localize(.keyRefreshHelpOtherTools), size: 11),
+            text(localize(.keyRefreshHelpOtherTools), size: 12),
         ], in: .top)
         explanation.orientation = .vertical
         explanation.alignment = .leading
@@ -612,7 +593,6 @@ final class RefreshRateHelpContentView: NSView {
         let folded = mood == .alert && !expanded
         expandButton.isHidden = mood != .alert
         explanation.isHidden = folded
-        modTimeline.isHidden = mood != .live
         // The pitch only makes sense while the Mod has delivered nothing (and nothing is broken).
         footer.isHidden = mood != .normal || (statusView?.hasModData ?? false)
         resize(notify: notify)
@@ -644,7 +624,6 @@ final class RefreshRateHelpContentView: NSView {
 
     var isExplanationVisible: Bool { !explanation.isHidden }
     var isFooterVisible: Bool { !footer.isHidden }
-    var isModTimelineVisible: Bool { !modTimeline.isHidden }
     var isMetaVisible: Bool { statusView?.showsDetails ?? false }
     var isCopyCommandVisible: Bool { statusView?.showsCopyCommand ?? false }
     var isModAgeVisible: Bool { statusView?.showsModAge ?? false }
@@ -657,13 +636,10 @@ final class RefreshRateHelpContentView: NSView {
 /// The small "?" next to a setting's title; a click opens the explanation and the live state in a popover.
 final class RefreshRateHelpButton: NSButton {
     private var popover: NSPopover?
-    private let selectedInterval: () -> TimeInterval
     private let status: (() -> ClaudeRefreshStatus?)?
     private let openRealtimeBoost: (() -> Void)?
 
-    init(selectedInterval: @escaping () -> TimeInterval, status: (() -> ClaudeRefreshStatus?)? = nil,
-         openRealtimeBoost: (() -> Void)? = nil) {
-        self.selectedInterval = selectedInterval
+    init(status: (() -> ClaudeRefreshStatus?)? = nil, openRealtimeBoost: (() -> Void)? = nil) {
         self.status = status
         self.openRealtimeBoost = openRealtimeBoost
         super.init(frame: NSRect(x: 0, y: 0, width: 16, height: 16))
@@ -692,7 +668,7 @@ final class RefreshRateHelpButton: NSButton {
         if let popover, popover.isShown { popover.performClose(nil); return }
         let popover = DashboardTextTooltip.makePopover()
         let content = RefreshRateHelpContentView(
-            selectedInterval: selectedInterval(), status: status,
+            status: status,
             onInstall: { [weak self, weak popover] in
                 popover?.performClose(nil)
                 self?.openRealtimeBoost?()

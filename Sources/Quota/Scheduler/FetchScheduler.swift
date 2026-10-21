@@ -103,6 +103,8 @@ public final class FetchScheduler: FetchScheduling {
                 automaticMinimumInterval: configuration.automaticMinimumInterval,
                 lastSuccessAt: currentEpochLastSuccessAt,
                 lastFailureAt: lastFailure.flatMap { $0.epoch == identity.accountEpoch ? $0.at : nil },
+                manualTokenCost: configuration.manualTokenCost,
+                manualRefreshWindow: configuration.manualRefreshWindow,
                 cooldownRemaining: cooldownRemaining(now: now),
                 isUnauthorizedPaused: persistent.isUnauthorizedPaused,
                 isBusy: isBusy,
