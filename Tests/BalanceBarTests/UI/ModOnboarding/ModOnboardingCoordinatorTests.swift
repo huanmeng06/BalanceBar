@@ -498,20 +498,24 @@ final class ModOnboardingCoordinatorTests: XCTestCase {
                 let png = try XCTUnwrap(rep.representation(using: .png, properties: [:]))
                 try png.write(to: URL(fileURLWithPath: directory).appendingPathComponent("\(label)-\(appearanceName).png"))
             }
-            // The menu prompt row on a menu-like background, and the "data sources" label.
-            for headless in [false, true] {
-                let row = ModPromptRowView(headless: headless, localize: ModOnboardingText.appLocalize)
-                row.appearance = NSAppearance(named: name)
-                row.wantsLayer = true
-                row.effectiveAppearance.performAsCurrentDrawingAppearance {
-                    row.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+            // The menu prompt row on a menu-like background, in every language (the row sizes itself to the wording).
+            for language in AppLanguage.allCases where language != .system {
+                for headless in [false, true] {
+                    let row = ModPromptRowView(headless: headless, localize: { text in
+                        LocalizationKey(rawValue: text.rawValue).map { tr($0, language: language) } ?? text.defaultText
+                    })
+                    row.appearance = NSAppearance(named: name)
+                    row.wantsLayer = true
+                    row.effectiveAppearance.performAsCurrentDrawingAppearance {
+                        row.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+                    }
+                    row.layoutSubtreeIfNeeded()
+                    let rep = try XCTUnwrap(row.bitmapImageRepForCachingDisplay(in: row.bounds))
+                    row.cacheDisplay(in: row.bounds, to: rep)
+                    try XCTUnwrap(rep.representation(using: .png, properties: [:]))
+                        .write(to: URL(fileURLWithPath: directory).appendingPathComponent(
+                            "prompt-row-\(language.rawValue)\(headless ? "-headless" : "")-\(appearanceName).png"))
                 }
-                row.frame = NSRect(x: 0, y: 0, width: 320, height: ModPromptRowView.rowHeight)
-                row.layoutSubtreeIfNeeded()
-                let rep = try XCTUnwrap(row.bitmapImageRepForCachingDisplay(in: row.bounds))
-                row.cacheDisplay(in: row.bounds, to: rep)
-                try XCTUnwrap(rep.representation(using: .png, properties: [:]))
-                    .write(to: URL(fileURLWithPath: directory).appendingPathComponent("prompt-row\(headless ? "-headless" : "")-\(appearanceName).png"))
             }
         }
     }

@@ -421,6 +421,24 @@ final class ModOnboardingPanelTests: XCTestCase {
         XCTAssertFalse(row.mainTextIsTruncated, "the standard prompt fits at the card width")
     }
 
+    func testPromptRowNeverWidensTheMenuInAnyLanguage() {
+        for language in AppLanguage.allCases where language != .system {
+            for headless in [false, true] {
+                let row = ModPromptRowView(headless: headless, localize: { text in
+                    LocalizationKey(rawValue: text.rawValue).map { tr($0, language: language) } ?? text.defaultText
+                })
+                let label = "\(language) headless=\(headless)"
+                XCTAssertEqual(row.frame.width, OpenCodexCardLayout.cardWidth, label)
+                XCTAssertEqual(row.intrinsicContentSize.width, OpenCodexCardLayout.cardWidth, label)
+                row.layoutSubtreeIfNeeded()
+                XCTAssertLessThanOrEqual(row.fittingSize.width, OpenCodexCardLayout.cardWidth + 0.5, "\(label): the row must not widen the menu")
+                XCTAssertGreaterThanOrEqual(row.frame.height, ModPromptRowView.rowHeight, label)
+                XCTAssertEqual(row.frame.height, row.intrinsicContentSize.height, label)
+                if !headless { XCTAssertFalse(row.mainTextIsTruncated, "\(label): the standard prompt fits in three lines") }
+            }
+        }
+    }
+
     func testOpenAdvancedSettingsButtonAsksTheAppAndClosesTheWindow() {
         let c = controller(locator: nil, results: [])
         var opened = 0

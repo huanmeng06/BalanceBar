@@ -151,7 +151,11 @@ enum ModPanelContent {
 /// The menu prompt: a rounded block with a soft accent tint, the main copy and the "why" link.
 /// Lives in a menu item's custom view; clicking anywhere on it closes the menu and runs `onClick`.
 final class ModPromptRowView: NSView {
+    /// Height for a one-line prompt; longer wording grows the row (see `height`).
     static let rowHeight: CGFloat = 52
+    /// The row is exactly as wide as the quota card, whatever the language, so it never widens the menu.
+    static let width: CGFloat = OpenCodexCardLayout.cardWidth
+    static let maximumMainLines = 3
     /// The tint block spans exactly the progress bars' width (the card's 16 pt inset); the content sits inside it.
     static let contentPadding: CGFloat = 10
     static let blockInset: CGFloat = OpenCodexCardLayout.horizontalInset
@@ -159,8 +163,22 @@ final class ModPromptRowView: NSView {
     private let block = NSView()
     let iconView = NSImageView()
     private let mainLabel: NSTextField
-    /// Whether the main text is cut short at the card width (test seam).
-    var mainTextIsTruncated: Bool { mainLabel.intrinsicContentSize.width > mainLabel.frame.width + 0.5 }
+    /// Whether the main text needs more lines than `maximumMainLines` and is cut short (test seam).
+    var mainTextIsTruncated: Bool {
+        let font = mainLabel.font ?? .systemFont(ofSize: 13)
+        let natural = (mainLabel.stringValue as NSString).boundingRect(
+            with: NSSize(width: Self.textWidth, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: [.font: font]).height
+        return ceil(natural) > ceil(font.ascender - font.descender + font.leading) * CGFloat(Self.maximumMainLines) + 0.5
+    }
+    /// The row's height: one line of copy fits `rowHeight`; more lines add their height.
+    private(set) var height: CGFloat = ModPromptRowView.rowHeight
+    override var intrinsicContentSize: NSSize { NSSize(width: Self.width, height: height) }
+    private static let iconWidth: CGFloat = 15
+    private static let iconTextSpacing: CGFloat = 10
+    private static var textWidth: CGFloat {
+        width - 2 * blockInset - 2 * contentPadding - iconWidth - iconTextSpacing
+    }
     private let whyLabel: NSTextField
     private var isHovering = false { didSet { updateBackground() } }
     var onClick: () -> Void = {}
@@ -170,9 +188,9 @@ final class ModPromptRowView: NSView {
 
     /// - Parameter headless: shows the headless wording (a HUD user whose headless runs go untracked).
     init(headless: Bool = false, localize: (ModOnboardingText) -> String = ModOnboardingText.defaultLocalize) {
-        mainLabel = NSTextField(labelWithString: localize(headless ? .promptHeadless : .promptRow))
+        mainLabel = NSTextField(wrappingLabelWithString: localize(headless ? .promptHeadless : .promptRow))
         whyLabel = NSTextField(labelWithString: localize(.promptWhy))
-        super.init(frame: NSRect(x: 0, y: 0, width: 280, height: Self.rowHeight))
+        super.init(frame: NSRect(x: 0, y: 0, width: Self.width, height: Self.rowHeight))
         autoresizingMask = [.width]
         setAccessibilityRole(.button)
         setAccessibilityLabel(mainLabel.stringValue + ", " + whyLabel.stringValue)
@@ -187,9 +205,20 @@ final class ModPromptRowView: NSView {
         iconView.setContentHuggingPriority(.required, for: .horizontal)
         mainLabel.font = .systemFont(ofSize: 13, weight: .medium)
         mainLabel.textColor = .controlAccentColor
-        mainLabel.lineBreakMode = .byTruncatingTail
+        mainLabel.lineBreakMode = .byWordWrapping
+        mainLabel.cell?.truncatesLastVisibleLine = true
+        mainLabel.maximumNumberOfLines = Self.maximumMainLines
+        mainLabel.preferredMaxLayoutWidth = Self.textWidth
+        mainLabel.isSelectable = false
         whyLabel.font = .systemFont(ofSize: 11)
         whyLabel.textColor = .controlAccentColor
+        whyLabel.lineBreakMode = .byTruncatingTail
+        whyLabel.preferredMaxLayoutWidth = Self.textWidth
+        // Size the row to the wording (other languages are longer than Chinese).
+        let mainHeight = mainLabel.cell?.cellSize(forBounds: NSRect(x: 0, y: 0, width: Self.textWidth, height: .greatestFiniteMagnitude)).height ?? 16
+        let whyHeight = whyLabel.cell?.cellSize.height ?? 14
+        height = max(Self.rowHeight, ceil(mainHeight + 1 + whyHeight) + 20)
+        setFrameSize(NSSize(width: Self.width, height: height))
 
         let texts = NSStackView(views: [mainLabel, whyLabel])
         texts.orientation = .vertical
