@@ -534,7 +534,8 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
             refreshInterval: 1, now: { clock.now })
         let source = CodexRolloutSource(
             sessionsDirectory: temporaryDirectoryURL.appendingPathComponent("rollouts/sessions"),
-            accountProvider: identity, configuration: CodexRolloutConfiguration(maximumFileAge: .infinity), now: { clock.now })
+            accountProvider: identity, configuration: CodexRolloutConfiguration(maximumFileAge: .infinity), now: { clock.now },
+            attributionStartOverride: .distantPast)
         let local = CodexLocalQuota(identity: identity, source: source,
             stateDirectory: temporaryDirectoryURL.appendingPathComponent("codex-state"), now: { clock.now })
         defer { local.stop() }

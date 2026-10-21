@@ -134,8 +134,10 @@ public final class CodexRolloutSource: QuotaSource {
         accountProvider: AccountIdentityProviding,
         configuration: CodexRolloutConfiguration = CodexRolloutConfiguration(),
         ioConfiguration: QuotaIOConfiguration = .default,
-        now: @escaping () -> Date = Date.init
+        now: @escaping () -> Date = Date.init,
+        attributionStartOverride: Date? = nil
     ) {
+        self.attributionStartOverride = attributionStartOverride
         self.sessionsDirectory = sessionsDirectory.standardizedFileURL
         self.accountProvider = accountProvider
         self.configuration = configuration
@@ -206,12 +208,28 @@ public final class CodexRolloutSource: QuotaSource {
         publish(newest)
     }
 
+    /// The account and epoch the attribution window below belongs to, and when it began.
+    private var attributionAccountID: String?
+    private var attributionEpoch: AccountEpoch?
+    private var attributionStart: Date?
+    /// Tests only: attribute events from this time on instead of from the first time the account was seen.
+    private let attributionStartOverride: Date?
+
     private func publish(_ newest: [QuotaWindowKind: (event: CodexRateLimitEvent, reading: CodexRateLimitReading)]) {
         // Without a current Codex account there is nobody to attribute the reading to.
         guard let account = accountProvider.accountIdentity else { return }
         let epoch = accountProvider.accountEpoch
         let receivedAt = now()
+        // A rollout log does not say which login produced it. Only events logged after this source first saw the
+        // current account (at launch, or when the login changed) can be attributed to it; older ones may belong
+        // to the previous login and are ignored, so a cold start never hands A's log to B.
+        if attributionAccountID != account.stableID || attributionEpoch != epoch {
+            attributionAccountID = account.stableID
+            attributionEpoch = epoch
+            attributionStart = attributionStartOverride ?? receivedAt
+        }
         for (kind, item) in newest.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
+            if let start = attributionStart, item.event.timestamp < start { continue }
             if let previous = emittedAt[kind], previous >= item.event.timestamp { continue }
             guard let observation = QuotaObservation(
                 window: kind,

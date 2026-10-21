@@ -93,13 +93,14 @@ final class CodexLocalQuotaTests: XCTestCase {
     }
 
     private func makeLocal(
-        email: String? = "me@example.com", clock: MutableDate
+        email: String? = "me@example.com", clock: MutableDate, attributeHistory: Bool = true
     ) -> (local: CodexLocalQuota, profile: MutableProfile) {
         let profile = MutableProfile(email)
         let identity = CodexAccountIdentityProvider(readProfile: profile.read, refreshInterval: 0.01, now: { clock.now })
         let source = CodexRolloutSource(
             sessionsDirectory: root.appendingPathComponent("sessions"), accountProvider: identity,
-            configuration: CodexRolloutConfiguration(maximumFileAge: .infinity), now: { clock.now })
+            configuration: CodexRolloutConfiguration(maximumFileAge: .infinity), now: { clock.now },
+            attributionStartOverride: attributeHistory ? .distantPast : nil)
         let local = CodexLocalQuota(identity: identity, source: source, stateDirectory: state, now: { clock.now })
         created.append(local)
         return (local, profile)
@@ -125,6 +126,17 @@ final class CodexLocalQuotaTests: XCTestCase {
         let model = try XCTUnwrap(waitForDisplay(local))
         XCTAssertEqual(model.windows.first { $0.kind == .fiveHour }?.usedPercentage, 30)
         XCTAssertEqual(model.windows.first { $0.kind == .sevenDay }?.usedPercentage, 10)
+    }
+
+    func testAColdStartNeverHandsTheOldLoginsFreshLogToTheNewLogin() throws {
+        // Login A used Codex a few seconds ago (80% used); the user then signed in as B (10% used) and relaunched.
+        try writeRollout(line(at: 0, fiveHourUsed: 80, sevenDayUsed: 20))
+        let clock = MutableDate(base.addingTimeInterval(30))
+        let (local, _) = makeLocal(email: "b@example.com", clock: clock, attributeHistory: false)
+        local.start()
+        Thread.sleep(forTimeInterval: 0.3)
+        XCTAssertNil(local.freshDisplay(accountKey: "b@example.com"),
+                     "the log predates this launch, so it is not B's: the refresh asks the server")
     }
 
     func testStaleLogOtherLoginAndSignedOutAccountsGetNoDisplay() throws {

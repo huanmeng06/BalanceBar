@@ -38,6 +38,24 @@ final class CodexRolloutSourceTests: XCTestCase {
         "{\"timestamp\":\"\(iso(offset))\",\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":null,\"rate_limits\":{\"primary\":\(primary),\"secondary\":\(secondary)}}}\n"
     }
 
+    private final class Switchable: AccountIdentityProviding {
+        var accountIdentity: AccountIdentity? = AccountIdentity(stableID: "codex:one", idSource: .accountUUID)
+        var credentialVersion: CredentialVersion? { nil }
+        var accountEpoch: AccountEpoch { .initial }
+    }
+
+    private final class MutableNow {
+        var value: Date
+        init(_ value: Date) { self.value = value }
+    }
+
+    private func appendRollout(_ name: String, _ text: String) throws {
+        let handle = try FileHandle(forWritingTo: sessions.appendingPathComponent("rollout-\(name).jsonl"))
+        try handle.seekToEnd()
+        try handle.write(contentsOf: Data(text.utf8))
+        try handle.close()
+    }
+
     @discardableResult
     private func writeRollout(_ name: String, _ text: String) throws -> URL {
         let url = sessions.appendingPathComponent("rollout-\(name).jsonl")
@@ -45,12 +63,15 @@ final class CodexRolloutSourceTests: XCTestCase {
         return url
     }
 
-    private func makeSource(account: FakeAccount = FakeAccount()) -> CodexRolloutSource {
+    /// `attributeHistory` keeps the older behavior most tests rely on (events logged before the first scan count);
+    /// the production default ignores them, see `testEventsLoggedBeforeTheFirstScanAreNotAttributedToTheCurrentLogin`.
+    private func makeSource(account: FakeAccount = FakeAccount(), attributeHistory: Bool = true) -> CodexRolloutSource {
         CodexRolloutSource(
             sessionsDirectory: root.appendingPathComponent("sessions"),
             accountProvider: account,
             configuration: CodexRolloutConfiguration(maximumFileAge: .infinity),
-            now: { self.base.addingTimeInterval(100) }
+            now: { self.base.addingTimeInterval(100) },
+            attributionStartOverride: attributeHistory ? .distantPast : nil
         )
     }
 
@@ -205,23 +226,55 @@ final class CodexRolloutSourceTests: XCTestCase {
     }
 
     func testFreshnessIsInvalidatedWhenAccountChanges() throws {
-        final class Switchable: AccountIdentityProviding {
-            var accountIdentity: AccountIdentity? = AccountIdentity(stableID: "codex:one", idSource: .accountUUID)
-            var credentialVersion: CredentialVersion? { nil }
-            var accountEpoch: AccountEpoch { .initial }
-        }
         try writeRollout("a", line(at: 10, primary: window(300, 10), secondary: window(10080, 20)))
         let account = Switchable()
         let source = CodexRolloutSource(
             sessionsDirectory: root.appendingPathComponent("sessions"),
             accountProvider: account,
             configuration: CodexRolloutConfiguration(maximumFileAge: .infinity),
-            now: { self.base.addingTimeInterval(100) }
+            now: { self.base.addingTimeInterval(100) },
+            attributionStartOverride: .distantPast
         )
         _ = scan(source)
         XCTAssertTrue(source.hasFreshData(at: base.addingTimeInterval(20)))
         account.accountIdentity = AccountIdentity(stableID: "codex:two", idSource: .accountUUID)
         XCTAssertFalse(source.hasFreshData(at: base.addingTimeInterval(20)))
+    }
+
+    func testEventsLoggedBeforeTheFirstScanAreNotAttributedToTheCurrentLogin() throws {
+        // A's log from just before launch must never be handed to whoever is logged in now.
+        try writeRollout("a", line(at: 10, primary: window(300, 80), secondary: window(10080, 20)))
+        let source = makeSource(attributeHistory: false)
+        XCTAssertTrue(scan(source).isEmpty, "nothing logged before this source first saw the account is attributed")
+        XCTAssertFalse(source.hasFreshData(at: base.addingTimeInterval(20)))
+    }
+
+    func testEventsAfterTheAccountWasFirstSeenAreAttributedAndALoginChangeStartsOver() throws {
+        let clock = MutableNow(base)
+        let account = Switchable()
+        let source = CodexRolloutSource(
+            sessionsDirectory: root.appendingPathComponent("sessions"),
+            accountProvider: account,
+            configuration: CodexRolloutConfiguration(maximumFileAge: .infinity),
+            now: { clock.value }
+        )
+        _ = try writeRollout("a", line(at: -5, primary: window(300, 80), secondary: window(10080, 20)))
+        XCTAssertTrue(scan(source).isEmpty, "logged before the first look: not attributed")
+
+        clock.value = base.addingTimeInterval(20)
+        try appendRollout("a", line(at: 30, primary: window(300, 81), secondary: window(10080, 21)))
+        clock.value = base.addingTimeInterval(40)
+        let seen = scan(source)
+        XCTAssertEqual(seen.compactMap { $0.window == .fiveHour ? $0.usedPercentage : nil }, [81], "logged after: attributed")
+
+        // The login changes: the previous login's log (even a fresh one) is not attributed to the new login.
+        account.accountIdentity = AccountIdentity(stableID: "codex:two", idSource: .accountUUID)
+        clock.value = base.addingTimeInterval(60)
+        XCTAssertTrue(scan(source).isEmpty)
+        XCTAssertFalse(source.hasFreshData(at: base.addingTimeInterval(61)))
+        try appendRollout("a", line(at: 70, primary: window(300, 12), secondary: window(10080, 22)))
+        clock.value = base.addingTimeInterval(80)
+        XCTAssertEqual(scan(source).compactMap { $0.window == .fiveHour ? $0.usedPercentage : nil }, [12], "new activity belongs to the new login")
     }
 
     func testStartAndStopLifecycleDeliversAppendedEvents() throws {
@@ -231,7 +284,8 @@ final class CodexRolloutSourceTests: XCTestCase {
             accountProvider: FakeAccount(),
             configuration: CodexRolloutConfiguration(maximumFileAge: .infinity),
             ioConfiguration: QuotaIOConfiguration(watchCoalescingInterval: 0.1),
-            now: { self.base.addingTimeInterval(100) }
+            now: { self.base.addingTimeInterval(100) },
+            attributionStartOverride: .distantPast
         )
         let lock = NSLock()
         var received: [QuotaObservation] = []
