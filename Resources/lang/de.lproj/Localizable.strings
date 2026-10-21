@@ -627,7 +627,7 @@
 "mod.manage.uninstall" = "Deinstallieren";
 "mod.manage.uninstalling" = "Wird deinstalliert …";
 "mod.manage.uninstalled_title" = "Deinstalliert";
-"mod.manage.uninstalled_note" = "Bereits laufende Sitzungen behalten ihn geladen, bis du sie neu öffnest oder dort /reload-plugins ausführst.";
+"mod.manage.uninstalled_note" = "Bereits laufende Sitzungen behalten ihn geladen, bis du sie neu öffnest oder dort Folgendes eingibst:";
 "mod.manage.failure_title" = "Automatische Deinstallation nicht möglich";
 "mod.manage.failure_note" = "Führe diesen Befehl im Terminal aus:";
 "mod.settings.action.manage" = "Verwalten";

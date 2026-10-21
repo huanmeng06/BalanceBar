@@ -627,7 +627,7 @@
 "mod.manage.uninstall" = "卸载";
 "mod.manage.uninstalling" = "正在卸载…";
 "mod.manage.uninstalled_title" = "已卸载";
-"mod.manage.uninstalled_note" = "已在运行的会话会继续加载它，直到重开会话或在其中运行 /reload-plugins。";
+"mod.manage.uninstalled_note" = "已在运行的会话会继续加载它，直到重开会话，或在其中输入：";
 "mod.manage.failure_title" = "无法自动卸载";
 "mod.manage.failure_note" = "请在终端中运行下面的命令：";
 "mod.settings.action.manage" = "管理";

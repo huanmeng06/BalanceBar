@@ -345,7 +345,7 @@ final class ModOnboardingPanelTests: XCTestCase {
             "<卸载> | <关闭>*"])
         XCTAssertFalse(lines(.installed(statusText: "x")).contains { $0.contains("一键安装") }, "an installed Mod is not asked to install again")
         XCTAssertEqual(lines(.uninstalling), ["# BalanceBar Mod 已安装\n正在卸载…", "<关闭>"])
-        XCTAssertEqual(lines(.uninstalled), ["# 已卸载\n已在运行的会话会继续加载它，直到重开会话或在其中运行 /reload-plugins。", "<关闭>*"])
+        XCTAssertEqual(lines(.uninstalled), ["# 已卸载\n已在运行的会话会继续加载它，直到重开会话，或在其中输入：", "$ /reload-plugins", "<关闭>*"])
         XCTAssertEqual(lines(.uninstallFailed(.claudeNotFound)), [
             "# 无法自动卸载", "请在终端中运行下面的命令：", "$ claude plugin uninstall balancebar-mod@balancebar-mods --scope user", "<关闭>*"])
     }

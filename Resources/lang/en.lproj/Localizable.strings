@@ -627,7 +627,7 @@
 "mod.manage.uninstall" = "Uninstall";
 "mod.manage.uninstalling" = "Uninstalling…";
 "mod.manage.uninstalled_title" = "Uninstalled";
-"mod.manage.uninstalled_note" = "Sessions that are already running keep it loaded until you reopen them or run /reload-plugins in them.";
+"mod.manage.uninstalled_note" = "Sessions that are already running keep it loaded until you reopen them, or type this in them:";
 "mod.manage.failure_title" = "Could not uninstall automatically";
 "mod.manage.failure_note" = "Run this command in a terminal:";
 "mod.settings.action.manage" = "Manage";

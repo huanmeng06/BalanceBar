@@ -110,6 +110,7 @@ enum ModPanelContent {
                     .footer(leading: [], trailing: [ModPanelButton(title: t(.closeButton), action: .close)])]
         case .uninstalled:
             return [.hero(symbol: "checkmark.circle.fill", title: t(.uninstalledTitle), subtitle: t(.uninstalledNote)),
+                    .codeBlock(ModInstallPlan.reloadCommand, copyAction: .copyReload),
                     .footer(leading: [], trailing: [ModPanelButton(title: t(.closeButton), action: .close, isDefault: true)])]
         case let .uninstallFailed(failure):
             var items: [ModPanelItem] = [

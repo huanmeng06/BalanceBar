@@ -627,7 +627,7 @@
 "mod.manage.uninstall" = "Disinstalla";
 "mod.manage.uninstalling" = "Disinstallazione…";
 "mod.manage.uninstalled_title" = "Disinstallato";
-"mod.manage.uninstalled_note" = "Le sessioni già in esecuzione lo mantengono caricato finché non le riapri o vi esegui /reload-plugins.";
+"mod.manage.uninstalled_note" = "Le sessioni già in esecuzione lo mantengono caricato finché non le riapri o vi digiti:";
 "mod.manage.failure_title" = "Impossibile disinstallare automaticamente";
 "mod.manage.failure_note" = "Esegui questo comando in un terminale:";
 "mod.settings.action.manage" = "Gestisci";

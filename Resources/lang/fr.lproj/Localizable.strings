@@ -627,7 +627,7 @@
 "mod.manage.uninstall" = "Désinstaller";
 "mod.manage.uninstalling" = "Désinstallation…";
 "mod.manage.uninstalled_title" = "Désinstallé";
-"mod.manage.uninstalled_note" = "Les sessions déjà ouvertes le gardent chargé jusqu’à leur réouverture ou à l’exécution de /reload-plugins.";
+"mod.manage.uninstalled_note" = "Les sessions déjà ouvertes le gardent chargé jusqu’à leur réouverture ou jusqu’à ce que vous y saisissiez :";
 "mod.manage.failure_title" = "Désinstallation automatique impossible";
 "mod.manage.failure_note" = "Exécutez cette commande dans un terminal :";
 "mod.settings.action.manage" = "Gérer";

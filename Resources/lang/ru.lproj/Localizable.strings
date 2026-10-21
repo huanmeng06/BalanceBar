@@ -627,7 +627,7 @@
 "mod.manage.uninstall" = "Удалить";
 "mod.manage.uninstalling" = "Удаление…";
 "mod.manage.uninstalled_title" = "Удалено";
-"mod.manage.uninstalled_note" = "Уже запущенные сессии продолжат его использовать, пока вы не перезапустите их или не выполните в них /reload-plugins.";
+"mod.manage.uninstalled_note" = "Уже запущенные сессии продолжат его использовать, пока вы не перезапустите их или не введёте в них:";
 "mod.manage.failure_title" = "Не удалось удалить автоматически";
 "mod.manage.failure_note" = "Выполните эту команду в терминале:";
 "mod.settings.action.manage" = "Управление";

@@ -627,7 +627,7 @@
 "mod.manage.uninstall" = "アンインストール";
 "mod.manage.uninstalling" = "アンインストール中…";
 "mod.manage.uninstalled_title" = "アンインストールしました";
-"mod.manage.uninstalled_note" = "すでに実行中のセッションは、再起動するか /reload-plugins を実行するまで読み込んだままです。";
+"mod.manage.uninstalled_note" = "すでに実行中のセッションは、再起動するか、その中で次を入力するまで読み込んだままです：";
 "mod.manage.failure_title" = "自動でアンインストールできませんでした";
 "mod.manage.failure_note" = "ターミナルで次のコマンドを実行してください：";
 "mod.settings.action.manage" = "管理";

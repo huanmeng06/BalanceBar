@@ -92,7 +92,7 @@ enum ModOnboardingText: String, CaseIterable {
         case .uninstallButton: return "卸载"
         case .uninstalling: return "正在卸载…"
         case .uninstalledTitle: return "已卸载"
-        case .uninstalledNote: return "已在运行的会话会继续加载它，直到重开会话或在其中运行 /reload-plugins。"
+        case .uninstalledNote: return "已在运行的会话会继续加载它，直到重开会话，或在其中输入："
         case .uninstallFailureTitle: return "无法自动卸载"
         case .uninstallFailureNote: return "请在终端中运行下面的命令："
         }
