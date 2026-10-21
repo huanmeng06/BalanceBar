@@ -203,7 +203,7 @@ final class ModOnboardingCoordinatorTests: XCTestCase {
         refresh(coordinator)
         _ = coordinator.makePanelView()
         guard case let .installed(text) = coordinator.controller.state else { return XCTFail("expected the management view") }
-        XCTAssertEqual(text, RealtimeBoostPresentation.make(status: .waitingForData, localize: RealtimeBoostText.appLocalize).statusText)
+        XCTAssertEqual(text, RealtimeBoostPresentation.make(status: .waitingForData, localize: RealtimeBoostText.appLocalize).stateAndDetail)
 
         let seen = start.addingTimeInterval(30)
         clock.advance(by: 30)
@@ -399,15 +399,15 @@ final class ModOnboardingCoordinatorTests: XCTestCase {
             let key = LocalizationKey(rawValue: text.rawValue)
             XCTAssertNotNil(key, "\(text.rawValue) has no LocalizationKey")
             if let key {
-                let takesArgument = text == .statusActive || text == .statusUnsupported
+                let takesArgument = text == .statusTitleFormat || text == .lastData || text == .unsupportedDetail
                 XCTAssertEqual(normalized(tr(key, arguments: takesArgument ? ["%1$@"] : [], language: .simplifiedChinese)),
                                normalized(text.defaultText), text.rawValue)
             }
         }
         XCTAssertNotNil(LocalizationKey(rawValue: "mod.menu.data_sources"))
-        // Statuses that embed a time or a version keep a placeholder in every language.
+        // Status lines that embed a state, a time or a version keep a placeholder in every language.
         for language in AppLanguage.allCases where language != .system {
-            for key in [LocalizationKey.keyModSettingsStatusActive, .keyModSettingsStatusUnsupported] {
+            for key in [LocalizationKey.keyModSettingsStatusTitleFormat, .keyModSettingsStatusLastData, .keyModSettingsStatusUnsupportedDetail] {
                 XCTAssertTrue(tr(key, arguments: ["%1$@"], language: language).contains("%1$@"), "\(language) \(key.rawKey)")
             }
         }
@@ -421,16 +421,17 @@ final class ModOnboardingCoordinatorTests: XCTestCase {
         let rows = coordinator.realtimeBoostSettingsRows()
         XCTAssertEqual(rows.count, 2)
         let status = try XCTUnwrap(rows.first as? SettingsRowView)
-        XCTAssertEqual(status.titleLabel.stringValue, tr(.keyModSettingsStatusNotInstalled))
+        XCTAssertEqual(status.titleLabel.stringValue, tr(.keyModSettingsStatusTitleFormat, arguments: [tr(.keyModSettingsStatusNotInstalled)]))
 
         fake.record = ModInstallRecord(installedAt: start)
         refresh(coordinator)
         let deadline = Date().addingTimeInterval(1)
-        while status.titleLabel.stringValue == tr(.keyModSettingsStatusNotInstalled), Date() < deadline {
+        let notInstalledTitle = tr(.keyModSettingsStatusTitleFormat, arguments: [tr(.keyModSettingsStatusNotInstalled)])
+        while status.titleLabel.stringValue == notInstalledTitle, Date() < deadline {
             RunLoop.current.run(until: Date().addingTimeInterval(0.02))
         }
-        XCTAssertEqual(status.titleLabel.stringValue, tr(.keyModSettingsStatusWaiting))
-        XCTAssertEqual(status.detailLabel.stringValue, tr(.keyModSettingsUninstallNote))
+        XCTAssertEqual(status.titleLabel.stringValue, tr(.keyModSettingsStatusTitleFormat, arguments: [tr(.keyModSettingsStatusWaiting)]))
+        XCTAssertEqual(status.detailLabel.stringValue, "", "no uninstall note any more")
         XCTAssertTrue(coordinator.realtimeBoostSettingsRows().first === status, "one set is kept up to date")
         XCTAssertFalse(coordinator.realtimeBoostSettingsRows(detached: true).first === status, "search gets its own copy")
     }
@@ -472,7 +473,7 @@ final class ModOnboardingCoordinatorTests: XCTestCase {
             ("enabled", .enabled), ("silent", .silent), ("failed-missing", .failed(.claudeNotFound)),
             ("failed-command", .failed(.commandFailed(step: .installPlugin, exitCode: 1, detail: "Plugin not found in marketplace\nSee claude plugin marketplace list"))),
             ("dismissed", .dismissConfirmed),
-            ("installed", .installed(statusText: "已启用 · 最近数据 03:39:00")), ("uninstalling", .uninstalling),
+            ("installed", .installed(statusText: "已启用\n最新数据：03:39:00")), ("uninstalling", .uninstalling),
             ("uninstalled", .uninstalled), ("uninstall-failed", .uninstallFailed(.claudeNotFound)),
         ]
         for (appearanceName, name) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {

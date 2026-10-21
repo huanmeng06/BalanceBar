@@ -581,9 +581,13 @@ enum DashboardSettingsSearchCatalog {
                 }).sorted())
             }
             if section == .advanced {
-                // Real-time boost statuses that embed a time or a version.
-                texts.append(tr(.keyModSettingsStatusActive, arguments: [""]))
-                texts.append(tr(.keyModSettingsStatusUnsupported, arguments: [""]))
+                // Real-time boost status lines that embed a state, a time or a version.
+                for state in [LocalizationKey.keyModSettingsStatusNotInstalled, .keyModSettingsStatusWaiting, .keyModSettingsStatusActive,
+                              .keyModSettingsStatusSilent, .keyModSettingsStatusUnsupported] {
+                    texts.append(tr(.keyModSettingsStatusTitleFormat, arguments: [tr(state)]))
+                }
+                texts.append(tr(.keyModSettingsStatusLastData, arguments: [""]))
+                texts.append(tr(.keyModSettingsStatusUnsupportedDetail, arguments: [""]))
             }
             return texts
         case .notifications:

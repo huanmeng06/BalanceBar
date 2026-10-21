@@ -72,7 +72,7 @@ enum ModOnboardingText: String, CaseIterable {
         case .step3: return "等待首次数据"
         case .enabled: return "已开启 ✓"
         case .enabledNote: return "新开的 Claude Code 会话会自动启用，正在运行的会话可以不管。"
-        case .reloadHint: return "想让当前会话也马上生效，可在其中输入 /reload-plugins。"
+        case .reloadHint: return "想让当前会话也马上生效，可在其中输入："
         case .silentTitle: return "已安装，但还没收到数据"
         case .silentIntro: return "Claude Code 在运行，但 10 分钟内没有收到 Mod 的数据。请检查："
         case .silentItem1: return "Claude Code 版本是否为 v2.1.287 或更高"

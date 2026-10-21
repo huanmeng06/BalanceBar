@@ -585,7 +585,7 @@
 "mod.install.step3" = "等待首次資料";
 "mod.install.enabled" = "已開啟 ✓";
 "mod.install.enabled_note" = "新開啟的 Claude Code 工作階段會自動啟用，執行中的工作階段可以不用管。";
-"mod.install.reload_hint" = "想讓目前的工作階段也立即生效，可在其中輸入 /reload-plugins。";
+"mod.install.reload_hint" = "想讓目前的工作階段也立即生效，可在其中輸入：";
 "mod.failure.title" = "無法自動安裝";
 "mod.failure.claude_missing" = "找不到 claude 指令。請在終端機中執行下列指令：";
 "mod.failure.command_failed" = "指令未成功完成。請在終端機中執行下列指令：";
@@ -596,9 +596,9 @@
 "mod.settings.title" = "Claude 即時增強";
 "mod.settings.status.not_installed" = "未安裝";
 "mod.settings.status.waiting" = "已安裝，等待新工作階段的資料";
-"mod.settings.status.active" = "已啟用 · 最近資料 %1$@";
-"mod.settings.status.silent" = "已安裝，但 10 分鐘內沒有收到資料。請開啟新工作階段，或在已開啟的工作階段執行 /reload-plugins";
-"mod.settings.status.unsupported" = "Claude Code %1$@ 版本過舊，需要 v2.1.287 或更新版本";
+"mod.settings.status.active" = "已啟用";
+"mod.settings.status.silent" = "已安裝，但 10 分鐘內沒有收到資料";
+"mod.settings.status.unsupported" = "Claude Code 版本過舊";
 "mod.settings.action.install" = "一鍵安裝";
 "mod.settings.action.copy" = "拷貝指令";
 "mod.settings.prompt_toggle" = "在選單中顯示安裝提示";
@@ -608,7 +608,6 @@
 "mod.panel.later" = "稍後";
 "mod.dismissed.open_settings" = "打開進階設定";
 "mod.dismissed.ok" = "好";
-"mod.settings.uninstall_note" = "解除安裝：在 Claude Code 中輸入 /plugin 即可移除。";
 "mod.panel.point1.title" = "即時、官方資料";
 "mod.panel.point1.detail" = "每輪回覆後立即更新，不是估算";
 "mod.panel.point2.title" = "涵蓋 Agent 情境";
@@ -633,3 +632,7 @@
 "mod.manage.failure_title" = "無法自動解除安裝";
 "mod.manage.failure_note" = "請在終端機中執行下面的指令：";
 "mod.settings.action.manage" = "管理";
+"mod.settings.status.title_format" = "BalanceBar Mod 狀態：%1$@";
+"mod.settings.status.last_data" = "最新資料：%1$@";
+"mod.settings.status.silent_hint" = "請開啟新工作階段，或在已開啟的工作階段執行 /reload-plugins";
+"mod.settings.status.unsupported_detail" = "目前 %1$@，需要 v2.1.287 或更新版本";

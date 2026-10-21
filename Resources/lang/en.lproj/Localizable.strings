@@ -585,7 +585,7 @@
 "mod.install.step3" = "Wait for first data";
 "mod.install.enabled" = "Enabled ✓";
 "mod.install.enabled_note" = "New Claude Code sessions enable it automatically; running sessions can be left alone.";
-"mod.install.reload_hint" = "To enable it in the current session right away, type /reload-plugins there.";
+"mod.install.reload_hint" = "To enable it in the current session right away, type:";
 "mod.failure.title" = "Couldn’t install automatically";
 "mod.failure.claude_missing" = "The claude command was not found. Run these commands in Terminal:";
 "mod.failure.command_failed" = "A command did not finish successfully. Run these commands in Terminal:";
@@ -596,9 +596,9 @@
 "mod.settings.title" = "Claude real-time boost";
 "mod.settings.status.not_installed" = "Not installed";
 "mod.settings.status.waiting" = "Installed, waiting for data from a new session";
-"mod.settings.status.active" = "Enabled · latest data %1$@";
-"mod.settings.status.silent" = "Installed, but no data for 10 minutes. Start a new session, or run /reload-plugins in an open one";
-"mod.settings.status.unsupported" = "Claude Code %1$@ is too old; v2.1.287 or later is required";
+"mod.settings.status.active" = "Enabled";
+"mod.settings.status.silent" = "Installed, but no data for 10 minutes";
+"mod.settings.status.unsupported" = "Claude Code is too old";
 "mod.settings.action.install" = "Install with one click";
 "mod.settings.action.copy" = "Copy commands";
 "mod.settings.prompt_toggle" = "Show the install prompt in the menu";
@@ -608,7 +608,6 @@
 "mod.panel.later" = "Later";
 "mod.dismissed.open_settings" = "Open Advanced Settings";
 "mod.dismissed.ok" = "OK";
-"mod.settings.uninstall_note" = "To remove it, type /plugin in Claude Code.";
 "mod.panel.point1.title" = "Live, official data";
 "mod.panel.point1.detail" = "Updates right after each reply, not an estimate";
 "mod.panel.point2.title" = "Covers agent workflows";
@@ -633,3 +632,7 @@
 "mod.manage.failure_title" = "Could not uninstall automatically";
 "mod.manage.failure_note" = "Run this command in a terminal:";
 "mod.settings.action.manage" = "Manage";
+"mod.settings.status.title_format" = "BalanceBar Mod status: %1$@";
+"mod.settings.status.last_data" = "Latest data: %1$@";
+"mod.settings.status.silent_hint" = "Start a new session, or run /reload-plugins in an open one";
+"mod.settings.status.unsupported_detail" = "Current %1$@; v2.1.287 or later is required";

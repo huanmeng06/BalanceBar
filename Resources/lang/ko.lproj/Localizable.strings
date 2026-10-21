@@ -585,7 +585,7 @@
 "mod.install.step3" = "첫 데이터 대기";
 "mod.install.enabled" = "켜짐 ✓";
 "mod.install.enabled_note" = "새로 여는 Claude Code 세션에서는 자동으로 켜지며, 실행 중인 세션은 그대로 두어도 됩니다.";
-"mod.install.reload_hint" = "현재 세션에서도 바로 적용하려면 그 안에서 /reload-plugins 를 입력하세요.";
+"mod.install.reload_hint" = "현재 세션에서도 바로 적용하려면 그 안에서 다음을 입력하세요:";
 "mod.failure.title" = "자동으로 설치할 수 없습니다";
 "mod.failure.claude_missing" = "claude 명령을 찾을 수 없습니다. 터미널에서 아래 명령을 실행하세요:";
 "mod.failure.command_failed" = "명령이 정상적으로 완료되지 않았습니다. 터미널에서 아래 명령을 실행하세요:";
@@ -596,9 +596,9 @@
 "mod.settings.title" = "Claude 실시간 강화";
 "mod.settings.status.not_installed" = "설치되지 않음";
 "mod.settings.status.waiting" = "설치됨. 새 세션의 데이터를 기다리는 중";
-"mod.settings.status.active" = "사용 중 · 최근 데이터 %1$@";
-"mod.settings.status.silent" = "설치되었지만 10분 동안 데이터가 없습니다. 새 세션을 시작하거나 열려 있는 세션에서 /reload-plugins 를 실행하세요";
-"mod.settings.status.unsupported" = "Claude Code %1$@ 버전이 너무 오래되었습니다. v2.1.287 이상이 필요합니다";
+"mod.settings.status.active" = "사용 중";
+"mod.settings.status.silent" = "설치되었지만 10분 동안 데이터가 없습니다";
+"mod.settings.status.unsupported" = "Claude Code 버전이 너무 오래되었습니다";
 "mod.settings.action.install" = "한 번에 설치";
 "mod.settings.action.copy" = "명령 복사";
 "mod.settings.prompt_toggle" = "메뉴에 설치 안내 표시";
@@ -608,7 +608,6 @@
 "mod.panel.later" = "나중에";
 "mod.dismissed.open_settings" = "고급 설정 열기";
 "mod.dismissed.ok" = "확인";
-"mod.settings.uninstall_note" = "제거하려면 Claude Code에서 /plugin 을 입력하세요.";
 "mod.panel.point1.title" = "실시간 공식 데이터";
 "mod.panel.point1.detail" = "답변이 끝나는 즉시 갱신되며 추정치가 아닙니다";
 "mod.panel.point2.title" = "에이전트 시나리오 지원";
@@ -633,3 +632,7 @@
 "mod.manage.failure_title" = "자동으로 제거할 수 없습니다";
 "mod.manage.failure_note" = "터미널에서 다음 명령을 실행하세요:";
 "mod.settings.action.manage" = "관리";
+"mod.settings.status.title_format" = "BalanceBar Mod 상태: %1$@";
+"mod.settings.status.last_data" = "최근 데이터: %1$@";
+"mod.settings.status.silent_hint" = "새 세션을 시작하거나 열려 있는 세션에서 /reload-plugins 를 실행하세요";
+"mod.settings.status.unsupported_detail" = "현재 %1$@. v2.1.287 이상이 필요합니다";

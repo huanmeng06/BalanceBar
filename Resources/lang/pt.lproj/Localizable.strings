@@ -585,7 +585,7 @@
 "mod.install.step3" = "Aguardar os primeiros dados";
 "mod.install.enabled" = "Ativado ✓";
 "mod.install.enabled_note" = "As novas sessões do Claude Code ativam-no automaticamente; as que já estão a decorrer podem ficar como estão.";
-"mod.install.reload_hint" = "Para o ativar já na sessão atual, escreva /reload-plugins nela.";
+"mod.install.reload_hint" = "Para o ativar já na sessão atual, escreva nela:";
 "mod.failure.title" = "Não foi possível instalar automaticamente";
 "mod.failure.claude_missing" = "O comando claude não foi encontrado. Execute estes comandos no Terminal:";
 "mod.failure.command_failed" = "Um comando não terminou com êxito. Execute estes comandos no Terminal:";
@@ -596,9 +596,9 @@
 "mod.settings.title" = "Reforço em tempo real do Claude";
 "mod.settings.status.not_installed" = "Não instalado";
 "mod.settings.status.waiting" = "Instalado, a aguardar dados de uma nova sessão";
-"mod.settings.status.active" = "Ativado · últimos dados %1$@";
-"mod.settings.status.silent" = "Instalado, mas sem dados há 10 minutos. Inicie uma nova sessão ou execute /reload-plugins numa já aberta";
-"mod.settings.status.unsupported" = "O Claude Code %1$@ é demasiado antigo; é necessária a v2.1.287 ou posterior";
+"mod.settings.status.active" = "Ativado";
+"mod.settings.status.silent" = "Instalado, mas sem dados há 10 minutos";
+"mod.settings.status.unsupported" = "O Claude Code é demasiado antigo";
 "mod.settings.action.install" = "Instalar com um clique";
 "mod.settings.action.copy" = "Copiar comandos";
 "mod.settings.prompt_toggle" = "Mostrar o aviso de instalação no menu";
@@ -608,7 +608,6 @@
 "mod.panel.later" = "Mais tarde";
 "mod.dismissed.open_settings" = "Abrir definições avançadas";
 "mod.dismissed.ok" = "OK";
-"mod.settings.uninstall_note" = "Para o remover, escreva /plugin no Claude Code.";
 "mod.panel.point1.title" = "Dados oficiais em tempo real";
 "mod.panel.point1.detail" = "Atualizados logo após cada resposta, sem estimativas";
 "mod.panel.point2.title" = "Cobre cenários com agentes";
@@ -633,3 +632,7 @@
 "mod.manage.failure_title" = "Não foi possível desinstalar automaticamente";
 "mod.manage.failure_note" = "Execute este comando num terminal:";
 "mod.settings.action.manage" = "Gerir";
+"mod.settings.status.title_format" = "Estado do BalanceBar Mod: %1$@";
+"mod.settings.status.last_data" = "Últimos dados: %1$@";
+"mod.settings.status.silent_hint" = "Inicie uma nova sessão ou execute /reload-plugins numa já aberta";
+"mod.settings.status.unsupported_detail" = "Atual %1$@; é necessária a v2.1.287 ou posterior";

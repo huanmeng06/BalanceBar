@@ -189,7 +189,7 @@ final class ModOnboardingPanelTests: XCTestCase {
             "# 让 Claude 额度实时更新", "[x] 添加插件源", "[~] 安装 Mod", "[ ] 等待首次数据", "<关闭>"])
         XCTAssertEqual(lines(.awaitingFirstData), [
             "# 让 Claude 额度实时更新", "[x] 添加插件源", "[x] 安装 Mod", "[~] 等待首次数据",
-            "新开的 Claude Code 会话会自动启用，正在运行的会话可以不管。", "想让当前会话也马上生效，可在其中输入 /reload-plugins。",
+            "新开的 Claude Code 会话会自动启用，正在运行的会话可以不管。", "想让当前会话也马上生效，可在其中输入：",
             "$ /reload-plugins", "<关闭>*"])
         XCTAssertEqual(lines(.enabled), ["# 已开启 ✓\n新开的 Claude Code 会话会自动启用，正在运行的会话可以不管。", "<关闭>*"])
         XCTAssertEqual(lines(.silent), [
@@ -338,9 +338,9 @@ final class ModOnboardingPanelTests: XCTestCase {
     }
 
     func testSnapshotInstalledManagementViewAndUninstallStates() {
-        XCTAssertEqual(lines(.installed(statusText: "已启用 · 最近数据 03:39:00")), [
-            "# BalanceBar Mod 已安装\n已启用 · 最近数据 03:39:00",
-            "新开的 Claude Code 会话会自动启用，正在运行的会话可以不管。", "想让当前会话也马上生效，可在其中输入 /reload-plugins。",
+        XCTAssertEqual(lines(.installed(statusText: "已启用\n最新数据：03:39:00")), [
+            "# BalanceBar Mod 已安装\n已启用\n最新数据：03:39:00",
+            "新开的 Claude Code 会话会自动启用，正在运行的会话可以不管。", "想让当前会话也马上生效，可在其中输入：",
             "$ /reload-plugins", "不想用了？卸载后，新会话不再向 BalanceBar 写入数据，额度回到定时查询。",
             "<卸载> | <关闭>*"])
         XCTAssertFalse(lines(.installed(statusText: "x")).contains { $0.contains("一键安装") }, "an installed Mod is not asked to install again")
@@ -443,16 +443,19 @@ final class ModOnboardingPanelTests: XCTestCase {
 
     func testSettingsPresentationRowsAndSwitch() {
         let silent = RealtimeBoostPresentation.make(status: .enabledButSilent)
-        XCTAssertTrue(silent.statusText.contains("10 分钟")); XCTAssertTrue(silent.showsCopyAction); XCTAssertFalse(silent.showsInstallAction)
+        XCTAssertEqual(silent.statusText, "BalanceBar Mod 状态：已安装，但 10 分钟内没有收到数据")
+        XCTAssertEqual(silent.detailText, "请新开会话，或在已有会话运行 /reload-plugins"); XCTAssertTrue(silent.showsCopyAction); XCTAssertFalse(silent.showsInstallAction)
         XCTAssertEqual(silent.statusTone, .orange)
         XCTAssertTrue(RealtimeBoostPresentation.make(status: .notInstalled).showsInstallAction)
         XCTAssertEqual(RealtimeBoostPresentation.make(status: .notInstalled).statusTone, .gray)
         XCTAssertEqual(RealtimeBoostPresentation.make(status: .waitingForData).statusTone, .orange)
         let utc = TimeZone(identifier: "UTC")!
         let active = RealtimeBoostPresentation.make(status: .active(lastDataAt: Date(timeIntervalSince1970: 1_767_274_800)), timeZone: utc)
-        XCTAssertEqual(active.statusText, "已启用 · 最近数据 13:40:00"); XCTAssertEqual(active.statusTone, .green)
+        XCTAssertEqual(active.statusText, "BalanceBar Mod 状态：已启用"); XCTAssertEqual(active.detailText, "最新数据：13:40:00")
+        XCTAssertEqual(active.stateAndDetail, "已启用\n最新数据：13:40:00"); XCTAssertEqual(active.statusTone, .green); XCTAssertTrue(active.isInstalled)
         let old = RealtimeBoostPresentation.make(status: .unsupportedClaudeCode(.init(major: 2, minor: 1, patch: 100)))
-        XCTAssertTrue(old.statusText.contains("2.1.100")); XCTAssertEqual(old.statusTone, .red)
+        XCTAssertEqual(old.statusText, "BalanceBar Mod 状态：Claude Code 版本过旧"); XCTAssertEqual(old.detailText, "当前 2.1.100，需要 v2.1.287 或更高版本")
+        XCTAssertEqual(old.statusTone, .red)
 
         let pref = MemoryPreference()
         let rows = RealtimeBoostSettingsRows(controller: controller(locator: nil, results: [], pref: pref), status: .notInstalled)
@@ -465,7 +468,7 @@ final class ModOnboardingPanelTests: XCTestCase {
         XCTAssertFalse(rows.installButton.isHidden)
         rows.update(status: .active(lastDataAt: Date()))
         XCTAssertTrue(rows.installButton.isHidden)
-        XCTAssertEqual(rows.detailText, "卸载：在 Claude Code 中输入 /plugin 即可移除。")
+        XCTAssertTrue(rows.detailText.hasPrefix("最新数据："), "the second line shows when data last arrived")
     }
 
     func testPromptRowShowsTheDocumentCopyAndRunsItsAction() {

@@ -585,7 +585,7 @@
 "mod.install.step3" = "Auf erste Daten warten";
 "mod.install.enabled" = "Aktiviert ✓";
 "mod.install.enabled_note" = "Neue Claude-Code-Sitzungen aktivieren es automatisch; laufende Sitzungen kannst du ignorieren.";
-"mod.install.reload_hint" = "Damit es in der aktuellen Sitzung sofort wirkt, gib dort /reload-plugins ein.";
+"mod.install.reload_hint" = "Damit es in der aktuellen Sitzung sofort wirkt, gib dort ein:";
 "mod.failure.title" = "Automatische Installation nicht möglich";
 "mod.failure.claude_missing" = "Der Befehl claude wurde nicht gefunden. Führe diese Befehle im Terminal aus:";
 "mod.failure.command_failed" = "Ein Befehl wurde nicht erfolgreich beendet. Führe diese Befehle im Terminal aus:";
@@ -596,9 +596,9 @@
 "mod.settings.title" = "Claude-Echtzeit-Boost";
 "mod.settings.status.not_installed" = "Nicht installiert";
 "mod.settings.status.waiting" = "Installiert, wartet auf Daten aus einer neuen Sitzung";
-"mod.settings.status.active" = "Aktiv · letzte Daten %1$@";
-"mod.settings.status.silent" = "Installiert, aber seit 10 Minuten keine Daten. Starte eine neue Sitzung oder führe in einer offenen /reload-plugins aus";
-"mod.settings.status.unsupported" = "Claude Code %1$@ ist zu alt; v2.1.287 oder neuer ist erforderlich";
+"mod.settings.status.active" = "Aktiv";
+"mod.settings.status.silent" = "Installiert, aber seit 10 Minuten keine Daten";
+"mod.settings.status.unsupported" = "Claude Code ist zu alt";
 "mod.settings.action.install" = "Mit einem Klick installieren";
 "mod.settings.action.copy" = "Befehle kopieren";
 "mod.settings.prompt_toggle" = "Installationshinweis im Menü anzeigen";
@@ -608,7 +608,6 @@
 "mod.panel.later" = "Später";
 "mod.dismissed.open_settings" = "Erweiterte Einstellungen öffnen";
 "mod.dismissed.ok" = "OK";
-"mod.settings.uninstall_note" = "Zum Entfernen gib in Claude Code /plugin ein.";
 "mod.panel.point1.title" = "Echtzeit, offizielle Daten";
 "mod.panel.point1.detail" = "Aktualisierung direkt nach jeder Antwort, keine Schätzung";
 "mod.panel.point2.title" = "Deckt Agent-Szenarien ab";
@@ -633,3 +632,7 @@
 "mod.manage.failure_title" = "Automatische Deinstallation nicht möglich";
 "mod.manage.failure_note" = "Führe diesen Befehl im Terminal aus:";
 "mod.settings.action.manage" = "Verwalten";
+"mod.settings.status.title_format" = "BalanceBar-Mod-Status: %1$@";
+"mod.settings.status.last_data" = "Letzte Daten: %1$@";
+"mod.settings.status.silent_hint" = "Starte eine neue Sitzung oder führe in einer offenen /reload-plugins aus";
+"mod.settings.status.unsupported_detail" = "Aktuell %1$@; v2.1.287 oder neuer ist erforderlich";

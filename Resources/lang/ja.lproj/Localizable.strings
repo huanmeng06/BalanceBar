@@ -585,7 +585,7 @@
 "mod.install.step3" = "最初のデータを待機";
 "mod.install.enabled" = "有効にしました ✓";
 "mod.install.enabled_note" = "新しく開いた Claude Code セッションでは自動的に有効になります。実行中のセッションはそのままで構いません。";
-"mod.install.reload_hint" = "現在のセッションですぐに有効にするには、その中で /reload-plugins と入力してください。";
+"mod.install.reload_hint" = "現在のセッションですぐに有効にするには、その中で次を入力してください：";
 "mod.failure.title" = "自動でインストールできませんでした";
 "mod.failure.claude_missing" = "claude コマンドが見つかりません。ターミナルで次のコマンドを実行してください：";
 "mod.failure.command_failed" = "コマンドが正常に完了しませんでした。ターミナルで次のコマンドを実行してください：";
@@ -596,9 +596,9 @@
 "mod.settings.title" = "Claude リアルタイム強化";
 "mod.settings.status.not_installed" = "未インストール";
 "mod.settings.status.waiting" = "インストール済み。新しいセッションのデータを待っています";
-"mod.settings.status.active" = "有効 · 最新データ %1$@";
-"mod.settings.status.silent" = "インストール済みですが、10 分間データがありません。新しいセッションを開くか、開いているセッションで /reload-plugins を実行してください";
-"mod.settings.status.unsupported" = "Claude Code %1$@ は古すぎます。v2.1.287 以降が必要です";
+"mod.settings.status.active" = "有効";
+"mod.settings.status.silent" = "インストール済みですが、10 分間データがありません";
+"mod.settings.status.unsupported" = "Claude Code が古すぎます";
 "mod.settings.action.install" = "ワンクリックでインストール";
 "mod.settings.action.copy" = "コマンドをコピー";
 "mod.settings.prompt_toggle" = "メニューにインストールのヒントを表示";
@@ -608,7 +608,6 @@
 "mod.panel.later" = "あとで";
 "mod.dismissed.open_settings" = "詳細設定を開く";
 "mod.dismissed.ok" = "OK";
-"mod.settings.uninstall_note" = "削除するには、Claude Code で /plugin と入力します。";
 "mod.panel.point1.title" = "リアルタイムの公式データ";
 "mod.panel.point1.detail" = "返信のたびにすぐ更新され、推定ではありません";
 "mod.panel.point2.title" = "エージェント利用にも対応";
@@ -633,3 +632,7 @@
 "mod.manage.failure_title" = "自動でアンインストールできませんでした";
 "mod.manage.failure_note" = "ターミナルで次のコマンドを実行してください：";
 "mod.settings.action.manage" = "管理";
+"mod.settings.status.title_format" = "BalanceBar Mod の状態：%1$@";
+"mod.settings.status.last_data" = "最新データ：%1$@";
+"mod.settings.status.silent_hint" = "新しいセッションを開くか、開いているセッションで /reload-plugins を実行してください";
+"mod.settings.status.unsupported_detail" = "現在 %1$@。v2.1.287 以降が必要です";

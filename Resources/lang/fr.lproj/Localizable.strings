@@ -585,7 +585,7 @@
 "mod.install.step3" = "Attendre les premières données";
 "mod.install.enabled" = "Activé ✓";
 "mod.install.enabled_note" = "Les nouvelles sessions Claude Code l’activent automatiquement ; les sessions en cours peuvent être laissées telles quelles.";
-"mod.install.reload_hint" = "Pour l’activer tout de suite dans la session en cours, saisissez-y /reload-plugins.";
+"mod.install.reload_hint" = "Pour l’activer tout de suite dans la session en cours, saisissez-y :";
 "mod.failure.title" = "Installation automatique impossible";
 "mod.failure.claude_missing" = "La commande claude est introuvable. Exécutez ces commandes dans le Terminal :";
 "mod.failure.command_failed" = "Une commande ne s’est pas terminée correctement. Exécutez ces commandes dans le Terminal :";
@@ -596,9 +596,9 @@
 "mod.settings.title" = "Boost en temps réel de Claude";
 "mod.settings.status.not_installed" = "Non installé";
 "mod.settings.status.waiting" = "Installé, en attente de données d’une nouvelle session";
-"mod.settings.status.active" = "Activé · dernières données %1$@";
-"mod.settings.status.silent" = "Installé, mais aucune donnée depuis 10 minutes. Démarrez une nouvelle session ou exécutez /reload-plugins dans une session ouverte";
-"mod.settings.status.unsupported" = "Claude Code %1$@ est trop ancien ; la version 2.1.287 ou ultérieure est requise";
+"mod.settings.status.active" = "Activé";
+"mod.settings.status.silent" = "Installé, mais aucune donnée depuis 10 minutes";
+"mod.settings.status.unsupported" = "Claude Code est trop ancien";
 "mod.settings.action.install" = "Installer en un clic";
 "mod.settings.action.copy" = "Copier les commandes";
 "mod.settings.prompt_toggle" = "Afficher l’invite d’installation dans le menu";
@@ -608,7 +608,6 @@
 "mod.panel.later" = "Plus tard";
 "mod.dismissed.open_settings" = "Ouvrir les réglages avancés";
 "mod.dismissed.ok" = "OK";
-"mod.settings.uninstall_note" = "Pour le retirer, saisissez /plugin dans Claude Code.";
 "mod.panel.point1.title" = "Données officielles en direct";
 "mod.panel.point1.detail" = "Mise à jour juste après chaque réponse, pas une estimation";
 "mod.panel.point2.title" = "Couvre les scénarios d’agents";
@@ -633,3 +632,7 @@
 "mod.manage.failure_title" = "Désinstallation automatique impossible";
 "mod.manage.failure_note" = "Exécutez cette commande dans un terminal :";
 "mod.settings.action.manage" = "Gérer";
+"mod.settings.status.title_format" = "État de BalanceBar Mod : %1$@";
+"mod.settings.status.last_data" = "Dernières données : %1$@";
+"mod.settings.status.silent_hint" = "Démarrez une nouvelle session ou exécutez /reload-plugins dans une session ouverte";
+"mod.settings.status.unsupported_detail" = "Actuelle : %1$@ ; la version 2.1.287 ou ultérieure est requise";

@@ -365,7 +365,7 @@ final class ModOnboardingCoordinator {
     }
 
     private func installedStatusText(_ status: ModEnhancementStatus) -> String {
-        RealtimeBoostPresentation.make(status: status, localize: RealtimeBoostText.appLocalize).statusText
+        RealtimeBoostPresentation.make(status: status, localize: RealtimeBoostText.appLocalize).stateAndDetail
     }
 
     private func notify() {

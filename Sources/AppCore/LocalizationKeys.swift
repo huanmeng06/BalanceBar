@@ -594,7 +594,6 @@
     case keyModPanelLater = "mod.panel.later"
     case keyModDismissedOpenSettings = "mod.dismissed.open_settings"
     case keyModDismissedOk = "mod.dismissed.ok"
-    case keyModSettingsUninstallNote = "mod.settings.uninstall_note"
 
     case keyModPanelPoint1Title = "mod.panel.point1.title"
     case keyModPanelPoint1Detail = "mod.panel.point1.detail"
@@ -621,6 +620,11 @@
     case keyModManageFailureTitle = "mod.manage.failure_title"
     case keyModManageFailureNote = "mod.manage.failure_note"
     case keyModSettingsActionManage = "mod.settings.action.manage"
+
+    case keyModSettingsStatusTitleFormat = "mod.settings.status.title_format"
+    case keyModSettingsStatusLastData = "mod.settings.status.last_data"
+    case keyModSettingsStatusSilentHint = "mod.settings.status.silent_hint"
+    case keyModSettingsStatusUnsupportedDetail = "mod.settings.status.unsupported_detail"
 
     var rawKey: String { rawValue }
 }

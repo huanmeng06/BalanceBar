@@ -585,7 +585,7 @@
 "mod.install.step3" = "Ждём первые данные";
 "mod.install.enabled" = "Включено ✓";
 "mod.install.enabled_note" = "Новые сессии Claude Code включат его автоматически; уже запущенные можно не трогать.";
-"mod.install.reload_hint" = "Чтобы включить его в текущей сессии сразу, введите в ней /reload-plugins.";
+"mod.install.reload_hint" = "Чтобы включить его в текущей сессии сразу, введите в ней:";
 "mod.failure.title" = "Не удалось установить автоматически";
 "mod.failure.claude_missing" = "Команда claude не найдена. Выполните в Терминале следующие команды:";
 "mod.failure.command_failed" = "Команда завершилась с ошибкой. Выполните в Терминале следующие команды:";
@@ -596,9 +596,9 @@
 "mod.settings.title" = "Данные Claude в реальном времени";
 "mod.settings.status.not_installed" = "Не установлено";
 "mod.settings.status.waiting" = "Установлено, ожидаются данные из новой сессии";
-"mod.settings.status.active" = "Включено · последние данные: %1$@";
-"mod.settings.status.silent" = "Установлено, но данных нет уже 10 минут. Начните новую сессию или выполните /reload-plugins в открытой";
-"mod.settings.status.unsupported" = "Claude Code %1$@ слишком старый; нужна версия 2.1.287 или новее";
+"mod.settings.status.active" = "Включено";
+"mod.settings.status.silent" = "Установлено, но данных нет уже 10 минут";
+"mod.settings.status.unsupported" = "Claude Code слишком старый";
 "mod.settings.action.install" = "Установить в один клик";
 "mod.settings.action.copy" = "Скопировать команды";
 "mod.settings.prompt_toggle" = "Показывать в меню подсказку об установке";
@@ -608,7 +608,6 @@
 "mod.panel.later" = "Позже";
 "mod.dismissed.open_settings" = "Открыть дополнительные настройки";
 "mod.dismissed.ok" = "OK";
-"mod.settings.uninstall_note" = "Чтобы удалить, введите /plugin в Claude Code.";
 "mod.panel.point1.title" = "Актуальные официальные данные";
 "mod.panel.point1.detail" = "Обновляются сразу после каждого ответа, это не оценка";
 "mod.panel.point2.title" = "Работает и с агентами";
@@ -633,3 +632,7 @@
 "mod.manage.failure_title" = "Не удалось удалить автоматически";
 "mod.manage.failure_note" = "Выполните эту команду в терминале:";
 "mod.settings.action.manage" = "Управление";
+"mod.settings.status.title_format" = "Состояние BalanceBar Mod: %1$@";
+"mod.settings.status.last_data" = "Последние данные: %1$@";
+"mod.settings.status.silent_hint" = "Начните новую сессию или выполните /reload-plugins в открытой";
+"mod.settings.status.unsupported_detail" = "Сейчас %1$@; нужна версия 2.1.287 или новее";

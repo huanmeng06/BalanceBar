@@ -585,7 +585,7 @@
 "mod.install.step3" = "等待首次数据";
 "mod.install.enabled" = "已开启 ✓";
 "mod.install.enabled_note" = "新开的 Claude Code 会话会自动启用，正在运行的会话可以不管。";
-"mod.install.reload_hint" = "想让当前会话也马上生效，可在其中输入 /reload-plugins。";
+"mod.install.reload_hint" = "想让当前会话也马上生效，可在其中输入：";
 "mod.failure.title" = "无法自动安装";
 "mod.failure.claude_missing" = "没有找到 claude 命令。请在终端中运行下面的命令：";
 "mod.failure.command_failed" = "命令未成功完成。请在终端中运行下面的命令：";
@@ -596,9 +596,9 @@
 "mod.settings.title" = "Claude 实时增强";
 "mod.settings.status.not_installed" = "未安装";
 "mod.settings.status.waiting" = "已安装，等待新会话的数据";
-"mod.settings.status.active" = "已启用 · 最近数据 %1$@";
-"mod.settings.status.silent" = "已安装，但 10 分钟内没有收到数据。请新开会话，或在已有会话运行 /reload-plugins";
-"mod.settings.status.unsupported" = "Claude Code %1$@ 过旧，需要 v2.1.287 或更高版本";
+"mod.settings.status.active" = "已启用";
+"mod.settings.status.silent" = "已安装，但 10 分钟内没有收到数据";
+"mod.settings.status.unsupported" = "Claude Code 版本过旧";
 "mod.settings.action.install" = "一键安装";
 "mod.settings.action.copy" = "复制命令";
 "mod.settings.prompt_toggle" = "在菜单中显示安装提示";
@@ -608,7 +608,6 @@
 "mod.panel.later" = "稍后";
 "mod.dismissed.open_settings" = "打开高级设置";
 "mod.dismissed.ok" = "好";
-"mod.settings.uninstall_note" = "卸载：在 Claude Code 中输入 /plugin 即可移除。";
 "mod.panel.point1.title" = "实时、官方数据";
 "mod.panel.point1.detail" = "每轮回复后立即更新，不是估算";
 "mod.panel.point2.title" = "覆盖 Agent 场景";
@@ -633,3 +632,7 @@
 "mod.manage.failure_title" = "无法自动卸载";
 "mod.manage.failure_note" = "请在终端中运行下面的命令：";
 "mod.settings.action.manage" = "管理";
+"mod.settings.status.title_format" = "BalanceBar Mod 状态：%1$@";
+"mod.settings.status.last_data" = "最新数据：%1$@";
+"mod.settings.status.silent_hint" = "请新开会话，或在已有会话运行 /reload-plugins";
+"mod.settings.status.unsupported_detail" = "当前 %1$@，需要 v2.1.287 或更高版本";

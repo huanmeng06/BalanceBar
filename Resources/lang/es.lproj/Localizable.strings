@@ -585,7 +585,7 @@
 "mod.install.step3" = "Esperar los primeros datos";
 "mod.install.enabled" = "Activado ✓";
 "mod.install.enabled_note" = "Las nuevas sesiones de Claude Code lo activan automáticamente; las que ya están en marcha puedes dejarlas.";
-"mod.install.reload_hint" = "Para activarlo ya en la sesión actual, escribe /reload-plugins en ella.";
+"mod.install.reload_hint" = "Para activarlo ya en la sesión actual, escribe en ella:";
 "mod.failure.title" = "No se pudo instalar automáticamente";
 "mod.failure.claude_missing" = "No se encontró el comando claude. Ejecuta estos comandos en Terminal:";
 "mod.failure.command_failed" = "Un comando no terminó correctamente. Ejecuta estos comandos en Terminal:";
@@ -596,9 +596,9 @@
 "mod.settings.title" = "Mejora en tiempo real de Claude";
 "mod.settings.status.not_installed" = "No instalado";
 "mod.settings.status.waiting" = "Instalado, esperando datos de una sesión nueva";
-"mod.settings.status.active" = "Activado · últimos datos %1$@";
-"mod.settings.status.silent" = "Instalado, pero sin datos desde hace 10 minutos. Inicia una sesión nueva o ejecuta /reload-plugins en una abierta";
-"mod.settings.status.unsupported" = "Claude Code %1$@ es demasiado antiguo; se necesita v2.1.287 o posterior";
+"mod.settings.status.active" = "Activado";
+"mod.settings.status.silent" = "Instalado, pero sin datos desde hace 10 minutos";
+"mod.settings.status.unsupported" = "Claude Code es demasiado antiguo";
 "mod.settings.action.install" = "Instalar con un clic";
 "mod.settings.action.copy" = "Copiar comandos";
 "mod.settings.prompt_toggle" = "Mostrar el aviso de instalación en el menú";
@@ -608,7 +608,6 @@
 "mod.panel.later" = "Más tarde";
 "mod.dismissed.open_settings" = "Abrir ajustes avanzados";
 "mod.dismissed.ok" = "Aceptar";
-"mod.settings.uninstall_note" = "Para quitarlo, escribe /plugin en Claude Code.";
 "mod.panel.point1.title" = "Datos oficiales en vivo";
 "mod.panel.point1.detail" = "Se actualizan justo después de cada respuesta, no son una estimación";
 "mod.panel.point2.title" = "Cubre los escenarios de agentes";
@@ -633,3 +632,7 @@
 "mod.manage.failure_title" = "No se pudo desinstalar automáticamente";
 "mod.manage.failure_note" = "Ejecuta este comando en una terminal:";
 "mod.settings.action.manage" = "Gestionar";
+"mod.settings.status.title_format" = "Estado de BalanceBar Mod: %1$@";
+"mod.settings.status.last_data" = "Últimos datos: %1$@";
+"mod.settings.status.silent_hint" = "Inicia una sesión nueva o ejecuta /reload-plugins en una abierta";
+"mod.settings.status.unsupported_detail" = "Actual %1$@; se necesita v2.1.287 o posterior";
