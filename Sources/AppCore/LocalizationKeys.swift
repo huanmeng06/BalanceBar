@@ -247,7 +247,6 @@
     case keyDashboardOfficialQuotaRefreshFrequency = "dashboard.refresh.official_quota_frequency"
     case keyDashboardRefreshOfficialScope = "dashboard.refresh.official_scope"
     case keyDashboardRefreshAPIScope = "dashboard.refresh.api_scope"
-    case keyDashboardRefreshMinimumIntervalHint = "dashboard.refresh.minimum_interval_hint"
     case keyDashboardOfficialEverySeconds = "dashboard.refresh.official_every_seconds"
     case keyDashboardGeneralAndRefreshPagesBalanceUpdatesDuringTasks = "dashboard.general.and.refresh.pages.balance_updates_during_tasks"
     case keyDashboardGeneralAndRefreshPagesRequestsTheCurrentProviderSBalanceWhileAnAgentIsRunning = "dashboard.general.and.refresh.pages.requests_the_current_provider_s_balance_while_an_agent_is_running"
@@ -626,6 +625,16 @@
 
     case keyModFailureRetry = "mod.failure.retry"
     case keyModSettingsActionViewError = "mod.settings.action.view_error"
+
+    case keyRefreshHelpTitle = "refresh.help.title"
+    case keyRefreshHelpRowSetting = "refresh.help.row_setting"
+    case keyRefreshHelpRowActual = "refresh.help.row_actual"
+    case keyRefreshHelpRowActualHint = "refresh.help.row_actual_hint"
+    case keyRefreshHelpRowMod = "refresh.help.row_mod"
+    case keyRefreshHelpRowModHint = "refresh.help.row_mod_hint"
+    case keyRefreshHelpLine1 = "refresh.help.line1"
+    case keyRefreshHelpLine2 = "refresh.help.line2"
+    case keyRefreshHelpLine3 = "refresh.help.line3"
 
     var rawKey: String { rawValue }
 }

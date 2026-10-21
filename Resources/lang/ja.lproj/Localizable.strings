@@ -557,7 +557,6 @@
 "dashboard.refresh.official_every_seconds" = "%1$@ 秒ごと";
 "dashboard.refresh.official_scope" = "Claude、Codex などの公式アカウント";
 "dashboard.refresh.api_scope" = "サードパーティ中継 / API キー";
-"dashboard.refresh.minimum_interval_hint" = "一部のソースには最短間隔の制限があります";
 
 "quota.status.refreshing" = "更新中…";
 "quota.status.realtime" = "ライブ";
@@ -636,3 +635,12 @@
 "quota.status.realtime_mod" = "ライブ · Mod";
 "mod.failure.retry" = "再試行";
 "mod.settings.action.view_error" = "エラーを表示";
+"refresh.help.title" = "設定した頻度より遅いのはなぜ？";
+"refresh.help.row_setting" = "設定";
+"refresh.help.row_actual" = "Claude 公式の実際";
+"refresh.help.row_actual_hint" = "最短でも約 3〜6 分ごと";
+"refresh.help.row_mod" = "Mod あり";
+"refresh.help.row_mod_hint" = "返信のたびに更新";
+"refresh.help.line1" = "制限を避けるため、Claude 公式の取得は最短でも約 3 分に 1 回、継続利用では約 6 分に 1 回です。選んだ頻度は「このくらいが望ましい」という希望で、この下限より短くはなりません。";
+"refresh.help.line2" = "「今すぐ更新」も 1 回に数えられ、連打すると次の更新がかえって遅くなります。";
+"refresh.help.line3" = "作業中も最新にしたいなら、設定 › 詳細 › Claude リアルタイム強化 で Mod をインストールしてください。返信のたびにすぐ更新され、この制限を受けません。";

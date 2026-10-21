@@ -557,7 +557,6 @@
 "dashboard.refresh.official_every_seconds" = "Every %1$@ s";
 "dashboard.refresh.official_scope" = "Official accounts such as Claude and Codex";
 "dashboard.refresh.api_scope" = "Third-party relays / API keys";
-"dashboard.refresh.minimum_interval_hint" = "Some sources have a minimum interval";
 
 "quota.status.refreshing" = "Updating…";
 "quota.status.realtime" = "Live";
@@ -636,3 +635,12 @@
 "quota.status.realtime_mod" = "Live · Mod";
 "mod.failure.retry" = "Try again";
 "mod.settings.action.view_error" = "View error";
+"refresh.help.title" = "Why isn’t it as fast as I set?";
+"refresh.help.row_setting" = "You set";
+"refresh.help.row_actual" = "Claude official, actual";
+"refresh.help.row_actual_hint" = "about every 3–6 min at best";
+"refresh.help.row_mod" = "With the Mod";
+"refresh.help.row_mod_hint" = "updates after every reply";
+"refresh.help.line1" = "To avoid being rate-limited, Claude’s official endpoint is read at most about every 3 minutes, and about every 6 minutes in steady use. The frequency you pick is how fast you would like it; it never goes below that floor.";
+"refresh.help.line2" = "“Refresh Now” counts too, so clicking it repeatedly only slows the next update.";
+"refresh.help.line3" = "Want it up to date as you work? Install the Mod in Settings › Advanced › Claude real-time boost: the card updates right after every reply, without this limit.";

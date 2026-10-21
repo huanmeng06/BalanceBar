@@ -557,7 +557,6 @@
 "dashboard.refresh.official_every_seconds" = "Toutes les %1$@ s";
 "dashboard.refresh.official_scope" = "Comptes officiels comme Claude et Codex";
 "dashboard.refresh.api_scope" = "Relais tiers / clés API";
-"dashboard.refresh.minimum_interval_hint" = "Certaines sources ont un intervalle minimal";
 
 "quota.status.refreshing" = "En cours…";
 "quota.status.realtime" = "En direct";
@@ -636,3 +635,12 @@
 "quota.status.realtime_mod" = "En direct · Mod";
 "mod.failure.retry" = "Réessayer";
 "mod.settings.action.view_error" = "Voir l’erreur";
+"refresh.help.title" = "Pourquoi n’est-ce pas aussi rapide que réglé ?";
+"refresh.help.row_setting" = "Votre réglage";
+"refresh.help.row_actual" = "Claude officiel, réel";
+"refresh.help.row_actual_hint" = "au mieux toutes les 3–6 min";
+"refresh.help.row_mod" = "Avec le Mod";
+"refresh.help.row_mod_hint" = "après chaque réponse";
+"refresh.help.line1" = "Pour éviter la limitation, l’API officielle de Claude est lue au plus toutes les 3 minutes environ, et toutes les 6 minutes en usage continu. La fréquence choisie est un souhait ; elle ne descend jamais sous ce plancher.";
+"refresh.help.line2" = "« Actualiser » compte aussi ; cliquer à répétition retarde seulement la mise à jour suivante.";
+"refresh.help.line3" = "Envie d’être à jour pendant que vous travaillez ? Installez le Mod dans Réglages › Avancé › Boost en temps réel de Claude : la carte se met à jour après chaque réponse, sans cette limite.";

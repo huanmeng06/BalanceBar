@@ -557,7 +557,6 @@
 "dashboard.refresh.official_every_seconds" = "Ogni %1$@ s";
 "dashboard.refresh.official_scope" = "Account ufficiali come Claude e Codex";
 "dashboard.refresh.api_scope" = "Relay di terze parti / chiavi API";
-"dashboard.refresh.minimum_interval_hint" = "Alcune fonti hanno un intervallo minimo";
 
 "quota.status.refreshing" = "Carico…";
 "quota.status.realtime" = "Live";
@@ -636,3 +635,12 @@
 "quota.status.realtime_mod" = "Live · Mod";
 "mod.failure.retry" = "Riprova";
 "mod.settings.action.view_error" = "Vedi errore";
+"refresh.help.title" = "Perché non è veloce come impostato?";
+"refresh.help.row_setting" = "Impostato";
+"refresh.help.row_actual" = "Claude ufficiale, reale";
+"refresh.help.row_actual_hint" = "al massimo ogni 3–6 min";
+"refresh.help.row_mod" = "Con il Mod";
+"refresh.help.row_mod_hint" = "dopo ogni risposta";
+"refresh.help.line1" = "Per evitare limitazioni, l’endpoint ufficiale di Claude viene letto al massimo ogni 3 minuti circa, e ogni 6 in uso continuo. La frequenza scelta è un desiderio e non scende mai sotto questo minimo.";
+"refresh.help.line2" = "Anche «Aggiorna ora» conta; cliccare ripetutamente ritarda solo l’aggiornamento successivo.";
+"refresh.help.line3" = "Vuoi vederlo aggiornato mentre lavori? Installa il Mod in Impostazioni › Avanzate › Potenziamento in tempo reale di Claude: la scheda si aggiorna dopo ogni risposta, senza questo limite.";

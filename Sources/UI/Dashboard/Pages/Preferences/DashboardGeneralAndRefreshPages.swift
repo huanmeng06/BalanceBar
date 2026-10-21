@@ -437,8 +437,7 @@ final class DashboardGeneralPage {
             }, selected: input.preferences.officialUsageRefreshInterval, identifier: "officialUsageRefreshInterval",
             target: input.relay, action: #selector(DashboardPreferencePageRelay.interval(_:)))
         // Both rows share one structure: a right-aligned selector of identical
-        // width. The minimum-interval hint applies to the whole section, so it
-        // sits once under the card instead of repeating under each selector.
+        // width. Why the official read can be slower than the choice is explained by the "?" next to its title.
         let refreshPopupWidth = ceil(max(
             108, activeRefreshPopup.fittingSize.width, officialActivePopup.fittingSize.width
         ))
@@ -467,14 +466,17 @@ final class DashboardGeneralPage {
             contentViews: [
                 SettingsRowView(title: tr(.keyDashboardOfficialQuotaRefreshFrequency),
                     detail: tr(.keyDashboardRefreshOfficialScope),
+                    titleAccessory: RefreshRateHelpButton(selectedInterval: { [weak officialActivePopup] in
+                        (officialActivePopup?.selectedItem?.representedObject as? TimeInterval)
+                            ?? input.preferences.officialUsageRefreshInterval
+                    }),
                     accessoryView: refreshControls(officialActivePopup)),
                 SettingsRowView(
                     title: tr(.keyDashboardGeneralAndRefreshPagesBalanceUpdatesDuringTasks),
                     detail: tr(.keyDashboardRefreshAPIScope),
                     accessoryView: refreshControls(activeRefreshPopup)
                 )
-            ],
-            footnote: tr(.keyDashboardRefreshMinimumIntervalHint)
+            ]
         )
         let refreshNow = SettingsSectionView(
             title: tr(.keyDashboardGeneralAndRefreshPagesRefreshNow),

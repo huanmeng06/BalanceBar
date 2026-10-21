@@ -557,7 +557,6 @@
 "dashboard.refresh.official_every_seconds" = "A cada %1$@ s";
 "dashboard.refresh.official_scope" = "Contas oficiais como Claude e Codex";
 "dashboard.refresh.api_scope" = "Relays de terceiros / chaves de API";
-"dashboard.refresh.minimum_interval_hint" = "Algumas fontes têm um intervalo mínimo";
 
 "quota.status.refreshing" = "Lendo…";
 "quota.status.realtime" = "Ao vivo";
@@ -636,3 +635,12 @@
 "quota.status.realtime_mod" = "Ao vivo · Mod";
 "mod.failure.retry" = "Tentar de novo";
 "mod.settings.action.view_error" = "Ver erro";
+"refresh.help.title" = "Porque não é tão rápido como defini?";
+"refresh.help.row_setting" = "Definido";
+"refresh.help.row_actual" = "Claude oficial, real";
+"refresh.help.row_actual_hint" = "no máximo a cada 3–6 min";
+"refresh.help.row_mod" = "Com o Mod";
+"refresh.help.row_mod_hint" = "após cada resposta";
+"refresh.help.line1" = "Para evitar limitações, o endpoint oficial do Claude é lido no máximo a cada 3 minutos e, em uso contínuo, a cada 6. A frequência que escolhe é o que gostaria; nunca desce abaixo desse mínimo.";
+"refresh.help.line2" = "«Atualizar agora» também conta; clicar repetidamente só atrasa a próxima atualização.";
+"refresh.help.line3" = "Quer ver tudo atualizado enquanto trabalha? Instale o Mod em Definições › Avançadas › Reforço em tempo real do Claude: o cartão atualiza após cada resposta, sem este limite.";

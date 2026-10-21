@@ -2033,14 +2033,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(officialRow.detailLabel.stringValue, tr(.keyDashboardRefreshOfficialScope))
         XCTAssertEqual(apiRow.titleLabel.stringValue, tr(.keyDashboardGeneralAndRefreshPagesBalanceUpdatesDuringTasks))
         XCTAssertEqual(apiRow.detailLabel.stringValue, tr(.keyDashboardRefreshAPIScope))
-        for row in [officialRow, apiRow] {
-            let hints = descendants(of: row).compactMap { ($0 as? NSTextField)?.stringValue }
-                .filter { $0 == tr(.keyDashboardRefreshMinimumIntervalHint) }
-            XCTAssertTrue(hints.isEmpty)
-        }
         let section = try XCTUnwrap(SettingsSectionView.enclosing(officialRow))
-        // The hint covers both rows, so it appears once as the section footnote.
-        XCTAssertEqual(section.footnoteLabel?.stringValue, tr(.keyDashboardRefreshMinimumIntervalHint))
+        XCTAssertNil(section.footnoteLabel, "the vague footnote is replaced by the \"?\" help next to the official frequency")
+        XCTAssertTrue(descendants(of: officialRow).contains { $0 is RefreshRateHelpButton }, "the \"?\" sits in the official row")
+        XCTAssertFalse(descendants(of: apiRow).contains { $0 is RefreshRateHelpButton })
         XCTAssertEqual(section.contentViews.count, 2)
         XCTAssertTrue(section.contentViews[0] === officialRow)
         XCTAssertTrue(section.contentViews[1] === apiRow)

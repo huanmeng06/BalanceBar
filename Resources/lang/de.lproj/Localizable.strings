@@ -557,7 +557,6 @@
 "dashboard.refresh.official_every_seconds" = "Alle %1$@ s";
 "dashboard.refresh.official_scope" = "Offizielle Konten wie Claude und Codex";
 "dashboard.refresh.api_scope" = "Drittanbieter-Relays / API-Schlüssel";
-"dashboard.refresh.minimum_interval_hint" = "Einige Quellen haben ein Mindestintervall";
 
 "quota.status.refreshing" = "Lädt…";
 "quota.status.realtime" = "Live";
@@ -636,3 +635,12 @@
 "quota.status.realtime_mod" = "Live · Mod";
 "mod.failure.retry" = "Erneut versuchen";
 "mod.settings.action.view_error" = "Fehler ansehen";
+"refresh.help.title" = "Warum ist es nicht so schnell wie eingestellt?";
+"refresh.help.row_setting" = "Eingestellt";
+"refresh.help.row_actual" = "Claude offiziell, tatsächlich";
+"refresh.help.row_actual_hint" = "höchstens alle 3–6 Min.";
+"refresh.help.row_mod" = "Mit dem Mod";
+"refresh.help.row_mod_hint" = "nach jeder Antwort";
+"refresh.help.line1" = "Um nicht gedrosselt zu werden, wird Claudes offizielle Schnittstelle höchstens etwa alle 3 Minuten gelesen, im Dauerbetrieb etwa alle 6 Minuten. Die gewählte Frequenz ist nur ein Wunsch und unterschreitet diese Grenze nie.";
+"refresh.help.line2" = "„Jetzt aktualisieren“ zählt mit; wiederholtes Klicken verzögert die nächste Aktualisierung nur.";
+"refresh.help.line3" = "Immer aktuell beim Arbeiten? Installiere den Mod unter Einstellungen › Erweitert › Claude-Echtzeit-Boost: Die Karte aktualisiert sich nach jeder Antwort, ohne diese Grenze.";

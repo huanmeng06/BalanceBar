@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		362C7C46999A5E109E0AAFE8 /* RefreshRateHelpTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16648F22828C6D53293C3D8B /* RefreshRateHelpTests.swift */; };
+		9153C335564CDD28F090B696 /* RefreshRateHelp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71F16E5DB24DAB5A2885C2FC /* RefreshRateHelp.swift */; };
 		D213BD4BFFF58015CDC6752F /* ModOnboardingWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E7DB4D843D913BA93BB2D97 /* ModOnboardingWindowController.swift */; };
 		E35FE3CFD82B7CB109D62821 /* ModOnboardingCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E68CE3E533818B88003809B /* ModOnboardingCoordinatorTests.swift */; };
 		9C81F7D50F39AEA4891C2BC6 /* CodexLocalQuotaTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19546D256B8ED25F4F27159E /* CodexLocalQuotaTests.swift */; };
@@ -231,6 +233,8 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		16648F22828C6D53293C3D8B /* RefreshRateHelpTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RefreshRateHelpTests.swift; sourceTree = "<group>"; };
+		71F16E5DB24DAB5A2885C2FC /* RefreshRateHelp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RefreshRateHelp.swift; sourceTree = "<group>"; };
 		1E7DB4D843D913BA93BB2D97 /* ModOnboardingWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModOnboardingWindowController.swift; sourceTree = "<group>"; };
 		6E68CE3E533818B88003809B /* ModOnboardingCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModOnboardingCoordinatorTests.swift; sourceTree = "<group>"; };
 		19546D256B8ED25F4F27159E /* CodexLocalQuotaTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexLocalQuotaTests.swift; sourceTree = "<group>"; };
@@ -832,6 +836,7 @@
 		A40000000000000000000018 /* Dashboard */ = {
 			isa = PBXGroup;
 			children = (
+				16648F22828C6D53293C3D8B /* RefreshRateHelpTests.swift */,
 				A100000000000000000000A0 /* DashboardWindowControllerTests.swift */,
 				A44500000000000000000001 /* DashboardAccessibilityTests.swift */,
 				A44500000000000000000003 /* DashboardKeyboardNavigationTests.swift */,
@@ -1142,6 +1147,7 @@
 		A39000000000000000000006 /* Components */ = {
 			isa = PBXGroup;
 			children = (
+				71F16E5DB24DAB5A2885C2FC /* RefreshRateHelp.swift */,
 				A39000000000000000000001 /* SettingsRowView.swift */,
 				A39100000000000000000001 /* SettingsSectionView.swift */,
 			);
@@ -1468,6 +1474,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				9153C335564CDD28F090B696 /* RefreshRateHelp.swift in Sources */,
 				D213BD4BFFF58015CDC6752F /* ModOnboardingWindowController.swift in Sources */,
 				C7CFA9577E4DB16A0037444F /* ModOnboardingCoordinator.swift in Sources */,
 				74DE0CDC17264534F4649F66 /* CodexLocalQuota.swift in Sources */,
@@ -1607,6 +1614,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				362C7C46999A5E109E0AAFE8 /* RefreshRateHelpTests.swift in Sources */,
 				E35FE3CFD82B7CB109D62821 /* ModOnboardingCoordinatorTests.swift in Sources */,
 				9C81F7D50F39AEA4891C2BC6 /* CodexLocalQuotaTests.swift in Sources */,
 				A10000000000000300000021 /* BackgroundTestHost.swift in Sources */,

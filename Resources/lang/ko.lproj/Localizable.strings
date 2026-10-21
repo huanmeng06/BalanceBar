@@ -557,7 +557,6 @@
 "dashboard.refresh.official_every_seconds" = "%1$@초마다";
 "dashboard.refresh.official_scope" = "Claude, Codex 등 공식 계정";
 "dashboard.refresh.api_scope" = "서드파티 중계 / API 키";
-"dashboard.refresh.minimum_interval_hint" = "일부 소스에는 최소 간격 제한이 있습니다";
 
 "quota.status.refreshing" = "업데이트 중…";
 "quota.status.realtime" = "실시간";
@@ -636,3 +635,12 @@
 "quota.status.realtime_mod" = "실시간 · Mod";
 "mod.failure.retry" = "다시 시도";
 "mod.settings.action.view_error" = "오류 보기";
+"refresh.help.title" = "왜 설정한 만큼 빠르지 않나요?";
+"refresh.help.row_setting" = "설정값";
+"refresh.help.row_actual" = "Claude 공식, 실제";
+"refresh.help.row_actual_hint" = "빨라야 약 3~6분마다";
+"refresh.help.row_mod" = "Mod 설치 시";
+"refresh.help.row_mod_hint" = "답변이 끝날 때마다";
+"refresh.help.line1" = "요청 제한을 피하려고 Claude 공식 API는 빨라야 약 3분에 한 번, 계속 사용할 때는 약 6분에 한 번 읽습니다. 선택한 빈도는 희망값일 뿐이며 이 하한보다 빨라지지 않습니다.";
+"refresh.help.line2" = "‘지금 새로고침’도 한 번으로 계산되므로 연달아 누르면 다음 갱신만 늦어집니다.";
+"refresh.help.line3" = "작업하는 동안 최신 상태를 보고 싶다면 설정 › 고급 › Claude 실시간 강화 에서 Mod를 설치하세요. 답변이 끝날 때마다 바로 갱신되며 이 제한을 받지 않습니다.";

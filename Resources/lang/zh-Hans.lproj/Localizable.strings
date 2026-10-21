@@ -557,7 +557,6 @@
 "dashboard.refresh.official_every_seconds" = "每 %1$@ 秒";
 "dashboard.refresh.official_scope" = "Claude、Codex 等官方账号";
 "dashboard.refresh.api_scope" = "第三方中转 / API Key";
-"dashboard.refresh.minimum_interval_hint" = "部分来源有最短间隔限制";
 
 "quota.status.refreshing" = "刷新中…";
 "quota.status.realtime" = "实时";
@@ -636,3 +635,12 @@
 "quota.status.realtime_mod" = "实时 · Mod";
 "mod.failure.retry" = "重试";
 "mod.settings.action.view_error" = "查看原因";
+"refresh.help.title" = "为什么刷新没有设置的那么快？";
+"refresh.help.row_setting" = "你设置的";
+"refresh.help.row_actual" = "Claude 官方接口实际";
+"refresh.help.row_actual_hint" = "最快约每 3–6 分钟";
+"refresh.help.row_mod" = "装了 Mod";
+"refresh.help.row_mod_hint" = "每轮回复后立即更新";
+"refresh.help.line1" = "Claude 官方接口怕被刷爆会限流，所以自动读取最快约每 3 分钟一次，持续使用时约每 6 分钟。你选的频率只是“希望多快”，不会低于这个下限。";
+"refresh.help.line2" = "手动点“立即刷新”也算一次，连点反而会让下一次更晚。";
+"refresh.help.line3" = "想随用随更新？在 设置 › 高级 › Claude 实时增强 里安装 Mod：每轮回复后立刻更新，不再受这个限制。";

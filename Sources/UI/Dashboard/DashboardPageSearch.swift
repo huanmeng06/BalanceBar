@@ -479,7 +479,7 @@ enum DashboardSettingsSearchCatalog {
                 .keyDashboardOfficialQuotaRefreshFrequency,
                 .keyDashboardRefreshOfficialScope,
                 .keyDashboardRefreshAPIScope,
-                .keyDashboardRefreshMinimumIntervalHint,
+                .keyRefreshHelpTitle,
                 .keyDashboardGeneralAndRefreshPagesBalanceUpdatesDuringTasks,
                 .keyDashboardGeneralAndRefreshPagesRefreshNow,
                 .keyDashboardGeneralAndRefreshPagesBalanceData,

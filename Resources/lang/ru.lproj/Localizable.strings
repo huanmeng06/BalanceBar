@@ -557,7 +557,6 @@
 "dashboard.refresh.official_every_seconds" = "Каждые %1$@ с";
 "dashboard.refresh.official_scope" = "Официальные аккаунты, например Claude и Codex";
 "dashboard.refresh.api_scope" = "Сторонние релеи / API-ключи";
-"dashboard.refresh.minimum_interval_hint" = "Для некоторых источников задан минимальный интервал";
 
 "quota.status.refreshing" = "Чтение…";
 "quota.status.realtime" = "Онлайн";
@@ -636,3 +635,12 @@
 "quota.status.realtime_mod" = "Онлайн · Mod";
 "mod.failure.retry" = "Повторить";
 "mod.settings.action.view_error" = "Показать ошибку";
+"refresh.help.title" = "Почему не так быстро, как задано?";
+"refresh.help.row_setting" = "Задано";
+"refresh.help.row_actual" = "Claude официально, на деле";
+"refresh.help.row_actual_hint" = "не чаще раза в 3–6 мин";
+"refresh.help.row_mod" = "С Mod";
+"refresh.help.row_mod_hint" = "после каждого ответа";
+"refresh.help.line1" = "Чтобы не попасть под ограничения, официальный API Claude читается не чаще раза в 3 минуты, а при постоянной работе — раз в 6. Выбранная частота — это пожелание, ниже этого предела она не опускается.";
+"refresh.help.line2" = "«Обновить сейчас» тоже учитывается: частые нажатия только отодвигают следующее обновление.";
+"refresh.help.line3" = "Хотите видеть актуальные данные во время работы? Установите Mod в Настройки › Дополнительно › Данные Claude в реальном времени: карточка обновляется после каждого ответа без этого ограничения.";

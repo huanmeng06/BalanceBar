@@ -557,7 +557,6 @@
 "dashboard.refresh.official_every_seconds" = "每 %1$@ 秒";
 "dashboard.refresh.official_scope" = "Claude、Codex 等官方帳戶";
 "dashboard.refresh.api_scope" = "第三方中轉 / API Key";
-"dashboard.refresh.minimum_interval_hint" = "部分來源有最短間隔限制";
 
 "quota.status.refreshing" = "更新中…";
 "quota.status.realtime" = "即時";
@@ -636,3 +635,12 @@
 "quota.status.realtime_mod" = "即時 · Mod";
 "mod.failure.retry" = "重試";
 "mod.settings.action.view_error" = "檢視原因";
+"refresh.help.title" = "為什麼更新沒有設定的那麼快？";
+"refresh.help.row_setting" = "你設定的";
+"refresh.help.row_actual" = "Claude 官方介面實際";
+"refresh.help.row_actual_hint" = "最快約每 3–6 分鐘";
+"refresh.help.row_mod" = "裝了 Mod";
+"refresh.help.row_mod_hint" = "每輪回覆後立即更新";
+"refresh.help.line1" = "Claude 官方介面怕被刷爆會限流，所以自動讀取最快約每 3 分鐘一次，持續使用時約每 6 分鐘。你選的頻率只是「希望多快」，不會低於這個下限。";
+"refresh.help.line2" = "手動按「立即刷新」也算一次，連按反而會讓下一次更晚。";
+"refresh.help.line3" = "想隨用隨更新？在 設定 › 進階 › Claude 即時增強 裡安裝 Mod：每輪回覆後立刻更新，不再受這個限制。";
