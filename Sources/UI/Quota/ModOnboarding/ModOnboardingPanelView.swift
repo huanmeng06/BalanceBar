@@ -147,14 +147,13 @@ enum ModPanelContent {
 
 // MARK: - Menu prompt row
 
-/// The menu prompt: a rounded block with a soft accent tint, the main copy, the "why" link and a chevron.
+/// The menu prompt: a rounded block with a soft accent tint, the main copy and the "why" link.
 /// Lives in a menu item's custom view; clicking anywhere on it closes the menu and runs `onClick`.
 final class ModPromptRowView: NSView {
     static let rowHeight: CGFloat = 52
-    /// The tint block extends past the content by `contentPadding`; the icon and the chevron sit on the card's
-    /// 16 pt grid (the progress bars' edges and a submenu arrow's right edge).
-    static let contentPadding: CGFloat = 8
-    static let blockInset: CGFloat = OpenCodexCardLayout.horizontalInset - contentPadding
+    /// The tint block spans exactly the progress bars' width (the card's 16 pt inset); the content sits inside it.
+    static let contentPadding: CGFloat = 10
+    static let blockInset: CGFloat = OpenCodexCardLayout.horizontalInset
 
     private let block = NSView()
     let iconView = NSImageView()
@@ -162,7 +161,6 @@ final class ModPromptRowView: NSView {
     /// Whether the main text is cut short at the card width (test seam).
     var mainTextIsTruncated: Bool { mainLabel.intrinsicContentSize.width > mainLabel.frame.width + 0.5 }
     private let whyLabel: NSTextField
-    let chevron = NSImageView()
     private var isHovering = false { didSet { updateBackground() } }
     var onClick: () -> Void = {}
 
@@ -191,19 +189,15 @@ final class ModPromptRowView: NSView {
         mainLabel.lineBreakMode = .byTruncatingTail
         whyLabel.font = .systemFont(ofSize: 11)
         whyLabel.textColor = .controlAccentColor
-        chevron.image = Self.symbol("chevron.right", size: 11)
-        chevron.contentTintColor = .labelColor
-        chevron.setContentHuggingPriority(.required, for: .horizontal)
 
         let texts = NSStackView(views: [mainLabel, whyLabel])
         texts.orientation = .vertical
         texts.alignment = .leading
         texts.spacing = 1
-        // The text column takes the slack so the chevron sits at the trailing edge.
         texts.setContentHuggingPriority(.init(1), for: .horizontal)
         mainLabel.setContentHuggingPriority(.init(1), for: .horizontal)
         whyLabel.setContentHuggingPriority(.init(1), for: .horizontal)
-        let row = NSStackView(views: [iconView, texts, chevron])
+        let row = NSStackView(views: [iconView, texts])
         row.orientation = .horizontal
         row.alignment = .centerY
         row.spacing = 10

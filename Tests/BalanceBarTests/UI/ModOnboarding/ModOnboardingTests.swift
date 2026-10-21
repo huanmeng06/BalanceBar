@@ -410,15 +410,14 @@ final class ModOnboardingPanelTests: XCTestCase {
         XCTAssertEqual(button.title, original)
     }
 
-    func testPromptRowContentSitsOnTheCardGridAndShowsItsTextInFull() {
+    func testPromptRowBlockLinesUpWithTheProgressBarsAndShowsItsTextInFull() {
         let row = ModPromptRowView(localize: ModOnboardingText.appLocalize)
         row.frame = NSRect(x: 0, y: 0, width: OpenCodexCardLayout.cardWidth, height: ModPromptRowView.rowHeight)
         row.layoutSubtreeIfNeeded()
         let inset = OpenCodexCardLayout.horizontalInset
-        let icon = row.convert(row.iconView.bounds, from: row.iconView)
-        let chevron = row.convert(row.chevron.bounds, from: row.chevron)
-        XCTAssertEqual(icon.minX, inset, accuracy: 0.5, "the icon lines up with the progress bars' left edge")
-        XCTAssertEqual(row.bounds.maxX - chevron.maxX, inset, accuracy: 0.5, "the chevron lines up with the submenu arrows below")
+        let block = row.subviews[0]
+        XCTAssertEqual(block.frame.minX, inset, accuracy: 0.5, "the tint block starts where the progress bars start")
+        XCTAssertEqual(row.bounds.maxX - block.frame.maxX, inset, accuracy: 0.5, "…and ends where they end")
         XCTAssertFalse(row.mainTextIsTruncated, "the standard prompt fits at the card width")
     }
 
