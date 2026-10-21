@@ -36,6 +36,7 @@ struct DashboardPreferencePageActions {
     let onClamp: () -> Void
     var makeRealtimeBoostRows: (_ forSearch: Bool) -> [NSView] = { _ in [] }
     var claudeRefreshStatus: () -> ClaudeRefreshStatus? = { nil }
+    var openAdvancedSettings: () -> Void = {}
 }
 
 final class DashboardPreferencePages {
@@ -79,6 +80,7 @@ final class DashboardPreferencePages {
         relay.onOpenLaunchWithChatGPTSettings = actions.onOpenLaunchWithChatGPTSettings
         relay.onInterval = actions.onInterval
         relay.claudeRefreshStatus = actions.claudeRefreshStatus
+        relay.openAdvancedSettings = actions.openAdvancedSettings
         relay.onOffsetAdjust = actions.onOffsetAdjust
         relay.onOffsetValue = actions.onOffsetValue
         relay.onOffsetValueEnded = actions.onOffsetValueEnded

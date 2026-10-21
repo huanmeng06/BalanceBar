@@ -287,7 +287,8 @@ final class DashboardCompositionController {
             },
             onClamp: actions.onClamp,
             makeRealtimeBoostRows: state.makeRealtimeBoostRows,
-            claudeRefreshStatus: state.claudeRefreshStatus
+            claudeRefreshStatus: state.claudeRefreshStatus,
+            openAdvancedSettings: { [weak self] in self?.showSection(.advanced) }
         ),
         launchAtLoginController: launchAtLoginController,
         launchWithChatGPTController: launchWithChatGPTController,

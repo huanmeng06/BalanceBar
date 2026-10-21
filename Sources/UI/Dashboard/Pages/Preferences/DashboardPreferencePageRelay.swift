@@ -81,6 +81,8 @@ final class DashboardPreferencePageRelay: NSObject {
     var onManualRefresh: (() -> Void)?
     /// Why and when the next official Claude read can happen (the "?" next to the refresh frequency).
     var claudeRefreshStatus: (() -> ClaudeRefreshStatus?)?
+    /// Goes to Settings › Advanced (the real-time boost section), from the "install" button in the refresh help.
+    var openAdvancedSettings: (() -> Void)?
     var onCheckForUpdates: (() -> Void)?
     var onInstallUpdate: (() -> Void)?
     var onOpenUpdateNotes: (() -> Void)?

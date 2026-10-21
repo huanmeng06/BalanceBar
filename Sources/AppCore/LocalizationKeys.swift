@@ -630,13 +630,9 @@
     case keyRefreshHelpRowSetting = "refresh.help.row_setting"
     case keyRefreshHelpRowActual = "refresh.help.row_actual"
     case keyRefreshHelpRowActualHint = "refresh.help.row_actual_hint"
-    case keyRefreshHelpRowMod = "refresh.help.row_mod"
     case keyRefreshHelpRowModHint = "refresh.help.row_mod_hint"
     case keyRefreshHelpLine1 = "refresh.help.line1"
-    case keyRefreshHelpLine2 = "refresh.help.line2"
-    case keyRefreshHelpLine3 = "refresh.help.line3"
 
-    case keyRefreshStatusNowTitle = "refresh.status.now_title"
     case keyRefreshStatusPhaseReading = "refresh.status.phase_reading"
     case keyRefreshStatusPhaseLogin = "refresh.status.phase_login"
     case keyRefreshStatusPhaseRate = "refresh.status.phase_rate"
@@ -648,10 +644,13 @@
     case keyRefreshStatusLastReadValue = "refresh.status.last_read_value"
     case keyRefreshStatusLastReadNone = "refresh.status.last_read_none"
     case keyRefreshStatusTokensLabel = "refresh.status.tokens_label"
-    case keyRefreshStatusTokensHint = "refresh.status.tokens_hint"
     case keyRefreshStatusModLabel = "refresh.status.mod_label"
     case keyRefreshStatusModValue = "refresh.status.mod_value"
-    case keyRefreshStatusModNone = "refresh.status.mod_none"
+
+    case keyRefreshHelpModFooter = "refresh.help.mod_footer"
+    case keyRefreshHelpModInstall = "refresh.help.mod_install"
+    case keyRefreshHelpRowModNow = "refresh.help.row_mod_now"
+    case keyRefreshHelpExpand = "refresh.help.expand"
 
     var rawKey: String { rawValue }
 }
