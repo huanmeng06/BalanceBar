@@ -599,8 +599,7 @@
 "mod.settings.status.active" = "사용 중";
 "mod.settings.status.silent" = "설치되었지만 10분 동안 데이터가 없습니다";
 "mod.settings.status.unsupported" = "Claude Code 버전이 너무 오래되었습니다";
-"mod.settings.action.install" = "한 번에 설치";
-"mod.settings.action.copy" = "명령 복사";
+"mod.settings.action.install" = "설치";
 "mod.settings.prompt_toggle" = "메뉴에 설치 안내 표시";
 "mod.prompt.why" = "왜 필요한가요?";
 "mod.panel.subtitle" = "BalanceBar Mod는 Claude Code 안에서 동작하는 작은 플러그인으로, 답변이 끝날 때마다 공식 할당량을 BalanceBar에 알려 줍니다.";
@@ -621,7 +620,7 @@
 "mod.silent.item1" = "Claude Code가 v2.1.287 이상인지";
 "mod.silent.item2" = "새 세션이거나 그 안에서 /reload-plugins 를 실행했는지";
 "mod.silent.item3" = "조직 정책이 관리되는 플러그인만 허용하는지";
-"mod.settings.action.view_note" = "설명 보기";
+"mod.settings.action.view_note" = "자세히";
 "mod.manage.title" = "BalanceBar Mod가 설치되어 있습니다";
 "mod.manage.remove_note" = "더 이상 필요 없나요? 제거하면 새 세션은 데이터를 보내지 않고 할당량은 정기 조회로 돌아갑니다.";
 "mod.manage.uninstall" = "제거";

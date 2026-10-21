@@ -599,8 +599,7 @@
 "mod.settings.status.active" = "Aktiv";
 "mod.settings.status.silent" = "Installiert, aber seit 10 Minuten keine Daten";
 "mod.settings.status.unsupported" = "Claude Code ist zu alt";
-"mod.settings.action.install" = "Mit einem Klick installieren";
-"mod.settings.action.copy" = "Befehle kopieren";
+"mod.settings.action.install" = "Installieren";
 "mod.settings.prompt_toggle" = "Installationshinweis im Menü anzeigen";
 "mod.prompt.why" = "Warum?";
 "mod.panel.subtitle" = "BalanceBar Mod ist ein kleines Plugin in Claude Code, das BalanceBar nach jeder Antwort das offizielle Kontingent meldet.";
@@ -621,7 +620,7 @@
 "mod.silent.item1" = "Claude Code ist v2.1.287 oder neuer";
 "mod.silent.item2" = "Es ist eine neue Sitzung, oder /reload-plugins wurde dort ausgeführt";
 "mod.silent.item3" = "Ob die Organisationsrichtlinie nur verwaltete Plugins erlaubt";
-"mod.settings.action.view_note" = "Beschreibung anzeigen";
+"mod.settings.action.view_note" = "Details";
 "mod.manage.title" = "BalanceBar Mod ist installiert";
 "mod.manage.remove_note" = "Nicht mehr nötig? Nach dem Deinstallieren senden neue Sitzungen keine Daten mehr und das Kontingent wird wieder zeitgesteuert abgefragt.";
 "mod.manage.uninstall" = "Deinstallieren";

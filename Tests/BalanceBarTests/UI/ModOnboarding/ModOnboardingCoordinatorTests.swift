@@ -450,7 +450,7 @@ final class ModOnboardingCoordinatorTests: XCTestCase {
         XCTAssertFalse(window.styleMask.contains(.resizable))
         XCTAssertTrue(window.titlebarAppearsTransparent); XCTAssertEqual(window.titleVisibility, .hidden)
         XCTAssertFalse(window.isReleasedWhenClosed)
-        XCTAssertEqual(window.contentView?.frame.width, ModOnboardingPanelView.fixedWidth)
+        XCTAssertEqual(window.contentView?.frame.width, coordinator.windowController.panelView?.width)
         XCTAssertEqual(window.defaultButtonCell?.title, tr(.keyModPanelInstall))
 
         // Esc is "later": it closes the window.
@@ -497,6 +497,49 @@ final class ModOnboardingCoordinatorTests: XCTestCase {
                 view.cacheDisplay(in: view.bounds, to: rep)
                 let png = try XCTUnwrap(rep.representation(using: .png, properties: [:]))
                 try png.write(to: URL(fileURLWithPath: directory).appendingPathComponent("\(label)-\(appearanceName).png"))
+            }
+            // The intro window in every language (long wording wraps the footer buttons onto two rows).
+            for language in AppLanguage.allCases where language != .system {
+                let c = ModOnboardingController(preference: MemoryPromptPreference(), copyToPasteboard: { _ in })
+                let view = ModOnboardingPanelView(controller: c, localize: { text in
+                    LocalizationKey(rawValue: text.rawValue).map { tr($0, language: language) } ?? text.defaultText
+                })
+                view.appearance = NSAppearance(named: name)
+                view.layoutSubtreeIfNeeded()
+                let size = view.fittingSize
+                view.frame = NSRect(origin: .zero, size: size)
+                view.layoutSubtreeIfNeeded()
+                let rep = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+                view.cacheDisplay(in: view.bounds, to: rep)
+                try XCTUnwrap(rep.representation(using: .png, properties: [:]))
+                    .write(to: URL(fileURLWithPath: directory).appendingPathComponent("intro-\(language.rawValue)-\(appearanceName).png"))
+            }
+            // The settings rows in every language.
+            for language in AppLanguage.allCases where language != .system {
+                for status in [ModEnhancementStatus.notInstalled, .active(lastDataAt: Date())] {
+                    let c = ModOnboardingController(preference: MemoryPromptPreference(), copyToPasteboard: { _ in })
+                    let rows = RealtimeBoostSettingsRows(
+                        controller: c, status: status,
+                        localize: { text in
+                            LocalizationKey(rawValue: text.rawValue).map { key in
+                                switch text {
+                                case .statusTitleFormat, .lastData, .unsupportedDetail: return tr(key, arguments: ["%1$@"], language: language)
+                                default: return tr(key, language: language)
+                                }
+                            } ?? text.defaultText
+                        })
+                    let section = SettingsSectionView(title: "Claude", contentViews: rows.rows)
+                    section.appearance = NSAppearance(named: name)
+                    section.frame = NSRect(x: 0, y: 0, width: 560, height: 10)
+                    section.layoutSubtreeIfNeeded()
+                    section.frame.size.height = section.fittingSize.height
+                    section.layoutSubtreeIfNeeded()
+                    let rep = try XCTUnwrap(section.bitmapImageRepForCachingDisplay(in: section.bounds))
+                    section.cacheDisplay(in: section.bounds, to: rep)
+                    var tag = "notinstalled"; if case .active = status { tag = "active" }
+                    try XCTUnwrap(rep.representation(using: .png, properties: [:]))
+                        .write(to: URL(fileURLWithPath: directory).appendingPathComponent("settings-\(language.rawValue)-\(tag)-\(appearanceName).png"))
+                }
             }
             // The menu prompt row on a menu-like background, in every language (the row sizes itself to the wording).
             for language in AppLanguage.allCases where language != .system {

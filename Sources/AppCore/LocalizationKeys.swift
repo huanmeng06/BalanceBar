@@ -586,7 +586,6 @@
     case keyModSettingsStatusSilent = "mod.settings.status.silent"
     case keyModSettingsStatusUnsupported = "mod.settings.status.unsupported"
     case keyModSettingsActionInstall = "mod.settings.action.install"
-    case keyModSettingsActionCopy = "mod.settings.action.copy"
     case keyModSettingsPromptToggle = "mod.settings.prompt_toggle"
 
     case keyModPromptWhy = "mod.prompt.why"

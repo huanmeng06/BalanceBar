@@ -599,8 +599,7 @@
 "mod.settings.status.active" = "Включено";
 "mod.settings.status.silent" = "Установлено, но данных нет уже 10 минут";
 "mod.settings.status.unsupported" = "Claude Code слишком старый";
-"mod.settings.action.install" = "Установить в один клик";
-"mod.settings.action.copy" = "Скопировать команды";
+"mod.settings.action.install" = "Установить";
 "mod.settings.prompt_toggle" = "Показывать в меню подсказку об установке";
 "mod.prompt.why" = "Зачем это?";
 "mod.panel.subtitle" = "BalanceBar Mod — небольшой плагин внутри Claude Code: после каждого ответа он передаёт BalanceBar официальную квоту.";
@@ -621,7 +620,7 @@
 "mod.silent.item1" = "Claude Code версии 2.1.287 или новее";
 "mod.silent.item2" = "Это новая сессия или в ней выполнен /reload-plugins";
 "mod.silent.item3" = "Не разрешает ли политика организации только управляемые плагины";
-"mod.settings.action.view_note" = "Показать описание";
+"mod.settings.action.view_note" = "Подробнее";
 "mod.manage.title" = "BalanceBar Mod установлен";
 "mod.manage.remove_note" = "Больше не нужен? После удаления новые сессии перестанут присылать данные, а квота снова будет запрашиваться по расписанию.";
 "mod.manage.uninstall" = "Удалить";

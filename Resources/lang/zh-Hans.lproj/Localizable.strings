@@ -600,7 +600,6 @@
 "mod.settings.status.silent" = "已安装，但 10 分钟内没有收到数据";
 "mod.settings.status.unsupported" = "Claude Code 版本过旧";
 "mod.settings.action.install" = "一键安装";
-"mod.settings.action.copy" = "复制命令";
 "mod.settings.prompt_toggle" = "在菜单中显示安装提示";
 "mod.prompt.why" = "为什么这么做？";
 "mod.panel.subtitle" = "BalanceBar Mod 是运行在 Claude Code 里的小插件，每轮回复后把官方额度告诉 BalanceBar。";

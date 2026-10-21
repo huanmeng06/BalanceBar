@@ -599,8 +599,7 @@
 "mod.settings.status.active" = "Attivo";
 "mod.settings.status.silent" = "Installato, ma nessun dato da 10 minuti";
 "mod.settings.status.unsupported" = "Claude Code è troppo vecchio";
-"mod.settings.action.install" = "Installa con un clic";
-"mod.settings.action.copy" = "Copia i comandi";
+"mod.settings.action.install" = "Installa";
 "mod.settings.prompt_toggle" = "Mostra il suggerimento di installazione nel menu";
 "mod.prompt.why" = "Perché?";
 "mod.panel.subtitle" = "BalanceBar Mod è un piccolo plugin eseguito in Claude Code che comunica a BalanceBar la quota ufficiale dopo ogni risposta.";
@@ -621,7 +620,7 @@
 "mod.silent.item1" = "Claude Code è v2.1.287 o successivo";
 "mod.silent.item2" = "È una sessione nuova, oppure vi è stato eseguito /reload-plugins";
 "mod.silent.item3" = "Se la policy dell’organizzazione consente solo plugin gestiti";
-"mod.settings.action.view_note" = "Mostra descrizione";
+"mod.settings.action.view_note" = "Dettagli";
 "mod.manage.title" = "BalanceBar Mod è installato";
 "mod.manage.remove_note" = "Non ti serve più? Dopo la disinstallazione le nuove sessioni non inviano più dati e la quota torna alle richieste programmate.";
 "mod.manage.uninstall" = "Disinstalla";

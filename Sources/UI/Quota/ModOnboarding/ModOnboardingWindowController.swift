@@ -36,11 +36,11 @@ final class ModOnboardingWindowController: NSObject, NSWindowDelegate {
         panelView = view
         panel.panelView = view
         view.onRequestClose = { [weak self] in self?.close() }
-        view.onContentSizeChange = { [weak self] size in self?.resize(toContentHeight: size.height) }
+        view.onContentSizeChange = { [weak self] size in self?.resize(toContentSize: size) }
         view.onDefaultButtonChange = { [weak panel] button in panel?.defaultButtonCell = button?.cell as? NSButtonCell }
         panel.contentView = view
         view.layoutSubtreeIfNeeded()
-        resize(toContentHeight: view.fittingSize.height, animate: false)
+        resize(toContentSize: NSSize(width: view.width, height: view.fittingSize.height), animate: false)
         view.reload()
         return panel
     }
@@ -59,7 +59,7 @@ final class ModOnboardingWindowController: NSObject, NSWindowDelegate {
 
     private func makePanel() -> ModOnboardingPanel {
         let panel = ModOnboardingPanel(
-            contentRect: NSRect(x: 0, y: 0, width: ModOnboardingPanelView.fixedWidth, height: 400),
+            contentRect: NSRect(x: 0, y: 0, width: ModOnboardingPanelView.minimumWidth, height: 400),
             styleMask: [.titled, .closable], backing: .buffered, defer: false)
         panel.titlebarAppearsTransparent = true
         panel.titleVisibility = .hidden
@@ -74,9 +74,9 @@ final class ModOnboardingWindowController: NSObject, NSWindowDelegate {
     }
 
     /// Resizes to the content, keeping the top edge where it is.
-    private func resize(toContentHeight height: CGFloat, animate: Bool = true) {
+    private func resize(toContentSize size: NSSize, animate: Bool = true) {
         guard let panel else { return }
-        let content = NSRect(x: 0, y: 0, width: ModOnboardingPanelView.fixedWidth, height: height)
+        let content = NSRect(x: 0, y: 0, width: size.width, height: size.height)
         var frame = panel.frameRect(forContentRect: content)
         let old = panel.frame
         frame.origin = NSPoint(x: old.minX, y: old.maxY - frame.height)

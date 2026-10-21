@@ -219,7 +219,7 @@ final class ModOnboardingPanelTests: XCTestCase {
                 view.appearance = try XCTUnwrap(NSAppearance(named: name))
                 view.layoutSubtreeIfNeeded()
                 XCTAssertGreaterThan(view.fittingSize.height, 100, "\(state) \(name.rawValue)")
-                XCTAssertEqual(view.fittingSize.width, ModOnboardingPanelView.fixedWidth)
+                XCTAssertEqual(view.fittingSize.width, view.width)
                 XCTAssertFalse(items.isEmpty)
             }
         }
@@ -439,6 +439,28 @@ final class ModOnboardingPanelTests: XCTestCase {
         }
     }
 
+    func testWindowButtonsAreNeverSqueezedInAnyLanguage() {
+        func buttons(in view: NSView) -> [NSButton] {
+            (view as? NSButton).map { [$0] } ?? view.subviews.flatMap(buttons)
+        }
+        for language in AppLanguage.allCases where language != .system {
+            let localize: (ModOnboardingText) -> String = { text in
+                LocalizationKey(rawValue: text.rawValue).map { tr($0, language: language) } ?? text.defaultText
+            }
+            for state: ModPanelState in [.intro(dismissChecked: false), .installed(statusText: "x"), .failed(.claudeNotFound), .dismissConfirmed] {
+                let c = controller(locator: nil, results: [])
+                c.setStateForTesting(state)
+                let view = ModOnboardingPanelView(controller: c, localize: localize)
+                view.frame = NSRect(x: 0, y: 0, width: view.width, height: 800)
+                view.layoutSubtreeIfNeeded()
+                for button in buttons(in: view) where button.identifier != nil && button.title.count > 1 {
+                    XCTAssertGreaterThanOrEqual(button.frame.width + 1, button.fittingSize.width,
+                                                "\(language) \(state): \"\(button.title)\" is squeezed")
+                }
+            }
+        }
+    }
+
     func testOpenAdvancedSettingsButtonAsksTheAppAndClosesTheWindow() {
         let c = controller(locator: nil, results: [])
         var opened = 0
@@ -462,7 +484,7 @@ final class ModOnboardingPanelTests: XCTestCase {
     func testSettingsPresentationRowsAndSwitch() {
         let silent = RealtimeBoostPresentation.make(status: .enabledButSilent)
         XCTAssertEqual(silent.statusText, "BalanceBar Mod 状态：已安装，但 10 分钟内没有收到数据")
-        XCTAssertEqual(silent.detailText, "请新开会话，或在已有会话运行 /reload-plugins"); XCTAssertTrue(silent.showsCopyAction); XCTAssertFalse(silent.showsInstallAction)
+        XCTAssertEqual(silent.detailText, "请新开会话，或在已有会话运行 /reload-plugins"); XCTAssertFalse(silent.showsInstallAction)
         XCTAssertEqual(silent.statusTone, .orange)
         XCTAssertTrue(RealtimeBoostPresentation.make(status: .notInstalled).showsInstallAction)
         XCTAssertEqual(RealtimeBoostPresentation.make(status: .notInstalled).statusTone, .gray)

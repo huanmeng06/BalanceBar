@@ -394,7 +394,9 @@ extension NSButton {
 
 /// Explanation window content: renders `ModPanelContent` for the controller's current state.
 final class ModOnboardingPanelView: NSView {
-    static let fixedWidth: CGFloat = 380
+    /// The window is never narrower than this; longer wording (other languages) makes it wider instead of wrapping.
+    static let minimumWidth: CGFloat = 380
+    static let maximumWidth: CGFloat = 640
     static let inset: CGFloat = 24
     /// How long "enabled ✓" stays before the window closes itself.
     static let successDisplayDuration: TimeInterval = 2
@@ -414,12 +416,38 @@ final class ModOnboardingPanelView: NSView {
 
     private(set) var items: [ModPanelItem] = []
     var snapshotLines: [String] { items.map(\.snapshotLine) }
-    private var contentWidth: CGFloat { Self.fixedWidth - 2 * Self.inset }
+    /// The width this window needs for the current language: wide enough for the footer buttons and headings on one line.
+    let width: CGFloat
+    private var contentWidth: CGFloat { width - 2 * Self.inset }
+
+    /// The footers and headings of the states, measured in the given wording.
+    static func requiredWidth(localize t: (ModOnboardingText) -> String) -> CGFloat {
+        func buttonRow(_ titles: [String]) -> CGFloat {
+            titles.reduce(CGFloat(0)) { total, title in
+                let button = NSButton(title: title, target: nil, action: nil)
+                button.bezelStyle = .push
+                button.controlSize = .large
+                return total + button.fittingSize.width
+            } + CGFloat(titles.count) * 10   // gaps between the buttons plus the one around the flexible spacer
+        }
+        func heading(_ text: String) -> CGFloat {
+            (text as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 17, weight: .semibold)]).width
+        }
+        let footers = [
+            buttonRow([t(.copyCommands), t(.laterButton), t(.installButton)]),
+            buttonRow([t(.uninstallButton), t(.closeButton)]),
+        ]
+        let headings = [t(.panelTitle), t(.manageTitle), t(.silentTitle), t(.failureTitle), t(.uninstallFailureTitle),
+                        t(.uninstalledTitle), t(.dismissedTitle)].map(heading)
+        let needed = (footers + headings).max() ?? 0
+        return min(maximumWidth, max(minimumWidth, ceil(needed) + 2 * inset + 4))
+    }
 
     init(controller: ModOnboardingController, localize: @escaping (ModOnboardingText) -> String = ModOnboardingText.defaultLocalize) {
         self.controller = controller
         self.localize = localize
-        super.init(frame: NSRect(x: 0, y: 0, width: Self.fixedWidth, height: 10))
+        width = Self.requiredWidth(localize: localize)
+        super.init(frame: NSRect(x: 0, y: 0, width: width, height: 10))
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 14
@@ -427,7 +455,7 @@ final class ModOnboardingPanelView: NSView {
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
         NSLayoutConstraint.activate([
-            widthAnchor.constraint(equalToConstant: Self.fixedWidth),
+            widthAnchor.constraint(equalToConstant: width),
             stack.leadingAnchor.constraint(equalTo: leadingAnchor),
             stack.trailingAnchor.constraint(equalTo: trailingAnchor),
             stack.topAnchor.constraint(equalTo: topAnchor),
@@ -610,17 +638,38 @@ final class ModOnboardingPanelView: NSView {
             box.controlSize = .regular
             return box
         case let .footer(leading, trailing):
-            let row = NSStackView()
-            row.orientation = .horizontal
-            row.alignment = .centerY
-            row.spacing = 10
-            leading.forEach { row.addArrangedSubview(makeButton($0)) }
-            let spacer = NSView()
-            spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
-            row.addArrangedSubview(spacer)
-            trailing.forEach { row.addArrangedSubview(makeButton($0)) }
+            func rowOf(_ buttons: [NSButton], pushRight: Bool = false) -> NSStackView {
+                let row = NSStackView()
+                row.orientation = .horizontal
+                row.alignment = .centerY
+                row.spacing = 10
+                if pushRight { row.addArrangedSubview(Self.flexibleSpacer()) }
+                buttons.forEach { row.addArrangedSubview($0) }
+                return row
+            }
+            let leadingButtons = leading.map(makeButton), trailingButtons = trailing.map(makeButton)
+            let needed = (leadingButtons + trailingButtons).reduce(CGFloat(0)) { $0 + $1.fittingSize.width }
+                + CGFloat(max(0, leadingButtons.count + trailingButtons.count - 1)) * 10
+            if needed > contentWidth, !leadingButtons.isEmpty {
+                // Longer wording (other languages): the leading button gets its own row instead of being squeezed.
+                let stack = NSStackView(views: [rowOf(trailingButtons, pushRight: true), rowOf(leadingButtons)])
+                stack.orientation = .vertical
+                stack.alignment = .leading
+                stack.spacing = 8
+                stack.arrangedSubviews.forEach { $0.widthAnchor.constraint(equalToConstant: contentWidth).isActive = true }
+                return stack
+            }
+            let row = rowOf(leadingButtons)
+            row.addArrangedSubview(Self.flexibleSpacer())
+            trailingButtons.forEach { row.addArrangedSubview($0) }
             return row
         }
+    }
+
+    private static func flexibleSpacer() -> NSView {
+        let spacer = NSView()
+        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        return spacer
     }
 
     private func makeButton(_ model: ModPanelButton) -> NSButton {

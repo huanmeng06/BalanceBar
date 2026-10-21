@@ -13,7 +13,6 @@ enum RealtimeBoostText: String, CaseIterable {
     case silentHint = "mod.settings.status.silent_hint"
     case unsupportedDetail = "mod.settings.status.unsupported_detail"
     case install = "mod.settings.action.install"
-    case copyCommands = "mod.settings.action.copy"
     case viewNote = "mod.settings.action.view_note"
     case manage = "mod.settings.action.manage"
     case promptToggle = "mod.settings.prompt_toggle"
@@ -31,7 +30,6 @@ enum RealtimeBoostText: String, CaseIterable {
         case .silentHint: return "请新开会话，或在已有会话运行 /reload-plugins"
         case .unsupportedDetail: return "当前 %@，需要 v2.1.287 或更高版本"
         case .install: return "一键安装"
-        case .copyCommands: return "复制命令"
         case .viewNote: return "查看说明"
         case .manage: return "管理"
         case .promptToggle: return "在菜单中显示安装提示"
@@ -74,7 +72,6 @@ struct RealtimeBoostPresentation: Equatable {
     var detailText: String?
     var statusTone: RealtimeBoostStatusTone = .gray
     var showsInstallAction: Bool
-    var showsCopyAction: Bool
     /// The Mod is installed: the button opens the management view.
     var isInstalled: Bool = false
 
@@ -91,25 +88,25 @@ struct RealtimeBoostPresentation: Equatable {
         case .notInstalled:
             let state = localize(.statusNotInstalled)
             return .init(statusText: titled(state), stateText: state, statusTone: .gray,
-                         showsInstallAction: true, showsCopyAction: true)
+                         showsInstallAction: true)
         case .waitingForData:
             let state = localize(.statusWaiting)
             return .init(statusText: titled(state), stateText: state, statusTone: .orange,
-                         showsInstallAction: false, showsCopyAction: false, isInstalled: true)
+                         showsInstallAction: false, isInstalled: true)
         case let .active(last):
             let state = localize(.statusActive)
             return .init(statusText: titled(state), stateText: state,
                          detailText: String(format: localize(.lastData), StatusSlotAppearance.timeText(last, timeZone: timeZone)),
-                         statusTone: .green, showsInstallAction: false, showsCopyAction: false, isInstalled: true)
+                         statusTone: .green, showsInstallAction: false, isInstalled: true)
         case .enabledButSilent:
             let state = localize(.statusSilent)
             return .init(statusText: titled(state), stateText: state, detailText: localize(.silentHint), statusTone: .orange,
-                         showsInstallAction: false, showsCopyAction: true, isInstalled: true)
+                         showsInstallAction: false, isInstalled: true)
         case let .unsupportedClaudeCode(version):
             let state = localize(.statusUnsupported)
             return .init(statusText: titled(state), stateText: state,
                          detailText: String(format: localize(.unsupportedDetail), "\(version.major).\(version.minor).\(version.patch)"),
-                         statusTone: .red, showsInstallAction: false, showsCopyAction: false)
+                         statusTone: .red, showsInstallAction: false)
         }
     }
 }
@@ -125,7 +122,6 @@ final class RealtimeBoostSettingsRows {
     let statusRow: SettingsRowView
     let promptRow: SettingsRowView
     let installButton: NSButton
-    let copyButton: NSButton
     let descriptionButton: NSButton
     let spinner = NSProgressIndicator()
     let promptSwitch: NSSwitch
@@ -151,7 +147,6 @@ final class RealtimeBoostSettingsRows {
         self.onShowDescription = onShowDescription
         presentation = RealtimeBoostPresentation.make(status: status, localize: localize)
         installButton = NSButton(title: localize(.install), target: nil, action: nil)
-        copyButton = NSButton(title: localize(.copyCommands), target: nil, action: nil)
         descriptionButton = NSButton(title: localize(.viewNote), target: nil, action: nil)
         promptSwitch = DashboardSettingsComponents.makeSwitch(
             identifier: "realtimeBoost.promptSwitch", isOn: !controller.isPromptDismissed, target: nil, action: nil)
@@ -167,14 +162,13 @@ final class RealtimeBoostSettingsRows {
         spinner.isDisplayedWhenStopped = false
         // Same size and style as the other buttons on this page (for example "export log").
         installButton.bezelColor = .controlAccentColor
-        let actions = NSStackView(views: [spinner, installButton, copyButton, descriptionButton])
+        let actions = NSStackView(views: [spinner, installButton, descriptionButton])
         actions.orientation = .horizontal
         actions.spacing = 8
         statusRow = SettingsRowView(title: presentation.statusText, detail: nil, titleAccessory: dot, accessoryView: actions)
         promptRow = SettingsRowView(title: localize(.promptToggle), detail: nil, accessoryView: promptSwitch)
 
         installButton.target = self; installButton.action = #selector(install)
-        copyButton.target = self; copyButton.action = #selector(copyCommands)
         descriptionButton.target = self; descriptionButton.action = #selector(showDescription)
         promptSwitch.target = self; promptSwitch.action = #selector(togglePrompt)
         if observesController { controller.onStateChange = { [weak self] in self?.apply() } }
@@ -199,10 +193,8 @@ final class RealtimeBoostSettingsRows {
 
     private func apply() {
         var installing = false
-        var failed = false
         switch controller.state {
         case .installing: installing = true
-        case .failed: failed = true
         default: break
         }
         statusRow.titleLabel.stringValue = presentation.statusText
@@ -212,8 +204,6 @@ final class RealtimeBoostSettingsRows {
             dot.layer?.backgroundColor = presentation.statusTone.color.cgColor
         }
         installButton.isHidden = !presentation.showsInstallAction || installing
-        // A failed install leaves the copyable commands as the way forward.
-        copyButton.isHidden = !(presentation.showsCopyAction || failed)
         descriptionButton.isHidden = installing
         // An installed Mod opens its management view, not the install pitch.
         descriptionButton.title = presentation.isInstalled ? localize(.manage) : localize(.viewNote)
@@ -222,10 +212,6 @@ final class RealtimeBoostSettingsRows {
     }
 
     @objc private func install() { controller.startInstall() }
-    @objc private func copyCommands() {
-        controller.copyInstallCommands()
-        copyButton.flashTitle("✓ " + modLocalize(.copied))
-    }
     @objc private func showDescription() { onShowDescription?() }
     @objc private func togglePrompt() { controller.setPromptEnabled(promptSwitch.state == .on) }
 }

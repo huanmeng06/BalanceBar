@@ -599,8 +599,7 @@
 "mod.settings.status.active" = "有効";
 "mod.settings.status.silent" = "インストール済みですが、10 分間データがありません";
 "mod.settings.status.unsupported" = "Claude Code が古すぎます";
-"mod.settings.action.install" = "ワンクリックでインストール";
-"mod.settings.action.copy" = "コマンドをコピー";
+"mod.settings.action.install" = "インストール";
 "mod.settings.prompt_toggle" = "メニューにインストールのヒントを表示";
 "mod.prompt.why" = "なぜ必要？";
 "mod.panel.subtitle" = "BalanceBar Mod は Claude Code 内で動く小さなプラグインで、返信のたびに公式の残量を BalanceBar に伝えます。";
@@ -621,7 +620,7 @@
 "mod.silent.item1" = "Claude Code が v2.1.287 以降であること";
 "mod.silent.item2" = "新しいセッションであること、またはその中で /reload-plugins を実行したこと";
 "mod.silent.item3" = "組織のポリシーが管理対象プラグインのみを許可していないか";
-"mod.settings.action.view_note" = "説明を表示";
+"mod.settings.action.view_note" = "詳細";
 "mod.manage.title" = "BalanceBar Mod はインストール済みです";
 "mod.manage.remove_note" = "不要になりましたか？アンインストールすると、新しいセッションはデータを送らなくなり、残量は定期取得に戻ります。";
 "mod.manage.uninstall" = "アンインストール";

@@ -542,7 +542,6 @@ enum DashboardSettingsSearchCatalog {
                 .keyModSettingsStatusWaiting,
                 .keyModSettingsStatusSilent,
                 .keyModSettingsActionInstall,
-                .keyModSettingsActionCopy,
                 .keyModSettingsActionViewNote,
                 .keyModSettingsPromptToggle,
                 .keyDashboardAdvancedPageDiagnostics,
