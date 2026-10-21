@@ -153,6 +153,8 @@ final class ModOnboardingCoordinator {
     private var activityStartedAt: Date?
     private var lastModDataAt: Date?
     private var settingsRows: RealtimeBoostSettingsRows?
+    /// The language the kept rows were built in; a language change rebuilds them.
+    private var settingsRowsLanguage: AppLanguage?
     private(set) lazy var windowController = ModOnboardingWindowController(makeView: { [unowned self] in self.makePanelView() })
 
     init(
@@ -334,11 +336,13 @@ final class ModOnboardingCoordinator {
                 controller: controller, status: enhancementStatus(), localize: RealtimeBoostText.appLocalize,
                 observesController: false, onShowDescription: nil).rows
         }
-        if let settingsRows { return settingsRows.rows }
+        let language = AppLanguage.selected
+        if let settingsRows, settingsRowsLanguage == language { return settingsRows.rows }
         let rows = RealtimeBoostSettingsRows(
             controller: controller, status: enhancementStatus(), localize: RealtimeBoostText.appLocalize,
             onShowDescription: { [weak self] in self?.showWindow() })
         settingsRows = rows
+        settingsRowsLanguage = language
         refreshEnvironment()
         return rows.rows
     }

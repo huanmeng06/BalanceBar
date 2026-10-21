@@ -435,6 +435,21 @@ final class ModOnboardingCoordinatorTests: XCTestCase {
         XCTAssertFalse(coordinator.realtimeBoostSettingsRows(detached: true).first === status, "search gets its own copy")
     }
 
+    func testSettingsRowsAreRebuiltWhenTheLanguageChanges() throws {
+        let key = "appLanguage"
+        let defaults = UserDefaults.standard
+        let previous = defaults.object(forKey: key)
+        defer { if let previous { defaults.set(previous, forKey: key) } else { defaults.removeObject(forKey: key) } }
+        let coordinator = makeCoordinator()
+        refresh(coordinator)
+        defaults.set(AppLanguage.simplifiedChinese.rawValue, forKey: key)
+        let first = try XCTUnwrap(coordinator.realtimeBoostSettingsRows().first as? SettingsRowView)
+        defaults.set(AppLanguage.english.rawValue, forKey: key)
+        let second = try XCTUnwrap(coordinator.realtimeBoostSettingsRows().first as? SettingsRowView)
+        XCTAssertFalse(first === second, "a language change must not keep the rows built in the old language")
+        XCTAssertTrue(second.titleLabel.stringValue.contains("status"))
+    }
+
     func testPanelFromTheCoordinatorUsesTheAppLanguageAndStartsAtTheIntro() {
         let coordinator = makeCoordinator()
         let panel = coordinator.makePanelView()
