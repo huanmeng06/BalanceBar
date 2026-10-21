@@ -68,6 +68,10 @@ final class ModOnboardingWindowController: NSObject, NSWindowDelegate {
         panel.isMovableByWindowBackground = true
         panel.isReleasedWhenClosed = false
         panel.hidesOnDeactivate = false
+        // A system permission alert (for example file access during the install) takes focus away; the window
+        // must stay visible above other apps' windows instead of dropping behind them.
+        panel.isFloatingPanel = true
+        panel.level = .floating
         panel.becomesKeyOnlyIfNeeded = false
         panel.standardWindowButton(.miniaturizeButton)?.isHidden = true
         panel.standardWindowButton(.zoomButton)?.isHidden = true

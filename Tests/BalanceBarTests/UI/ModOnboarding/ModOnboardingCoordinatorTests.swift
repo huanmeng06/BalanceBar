@@ -418,6 +418,8 @@ final class ModOnboardingCoordinatorTests: XCTestCase {
         let window = coordinator.windowController.prepare()
         XCTAssertTrue(window.styleMask.contains(.titled)); XCTAssertTrue(window.styleMask.contains(.closable))
         XCTAssertFalse(window.styleMask.contains(.resizable))
+        XCTAssertEqual(window.level, .floating, "stays visible when a system alert takes focus during the install")
+        XCTAssertFalse(window.hidesOnDeactivate)
         XCTAssertTrue(window.titlebarAppearsTransparent); XCTAssertEqual(window.titleVisibility, .hidden)
         XCTAssertFalse(window.isReleasedWhenClosed)
         XCTAssertEqual(window.contentView?.frame.width, coordinator.windowController.panelView?.width)
