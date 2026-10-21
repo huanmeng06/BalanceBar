@@ -213,7 +213,11 @@ final class ModOnboardingController {
     }
 
     func startUninstall() {
-        guard case .installed = state, !uninstallInFlight else { return }
+        switch state {
+        case .installed, .awaitingFirstData, .silent: break
+        default: return
+        }
+        guard !uninstallInFlight else { return }
         uninstallInFlight = true
         state = .uninstalling
         installer.uninstall { [weak self] result in

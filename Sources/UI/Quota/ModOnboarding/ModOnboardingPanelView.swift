@@ -77,7 +77,8 @@ enum ModPanelContent {
             return [.hero(symbol: nil, title: t(.panelTitle), subtitle: nil)] + steps(current: .finish, t: t)
                 + [.text(t(.enabledNote)), .text(t(.reloadHint)),
                    .codeBlock(ModInstallPlan.reloadCommand, copyAction: .copyReload),
-                   .footer(leading: [], trailing: [ModPanelButton(title: t(.closeButton), action: .close, isDefault: true)])]
+                   .footer(leading: [ModPanelButton(title: t(.uninstallButton), action: .uninstall)],
+                           trailing: [ModPanelButton(title: t(.closeButton), action: .close, isDefault: true)])]
         case .enabled:
             return [.hero(symbol: "checkmark.circle.fill", title: t(.enabled), subtitle: t(.enabledNote)),
                     .footer(leading: [], trailing: [ModPanelButton(title: t(.closeButton), action: .close, isDefault: true)])]
@@ -85,7 +86,7 @@ enum ModPanelContent {
             return [.hero(symbol: "exclamationmark.triangle.fill", title: t(.silentTitle), subtitle: nil),
                     .text(t(.silentIntro)),
                     .bullet(t(.silentItem1)), .bullet(t(.silentItem2)), .bullet(t(.silentItem3)),
-                    .footer(leading: [], trailing: [
+                    .footer(leading: [ModPanelButton(title: t(.uninstallButton), action: .uninstall)], trailing: [
                         ModPanelButton(title: t(.closeButton), action: .close),
                         ModPanelButton(title: t(.dismissedOpenSettings), action: .openSettings, isDefault: true)])]
         case let .failed(failure):

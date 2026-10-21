@@ -190,12 +190,12 @@ final class ModOnboardingPanelTests: XCTestCase {
         XCTAssertEqual(lines(.awaitingFirstData), [
             "# 让 Claude 额度实时更新", "[x] 添加插件源", "[x] 安装 Mod", "[~] 等待首次数据",
             "新开的 Claude Code 会话会自动启用，正在运行的会话可以不管。", "想让当前会话也马上生效，可在其中输入：",
-            "$ /reload-plugins", "<关闭>*"])
+            "$ /reload-plugins", "<卸载> | <关闭>*"])
         XCTAssertEqual(lines(.enabled), ["# 已开启 ✓\n新开的 Claude Code 会话会自动启用，正在运行的会话可以不管。", "<关闭>*"])
         XCTAssertEqual(lines(.silent), [
             "# 已安装，但还没收到数据", "Claude Code 在运行，但 10 分钟内没有收到 Mod 的数据。请检查：",
             "• Claude Code 版本是否为 v2.1.287 或更高", "• 是否是新会话，或已在会话中运行 /reload-plugins", "• 组织策略是否只允许托管插件",
-            "<关闭> <打开高级设置>*"])
+            "<卸载> | <关闭> <打开高级设置>*"])
         let commands = ModInstallPlan.standard.copyableCommands.replacingOccurrences(of: "\n", with: "\n$ ")
         XCTAssertEqual(lines(.failed(.claudeNotFound)), [
             "# 无法自动安装", "没有找到 claude 命令。请在终端中运行下面的命令：", "$ " + commands, "<关闭>*"])
