@@ -33,6 +33,7 @@ enum ModOnboardingText: String, CaseIterable {
     case failureClaudeMissing = "mod.failure.claude_missing"
     case failureCommandFailed = "mod.failure.command_failed"
     case copyCommands = "mod.failure.copy"
+    case retry = "mod.failure.retry"
     case copied = "mod.failure.copied"
     case dismissedTitle = "mod.dismissed.title"
     case dismissedNote = "mod.dismissed.note"
@@ -80,6 +81,7 @@ enum ModOnboardingText: String, CaseIterable {
         case .failureClaudeMissing: return "没有找到 claude 命令。请在终端中运行下面的命令："
         case .failureCommandFailed: return "命令未成功完成。请在终端中运行下面的命令："
         case .copyCommands: return "复制命令"
+        case .retry: return "重试"
         case .copied: return "已复制"
         case .dismissedTitle: return "已隐藏提示"
         case .dismissedNote: return "之后可以在 设置 › 高级 › Claude 实时增强 中安装 Mod，或重新显示提示。"
@@ -179,6 +181,12 @@ final class ModOnboardingController {
     }
 
     var isPromptDismissed: Bool { preference.isPromptDismissed }
+
+    /// The last install attempt failed: the window and the settings row show the reason until it is retried.
+    var hasInstallFailure: Bool {
+        if case .failed = state { return true }
+        return false
+    }
 
     /// An install is running or the first snapshot is awaited: reopening the window shows that progress.
     var isInstallInProgress: Bool {

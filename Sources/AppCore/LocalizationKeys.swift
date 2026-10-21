@@ -624,5 +624,8 @@
     case keyModSettingsStatusSilentHint = "mod.settings.status.silent_hint"
     case keyModSettingsStatusUnsupportedDetail = "mod.settings.status.unsupported_detail"
 
+    case keyModFailureRetry = "mod.failure.retry"
+    case keyModSettingsActionViewError = "mod.settings.action.view_error"
+
     var rawKey: String { rawValue }
 }

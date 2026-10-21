@@ -634,3 +634,5 @@
 "mod.settings.status.silent_hint" = "새 세션을 시작하거나 열려 있는 세션에서 /reload-plugins 를 실행하세요";
 "mod.settings.status.unsupported_detail" = "현재 %1$@. v2.1.287 이상이 필요합니다";
 "quota.status.realtime_mod" = "실시간 · Mod";
+"mod.failure.retry" = "다시 시도";
+"mod.settings.action.view_error" = "오류 보기";

@@ -292,7 +292,8 @@ final class ModOnboardingCoordinator {
         let status = enhancementStatus()
         switch status {
         case .notInstalled, .unsupportedClaudeCode:
-            controller.resetToIntro(force: status == .notInstalled)
+            // A failed install keeps showing its reason (and the copyable commands) until it is retried.
+            if !controller.hasInstallFailure { controller.resetToIntro(force: status == .notInstalled) }
         case .waitingForData, .active, .enabledButSilent:
             controller.showInstalled(statusText: installedStatusText(status))
         }

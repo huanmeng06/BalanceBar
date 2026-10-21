@@ -634,3 +634,5 @@
 "mod.settings.status.silent_hint" = "请新开会话，或在已有会话运行 /reload-plugins";
 "mod.settings.status.unsupported_detail" = "当前 %1$@，需要 v2.1.287 或更高版本";
 "quota.status.realtime_mod" = "实时 · Mod";
+"mod.failure.retry" = "重试";
+"mod.settings.action.view_error" = "查看原因";

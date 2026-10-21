@@ -634,3 +634,5 @@
 "mod.settings.status.silent_hint" = "請開啟新工作階段，或在已開啟的工作階段執行 /reload-plugins";
 "mod.settings.status.unsupported_detail" = "目前 %1$@，需要 v2.1.287 或更新版本";
 "quota.status.realtime_mod" = "即時 · Mod";
+"mod.failure.retry" = "重試";
+"mod.settings.action.view_error" = "檢視原因";

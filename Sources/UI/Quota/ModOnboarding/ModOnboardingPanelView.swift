@@ -97,7 +97,8 @@ enum ModPanelContent {
             ]
             if let summary = summary(of: failure) { items.append(.detail(summary)) }
             items.append(.codeBlock(plan.copyableCommands, copyAction: .copyCommands))
-            items.append(.footer(leading: [], trailing: [ModPanelButton(title: t(.closeButton), action: .close, isDefault: true)]))
+            items.append(.footer(leading: [ModPanelButton(title: t(.retry), action: .install)],
+                                 trailing: [ModPanelButton(title: t(.closeButton), action: .close, isDefault: true)]))
             return items
         case let .installed(statusText):
             return [.hero(symbol: nil, title: t(.manageTitle), subtitle: statusText),
@@ -436,6 +437,7 @@ final class ModOnboardingPanelView: NSView {
         let footers = [
             buttonRow([t(.copyCommands), t(.laterButton), t(.installButton)]),
             buttonRow([t(.uninstallButton), t(.closeButton)]),
+            buttonRow([t(.retry), t(.closeButton)]),
         ]
         let headings = [t(.panelTitle), t(.manageTitle), t(.silentTitle), t(.failureTitle), t(.uninstallFailureTitle),
                         t(.uninstalledTitle), t(.dismissedTitle)].map(heading)

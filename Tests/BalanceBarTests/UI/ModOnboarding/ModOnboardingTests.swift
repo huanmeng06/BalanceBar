@@ -189,7 +189,7 @@ final class ModOnboardingPanelTests: XCTestCase {
             "<卸载> | <关闭> <打开高级设置>*"])
         let commands = ModInstallPlan.standard.copyableCommands.replacingOccurrences(of: "\n", with: "\n$ ")
         XCTAssertEqual(lines(.failed(.claudeNotFound)), [
-            "# 无法自动安装", "没有找到 claude 命令。请在终端中运行下面的命令：", "$ " + commands, "<关闭>*"])
+            "# 无法自动安装", "没有找到 claude 命令。请在终端中运行下面的命令：", "$ " + commands, "<重试> | <关闭>*"])
         let failed = lines(.failed(.commandFailed(step: .installPlugin, exitCode: 1, detail: "boom\nsecond\nthird")))
         XCTAssertEqual(failed[1], "命令未成功完成。请在终端中运行下面的命令：")
         XCTAssertEqual(failed[2], "> boom\nsecond", "the first two lines of Claude Code's answer are shown")
@@ -428,6 +428,18 @@ final class ModOnboardingPanelTests: XCTestCase {
                 XCTAssertFalse(row.mainTextIsTruncated, "\(label): the standard prompt fits in three lines")
             }
         }
+    }
+
+    func testAFailedInstallTurnsTheSettingsButtonIntoViewErrorAndKeepsInstallAsRetry() {
+        let c = controller(locator: nil, results: [])
+        let rows = RealtimeBoostSettingsRows(controller: c, status: .notInstalled)
+        XCTAssertEqual(rows.descriptionButton.title, RealtimeBoostText.viewNote.defaultText)
+        XCTAssertFalse(c.hasInstallFailure)
+        c.setStateForTesting(.failed(.claudeNotFound))
+        XCTAssertTrue(c.hasInstallFailure)
+        XCTAssertEqual(rows.descriptionButton.title, RealtimeBoostText.viewError.defaultText, "opens the failure page")
+        XCTAssertFalse(rows.installButton.isHidden, "install stays as the retry")
+        XCTAssertEqual(rows.detailText, ModOnboardingText.failureTitle.defaultText)
     }
 
     func testWindowButtonsAreNeverSqueezedInAnyLanguage() {

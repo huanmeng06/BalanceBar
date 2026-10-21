@@ -15,6 +15,7 @@ enum RealtimeBoostText: String, CaseIterable {
     case install = "mod.settings.action.install"
     case viewNote = "mod.settings.action.view_note"
     case manage = "mod.settings.action.manage"
+    case viewError = "mod.settings.action.view_error"
     case promptToggle = "mod.settings.prompt_toggle"
 
     var defaultText: String {
@@ -32,6 +33,7 @@ enum RealtimeBoostText: String, CaseIterable {
         case .install: return "一键安装"
         case .viewNote: return "查看说明"
         case .manage: return "管理"
+        case .viewError: return "查看原因"
         case .promptToggle: return "在菜单中显示安装提示"
         }
     }
@@ -193,8 +195,10 @@ final class RealtimeBoostSettingsRows {
 
     private func apply() {
         var installing = false
+        var failed = false
         switch controller.state {
         case .installing: installing = true
+        case .failed: failed = true
         default: break
         }
         statusRow.titleLabel.stringValue = presentation.statusText
@@ -203,10 +207,11 @@ final class RealtimeBoostSettingsRows {
         dot.effectiveAppearance.performAsCurrentDrawingAppearance {
             dot.layer?.backgroundColor = presentation.statusTone.color.cgColor
         }
+        // After a failed install "install" stays as the retry and the second button shows the reason and the commands.
         installButton.isHidden = !presentation.showsInstallAction || installing
         descriptionButton.isHidden = installing
         // An installed Mod opens its management view, not the install pitch.
-        descriptionButton.title = presentation.isInstalled ? localize(.manage) : localize(.viewNote)
+        descriptionButton.title = failed && !presentation.isInstalled ? localize(.viewError) : presentation.isInstalled ? localize(.manage) : localize(.viewNote)
         if installing { spinner.startAnimation(nil) } else { spinner.stopAnimation(nil) }
         promptSwitch.state = controller.isPromptDismissed ? .off : .on
     }

@@ -390,6 +390,14 @@ final class ModOnboardingCoordinatorTests: XCTestCase {
         XCTAssertFalse(coordinator.realtimeBoostSettingsRows(detached: true).first === status, "search gets its own copy")
     }
 
+    func testAFailedInstallKeepsItsReasonWhenTheWindowIsReopened() {
+        let coordinator = makeCoordinator()
+        refresh(coordinator)
+        coordinator.controller.setStateForTesting(.failed(.claudeNotFound))
+        _ = coordinator.makePanelView()
+        XCTAssertEqual(coordinator.controller.state, .failed(.claudeNotFound), "not reset to the install pitch")
+    }
+
     func testSettingsRowsAreRebuiltWhenTheLanguageChanges() throws {
         let key = "appLanguage"
         let defaults = UserDefaults.standard

@@ -634,3 +634,5 @@
 "mod.settings.status.silent_hint" = "Démarrez une nouvelle session ou exécutez /reload-plugins dans une session ouverte";
 "mod.settings.status.unsupported_detail" = "Actuelle : %1$@ ; la version 2.1.287 ou ultérieure est requise";
 "quota.status.realtime_mod" = "En direct · Mod";
+"mod.failure.retry" = "Réessayer";
+"mod.settings.action.view_error" = "Voir l’erreur";
