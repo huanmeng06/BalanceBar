@@ -651,6 +651,8 @@
     case keyRefreshHelpModInstall = "refresh.help.mod_install"
     case keyRefreshHelpRowModNow = "refresh.help.row_mod_now"
     case keyRefreshHelpExpand = "refresh.help.expand"
+    case keyRefreshHelpOtherTools = "refresh.help.other_tools"
+    case keyRefreshStatusTokensHint = "refresh.status.tokens_hint"
 
     var rawKey: String { rawValue }
 }

@@ -637,15 +637,15 @@
 "mod.settings.action.view_error" = "View error";
 "refresh.help.title" = "Why isn’t it as fast as I set?";
 "refresh.help.row_setting" = "You set";
-"refresh.help.row_actual" = "Claude official, actual";
+"refresh.help.row_actual" = "BalanceBar reads";
 "refresh.help.row_actual_hint" = "about once every 3–6 min";
 "refresh.help.row_mod_hint" = "updates after every reply";
-"refresh.help.line1" = "The official endpoint rate-limits, so the frequency you pick is only how fast you would like it. Each read uses one of the “available reads” (1 comes back every 3 min): an automatic read needs 2, “Refresh Now” needs 1, so clicking it repeatedly only slows things down.";
+"refresh.help.line1" = "BalanceBar slows itself down: when the official endpoint is asked too often it answers “too many requests”, and BalanceBar then has to pause reading for 15 minutes to an hour. So it reads automatically about every 3 minutes. For the latest right away, “Refresh Now” usually reads at once (unless it just read or is paused).";
 "refresh.status.phase_reading" = "Asking the official endpoint for your quota…";
 "refresh.status.phase_login" = "Sign-in expired: run claude once in a terminal to restore it";
-"refresh.status.phase_rate" = "The official endpoint asked us to slow down (rate limit); wait %1$@";
+"refresh.status.phase_rate" = "Paused: the official endpoint said “too many requests” (other tools may be reading too often); wait %1$@";
 "refresh.status.phase_live" = "The Mod’s live data is fresh (%1$@ ago), so the official endpoint is left alone for now";
-"refresh.status.phase_interval" = "Just read; to avoid rate limits it has to wait: next read possible in %1$@";
+"refresh.status.phase_interval" = "Just read; to avoid reading too often it waits: next read possible in %1$@";
 "refresh.status.phase_tokens" = "No reads left for now; the next one is possible in %1$@";
 "refresh.status.phase_ready" = "Ready to read: the next scheduled check will do it";
 "refresh.status.last_read" = "Last read";
@@ -658,3 +658,5 @@
 "refresh.help.mod_install" = "Install";
 "refresh.help.row_mod_now" = "You, now (Mod)";
 "refresh.help.expand" = "Why is it slow even normally?";
+"refresh.status.tokens_hint" = "1 comes back every 3 min; an automatic read uses 2, “Refresh Now” uses 1.";
+"refresh.help.other_tools" = "Tools like CC Switch ask the same endpoint for the same account; the more they refresh, the sooner BalanceBar gets paused too.";

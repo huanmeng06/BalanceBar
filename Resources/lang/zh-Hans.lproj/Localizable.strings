@@ -637,15 +637,15 @@
 "mod.settings.action.view_error" = "查看原因";
 "refresh.help.title" = "为什么没有你设的那么快？";
 "refresh.help.row_setting" = "你设置的";
-"refresh.help.row_actual" = "Claude 官方接口实际";
+"refresh.help.row_actual" = "BalanceBar 自动读取";
 "refresh.help.row_actual_hint" = "约 3–6 分钟一次";
 "refresh.help.row_mod_hint" = "每轮回复后立即更新";
-"refresh.help.line1" = "官方接口会限流，你设的频率只是“希望多快”。每次读取消耗“可用次数”（每 3 分钟补 1 个）：自动读取要 2 个，手动“立即刷新”要 1 个，连点反而更慢。";
+"refresh.help.line1" = "这是 BalanceBar 主动放慢的：官方接口查得太勤会返回“请求过多”，BalanceBar 就得暂停读取 15 分钟到 1 小时，所以自动读取约 3 分钟一次。想马上看最新，点“立即刷新”通常就能读到（刚读过或被暂停时除外）。";
 "refresh.status.phase_reading" = "正在向官方接口读取额度…";
 "refresh.status.phase_login" = "登录已过期：在终端运行一次 claude 即可恢复";
-"refresh.status.phase_rate" = "官方接口让我们先歇一会儿（被限流），还要等 %1$@";
+"refresh.status.phase_rate" = "已暂停：官方接口返回了“请求过多”（也可能是其他工具查得太勤），还要等 %1$@";
 "refresh.status.phase_live" = "Mod 数据很新（%1$@前），暂时不用问官方接口";
-"refresh.status.phase_interval" = "刚读过，为避免被限流要等一等：%1$@后才能再读";
+"refresh.status.phase_interval" = "刚读过，为免读得太勤先等等：%1$@后再读";
 "refresh.status.phase_tokens" = "可用次数用完了，要等 %1$@ 才能再读";
 "refresh.status.phase_ready" = "随时可以读取：下一次定时检查就会去读";
 "refresh.status.last_read" = "上次读取";
@@ -658,3 +658,5 @@
 "refresh.help.mod_install" = "去安装";
 "refresh.help.row_mod_now" = "你现在（Mod）";
 "refresh.help.expand" = "为什么平时也没那么快？";
+"refresh.status.tokens_hint" = "每 3 分钟补 1 个；自动读取用 2 个，“立即刷新”用 1 个。";
+"refresh.help.other_tools" = "CC Switch 等工具查的是同一个接口、同一个账号，它们刷得勤，BalanceBar 也更容易被暂停。";

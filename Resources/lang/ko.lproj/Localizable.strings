@@ -637,15 +637,15 @@
 "mod.settings.action.view_error" = "오류 보기";
 "refresh.help.title" = "왜 설정한 만큼 빠르지 않나요?";
 "refresh.help.row_setting" = "설정값";
-"refresh.help.row_actual" = "Claude 공식, 실제";
+"refresh.help.row_actual" = "BalanceBar 자동 읽기";
 "refresh.help.row_actual_hint" = "약 3~6분에 한 번";
 "refresh.help.row_mod_hint" = "답변이 끝날 때마다";
-"refresh.help.line1" = "공식 API에는 제한이 있어 선택한 빈도는 ‘이만큼 빨랐으면’ 하는 희망일 뿐입니다. 읽을 때마다 ‘사용 가능 횟수’를 쓰며(3분마다 1개 회복) 자동 읽기는 2개, ‘지금 새로고침’은 1개라 연달아 누르면 오히려 느려집니다.";
+"refresh.help.line1" = "BalanceBar가 스스로 속도를 늦추는 것입니다. 공식 API에 너무 자주 물으면 ‘요청이 너무 많음’ 응답이 오고, BalanceBar는 15분~1시간 동안 읽기를 멈춰야 합니다. 그래서 자동 읽기는 약 3분에 한 번입니다. 바로 최신을 보려면 ‘지금 새로고침’을 누르면 대개 곧바로 읽습니다(방금 읽었거나 일시 중지 중일 때 제외).";
 "refresh.status.phase_reading" = "공식 API에서 할당량을 읽는 중…";
 "refresh.status.phase_login" = "로그인이 만료되었습니다. 터미널에서 claude를 한 번 실행하세요";
-"refresh.status.phase_rate" = "공식 API가 잠시 쉬라고 합니다(제한). %1$@ 더 기다려야 합니다";
+"refresh.status.phase_rate" = "일시 중지: 공식 API가 ‘요청이 너무 많음’을 반환했습니다(다른 도구가 너무 자주 읽었을 수도 있음). %1$@ 더 기다려야 합니다";
 "refresh.status.phase_live" = "Mod 실시간 데이터가 최신(%1$@ 전)이라 공식 API는 잠시 건너뜁니다";
-"refresh.status.phase_interval" = "방금 읽었습니다. 제한을 피하려면 기다려야 하며 %1$@ 후에 다시 읽을 수 있습니다";
+"refresh.status.phase_interval" = "방금 읽었습니다. 너무 자주 읽지 않도록 기다리며 %1$@ 후에 다시 읽을 수 있습니다";
 "refresh.status.phase_tokens" = "사용 가능 횟수가 없습니다. %1$@ 후에 다시 읽을 수 있습니다";
 "refresh.status.phase_ready" = "언제든 읽을 수 있습니다. 다음 정기 점검에서 읽습니다";
 "refresh.status.last_read" = "마지막 읽기";
@@ -658,3 +658,5 @@
 "refresh.help.mod_install" = "설치하기";
 "refresh.help.row_mod_now" = "지금(Mod)";
 "refresh.help.expand" = "평소에도 빠르지 않은 이유는?";
+"refresh.status.tokens_hint" = "3분마다 1개 회복, 자동 읽기는 2개, ‘지금 새로고침’은 1개를 씁니다.";
+"refresh.help.other_tools" = "CC Switch 같은 도구도 같은 계정으로 같은 API를 씁니다. 그런 도구가 자주 새로고침할수록 BalanceBar도 더 쉽게 일시 중지됩니다.";

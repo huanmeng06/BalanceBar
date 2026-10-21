@@ -637,15 +637,15 @@
 "mod.settings.action.view_error" = "Voir l’erreur";
 "refresh.help.title" = "Pourquoi n’est-ce pas aussi rapide que réglé ?";
 "refresh.help.row_setting" = "Votre réglage";
-"refresh.help.row_actual" = "Claude officiel, réel";
+"refresh.help.row_actual" = "Lectures de BalanceBar";
 "refresh.help.row_actual_hint" = "environ toutes les 3–6 min";
 "refresh.help.row_mod_hint" = "après chaque réponse";
-"refresh.help.line1" = "L’API officielle limite les requêtes : la fréquence choisie n’est qu’un souhait. Chaque lecture consomme des « lectures disponibles » (1 revient toutes les 3 min) : 2 pour l’automatique, 1 pour « Actualiser » ; cliquer à répétition ne fait que ralentir.";
+"refresh.help.line1" = "BalanceBar ralentit de lui-même : interrogée trop souvent, l’API officielle répond « trop de requêtes », et BalanceBar doit alors suspendre la lecture de 15 minutes à 1 heure. Il lit donc automatiquement environ toutes les 3 minutes. Pour avoir le plus récent tout de suite, « Actualiser » lit en général aussitôt (sauf juste après une lecture ou pendant une pause).";
 "refresh.status.phase_reading" = "Interrogation de l’API officielle…";
 "refresh.status.phase_login" = "Connexion expirée : lancez claude une fois dans un terminal";
-"refresh.status.phase_rate" = "L’API officielle nous demande de ralentir (limite) ; encore %1$@";
+"refresh.status.phase_rate" = "En pause : l’API officielle a répondu « trop de requêtes » (d’autres outils lisent peut-être trop souvent) ; encore %1$@";
 "refresh.status.phase_live" = "Les données en direct du Mod sont fraîches (il y a %1$@) : l’API officielle est laissée de côté";
-"refresh.status.phase_interval" = "Vient d’être lu ; pour éviter la limite il faut patienter : prochaine lecture dans %1$@";
+"refresh.status.phase_interval" = "Vient d’être lu ; pour ne pas lire trop souvent il faut patienter : prochaine lecture dans %1$@";
 "refresh.status.phase_tokens" = "Plus de lectures pour l’instant ; la prochaine dans %1$@";
 "refresh.status.phase_ready" = "Prêt à lire : la prochaine vérification planifiée s’en chargera";
 "refresh.status.last_read" = "Dernière lecture";
@@ -658,3 +658,5 @@
 "refresh.help.mod_install" = "Installer";
 "refresh.help.row_mod_now" = "Vous, maintenant (Mod)";
 "refresh.help.expand" = "Pourquoi n’est-ce pas plus rapide d’habitude ?";
+"refresh.status.tokens_hint" = "1 revient toutes les 3 min ; une lecture automatique en utilise 2, « Actualiser » 1.";
+"refresh.help.other_tools" = "Des outils comme CC Switch interrogent la même API pour le même compte ; plus ils actualisent, plus vite BalanceBar est suspendu aussi.";

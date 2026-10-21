@@ -42,6 +42,8 @@ final class RefreshRateHelpTests: XCTestCase {
             XCTAssertTrue(texts.contains(tr(.keyRefreshHelpTitle, language: language)), "\(language) title")
             XCTAssertTrue(texts.contains(tr(.keyRefreshHelpLine1, language: language)), "\(language) explanation")
             XCTAssertTrue(texts.contains(tr(.keyRefreshHelpModFooter, language: language)), "\(language) pitch")
+            XCTAssertTrue(texts.contains(tr(.keyRefreshHelpOtherTools, language: language)), "\(language) other tools share the endpoint")
+            XCTAssertTrue(texts.contains(tr(.keyRefreshHelpRowActual, language: language)), "\(language) BalanceBar's own pace")
             XCTAssertEqual(view.frame.width, RefreshRateHelpContentView.width)
             XCTAssertLessThan(view.frame.height, 600, "\(language) stays compact")
         }
@@ -78,6 +80,30 @@ final class RefreshRateHelpTests: XCTestCase {
         XCTAssertFalse(view.isFooterVisible)
         XCTAssertFalse(view.isModTimelineVisible)
         XCTAssertTrue(view.isModAgeVisible, "how old the Mod's data is, since the sentence no longer says it")
+    }
+
+    func testEveryTimelineHeadingFitsOnOneLineInEveryLanguage() {
+        let contentWidth = RefreshRateHelpContentView.width - 32
+        func width(_ text: String, _ weight: NSFont.Weight) -> CGFloat {
+            (text as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 11, weight: weight)]).width
+        }
+        for language in AppLanguage.allCases where language != .system {
+            let rows: [(LocalizationKey, String)] = [
+                (.keyRefreshHelpRowSetting, tr(.keyDashboardOfficialEverySeconds, arguments: ["600"], language: language)),
+                (.keyRefreshHelpRowActual, tr(.keyRefreshHelpRowActualHint, language: language)),
+                (.keyRefreshHelpRowModNow, tr(.keyRefreshHelpRowModHint, language: language)),
+            ]
+            for (label, hint) in rows {
+                let needed = width(tr(label, language: language), .medium) + width(hint, .regular) + 8
+                XCTAssertLessThanOrEqual(needed, contentWidth, "\(language) \(label.rawValue) is cut off")
+            }
+        }
+    }
+
+        func testTheReadsRowExplainsItsRulesOnHover() {
+        let card = RefreshRateLiveStatusView(width: 308, language: .english, now: { self.base }, provider: { self.status(.waiting) })
+        func tips(_ view: NSView) -> [String] { [view.toolTip].compactMap { $0 } + view.subviews.flatMap(tips) }
+        XCTAssertTrue(tips(card).contains(tr(.keyRefreshStatusTokensHint, language: .english)))
     }
 
     func testFreshModDataIsNotRepeatedBelowTheSentence() {

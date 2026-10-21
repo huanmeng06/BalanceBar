@@ -218,17 +218,24 @@ final class RefreshRateLiveStatusView: NSView {
             row.orientation = .horizontal
             row.alignment = .centerY
             row.spacing = 8
+            // Keep its natural width, so the "·" stays next to its neighbours instead of spreading the line.
+            row.setHuggingPriority(.required, for: .horizontal)
             return row
         }
         for field in [lastReadValue, modValue] {
             field.font = .systemFont(ofSize: 11)
             field.lineBreakMode = .byClipping
             field.setContentCompressionResistancePriority(.required, for: .horizontal)
+            field.setContentHuggingPriority(.required, for: .horizontal)
         }
         let lastReadCaption = caption(localize(.keyRefreshStatusLastRead))
         let readsCaption = caption(localize(.keyRefreshStatusTokensLabel))
         let lastRead = row([lastReadCaption, lastReadValue])
         let reads = row([readsCaption, tokenDots])
+        // The rules behind the dots, on hover: the explanation below only says why there are rules at all.
+        reads.toolTip = localize(.keyRefreshStatusTokensHint)
+        readsCaption.toolTip = reads.toolTip
+        tokenDots.toolTip = reads.toolTip
         // One line when it fits ("Last read 15:02 (1 min ago) · Available reads ●○○"), otherwise two.
         let separator = caption("·")
         let sample = NSTextField(labelWithString: tr(.keyRefreshStatusLastReadValue, arguments: ["88:88", "59 min"], language: language))
@@ -469,6 +476,7 @@ final class RefreshRateHelpContentView: NSView {
             text(localize(.keyRefreshHelpTitle), size: 12, weight: .semibold),
             timelines,
             text(localize(.keyRefreshHelpLine1), size: 12),
+            text(localize(.keyRefreshHelpOtherTools), size: 11),
         ], in: .top)
         explanation.orientation = .vertical
         explanation.alignment = .leading

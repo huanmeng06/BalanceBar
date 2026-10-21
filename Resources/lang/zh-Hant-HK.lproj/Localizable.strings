@@ -637,15 +637,15 @@
 "mod.settings.action.view_error" = "檢視原因";
 "refresh.help.title" = "為什麼沒有你設的那麼快？";
 "refresh.help.row_setting" = "你設定的";
-"refresh.help.row_actual" = "Claude 官方介面實際";
+"refresh.help.row_actual" = "BalanceBar 自動讀取";
 "refresh.help.row_actual_hint" = "約 3–6 分鐘一次";
 "refresh.help.row_mod_hint" = "每輪回覆後立即更新";
-"refresh.help.line1" = "官方介面會限流，你設的頻率只是「希望多快」。每次讀取消耗「可用次數」（每 3 分鐘補 1 個）：自動讀取要 2 個，手動「立即刷新」要 1 個，連按反而更慢。";
+"refresh.help.line1" = "這是 BalanceBar 主動放慢的：官方介面查得太勤會回傳「請求過多」，BalanceBar 就得暫停讀取 15 分鐘到 1 小時，所以自動讀取約 3 分鐘一次。想馬上看最新，按「立即刷新」通常就能讀到（剛讀過或被暫停時除外）。";
 "refresh.status.phase_reading" = "正在向官方介面讀取額度…";
 "refresh.status.phase_login" = "登入已過期：在終端機執行一次 claude 即可恢復";
-"refresh.status.phase_rate" = "官方介面要我們先歇一會兒（被限流），還要等 %1$@";
+"refresh.status.phase_rate" = "已暫停：官方介面回傳了「請求過多」（也可能是其他工具查得太勤），還要等 %1$@";
 "refresh.status.phase_live" = "Mod 資料很新（%1$@前），暫時不用問官方介面";
-"refresh.status.phase_interval" = "剛讀過，為避免被限流要等一等：%1$@後才能再讀";
+"refresh.status.phase_interval" = "剛讀過，為免讀得太勤先等等：%1$@後再讀";
 "refresh.status.phase_tokens" = "可用次數用完了，要等 %1$@ 才能再讀";
 "refresh.status.phase_ready" = "隨時可以讀取：下一次定時檢查就會去讀";
 "refresh.status.last_read" = "上次讀取";
@@ -658,3 +658,5 @@
 "refresh.help.mod_install" = "去安裝";
 "refresh.help.row_mod_now" = "你現在（Mod）";
 "refresh.help.expand" = "為什麼平常也沒那麼快？";
+"refresh.status.tokens_hint" = "每 3 分鐘補 1 個；自動讀取用 2 個，「立即刷新」用 1 個。";
+"refresh.help.other_tools" = "CC Switch 等工具查的是同一個介面、同一個帳號，它們刷得勤，BalanceBar 也更容易被暫停。";

@@ -637,15 +637,15 @@
 "mod.settings.action.view_error" = "Vedi errore";
 "refresh.help.title" = "Perché non è veloce come impostato?";
 "refresh.help.row_setting" = "Impostato";
-"refresh.help.row_actual" = "Claude ufficiale, reale";
+"refresh.help.row_actual" = "Letture di BalanceBar";
 "refresh.help.row_actual_hint" = "circa ogni 3–6 min";
 "refresh.help.row_mod_hint" = "dopo ogni risposta";
-"refresh.help.line1" = "L’endpoint ufficiale limita le richieste, quindi la frequenza scelta è solo un desiderio. Ogni lettura consuma «letture disponibili» (ne torna 1 ogni 3 min): quella automatica ne usa 2, «Aggiorna ora» 1; cliccare ripetutamente rallenta soltanto.";
+"refresh.help.line1" = "È BalanceBar a rallentare da sé: se l’endpoint ufficiale viene interrogato troppo spesso risponde «troppe richieste» e BalanceBar deve sospendere la lettura da 15 minuti a 1 ora. Per questo legge automaticamente circa ogni 3 minuti. Per il dato più recente subito, «Aggiorna ora» di solito legge all’istante (tranne subito dopo una lettura o durante una pausa).";
 "refresh.status.phase_reading" = "Interrogo l’endpoint ufficiale…";
 "refresh.status.phase_login" = "Accesso scaduto: esegui claude una volta in un terminale";
-"refresh.status.phase_rate" = "L’endpoint ufficiale ci chiede di rallentare (limite); attendi %1$@";
+"refresh.status.phase_rate" = "In pausa: l’endpoint ufficiale ha risposto «troppe richieste» (forse altri strumenti leggono troppo spesso); attendi %1$@";
 "refresh.status.phase_live" = "I dati live del Mod sono freschi (%1$@ fa), quindi l’endpoint ufficiale non viene interrogato";
-"refresh.status.phase_interval" = "Appena letto; per evitare il limite serve attendere: prossima lettura tra %1$@";
+"refresh.status.phase_interval" = "Appena letto; per non leggere troppo spesso serve attendere: prossima lettura tra %1$@";
 "refresh.status.phase_tokens" = "Nessuna lettura disponibile; la prossima tra %1$@";
 "refresh.status.phase_ready" = "Pronto a leggere: lo farà il prossimo controllo programmato";
 "refresh.status.last_read" = "Ultima lettura";
@@ -658,3 +658,5 @@
 "refresh.help.mod_install" = "Installa";
 "refresh.help.row_mod_now" = "Tu ora (Mod)";
 "refresh.help.expand" = "Perché di solito non è più veloce?";
+"refresh.status.tokens_hint" = "Ne torna 1 ogni 3 min; una lettura automatica ne usa 2, «Aggiorna ora» 1.";
+"refresh.help.other_tools" = "Strumenti come CC Switch interrogano lo stesso endpoint con lo stesso account; più aggiornano, prima viene sospeso anche BalanceBar.";

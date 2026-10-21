@@ -637,15 +637,15 @@
 "mod.settings.action.view_error" = "Fehler ansehen";
 "refresh.help.title" = "Warum ist es nicht so schnell wie eingestellt?";
 "refresh.help.row_setting" = "Eingestellt";
-"refresh.help.row_actual" = "Claude offiziell, tatsächlich";
+"refresh.help.row_actual" = "BalanceBar liest";
 "refresh.help.row_actual_hint" = "etwa alle 3–6 Min.";
 "refresh.help.row_mod_hint" = "nach jeder Antwort";
-"refresh.help.line1" = "Die offizielle Schnittstelle begrenzt Anfragen, die gewählte Frequenz ist nur ein Wunsch. Jedes Lesen verbraucht „verfügbare Lesungen“ (alle 3 Min. kommt 1 dazu): automatisch 2, „Jetzt aktualisieren“ 1 – wiederholtes Klicken bremst nur.";
+"refresh.help.line1" = "BalanceBar bremst sich selbst: Wird die offizielle Schnittstelle zu oft gefragt, antwortet sie mit „zu viele Anfragen“, und BalanceBar muss das Lesen dann 15 Minuten bis 1 Stunde pausieren. Deshalb liest es automatisch etwa alle 3 Minuten. Für den neuesten Stand liest „Jetzt aktualisieren“ meist sofort (außer direkt nach einem Lesen oder während einer Pause).";
 "refresh.status.phase_reading" = "Frage gerade die offizielle Schnittstelle ab …";
 "refresh.status.phase_login" = "Anmeldung abgelaufen: Führe einmal claude im Terminal aus";
-"refresh.status.phase_rate" = "Die offizielle Schnittstelle bremst uns (Limit); noch %1$@ warten";
+"refresh.status.phase_rate" = "Pausiert: Die offizielle Schnittstelle meldet „zu viele Anfragen“ (evtl. lesen andere Tools zu oft); noch %1$@";
 "refresh.status.phase_live" = "Die Live-Daten des Mod sind frisch (vor %1$@), daher bleibt die offizielle Schnittstelle vorerst unberührt";
-"refresh.status.phase_interval" = "Gerade gelesen; wegen des Limits ist Warten nötig: nächstes Lesen in %1$@";
+"refresh.status.phase_interval" = "Gerade gelesen; um nicht zu oft zu lesen, wird gewartet: nächstes Lesen in %1$@";
 "refresh.status.phase_tokens" = "Keine Lesungen mehr verfügbar; nächste in %1$@";
 "refresh.status.phase_ready" = "Bereit zum Lesen: die nächste planmäßige Prüfung erledigt es";
 "refresh.status.last_read" = "Zuletzt gelesen";
@@ -658,3 +658,5 @@
 "refresh.help.mod_install" = "Installieren";
 "refresh.help.row_mod_now" = "Jetzt bei dir (Mod)";
 "refresh.help.expand" = "Warum ist es auch sonst nicht schneller?";
+"refresh.status.tokens_hint" = "Alle 3 Min. kommt 1 dazu; automatisches Lesen braucht 2, „Jetzt aktualisieren“ 1.";
+"refresh.help.other_tools" = "Tools wie CC Switch fragen dieselbe Schnittstelle für dasselbe Konto; je öfter sie aktualisieren, desto eher wird auch BalanceBar pausiert.";

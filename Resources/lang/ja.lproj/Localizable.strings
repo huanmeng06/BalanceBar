@@ -637,15 +637,15 @@
 "mod.settings.action.view_error" = "エラーを表示";
 "refresh.help.title" = "設定した頻度より遅いのはなぜ？";
 "refresh.help.row_setting" = "設定";
-"refresh.help.row_actual" = "Claude 公式の実際";
+"refresh.help.row_actual" = "BalanceBar の自動取得";
 "refresh.help.row_actual_hint" = "約 3〜6 分に 1 回";
 "refresh.help.row_mod_hint" = "返信のたびに更新";
-"refresh.help.line1" = "公式 API には制限があり、選んだ頻度は「このくらい速いといい」という希望にすぎません。取得のたびに「取得できる回数」を使います（3 分ごとに 1 回復）。自動取得は 2、「今すぐ更新」は 1 で、連打するとかえって遅くなります。";
+"refresh.help.line1" = "これは BalanceBar が自分で間隔を空けているためです。公式 API に問い合わせすぎると「リクエストが多すぎます」と返され、BalanceBar は 15 分〜1 時間取得を止めることになります。そのため自動取得は約 3 分に 1 回です。すぐ最新を見たいときは「今すぐ更新」でたいていすぐ取得できます（取得直後や一時停止中を除く）。";
 "refresh.status.phase_reading" = "公式から残量を取得中…";
 "refresh.status.phase_login" = "ログインの期限切れ：ターミナルで claude を一度実行してください";
-"refresh.status.phase_rate" = "公式から待つよう求められています（制限）。あと %1$@";
+"refresh.status.phase_rate" = "一時停止中：公式 API が「リクエストが多すぎます」と返しました（他のツールの取得が多すぎる可能性もあります）。あと %1$@";
 "refresh.status.phase_live" = "Mod のリアルタイムデータは新しい（%1$@前）ので、公式への問い合わせは控えています";
-"refresh.status.phase_interval" = "取得したばかりです。制限を避けるため、次に取得できるのは %1$@ 後";
+"refresh.status.phase_interval" = "取得したばかりです。取得しすぎを避けるため、次に取得できるのは %1$@ 後";
 "refresh.status.phase_tokens" = "取得できる回数がなくなりました。次は %1$@ 後";
 "refresh.status.phase_ready" = "いつでも取得できます。次の定期チェックで取得します";
 "refresh.status.last_read" = "前回の取得";
@@ -658,3 +658,5 @@
 "refresh.help.mod_install" = "インストール";
 "refresh.help.row_mod_now" = "いま（Mod）";
 "refresh.help.expand" = "普段も速くならないのはなぜ？";
+"refresh.status.tokens_hint" = "3 分ごとに 1 回復。自動取得は 2、「今すぐ更新」は 1 使います。";
+"refresh.help.other_tools" = "CC Switch などのツールも同じアカウントで同じ API を使います。それらが頻繁に更新すると、BalanceBar も止められやすくなります。";
