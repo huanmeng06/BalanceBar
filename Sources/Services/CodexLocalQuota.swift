@@ -11,6 +11,7 @@ final class CodexAccountIdentityProvider: AccountIdentityProviding {
     private let refreshInterval: TimeInterval
     private let lock = NSLock()
     private var identity: AccountIdentity?
+    private var currentAccountID: String?
     private var epoch = AccountEpoch.initial
     private var lastRead: Date?
     private var loaded = false
@@ -32,6 +33,12 @@ final class CodexAccountIdentityProvider: AccountIdentityProviding {
 
     var credentialVersion: CredentialVersion? { nil }
 
+    /// The signed-in ChatGPT account id, the value rollout logs carry as `creator_account_id`.
+    var accountID: String? {
+        refreshIfNeeded()
+        return lock.withLock { currentAccountID }
+    }
+
     var accountEpoch: AccountEpoch {
         refreshIfNeeded()
         return lock.withLock { epoch }
@@ -51,12 +58,15 @@ final class CodexAccountIdentityProvider: AccountIdentityProviding {
             value.isEmpty ? nil : AccountIdentity(
                 stableID: "codex:" + value, email: value, plan: profile?.planType, idSource: .emailFallback)
         }
+        let nextAccountID = next == nil ? nil : profile?.accountID
         lock.withLock {
-            if loaded, next?.stableID != identity?.stableID {
+            // A different login, or the same email on another ChatGPT account (workspace), is a new account.
+            if loaded, next?.stableID != identity?.stableID || nextAccountID != currentAccountID {
                 epoch = AccountEpoch(rawValue: epoch.rawValue + 1)
             }
             loaded = true
             identity = next
+            currentAccountID = nextAccountID
         }
     }
 }
@@ -98,7 +108,9 @@ final class CodexLocalQuota {
             .appendingPathComponent(Bundle.main.bundleIdentifier ?? "BalanceBar", isDirectory: true)
             .appendingPathComponent("Quota", isDirectory: true)
         return CodexLocalQuota(
-            identity: identity, source: CodexRolloutSource(accountProvider: identity), stateDirectory: directory)
+            identity: identity,
+            source: CodexRolloutSource(accountProvider: identity, currentAccountID: { [identity] in identity.accountID }),
+            stateDirectory: directory)
     }
 
     /// Builds the engine and starts the log source. Idempotent; call from a background queue

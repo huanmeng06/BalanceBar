@@ -107,6 +107,13 @@ public final class CodexRolloutSource: QuotaSource {
     private let latestLock = NSLock()
     private var latestEventDate: Date?
     private var latestEventAccountID: String?
+    /// The signed-in ChatGPT account id; `nil` skips the per-file check (tests only, production always passes it).
+    private let currentAccountID: (() -> String?)?
+    /// `creator_account_id` per rollout file, cached once the first line was read completely.
+    private var creatorByPath: [String: String] = [:]
+    private var filesWithoutCreator: Set<String> = []
+    /// The account (login, epoch) the emitted-event bookkeeping belongs to.
+    private var attributedAccount: (stableID: String, epoch: AccountEpoch)?
 
     /// Resolves the sessions directory from `CODEX_HOME`, falling back to `~/.codex`.
     public static func sessionsDirectory(
@@ -120,12 +127,15 @@ public final class CodexRolloutSource: QuotaSource {
         return base.appendingPathComponent("sessions", isDirectory: true)
     }
 
-    public convenience init(accountProvider: AccountIdentityProviding) {
+    /// - Parameter currentAccountID: the signed-in ChatGPT account id. A rollout file is attributed to the current
+    ///   login only when its `session_meta` names this account as the session's creator.
+    public convenience init(accountProvider: AccountIdentityProviding, currentAccountID: @escaping () -> String?) {
         self.init(
             sessionsDirectory: Self.sessionsDirectory(),
             accountProvider: accountProvider,
             ioConfiguration: .default,
-            now: Date.init
+            now: Date.init,
+            currentAccountID: currentAccountID
         )
     }
 
@@ -135,9 +145,9 @@ public final class CodexRolloutSource: QuotaSource {
         configuration: CodexRolloutConfiguration = CodexRolloutConfiguration(),
         ioConfiguration: QuotaIOConfiguration = .default,
         now: @escaping () -> Date = Date.init,
-        attributionStartOverride: Date? = nil
+        currentAccountID: (() -> String?)? = nil
     ) {
-        self.attributionStartOverride = attributionStartOverride
+        self.currentAccountID = currentAccountID
         self.sessionsDirectory = sessionsDirectory.standardizedFileURL
         self.accountProvider = accountProvider
         self.configuration = configuration
@@ -196,7 +206,14 @@ public final class CodexRolloutSource: QuotaSource {
         guard handler != nil else { return }
         let files = filesToRead(for: paths)
         var newest: [QuotaWindowKind: (event: CodexRateLimitEvent, reading: CodexRateLimitReading)] = [:]
+        // A rollout log does not say which login a reading belongs to, but its `session_meta` names the account that
+        // created the session. A file counts for the current login only when that account matches; a session started
+        // by another login keeps writing to its own file, so it can never be attributed to the one signed in now.
+        let currentID = currentAccountID.map { $0() ?? "" }
         for file in files {
+            if let currentID {
+                guard !currentID.isEmpty, creatorAccountID(of: file) == currentID else { continue }
+            }
             for event in events(in: file) {
                 for reading in event.readings {
                     let kind = CodexRolloutParser.windowKind(forMinutes: reading.windowMinutes)
@@ -208,28 +225,17 @@ public final class CodexRolloutSource: QuotaSource {
         publish(newest)
     }
 
-    /// The account and epoch the attribution window below belongs to, and when it began.
-    private var attributionAccountID: String?
-    private var attributionEpoch: AccountEpoch?
-    private var attributionStart: Date?
-    /// Tests only: attribute events from this time on instead of from the first time the account was seen.
-    private let attributionStartOverride: Date?
-
     private func publish(_ newest: [QuotaWindowKind: (event: CodexRateLimitEvent, reading: CodexRateLimitReading)]) {
         // Without a current Codex account there is nobody to attribute the reading to.
         guard let account = accountProvider.accountIdentity else { return }
         let epoch = accountProvider.accountEpoch
         let receivedAt = now()
-        // A rollout log does not say which login produced it. Only events logged after this source first saw the
-        // current account (at launch, or when the login changed) can be attributed to it; older ones may belong
-        // to the previous login and are ignored, so a cold start never hands A's log to B.
-        if attributionAccountID != account.stableID || attributionEpoch != epoch {
-            attributionAccountID = account.stableID
-            attributionEpoch = epoch
-            attributionStart = attributionStartOverride ?? receivedAt
+        // A new login must not be held back by the previous login's event times.
+        if attributedAccount?.stableID != account.stableID || attributedAccount?.epoch != epoch {
+            attributedAccount = (account.stableID, epoch)
+            emittedAt.removeAll()
         }
         for (kind, item) in newest.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
-            if let start = attributionStart, item.event.timestamp < start { continue }
             if let previous = emittedAt[kind], previous >= item.event.timestamp { continue }
             guard let observation = QuotaObservation(
                 window: kind,
@@ -256,6 +262,37 @@ public final class CodexRolloutSource: QuotaSource {
             latestEventDate = date
             latestEventAccountID = accountID
         }
+    }
+
+    /// The first line of a rollout is `session_meta`; its `creator_account_id` is the ChatGPT account that started the
+    /// session. `nil` when it is missing (older Codex versions) or the line is not completely written yet.
+    private func creatorAccountID(of file: URL) -> String? {
+        let url = file.standardizedFileURL
+        guard url.path.hasPrefix(sessionsDirectory.path + "/"),
+              (try? url.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) != true else { return nil }
+        if let known = creatorByPath[url.path] { return known }
+        if filesWithoutCreator.contains(url.path) { return nil }
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { try? handle.close() }
+        // The first line carries the whole base instructions, so it is long; read a bounded amount of it.
+        let limit = 512 * 1024
+        guard let head = try? handle.read(upToCount: limit) else { return nil }
+        guard let newline = head.firstIndex(of: 0x0A) else {
+            // No end of line yet: wait for it unless the line is already longer than anything sensible.
+            if head.count >= limit { filesWithoutCreator.insert(url.path) }
+            return nil
+        }
+        let line = head[head.startIndex..<newline]
+        if let object = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any],
+           object["type"] as? String == "session_meta",
+           let payload = object["payload"] as? [String: Any],
+           let creator = (payload["creator_account_id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !creator.isEmpty {
+            creatorByPath[url.path] = creator
+            return creator
+        }
+        filesWithoutCreator.insert(url.path)
+        return nil
     }
 
     private func events(in file: URL) -> [CodexRateLimitEvent] {

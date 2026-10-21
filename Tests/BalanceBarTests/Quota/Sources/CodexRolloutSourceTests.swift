@@ -56,22 +56,25 @@ final class CodexRolloutSourceTests: XCTestCase {
         try handle.close()
     }
 
+    /// Writes a rollout whose first line is a `session_meta` naming `creator` as the session's creator account.
     @discardableResult
-    private func writeRollout(_ name: String, _ text: String) throws -> URL {
+    private func writeRollout(_ name: String, _ text: String, creator: String? = "acct-1") throws -> URL {
         let url = sessions.appendingPathComponent("rollout-\(name).jsonl")
-        try Data(text.utf8).write(to: url)
+        var meta = "{\"timestamp\":\"\(iso(-60))\",\"type\":\"session_meta\",\"payload\":{\"id\":\"\(name)\""
+        if let creator { meta += ",\"creator_account_id\":\"\(creator)\"" }
+        meta += "}}\n"
+        try Data((meta + text).utf8).write(to: url)
         return url
     }
 
-    /// `attributeHistory` keeps the older behavior most tests rely on (events logged before the first scan count);
-    /// the production default ignores them, see `testEventsLoggedBeforeTheFirstScanAreNotAttributedToTheCurrentLogin`.
-    private func makeSource(account: FakeAccount = FakeAccount(), attributeHistory: Bool = true) -> CodexRolloutSource {
+    /// `currentAccountID` is the signed-in ChatGPT account; only files created by it are attributed.
+    private func makeSource(account: FakeAccount = FakeAccount(), currentAccountID: String? = "acct-1") -> CodexRolloutSource {
         CodexRolloutSource(
             sessionsDirectory: root.appendingPathComponent("sessions"),
             accountProvider: account,
             configuration: CodexRolloutConfiguration(maximumFileAge: .infinity),
             now: { self.base.addingTimeInterval(100) },
-            attributionStartOverride: attributeHistory ? .distantPast : nil
+            currentAccountID: { currentAccountID }
         )
     }
 
@@ -233,7 +236,7 @@ final class CodexRolloutSourceTests: XCTestCase {
             accountProvider: account,
             configuration: CodexRolloutConfiguration(maximumFileAge: .infinity),
             now: { self.base.addingTimeInterval(100) },
-            attributionStartOverride: .distantPast
+            currentAccountID: { "acct-1" }
         )
         _ = scan(source)
         XCTAssertTrue(source.hasFreshData(at: base.addingTimeInterval(20)))
@@ -241,40 +244,48 @@ final class CodexRolloutSourceTests: XCTestCase {
         XCTAssertFalse(source.hasFreshData(at: base.addingTimeInterval(20)))
     }
 
-    func testEventsLoggedBeforeTheFirstScanAreNotAttributedToTheCurrentLogin() throws {
-        // A's log from just before launch must never be handed to whoever is logged in now.
-        try writeRollout("a", line(at: 10, primary: window(300, 80), secondary: window(10080, 20)))
-        let source = makeSource(attributeHistory: false)
-        XCTAssertTrue(scan(source).isEmpty, "nothing logged before this source first saw the account is attributed")
-        XCTAssertFalse(source.hasFreshData(at: base.addingTimeInterval(20)))
+    func testASessionCreatedByAnotherLoginIsNeverAttributedEvenWhileItKeepsWriting() throws {
+        // A's session, still running: before and after the switch to B (the current account) it writes events.
+        let url = try writeRollout("a", line(at: 10, primary: window(300, 80), secondary: window(10080, 20)), creator: "acct-A")
+        let source = makeSource(currentAccountID: "acct-B")
+        XCTAssertTrue(scan(source).isEmpty, "cold start: A's fresh log is not B's")
+        let handle = try FileHandle(forWritingTo: url)
+        try handle.seekToEnd()
+        try handle.write(contentsOf: Data((line(at: 30, primary: window(300, 81), secondary: window(10080, 21))
+                                           + line(at: 31, primary: window(300, 82), secondary: window(10080, 21))).utf8))
+        try handle.close()
+        XCTAssertTrue(scan(source, paths: [url.path]).isEmpty, "A's session writing after the switch is still A's")
+        XCTAssertFalse(source.hasFreshData(at: base.addingTimeInterval(40)))
+        // B's own session is attributed.
+        try writeRollout("b", line(at: 50, primary: window(300, 10), secondary: window(10080, 5)), creator: "acct-B")
+        let seen = scan(source)
+        XCTAssertEqual(seen.compactMap { $0.window == .fiveHour ? $0.usedPercentage : nil }, [10])
+        XCTAssertTrue(source.hasFreshData(at: base.addingTimeInterval(60)))
     }
 
-    func testEventsAfterTheAccountWasFirstSeenAreAttributedAndALoginChangeStartsOver() throws {
-        let clock = MutableNow(base)
-        let account = Switchable()
-        let source = CodexRolloutSource(
-            sessionsDirectory: root.appendingPathComponent("sessions"),
-            accountProvider: account,
-            configuration: CodexRolloutConfiguration(maximumFileAge: .infinity),
-            now: { clock.value }
-        )
-        _ = try writeRollout("a", line(at: -5, primary: window(300, 80), secondary: window(10080, 20)))
-        XCTAssertTrue(scan(source).isEmpty, "logged before the first look: not attributed")
+    func testALogWithoutACreatorAccountIsNotAttributed() throws {
+        try writeRollout("old", line(at: 10, primary: window(300, 10), secondary: window(10080, 20)), creator: nil)
+        XCTAssertTrue(scan(makeSource()).isEmpty, "older Codex versions fall back to the server")
+    }
 
-        clock.value = base.addingTimeInterval(20)
-        try appendRollout("a", line(at: 30, primary: window(300, 81), secondary: window(10080, 21)))
-        clock.value = base.addingTimeInterval(40)
-        let seen = scan(source)
-        XCTAssertEqual(seen.compactMap { $0.window == .fiveHour ? $0.usedPercentage : nil }, [81], "logged after: attributed")
-
-        // The login changes: the previous login's log (even a fresh one) is not attributed to the new login.
-        account.accountIdentity = AccountIdentity(stableID: "codex:two", idSource: .accountUUID)
-        clock.value = base.addingTimeInterval(60)
+    func testTheSameLoginsOwnSessionIsAttributedFromTheFirstScanAndAnIncompleteFirstLineIsWaitedFor() throws {
+        let url = sessions.appendingPathComponent("rollout-new.jsonl")
+        // The first line is still being written: no end of line yet.
+        try Data("{\"type\":\"session_meta\",\"payload\":{\"creator_account_id\":\"acct-1\"".utf8).write(to: url)
+        let source = makeSource()
         XCTAssertTrue(scan(source).isEmpty)
-        XCTAssertFalse(source.hasFreshData(at: base.addingTimeInterval(61)))
-        try appendRollout("a", line(at: 70, primary: window(300, 12), secondary: window(10080, 22)))
-        clock.value = base.addingTimeInterval(80)
-        XCTAssertEqual(scan(source).compactMap { $0.window == .fiveHour ? $0.usedPercentage : nil }, [12], "new activity belongs to the new login")
+        // Completed later (not cached as "no creator"), then attributed.
+        try Data(("{\"type\":\"session_meta\",\"payload\":{\"creator_account_id\":\"acct-1\"}}\n"
+                  + line(at: 10, primary: window(300, 10), secondary: window(10080, 20))).utf8).write(to: url)
+        XCTAssertEqual(scan(source).count, 2, "both windows, from the login's own file logged before launch")
+    }
+
+    func testAVeryLongFirstLineStillNamesItsCreator() throws {
+        let filler = String(repeating: "x", count: 100_000)
+        let url = sessions.appendingPathComponent("rollout-long.jsonl")
+        let meta = "{\"type\":\"session_meta\",\"payload\":{\"creator_account_id\":\"acct-1\",\"base_instructions\":{\"text\":\"\(filler)\"}}}\n"
+        try Data((meta + line(at: 10, primary: window(300, 10), secondary: window(10080, 20))).utf8).write(to: url)
+        XCTAssertEqual(scan(makeSource()).count, 2)
     }
 
     func testStartAndStopLifecycleDeliversAppendedEvents() throws {
@@ -285,7 +296,7 @@ final class CodexRolloutSourceTests: XCTestCase {
             configuration: CodexRolloutConfiguration(maximumFileAge: .infinity),
             ioConfiguration: QuotaIOConfiguration(watchCoalescingInterval: 0.1),
             now: { self.base.addingTimeInterval(100) },
-            attributionStartOverride: .distantPast
+            currentAccountID: { "acct-1" }
         )
         let lock = NSLock()
         var received: [QuotaObservation] = []

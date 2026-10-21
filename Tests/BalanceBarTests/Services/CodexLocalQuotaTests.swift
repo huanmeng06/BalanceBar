@@ -5,8 +5,8 @@ private final class MutableProfile {
     private let lock = NSLock()
     private var value: CodexAccountProfile?
     private(set) var reads = 0
-    init(_ email: String?) { value = email.map { CodexAccountProfile(email: $0, planType: "plus") } }
-    func set(_ email: String?) { lock.withLock { value = email.map { CodexAccountProfile(email: $0, planType: "plus") } } }
+    init(_ email: String?) { value = email.map { CodexAccountProfile(email: $0, planType: "plus", accountID: "acct-" + $0) } }
+    func set(_ email: String?) { lock.withLock { value = email.map { CodexAccountProfile(email: $0, planType: "plus", accountID: "acct-" + $0) } } }
     func read() -> CodexAccountProfile? { lock.withLock { reads += 1; return value } }
 }
 
@@ -39,6 +39,36 @@ final class CodexAccountIdentityProviderTests: XCTestCase {
         clock.advance(by: 3)
         XCTAssertNil(provider.accountIdentity, "signed out: nobody to attribute a reading to")
         XCTAssertEqual(provider.accountEpoch, AccountEpoch(2))
+    }
+
+    func testTheChatGPTAccountIDIsExposedAndAnotherWorkspaceOnTheSameEmailIsANewAccount() {
+        let lock = NSLock()
+        var accountID: String? = "acct-1"
+        let clock = MutableDate(Date(timeIntervalSince1970: 1_800_000_000))
+        let provider = CodexAccountIdentityProvider(
+            readProfile: { lock.withLock { CodexAccountProfile(email: "me@example.com", planType: "plus", accountID: accountID) } },
+            refreshInterval: 2, now: { clock.now })
+        XCTAssertEqual(provider.accountID, "acct-1")
+        XCTAssertEqual(provider.accountEpoch, .initial)
+        lock.withLock { accountID = "acct-2" }
+        clock.advance(by: 3)
+        XCTAssertEqual(provider.accountID, "acct-2")
+        XCTAssertEqual(provider.accountEpoch, AccountEpoch(1), "same email, another ChatGPT account: attribution starts over")
+    }
+
+    func testAuthFileParsingReadsTheAccountIDFromTheTokens() throws {
+        func idToken(_ claims: [String: Any]) throws -> String {
+            let body = try JSONSerialization.data(withJSONObject: claims).base64EncodedString()
+                .replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_")
+                .replacingOccurrences(of: "=", with: "")
+            return "x.\(body).y"
+        }
+        let token = try idToken(["email": "me@example.com"])
+        let file = try JSONSerialization.data(withJSONObject: ["tokens": ["id_token": token, "account_id": " acct-9 "]])
+        XCTAssertEqual(CredentialReader.codexAccountProfile(from: file)?.accountID, "acct-9")
+        let fallback = try idToken(["email": "me@example.com", "https://api.openai.com/auth": ["chatgpt_account_id": "acct-7"]])
+        let file2 = try JSONSerialization.data(withJSONObject: ["tokens": ["id_token": fallback]])
+        XCTAssertEqual(CredentialReader.codexAccountProfile(from: file2)?.accountID, "acct-7")
     }
 
     func testTheLoginFileIsReadAtMostOncePerInterval() {
@@ -88,19 +118,23 @@ final class CodexLocalQuotaTests: XCTestCase {
         return "{\"timestamp\":\"\(iso(offset))\",\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":null,\"rate_limits\":{\"primary\":\(primary),\"secondary\":\(secondary)}}}\n"
     }
 
-    private func writeRollout(_ text: String, name: String = "a") throws {
-        try Data(text.utf8).write(to: sessions.appendingPathComponent("rollout-\(name).jsonl"))
+    /// Writes a rollout whose first line names `creator` (a ChatGPT account id) as the session's creator.
+    private func writeRollout(_ text: String, name: String = "a", creator: String? = "acct-me@example.com") throws {
+        var meta = "{\"timestamp\":\"\(iso(-60))\",\"type\":\"session_meta\",\"payload\":{\"id\":\"\(name)\""
+        if let creator { meta += ",\"creator_account_id\":\"\(creator)\"" }
+        meta += "}}\n"
+        try Data((meta + text).utf8).write(to: sessions.appendingPathComponent("rollout-\(name).jsonl"))
     }
 
     private func makeLocal(
-        email: String? = "me@example.com", clock: MutableDate, attributeHistory: Bool = true
+        email: String? = "me@example.com", clock: MutableDate
     ) -> (local: CodexLocalQuota, profile: MutableProfile) {
         let profile = MutableProfile(email)
         let identity = CodexAccountIdentityProvider(readProfile: profile.read, refreshInterval: 0.01, now: { clock.now })
         let source = CodexRolloutSource(
             sessionsDirectory: root.appendingPathComponent("sessions"), accountProvider: identity,
             configuration: CodexRolloutConfiguration(maximumFileAge: .infinity), now: { clock.now },
-            attributionStartOverride: attributeHistory ? .distantPast : nil)
+            currentAccountID: { [identity] in identity.accountID })
         let local = CodexLocalQuota(identity: identity, source: source, stateDirectory: state, now: { clock.now })
         created.append(local)
         return (local, profile)
@@ -130,13 +164,42 @@ final class CodexLocalQuotaTests: XCTestCase {
 
     func testAColdStartNeverHandsTheOldLoginsFreshLogToTheNewLogin() throws {
         // Login A used Codex a few seconds ago (80% used); the user then signed in as B (10% used) and relaunched.
-        try writeRollout(line(at: 0, fiveHourUsed: 80, sevenDayUsed: 20))
+        try writeRollout(line(at: 0, fiveHourUsed: 80, sevenDayUsed: 20), creator: "acct-a@example.com")
         let clock = MutableDate(base.addingTimeInterval(30))
-        let (local, _) = makeLocal(email: "b@example.com", clock: clock, attributeHistory: false)
+        let (local, _) = makeLocal(email: "b@example.com", clock: clock)
         local.start()
         Thread.sleep(forTimeInterval: 0.3)
         XCTAssertNil(local.freshDisplay(accountKey: "b@example.com"),
-                     "the log predates this launch, so it is not B's: the refresh asks the server")
+                     "the session was created by A, so it is not B's: the refresh asks the server")
+    }
+
+    func testTheOldLoginsRunningSessionKeepsWritingButNeverBecomesTheNewLoginsData() throws {
+        try writeRollout(line(at: 0, fiveHourUsed: 80, sevenDayUsed: 20), creator: "acct-a@example.com")
+        let clock = MutableDate(base.addingTimeInterval(30))
+        let (local, _) = makeLocal(email: "b@example.com", clock: clock)
+        local.start()
+        // A's session (still running) appends two more events after the switch to B.
+        let handle = try FileHandle(forWritingTo: sessions.appendingPathComponent("rollout-a.jsonl"))
+        try handle.seekToEnd()
+        try handle.write(contentsOf: Data((line(at: 31, fiveHourUsed: 81, sevenDayUsed: 21) + line(at: 32, fiveHourUsed: 82, sevenDayUsed: 21)).utf8))
+        try handle.close()
+        clock.advance(by: 3)
+        Thread.sleep(forTimeInterval: 0.5)
+        XCTAssertNil(local.freshDisplay(accountKey: "b@example.com"))
+        // B's own session is attributed.
+        try writeRollout(line(at: 35, fiveHourUsed: 10, sevenDayUsed: 5), name: "b", creator: "acct-b@example.com")
+        clock.advance(by: 5)
+        let model = try XCTUnwrap(waitForDisplay(local, accountKey: "b@example.com"))
+        XCTAssertEqual(model.windows.first { $0.kind == .fiveHour }?.usedPercentage, 10)
+    }
+
+    func testALogWithoutACreatorAccountIsNeverAttributed() throws {
+        try writeRollout(line(at: 0, fiveHourUsed: 30, sevenDayUsed: 10), creator: nil)
+        let clock = MutableDate(base.addingTimeInterval(30))
+        let (local, _) = makeLocal(clock: clock)
+        local.start()
+        Thread.sleep(forTimeInterval: 0.3)
+        XCTAssertNil(local.freshDisplay(accountKey: "me@example.com"), "older Codex versions fall back to the server")
     }
 
     func testStaleLogOtherLoginAndSignedOutAccountsGetNoDisplay() throws {

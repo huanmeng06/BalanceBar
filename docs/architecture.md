@@ -161,8 +161,13 @@ dismissed and no Mod data arrived within seven days.
 
 Codex official quota keeps its request path (including reset cards and
 forecasts). `CodexLocalQuota` (Sources/Services/CodexLocalQuota.swift) reads
-`token_count` rate limits from the local rollout logs into its own merge engine;
-when the newest logged event is fresh, an automatic refresh of the standard
+`token_count` rate limits from the local rollout logs into its own merge engine.
+A rollout file counts for the signed-in login only when its first line
+(`session_meta`) names that login's ChatGPT account (`payload.creator_account_id`,
+the same value as `tokens.account_id` in `auth.json`) as the session's creator;
+a session started by another login keeps writing to its own file and is never
+attributed to the current one, and files without a creator fall back to the
+server. When the newest attributed event is fresh, an automatic refresh of the standard
 provider is answered from those windows laid over the last real response
 instead of a `wham/usage` request. A manual refresh, the first read after a
 source change, a stale log, a passed reset time and a response older than the

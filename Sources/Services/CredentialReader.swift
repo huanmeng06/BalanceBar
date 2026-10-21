@@ -8,6 +8,9 @@ struct CredentialProcessResult {
 struct CodexAccountProfile: Equatable {
     let email: String?
     let planType: String?
+    /// The ChatGPT account id (`tokens.account_id`); the rollout logs name the account that created a session
+    /// with the same value, which is how a log is attributed to a login. Never shown, never logged.
+    var accountID: String? = nil
 }
 
 protocol CredentialFileReading {
@@ -153,9 +156,15 @@ struct CredentialReader {
                 ?? authClaims?["chatgpt_plan_type"] as? String
         )?
             .trimmingCharacters(in: .whitespacesAndNewlines)
+        let accountID = (
+            tokens["account_id"] as? String
+                ?? authClaims?["chatgpt_account_id"] as? String
+        )?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         return CodexAccountProfile(
             email: email,
-            planType: planType?.isEmpty == true ? nil : planType
+            planType: planType?.isEmpty == true ? nil : planType,
+            accountID: accountID?.isEmpty == true ? nil : accountID
         )
     }
 

@@ -528,14 +528,15 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         let fiveHourReset = Int(base.timeIntervalSince1970) + 10_000
         let sevenDayReset = Int(base.timeIntervalSince1970) + 400_000
         let event = "{\"timestamp\":\"\(stamp.string(from: base.addingTimeInterval(-10)))\",\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":null,\"rate_limits\":{\"primary\":{\"used_percent\":35,\"window_minutes\":300,\"resets_at\":\(fiveHourReset)},\"secondary\":{\"used_percent\":15,\"window_minutes\":10080,\"resets_at\":\(sevenDayReset)}}}}\n"
-        try Data(event.utf8).write(to: sessions.appendingPathComponent("rollout-a.jsonl"))
+        let sessionMeta = "{\"timestamp\":\"\(stamp.string(from: base.addingTimeInterval(-60)))\",\"type\":\"session_meta\",\"payload\":{\"creator_account_id\":\"acct-1\"}}\n"
+        try Data((sessionMeta + event).utf8).write(to: sessions.appendingPathComponent("rollout-a.jsonl"))
         let identity = CodexAccountIdentityProvider(
-            readProfile: { CodexAccountProfile(email: "me@example.com", planType: "plus") },
+            readProfile: { CodexAccountProfile(email: "me@example.com", planType: "plus", accountID: "acct-1") },
             refreshInterval: 1, now: { clock.now })
         let source = CodexRolloutSource(
             sessionsDirectory: temporaryDirectoryURL.appendingPathComponent("rollouts/sessions"),
             accountProvider: identity, configuration: CodexRolloutConfiguration(maximumFileAge: .infinity), now: { clock.now },
-            attributionStartOverride: .distantPast)
+            currentAccountID: { [identity] in identity.accountID })
         let local = CodexLocalQuota(identity: identity, source: source,
             stateDirectory: temporaryDirectoryURL.appendingPathComponent("codex-state"), now: { clock.now })
         defer { local.stop() }
