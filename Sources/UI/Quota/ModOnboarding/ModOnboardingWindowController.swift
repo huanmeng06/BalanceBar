@@ -49,8 +49,10 @@ final class ModOnboardingWindowController: NSObject, NSWindowDelegate {
         let wasVisible = isVisible
         let panel = prepare()
         if !wasVisible { panel.center() }
+        // A non-activating panel takes the keyboard without activating the whole app, so the main window
+        // (when open behind other apps) is not raised along with it.
         panel.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        panel.orderFrontRegardless()
     }
 
     func close() {
@@ -60,7 +62,7 @@ final class ModOnboardingWindowController: NSObject, NSWindowDelegate {
     private func makePanel() -> ModOnboardingPanel {
         let panel = ModOnboardingPanel(
             contentRect: NSRect(x: 0, y: 0, width: ModOnboardingPanelView.minimumWidth, height: 400),
-            styleMask: [.titled, .closable], backing: .buffered, defer: false)
+            styleMask: [.titled, .closable, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.titlebarAppearsTransparent = true
         panel.titleVisibility = .hidden
         panel.isMovableByWindowBackground = true
