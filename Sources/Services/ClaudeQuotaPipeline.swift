@@ -204,6 +204,8 @@ final class ClaudeQuotaPipeline {
     private let engineBox = ClaudeMergeEngineBox()
     private let realtimeFreshnessWindow: TimeInterval
     private let queue = DispatchQueue(label: "BalanceBar.ClaudeQuotaPipeline", qos: .utility)
+    /// Identifies the newest scheduled "real-time reading expired" republish; older ones do nothing.
+    private var expiryToken = UUID()
     private let lock = NSLock()
 
     private var scheduler: FetchScheduler!
@@ -539,6 +541,7 @@ final class ClaudeQuotaPipeline {
         let shown = failure == nil ? model : QuotaDisplayModel(
             windows: model.windows, isEstimated: model.isEstimated, state: .error, hoverTextKey: model.hoverTextKey)
         let source: StatusSlotSource = realtime.isFresh(within: realtimeFreshnessWindow) ? .realtime : .official
+        if source == .realtime { scheduleRealtimeExpiryRepublish(date: date) }
         let status = StatusSlotState.resolve(
             model: shown,
             context: StatusSlotContext(
@@ -559,6 +562,19 @@ final class ClaudeQuotaPipeline {
             return true
         }
         if changed { handler?(next) }
+    }
+
+    /// The status slot shows "Live" only while the reading is fresh, but nothing else changes when it goes stale:
+    /// publish once more just after it expires so the card stops claiming "Live".
+    private func scheduleRealtimeExpiryRepublish(date: Date) {
+        guard let at = realtime.lastTrustedRealtimeObservationAt else { return }
+        let remaining = max(0, realtimeFreshnessWindow - date.timeIntervalSince(at))
+        let token = UUID()
+        lock.withLock { expiryToken = token }
+        queue.asyncAfter(deadline: .now() + remaining + 0.25) { [weak self] in
+            guard let self, self.lock.withLock({ self.expiryToken }) == token else { return }
+            self.publish()
+        }
     }
 
     // MARK: - Pure helpers

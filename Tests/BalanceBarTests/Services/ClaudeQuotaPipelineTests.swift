@@ -149,6 +149,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
 
     private func makePipeline(
         reader configurationReader: AccountConfigurationReading = DefaultAccountConfigurationReader(),
+        realtimeFreshness: TimeInterval? = nil,
         realtimeSources: [QuotaSource] = [],
         calibrationIntervalCap: @escaping () -> TimeInterval? = { nil }
     ) -> ClaudeQuotaPipeline {
@@ -158,6 +159,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
             workQueue: identityQueue, coalescingInterval: 0.02, now: { [clock] in clock!.now })
         var configuration = FetchSchedulerConfiguration()
         configuration.coalescingWindow = 0.02
+        if let realtimeFreshness { configuration.realtimeSourceFreshness = realtimeFreshness }
         let pipeline = ClaudeQuotaPipeline(
             client: official, identity: identity, identityQueue: identityQueue,
             stateDirectory: directory.appendingPathComponent("state", isDirectory: true),
@@ -483,6 +485,20 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
         clock.advance(by: 200)
         return pipeline
+    }
+
+    func testTheLiveLabelEndsWhenTheReadingGoesStaleWithoutAnyOtherEvent() throws {
+        let source = ManualRealtimeSource()
+        let pipeline = makePipeline(realtimeFreshness: 0.3, realtimeSources: [source])
+        pipeline.requestFetch(reason: .initial)
+        _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+        clock.advance(by: 200)
+        source.emit(hudObservation(used: 27, pipeline: pipeline))
+        let live = try XCTUnwrap(waitForState(pipeline) { $0.windows.first?.remaining == 73 })
+        XCTAssertEqual(live.status, .realtime())
+        clock.advance(by: 1)   // the reading is now older than the freshness window
+        let stale = try XCTUnwrap(waitForState(pipeline) { $0.status != .realtime() })
+        XCTAssertNotEqual(stale.status, .realtime(), "the card must not keep claiming a live reading")
     }
 
     func testFreshHUDReadingSuppressesAutomaticRequestsAndShowsTheRealtimeStatus() throws {
