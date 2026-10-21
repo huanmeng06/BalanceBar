@@ -182,6 +182,11 @@ final class ModOnboardingCoordinator {
         preference.onChange = { [weak self] in self?.notify() }
         controller.silenceCheck = { [weak self] in self?.enhancementStatus() == .enabledButSilent }
         controller.onInstallFinished = { [weak self] result in
+            switch result {
+            case .success: SwitchLog.write("mod install finished; result=success", category: "mod.install")
+            case let .failure(failure):
+                SwitchLog.write("mod install finished; result=failure; \(failure.summary)", level: .warning, category: "mod.install")
+            }
             guard let self, case .success = result else { return }
             // The registry now lists the plugin: pick up the install time that starts the silence clock.
             self.refreshEnvironment(force: true)
