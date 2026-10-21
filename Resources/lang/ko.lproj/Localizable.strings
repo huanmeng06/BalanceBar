@@ -640,7 +640,7 @@
 "refresh.help.row_actual" = "Claude 공식, 실제";
 "refresh.help.row_actual_hint" = "약 3~6분에 한 번";
 "refresh.help.row_mod_hint" = "답변이 끝날 때마다";
-"refresh.help.line1" = "공식 API에는 제한이 있어 선택한 빈도는 상한일 뿐입니다. 읽을 때마다 ‘사용 가능 횟수’를 쓰며(3분마다 1개 회복) 자동 읽기는 2개, ‘지금 새로고침’은 1개라 연달아 누르면 오히려 느려집니다.";
+"refresh.help.line1" = "공식 API에는 제한이 있어 선택한 빈도는 ‘이만큼 빨랐으면’ 하는 희망일 뿐입니다. 읽을 때마다 ‘사용 가능 횟수’를 쓰며(3분마다 1개 회복) 자동 읽기는 2개, ‘지금 새로고침’은 1개라 연달아 누르면 오히려 느려집니다.";
 "refresh.status.phase_reading" = "공식 API에서 할당량을 읽는 중…";
 "refresh.status.phase_login" = "로그인이 만료되었습니다. 터미널에서 claude를 한 번 실행하세요";
 "refresh.status.phase_rate" = "공식 API가 잠시 쉬라고 합니다(제한). %1$@ 더 기다려야 합니다";
@@ -654,7 +654,7 @@
 "refresh.status.tokens_label" = "사용 가능 횟수";
 "refresh.status.mod_label" = "Mod 데이터";
 "refresh.status.mod_value" = "%1$@ 전";
-"refresh.help.mod_footer" = "Mod를 설치하면 답변마다 바로 갱신되며 이 제한을 받지 않습니다";
+"refresh.help.mod_footer" = "Mod가 있으면 답변마다 바로 갱신";
 "refresh.help.mod_install" = "설치하기";
 "refresh.help.row_mod_now" = "지금(Mod)";
 "refresh.help.expand" = "평소에도 빠르지 않은 이유는?";

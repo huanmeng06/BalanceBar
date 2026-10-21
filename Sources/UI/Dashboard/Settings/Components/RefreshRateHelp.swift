@@ -89,6 +89,32 @@ final class RefreshTokenDotsView: NSView {
     }
 }
 
+/// A thin bar in the state's color that fills up towards the next official read.
+final class RefreshProgressBarView: NSView {
+    var progress: Double = 0 { didSet { if progress != oldValue { needsDisplay = true } } }
+    var tint: NSColor = .systemGreen { didSet { if tint != oldValue { needsDisplay = true } } }
+
+    init() {
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+        heightAnchor.constraint(equalToConstant: 4).isActive = true
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override func draw(_ dirtyRect: NSRect) {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            tint.withAlphaComponent(0.2).setFill()
+            NSBezierPath(roundedRect: bounds, xRadius: 2, yRadius: 2).fill()
+            let filled = bounds.width * CGFloat(min(1, max(0, progress)))
+            guard filled > 0 else { return }
+            tint.setFill()
+            NSBezierPath(roundedRect: NSRect(x: 0, y: 0, width: max(filled, bounds.height), height: bounds.height),
+                         xRadius: 2, yRadius: 2).fill()
+        }
+    }
+}
+
 /// How the popover treats the current state of the official read.
 enum RefreshHelpMood: Equatable {
     /// Waiting, ready or reading, no Mod data in play.
@@ -108,26 +134,35 @@ enum RefreshHelpMood: Equatable {
 }
 
 /// The status card: what is holding the next official read back, a bar that fills while it waits, when it was last
-/// read, how many reads are available and how old the Mod's data is. Refreshes itself every second on screen.
+/// read and how many reads are available (one line), and how old the Mod's data is once it went stale. Refreshes
+/// itself every second on screen.
 final class RefreshRateLiveStatusView: NSView {
+    /// What to run in a terminal to sign in again.
+    static let loginCommand = "claude"
+
     private let provider: () -> ClaudeRefreshStatus?
     private let language: AppLanguage
     private let now: () -> Date
     private let dot = NSView()
     private let sentence = NSTextField(wrappingLabelWithString: "")
-    private let bar = NSProgressIndicator()
+    private let bar = RefreshProgressBarView()
     private let lastReadValue = NSTextField(labelWithString: "")
     private let tokenDots = RefreshTokenDotsView(total: QuotaConstants.requestTokenBucketCapacity)
     private let modValue = NSTextField(labelWithString: "")
-    private var metaRows: [NSView] = []
+    private let copyButton = NSButton()
+    private let copyRow = NSStackView()
+    private var meta = NSStackView()
     private var modRow = NSView()
     private var timer: Timer?
+    private var copiedResetTimer: Timer?
     private var tint = NSColor.systemGreen
     private(set) var phase: ClaudeRefreshStatus.Phase = .ready
-    /// Whether the last-read and reads-available rows are shown (hidden while something is wrong).
-    var showsDetails: Bool { !(metaRows.first?.isHidden ?? true) }
-    /// Called when the kind of state changes (not on every tick), so the popover can re-arrange itself.
-    var onMoodChange: ((RefreshHelpMood) -> Void)?
+    /// Whether the last-read / reads-available line is shown (hidden while something is wrong).
+    var showsDetails: Bool { !meta.isHidden }
+    var showsCopyCommand: Bool { !copyRow.isHidden }
+    var showsModAge: Bool { !modRow.isHidden }
+    /// Called after every update, so the popover can re-arrange itself and follow the card's height.
+    var onUpdate: (() -> Void)?
     private(set) var mood: RefreshHelpMood = .normal
     /// The Mod has delivered at least once (fresh or not): it is installed, so there is nothing to pitch.
     private(set) var hasModData = false
@@ -158,13 +193,17 @@ final class RefreshRateLiveStatusView: NSView {
         header.spacing = 8
         dot.topAnchor.constraint(equalTo: sentence.topAnchor, constant: 4).isActive = true
 
-        bar.style = .bar
-        bar.isIndeterminate = false
-        bar.minValue = 0
-        bar.maxValue = 1
-        bar.controlSize = .small
-        bar.translatesAutoresizingMaskIntoConstraints = false
         bar.widthAnchor.constraint(equalToConstant: inner).isActive = true
+
+        copyButton.title = localize(.keyModFailureCopy)
+        copyButton.image = NSImage(systemSymbolName: "doc.on.doc", accessibilityDescription: nil)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 10, weight: .regular))
+        copyButton.imagePosition = .imageLeading
+        copyButton.bezelStyle = .rounded
+        copyButton.controlSize = .small
+        copyButton.font = .systemFont(ofSize: 11)
+        copyButton.target = self
+        copyButton.action = #selector(copyLoginCommand)
 
         func caption(_ text: String) -> NSTextField {
             let field = NSTextField(labelWithString: text)
@@ -186,15 +225,36 @@ final class RefreshRateLiveStatusView: NSView {
             field.lineBreakMode = .byClipping
             field.setContentCompressionResistancePriority(.required, for: .horizontal)
         }
-        let lastRead = row([caption(localize(.keyRefreshStatusLastRead)), lastReadValue])
-        let reads = row([caption(localize(.keyRefreshStatusTokensLabel)), tokenDots])
+        let lastReadCaption = caption(localize(.keyRefreshStatusLastRead))
+        let readsCaption = caption(localize(.keyRefreshStatusTokensLabel))
+        let lastRead = row([lastReadCaption, lastReadValue])
+        let reads = row([readsCaption, tokenDots])
+        // One line when it fits ("Last read 15:02 (1 min ago) · Available reads ●○○"), otherwise two.
+        let separator = caption("·")
+        let sample = NSTextField(labelWithString: tr(.keyRefreshStatusLastReadValue, arguments: ["88:88", "59 min"], language: language))
+        sample.font = lastReadValue.font
+        let oneLine = lastReadCaption.fittingSize.width + sample.fittingSize.width + separator.fittingSize.width
+            + readsCaption.fittingSize.width + CGFloat(QuotaConstants.requestTokenBucketCapacity) * 14 + 5 * 8
+        if oneLine <= inner {
+            meta = row([lastRead, separator, reads])
+        } else {
+            meta = NSStackView(views: [lastRead, reads])
+            meta.orientation = .vertical
+            meta.alignment = .leading
+            meta.spacing = 6
+        }
         modRow = row([caption(localize(.keyRefreshStatusModLabel)), modValue])
-        metaRows = [lastRead, reads, modRow]
 
-        let stack = NSStackView(views: [header, bar, lastRead, reads, modRow])
+        // Under the sentence, not under the dot.
+        copyRow.setViews([copyButton], in: .leading)
+        copyRow.edgeInsets = NSEdgeInsets(top: 0, left: 16, bottom: 0, right: 0)
+        copyRow.isHidden = true
+
+        let stack = NSStackView(views: [header, copyRow, bar, meta, modRow])
         stack.orientation = .vertical
         stack.alignment = .leading
-        stack.spacing = 6
+        stack.spacing = 8
+        stack.setCustomSpacing(10, after: header)
         stack.edgeInsets = NSEdgeInsets(top: padding, left: padding, bottom: padding, right: padding)
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
@@ -225,7 +285,10 @@ final class RefreshRateLiveStatusView: NSView {
         applyTint()
     }
 
-    deinit { timer?.invalidate() }
+    deinit {
+        timer?.invalidate()
+        copiedResetTimer?.invalidate()
+    }
 
     private func duration(_ seconds: TimeInterval) -> String {
         let formatter = DateComponentsFormatter()
@@ -237,6 +300,26 @@ final class RefreshRateLiveStatusView: NSView {
         formatter.maximumUnitCount = 2
         formatter.zeroFormattingBehavior = .dropAll
         return formatter.string(from: max(1, seconds.rounded(.up))) ?? "\(Int(seconds))s"
+    }
+
+    /// "15:02" in the language's own short time style (no seconds: the relative age is right next to it).
+    private func clockTime(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = language.formattingLocale
+        formatter.dateStyle = .none
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
+    }
+
+    @objc private func copyLoginCommand() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(Self.loginCommand, forType: .string)
+        copyButton.title = tr(.keyModFailureCopied, language: language)
+        copiedResetTimer?.invalidate()
+        copiedResetTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: false) { [weak self] _ in
+            guard let self else { return }
+            self.copyButton.title = tr(.keyModFailureCopy, language: self.language)
+        }
     }
 
     private func applyTint() {
@@ -263,7 +346,8 @@ final class RefreshRateLiveStatusView: NSView {
             text = localize(.keyRefreshStatusPhaseRate, [duration(remaining)]); tint = .systemRed
         case let .liveFresh(age):
             text = localize(.keyRefreshStatusPhaseLive, [duration(age)]); tint = .systemGreen
-            progress = 1 - age / max(1, status.realtimeFreshnessWindow)
+            // Fills up towards the moment the official endpoint is asked again.
+            progress = age / max(1, status.realtimeFreshnessWindow)
         case let .waitingInterval(remaining, total):
             text = localize(.keyRefreshStatusPhaseInterval, [duration(remaining)]); tint = .systemOrange
             progress = 1 - remaining / max(1, total)
@@ -278,17 +362,20 @@ final class RefreshRateLiveStatusView: NSView {
         sentence.font = .systemFont(ofSize: newMood == .alert ? 13 : 12, weight: .medium)
         applyTint()
         bar.isHidden = progress == nil
-        bar.doubleValue = min(1, max(0, progress ?? 0))
+        bar.tint = tint
+        bar.progress = progress ?? 0
+        copyRow.isHidden = phase != .loginExpired
         // The one thing to read when something is wrong; the rest only distracts.
-        metaRows.forEach { $0.isHidden = newMood == .alert }
+        meta.isHidden = newMood == .alert
         if let last = status.scheduler.lastSuccessAt ?? status.scheduler.lastDispatchAt {
             lastReadValue.stringValue = localize(.keyRefreshStatusLastReadValue, [
-                StatusSlotAppearance.timeText(last, timeZone: .current), duration(date.timeIntervalSince(last))])
+                clockTime(last), duration(date.timeIntervalSince(last))])
         } else {
             lastReadValue.stringValue = localize(.keyRefreshStatusLastReadNone)
         }
         tokenDots.filled = status.tokensAvailable(at: date)
-        if let realtimeAt = status.realtimeAt, newMood != .alert {
+        // Only once the Mod's data went stale: while it is fresh, the sentence already says how old it is.
+        if let realtimeAt = status.realtimeAt, newMood == .normal {
             modValue.stringValue = localize(.keyRefreshStatusModValue, [duration(max(0, date.timeIntervalSince(realtimeAt)))])
             modRow.isHidden = false
         } else {
@@ -296,12 +383,9 @@ final class RefreshRateLiveStatusView: NSView {
         }
         lastReadValue.invalidateIntrinsicContentSize()
         modValue.invalidateIntrinsicContentSize()
-        let newHasModData = status.realtimeAt != nil
-        if newMood != mood || newHasModData != hasModData {
-            mood = newMood
-            hasModData = newHasModData
-            onMoodChange?(newMood)
-        }
+        mood = newMood
+        hasModData = status.realtimeAt != nil
+        onUpdate?()
     }
 }
 
@@ -402,23 +486,31 @@ final class RefreshRateHelpContentView: NSView {
         expandButton.action = #selector(toggleExpanded)
         expandButton.isHidden = true
 
-        // ③ The way to the Mod, only while there is none.
+        // ③ The way to the Mod, only while there is none: one quiet line with a link, green like the Mod's dots.
         let bolt = NSImageView()
         bolt.image = NSImage(systemSymbolName: "bolt.fill", accessibilityDescription: nil)?
-            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 12, weight: .semibold))
-        bolt.contentTintColor = .controlAccentColor
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 11, weight: .semibold))
+        bolt.contentTintColor = .systemGreen
         bolt.setContentHuggingPriority(.required, for: .horizontal)
-        let pitch = text(localize(.keyRefreshHelpModFooter), size: 12, color: .labelColor)
-        pitch.preferredMaxLayoutWidth = contentWidth - 24 - 70
-        let install = NSButton(title: localize(.keyRefreshHelpModInstall), target: self, action: #selector(installTapped))
-        install.bezelStyle = .rounded
-        install.controlSize = .small
+        let install = NSButton(title: "", target: self, action: #selector(installTapped))
+        install.attributedTitle = NSAttributedString(string: localize(.keyRefreshHelpModInstall), attributes: [
+            .font: NSFont.systemFont(ofSize: 12, weight: .medium), .foregroundColor: NSColor.linkColor])
+        install.image = NSImage(systemSymbolName: "chevron.right", accessibilityDescription: nil)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 9, weight: .semibold))
+        install.imagePosition = .imageTrailing
+        install.imageHugsTitle = true
+        install.contentTintColor = .linkColor
+        install.isBordered = false
         install.keyEquivalent = ""
         install.setContentHuggingPriority(.required, for: .horizontal)
+        install.setContentCompressionResistancePriority(.required, for: .horizontal)
+        let pitch = text(localize(.keyRefreshHelpModFooter), size: 12, color: .labelColor)
+        pitch.preferredMaxLayoutWidth = contentWidth - bolt.fittingSize.width - install.fittingSize.width - 2 * 8
         let pitchRow = NSStackView(views: [bolt, pitch, install])
         pitchRow.orientation = .horizontal
-        pitchRow.alignment = .centerY
+        pitchRow.alignment = .firstBaseline
         pitchRow.spacing = 8
+        pitchRow.widthAnchor.constraint(equalToConstant: contentWidth).isActive = true
         footer.setViews([NSBox.separator(width: contentWidth), pitchRow], in: .top)
         footer.orientation = .vertical
         footer.alignment = .leading
@@ -441,7 +533,7 @@ final class RefreshRateHelpContentView: NSView {
             stack.bottomAnchor.constraint(equalTo: bottomAnchor),
             widthAnchor.constraint(equalToConstant: Self.width),
         ])
-        statusView?.onMoodChange = { [weak self] mood in self?.arrange(for: mood, notify: true) }
+        statusView?.onUpdate = { [weak self] in self?.arrange(for: self?.statusView?.mood ?? .normal, notify: true) }
         arrange(for: statusView?.mood ?? .normal, notify: false)
     }
 
@@ -450,7 +542,10 @@ final class RefreshRateHelpContentView: NSView {
     /// Shows what the current state calls for: the explanation (folded away for a problem), the Mod line and the pitch.
     private func arrange(for mood: RefreshHelpMood, notify: Bool) {
         self.mood = mood
-        if mood != .alert { expanded = false }
+        if mood != .alert, expanded {
+            expanded = false
+            updateExpandChevron()
+        }
         let folded = mood == .alert && !expanded
         expandButton.isHidden = mood != .alert
         explanation.isHidden = folded
@@ -463,16 +558,20 @@ final class RefreshRateHelpContentView: NSView {
     private func resize(notify: Bool) {
         layoutSubtreeIfNeeded()
         let size = NSSize(width: Self.width, height: fittingSize.height)
+        guard size != frame.size else { return }
         setFrameSize(size)
         if notify { onSizeChange?(size) }
+    }
+
+    private func updateExpandChevron() {
+        expandButton.image = NSImage(systemSymbolName: expanded ? "chevron.down" : "chevron.right", accessibilityDescription: nil)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 9, weight: .semibold))
     }
 
     @objc private func toggleExpanded() {
         expanded.toggle()
         explanation.isHidden = mood == .alert && !expanded
-        let name = expanded ? "chevron.down" : "chevron.right"
-        expandButton.image = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
-            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 9, weight: .semibold))
+        updateExpandChevron()
         resize(notify: true)
     }
 
@@ -484,6 +583,9 @@ final class RefreshRateHelpContentView: NSView {
     var isFooterVisible: Bool { !footer.isHidden }
     var isModTimelineVisible: Bool { !modTimeline.isHidden }
     var isMetaVisible: Bool { statusView?.showsDetails ?? false }
+    var isCopyCommandVisible: Bool { statusView?.showsCopyCommand ?? false }
+    var isModAgeVisible: Bool { statusView?.showsModAge ?? false }
+    func refreshStatusForTesting() { statusView?.update() }
     func toggleExplanationForTesting() { toggleExpanded() }
     func tapInstallForTesting() { installTapped() }
 }

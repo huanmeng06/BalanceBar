@@ -640,7 +640,7 @@
 "refresh.help.row_actual" = "Claude official, actual";
 "refresh.help.row_actual_hint" = "about once every 3–6 min";
 "refresh.help.row_mod_hint" = "updates after every reply";
-"refresh.help.line1" = "The official endpoint rate-limits, so the frequency you pick is only an upper wish. Each read uses “available reads” (1 comes back every 3 min): an automatic read needs 2, “Refresh Now” needs 1, so clicking it repeatedly only slows things down.";
+"refresh.help.line1" = "The official endpoint rate-limits, so the frequency you pick is only how fast you would like it. Each read uses one of the “available reads” (1 comes back every 3 min): an automatic read needs 2, “Refresh Now” needs 1, so clicking it repeatedly only slows things down.";
 "refresh.status.phase_reading" = "Asking the official endpoint for your quota…";
 "refresh.status.phase_login" = "Sign-in expired: run claude once in a terminal to restore it";
 "refresh.status.phase_rate" = "The official endpoint asked us to slow down (rate limit); wait %1$@";
@@ -654,7 +654,7 @@
 "refresh.status.tokens_label" = "Available reads";
 "refresh.status.mod_label" = "Mod data";
 "refresh.status.mod_value" = "%1$@ ago";
-"refresh.help.mod_footer" = "With the Mod, every reply updates it right away, without this limit";
+"refresh.help.mod_footer" = "With the Mod: updates after every reply";
 "refresh.help.mod_install" = "Install";
 "refresh.help.row_mod_now" = "You, now (Mod)";
 "refresh.help.expand" = "Why is it slow even normally?";

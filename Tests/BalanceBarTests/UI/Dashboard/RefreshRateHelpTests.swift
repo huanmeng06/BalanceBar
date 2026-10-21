@@ -6,14 +6,14 @@ import XCTest
 final class RefreshRateHelpTests: XCTestCase {
     private let base = Date(timeIntervalSince1970: 1_800_000_000)
 
-    private enum Sample { case waiting, live, staleMod, loginExpired }
+    private enum Sample { case waiting, reading, live, staleMod, loginExpired }
 
     private func status(_ sample: Sample) -> ClaudeRefreshStatus {
         ClaudeRefreshStatus(
             scheduler: FetchSchedulerStatus(
                 tokens: 1, tokenCapacity: 3, tokenRefillInterval: 180, nextTokenAt: base.addingTimeInterval(100), automaticTokenCost: 2,
                 lastDispatchAt: base.addingTimeInterval(-60), automaticMinimumInterval: 180, lastSuccessAt: base.addingTimeInterval(-60),
-                cooldownRemaining: 0, isUnauthorizedPaused: sample == .loginExpired, isBusy: false, at: base),
+                cooldownRemaining: 0, isUnauthorizedPaused: sample == .loginExpired, isBusy: sample == .reading, at: base),
             realtimeAt: {
                 switch sample {
                 case .live: return base.addingTimeInterval(-30)
@@ -28,6 +28,11 @@ final class RefreshRateHelpTests: XCTestCase {
         RefreshRateHelpContentView(
             selectedInterval: 60, language: language, now: { self.base },
             status: sample.map { sample in { self.status(sample) } }, onInstall: onInstall)
+    }
+
+    /// A popover whose state can be changed between ticks.
+    private func content(following sample: @escaping () -> Sample) -> RefreshRateHelpContentView {
+        RefreshRateHelpContentView(selectedInterval: 60, language: .english, now: { self.base }, status: { self.status(sample()) })
     }
 
     func testTheExplanationAndTheModPitchAreWordedInEveryLanguage() {
@@ -72,6 +77,48 @@ final class RefreshRateHelpTests: XCTestCase {
         let view = content(.staleMod)
         XCTAssertFalse(view.isFooterVisible)
         XCTAssertFalse(view.isModTimelineVisible)
+        XCTAssertTrue(view.isModAgeVisible, "how old the Mod's data is, since the sentence no longer says it")
+    }
+
+    func testFreshModDataIsNotRepeatedBelowTheSentence() {
+        let view = content(.live)
+        XCTAssertFalse(view.isModAgeVisible, "the sentence already says how old it is")
+    }
+
+    func testOnlyAnExpiredSignInOffersToCopyTheCommand() {
+        XCTAssertTrue(content(.loginExpired).isCopyCommandVisible)
+        for sample in [Sample.waiting, .reading, .live, .staleMod] {
+            XCTAssertFalse(content(sample).isCopyCommandVisible, "\(sample)")
+        }
+        XCTAssertEqual(RefreshRateLiveStatusView.loginCommand, "claude")
+    }
+
+    func testThePopoverFollowsTheStateAsItChanges() {
+        var sample = Sample.loginExpired
+        let view = content(following: { sample })
+        var sizes: [NSSize] = []
+        view.onSizeChange = { sizes.append($0) }
+        view.toggleExplanationForTesting()
+        XCTAssertTrue(view.isExplanationVisible)
+
+        sample = .waiting
+        view.refreshStatusForTesting()
+        XCTAssertTrue(view.isExplanationVisible)
+        XCTAssertTrue(view.isMetaVisible)
+        XCTAssertFalse(view.isCopyCommandVisible)
+        let waiting = view.frame.height
+
+        sample = .reading
+        view.refreshStatusForTesting()
+        XCTAssertLessThan(view.frame.height, waiting, "no bar while reading, and the popover shrinks with it")
+        XCTAssertEqual(sizes.last, view.frame.size)
+
+        sample = .loginExpired
+        view.refreshStatusForTesting()
+        XCTAssertFalse(view.isExplanationVisible, "folded again the next time something goes wrong")
+        let count = sizes.count
+        view.refreshStatusForTesting()
+        XCTAssertEqual(sizes.count, count, "an unchanged tick does not resize the popover")
     }
 
     func testAProblemShowsOnlyThePointAndFoldsTheExplanationAway() {
@@ -114,7 +161,7 @@ final class RefreshRateHelpTests: XCTestCase {
         guard let directory = ProcessInfo.processInfo.environment["BB_HELP_RENDER_DIR"] else { return }
         try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
         for language in [AppLanguage.simplifiedChinese, .english, .russian] {
-            for (sampleName, sample) in [("waiting", Sample.waiting), ("live", .live), ("login", .loginExpired)] {
+            for (sampleName, sample) in [("waiting", Sample.waiting), ("live", .live), ("stale", .staleMod), ("login", .loginExpired)] {
                 for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
                     let view = content(sample, language: language)
                     view.appearance = NSAppearance(named: appearance)

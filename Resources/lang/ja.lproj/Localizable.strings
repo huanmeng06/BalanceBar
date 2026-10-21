@@ -640,7 +640,7 @@
 "refresh.help.row_actual" = "Claude 公式の実際";
 "refresh.help.row_actual_hint" = "約 3〜6 分に 1 回";
 "refresh.help.row_mod_hint" = "返信のたびに更新";
-"refresh.help.line1" = "公式 API には制限があり、選んだ頻度はあくまで上限です。取得のたびに「取得できる回数」を使います（3 分ごとに 1 回復）。自動取得は 2、「今すぐ更新」は 1 で、連打するとかえって遅くなります。";
+"refresh.help.line1" = "公式 API には制限があり、選んだ頻度は「このくらい速いといい」という希望にすぎません。取得のたびに「取得できる回数」を使います（3 分ごとに 1 回復）。自動取得は 2、「今すぐ更新」は 1 で、連打するとかえって遅くなります。";
 "refresh.status.phase_reading" = "公式から残量を取得中…";
 "refresh.status.phase_login" = "ログインの期限切れ：ターミナルで claude を一度実行してください";
 "refresh.status.phase_rate" = "公式から待つよう求められています（制限）。あと %1$@";
@@ -654,7 +654,7 @@
 "refresh.status.tokens_label" = "取得できる回数";
 "refresh.status.mod_label" = "Mod データ";
 "refresh.status.mod_value" = "%1$@前";
-"refresh.help.mod_footer" = "Mod があれば返信のたびにすぐ更新され、この制限を受けません";
+"refresh.help.mod_footer" = "Mod があれば返信のたびにすぐ更新";
 "refresh.help.mod_install" = "インストール";
 "refresh.help.row_mod_now" = "いま（Mod）";
 "refresh.help.expand" = "普段も速くならないのはなぜ？";

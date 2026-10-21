@@ -640,7 +640,7 @@
 "refresh.help.row_actual" = "Claude oficial, real";
 "refresh.help.row_actual_hint" = "una vez cada 3–6 min";
 "refresh.help.row_mod_hint" = "tras cada respuesta";
-"refresh.help.line1" = "El endpoint oficial limita las peticiones, así que la frecuencia elegida es solo un tope. Cada lectura gasta «lecturas disponibles» (se repone 1 cada 3 min): la automática necesita 2 y «Actualizar ahora» 1; pulsarlo varias veces solo ralentiza.";
+"refresh.help.line1" = "El endpoint oficial limita las peticiones, así que la frecuencia elegida es solo un deseo. Cada lectura gasta «lecturas disponibles» (se repone 1 cada 3 min): la automática necesita 2 y «Actualizar ahora» 1; pulsarlo varias veces solo ralentiza.";
 "refresh.status.phase_reading" = "Consultando el endpoint oficial…";
 "refresh.status.phase_login" = "Sesión caducada: ejecuta claude una vez en una terminal";
 "refresh.status.phase_rate" = "El endpoint oficial nos pide esperar (límite); faltan %1$@";
@@ -654,7 +654,7 @@
 "refresh.status.tokens_label" = "Lecturas disponibles";
 "refresh.status.mod_label" = "Datos del Mod";
 "refresh.status.mod_value" = "hace %1$@";
-"refresh.help.mod_footer" = "Con el Mod se actualiza tras cada respuesta, sin este límite";
+"refresh.help.mod_footer" = "Con el Mod: se actualiza tras cada respuesta";
 "refresh.help.mod_install" = "Instalar";
 "refresh.help.row_mod_now" = "Tú ahora (Mod)";
 "refresh.help.expand" = "¿Por qué tampoco es más rápido normalmente?";

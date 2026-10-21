@@ -640,7 +640,7 @@
 "refresh.help.row_actual" = "Claude offiziell, tatsächlich";
 "refresh.help.row_actual_hint" = "etwa alle 3–6 Min.";
 "refresh.help.row_mod_hint" = "nach jeder Antwort";
-"refresh.help.line1" = "Die offizielle Schnittstelle begrenzt Anfragen, die gewählte Frequenz ist nur eine Obergrenze. Jedes Lesen verbraucht „verfügbare Lesungen“ (alle 3 Min. kommt 1 dazu): automatisch 2, „Jetzt aktualisieren“ 1 – wiederholtes Klicken bremst nur.";
+"refresh.help.line1" = "Die offizielle Schnittstelle begrenzt Anfragen, die gewählte Frequenz ist nur ein Wunsch. Jedes Lesen verbraucht „verfügbare Lesungen“ (alle 3 Min. kommt 1 dazu): automatisch 2, „Jetzt aktualisieren“ 1 – wiederholtes Klicken bremst nur.";
 "refresh.status.phase_reading" = "Frage gerade die offizielle Schnittstelle ab …";
 "refresh.status.phase_login" = "Anmeldung abgelaufen: Führe einmal claude im Terminal aus";
 "refresh.status.phase_rate" = "Die offizielle Schnittstelle bremst uns (Limit); noch %1$@ warten";
@@ -654,7 +654,7 @@
 "refresh.status.tokens_label" = "Verfügbare Lesungen";
 "refresh.status.mod_label" = "Mod-Daten";
 "refresh.status.mod_value" = "vor %1$@";
-"refresh.help.mod_footer" = "Mit dem Mod aktualisiert jede Antwort sofort, ohne diese Grenze";
+"refresh.help.mod_footer" = "Mit dem Mod: Update nach jeder Antwort";
 "refresh.help.mod_install" = "Installieren";
 "refresh.help.row_mod_now" = "Jetzt bei dir (Mod)";
 "refresh.help.expand" = "Warum ist es auch sonst nicht schneller?";
