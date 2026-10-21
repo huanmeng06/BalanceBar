@@ -602,7 +602,6 @@
 "mod.settings.action.install" = "Installa con un clic";
 "mod.settings.action.copy" = "Copia i comandi";
 "mod.settings.prompt_toggle" = "Mostra il suggerimento di installazione nel menu";
-"mod.menu.data_sources" = "Origini dati";
 "mod.prompt.why" = "Perché?";
 "mod.panel.subtitle" = "BalanceBar Mod è un piccolo plugin eseguito in Claude Code che comunica a BalanceBar la quota ufficiale dopo ogni risposta.";
 "mod.panel.later" = "Più tardi";
@@ -636,3 +635,4 @@
 "mod.settings.status.last_data" = "Ultimi dati: %1$@";
 "mod.settings.status.silent_hint" = "Avvia una nuova sessione o esegui /reload-plugins in una già aperta";
 "mod.settings.status.unsupported_detail" = "Attuale %1$@; serve la v2.1.287 o successiva";
+"quota.status.realtime_mod" = "Live · Mod";

@@ -602,7 +602,6 @@
 "mod.settings.action.install" = "한 번에 설치";
 "mod.settings.action.copy" = "명령 복사";
 "mod.settings.prompt_toggle" = "메뉴에 설치 안내 표시";
-"mod.menu.data_sources" = "데이터 소스";
 "mod.prompt.why" = "왜 필요한가요?";
 "mod.panel.subtitle" = "BalanceBar Mod는 Claude Code 안에서 동작하는 작은 플러그인으로, 답변이 끝날 때마다 공식 할당량을 BalanceBar에 알려 줍니다.";
 "mod.panel.later" = "나중에";
@@ -636,3 +635,4 @@
 "mod.settings.status.last_data" = "최근 데이터: %1$@";
 "mod.settings.status.silent_hint" = "새 세션을 시작하거나 열려 있는 세션에서 /reload-plugins 를 실행하세요";
 "mod.settings.status.unsupported_detail" = "현재 %1$@. v2.1.287 이상이 필요합니다";
+"quota.status.realtime_mod" = "실시간 · Mod";

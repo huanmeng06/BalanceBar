@@ -602,7 +602,6 @@
 "mod.settings.action.install" = "一键安装";
 "mod.settings.action.copy" = "复制命令";
 "mod.settings.prompt_toggle" = "在菜单中显示安装提示";
-"mod.menu.data_sources" = "数据来源";
 "mod.prompt.why" = "为什么这么做？";
 "mod.panel.subtitle" = "BalanceBar Mod 是运行在 Claude Code 里的小插件，每轮回复后把官方额度告诉 BalanceBar。";
 "mod.panel.later" = "稍后";
@@ -636,3 +635,4 @@
 "mod.settings.status.last_data" = "最新数据：%1$@";
 "mod.settings.status.silent_hint" = "请新开会话，或在已有会话运行 /reload-plugins";
 "mod.settings.status.unsupported_detail" = "当前 %1$@，需要 v2.1.287 或更高版本";
+"quota.status.realtime_mod" = "实时 · Mod";

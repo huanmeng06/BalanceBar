@@ -130,6 +130,7 @@ final class ClaudeRealtimeTracker: RealtimeSourceFreshnessProviding, ManualRefre
     private let lock = NSLock()
     private var acceptedAt: Date?
     private var acceptedEpoch: AccountEpoch?
+    private var acceptedSourceID: String?
 
     init(identity: AccountIdentityProviding, now: @escaping () -> Date, resetPassed: @escaping () -> Bool) {
         self.identity = identity
@@ -137,17 +138,22 @@ final class ClaudeRealtimeTracker: RealtimeSourceFreshnessProviding, ManualRefre
         self.resetPassed = resetPassed
     }
 
-    func recordAccepted(at date: Date, epoch: AccountEpoch) {
+    func recordAccepted(at date: Date, epoch: AccountEpoch, sourceID: String? = nil) {
         lock.withLock {
             acceptedAt = date
             acceptedEpoch = epoch
+            acceptedSourceID = sourceID
         }
     }
+
+    /// The source of the newest accepted real-time observation.
+    var latestSourceID: String? { lock.withLock { acceptedSourceID } }
 
     func clear() {
         lock.withLock {
             acceptedAt = nil
             acceptedEpoch = nil
+            acceptedSourceID = nil
         }
     }
 
@@ -391,7 +397,7 @@ final class ClaudeQuotaPipeline {
             // Only a reading the merge rules actually displayed counts as a trusted real-time answer.
             let displayed = engine.currentState.windows[observation.window.rawValue]?.displayed
             let accepted = displayed?.receivedAt == observation.receivedAt && displayed?.source == observation.source
-            if accepted { realtime.recordAccepted(at: now(), epoch: observation.epoch) }
+            if accepted { realtime.recordAccepted(at: now(), epoch: observation.epoch, sourceID: observation.source) }
             self.realtimeObserver?(observation, accepted)
             if let account = identity.accountIdentity {
                 adapter?.update(engine.displayModel, accountScope: Self.accountScope(for: account))
@@ -537,7 +543,9 @@ final class ClaudeQuotaPipeline {
         let source: StatusSlotSource = realtime.isFresh(within: realtimeFreshnessWindow) ? .realtime : .official
         let status = StatusSlotState.resolve(
             model: shown,
-            context: StatusSlotContext(isRefreshing: refreshing, source: source, updatedAt: updatedAt))
+            context: StatusSlotContext(
+                isRefreshing: refreshing, source: source, updatedAt: updatedAt,
+                realtimeFromMod: realtime.latestSourceID == ModOnboardingConfig.modSourceID))
         let next = ClaudeQuotaState(
             display: model,
             windows: Self.cardWindows(from: model, now: date),

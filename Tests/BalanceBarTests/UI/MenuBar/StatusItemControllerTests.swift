@@ -3368,31 +3368,26 @@ extension StatusItemControllerTests {
     @MainActor
     func testRealtimeBoostRowFollowsTheMenuInputAndOpensItsDestinations() throws {
         var windowRequests = 0
-        var dataSourceOpens = 0
         let controller = StatusItemController(actions: .init(manualRefresh: {}, openDashboard: {}, openChatGPT: {},
             openCCSwitch: {}, quit: {}, switchProvider: { _ in }, openProviderWebsite: {}, openStatusLink: { _ in },
             iconChanged: { _ in },
-            showModOnboarding: { windowRequests += 1 },
-            openDataSources: { dataSourceOpens += 1 }))
+            showModOnboarding: { windowRequests += 1 }))
         defer { controller.teardown() }
         func input(_ row: ModMenuRow) -> StatusItemController.MenuInput {
             StatusItemController.MenuInput(choices: [], quickSwitchSummaries: [:], activeClient: .claude,
                 openAIAccount: nil, statusLinks: [], showQuickSwitchMenu: true, showOpenChatGPTMenu: false,
                 showOpenCCSwitchMenu: false, showStatusMenu: false, directProviderID: "claude-official", modRow: row)
         }
-        let dataSourcesTitle = tr(.keyModMenuDataSources)
         func promptItem() -> NSMenuItem? { controller.statusMenuForTesting.items.first { $0.view is ModPromptRowView } }
         func item(_ title: String) -> NSMenuItem? { controller.statusMenuForTesting.items.first { $0.title == title } }
 
         controller.start(snapshot: .placeholder, refreshDate: Date(), menuInput: input(.none), settings: makeSettings())
         XCTAssertNil(promptItem())
-        XCTAssertNil(item(dataSourcesTitle))
 
         controller.update(snapshot: .placeholder, refreshDate: Date(), menuInput: input(.prompt(headless: false)), settings: makeSettings())
         let prompt = try XCTUnwrap(promptItem(), "the install-hint row appears")
         let rowView = try XCTUnwrap(prompt.view as? ModPromptRowView)
         XCTAssertEqual(rowView.mainText, ModOnboardingText.appLocalize(.promptRow))
-        XCTAssertNil(item(dataSourcesTitle))
         let items = controller.statusMenuForTesting.items
         let promptIndex = try XCTUnwrap(items.firstIndex(of: prompt))
         XCTAssertEqual(promptIndex, 1, "right under the quota card")
@@ -3408,15 +3403,9 @@ extension StatusItemControllerTests {
         controller.update(snapshot: .placeholder, refreshDate: Date(), menuInput: input(.prompt(headless: true)), settings: makeSettings())
         XCTAssertEqual((promptItem()?.view as? ModPromptRowView)?.mainText, ModOnboardingText.appLocalize(.promptHeadless))
 
-        controller.update(snapshot: .placeholder, refreshDate: Date(), menuInput: input(.dataSources), settings: makeSettings())
-        XCTAssertNil(promptItem(), "dismissing swaps the prompt for the regular data-sources entry")
-        let sources = try XCTUnwrap(item(dataSourcesTitle))
-        XCTAssertNil(sources.attributedTitle, "a regular menu entry, not small gray text")
-        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(sources.action), to: sources.target, from: sources))
-        XCTAssertEqual(dataSourceOpens, 1)
-
         controller.update(snapshot: .placeholder, refreshDate: Date(), menuInput: input(.none), settings: makeSettings())
-        XCTAssertNil(item(dataSourcesTitle))
+        XCTAssertNil(promptItem(), "dismissing removes the prompt and leaves nothing in its place")
+        XCTAssertEqual(controller.statusMenuForTesting.items.filter { $0.title.isEmpty && !$0.isSeparatorItem && $0.view == nil }.count, 0)
     }
 
     @MainActor

@@ -16,17 +16,21 @@ struct StatusSlotContext: Equatable {
     var updatedAt: Date?
     /// Another client is actively using the account; refresh frequency was raised.
     var externalActivityDetected: Bool
+    /// The fresh real-time reading came from the BalanceBar Mod (shown as "Live · Mod").
+    var realtimeFromMod: Bool
 
     init(
         isRefreshing: Bool = false,
         source: StatusSlotSource = .official,
         updatedAt: Date? = nil,
-        externalActivityDetected: Bool = false
+        externalActivityDetected: Bool = false,
+        realtimeFromMod: Bool = false
     ) {
         self.isRefreshing = isRefreshing
         self.source = source
         self.updatedAt = updatedAt
         self.externalActivityDetected = externalActivityDetected
+        self.realtimeFromMod = realtimeFromMod
     }
 }
 
@@ -36,7 +40,7 @@ enum StatusSlotState: Equatable {
     case error(at: Date?)
     case resetPending(at: Date?)
     case estimated(at: Date?)
-    case realtime
+    case realtime(mod: Bool = false)
     case official(at: Date?)
 
     /// Picks the first matching state: refreshing, error, reset pending, estimated, realtime, official.
@@ -48,7 +52,7 @@ enum StatusSlotState: Equatable {
             return .resetPending(at: context.updatedAt)
         }
         if model.isEstimated { return .estimated(at: context.updatedAt) }
-        if context.source == .realtime { return .realtime }
+        if context.source == .realtime { return .realtime(mod: context.realtimeFromMod) }
         return .official(at: context.updatedAt)
     }
 }
@@ -60,6 +64,7 @@ enum StatusSlotState: Equatable {
 enum StatusSlotText: String, CaseIterable {
     case refreshing = "quota.status.refreshing"
     case realtime = "quota.status.realtime"
+    case realtimeMod = "quota.status.realtime_mod"
     case hoverRefreshing = "quota.status.hover.refreshing"
     case hoverError = "quota.status.hover.error"
     case hoverEstimated = "quota.status.hover.estimated"
@@ -75,6 +80,7 @@ enum StatusSlotText: String, CaseIterable {
         switch self {
         case .refreshing: return "刷新中…"
         case .realtime: return "实时"
+        case .realtimeMod: return "实时 · Mod"
         case .hoverRefreshing: return "正在读取最新额度"
         case .hoverError: return "更新失败，显示的是 %@ 的数据"
         case .hoverEstimated: return "根据 %@ 的数据估算，等待官方确认"
@@ -224,8 +230,8 @@ final class StatusSlotView: NSView {
         case let .estimated(at):
             label.stringValue = StatusSlotAppearance.estimatePrefix + time(at)
             label.textColor = .secondaryLabelColor
-        case .realtime:
-            label.stringValue = localize(.realtime)
+        case let .realtime(mod):
+            label.stringValue = localize(mod ? .realtimeMod : .realtime)
             label.textColor = .secondaryLabelColor
             dot.isHidden = false
             dot.layer?.backgroundColor = NSColor.systemGreen.cgColor

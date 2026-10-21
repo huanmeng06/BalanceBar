@@ -6,8 +6,6 @@ enum ModMenuRow: Equatable {
     /// The accent-tinted prompt under the quota card; opens the explanation window. `headless` switches to the
     /// wording for a user whose HUD does not follow headless runs.
     case prompt(headless: Bool)
-    /// "数据来源": the quiet gray entry that replaces the prompt; opens Settings › Advanced.
-    case dataSources
 }
 
 /// The Mod's entry in Claude Code's plugin registry.
@@ -206,7 +204,7 @@ final class ModOnboardingCoordinator {
     /// The menu row for the current state; only meaningful for the official Claude provider.
     func menuRow(isOfficialDirect: Bool) -> ModMenuRow {
         guard isOfficialDirect else { return .none }
-        guard promptVisibility(isOfficialDirect: true).isVisible else { return .dataSources }
+        guard promptVisibility(isOfficialDirect: true).isVisible else { return .none }
         return .prompt(headless: environment.hasHUDSnapshot())
     }
 

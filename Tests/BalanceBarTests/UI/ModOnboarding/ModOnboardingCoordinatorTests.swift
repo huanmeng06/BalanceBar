@@ -88,7 +88,7 @@ final class ModOnboardingCoordinatorTests: XCTestCase {
 
     func testMenuRowFollowsThePromptRules() {
         let coordinator = makeCoordinator()
-        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .dataSources,
+        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .none,
                        "an undetected Claude Code version keeps the prompt hidden")
         XCTAssertEqual(coordinator.menuRow(isOfficialDirect: false), .none)
 
@@ -98,7 +98,7 @@ final class ModOnboardingCoordinatorTests: XCTestCase {
         fake.record = ModInstallRecord(installedAt: start)
         refresh(coordinator)
         coordinator.recordObservation(observation(source: ModOnboardingConfig.modSourceID, observedAt: clock.now))
-        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .dataSources, "Mod data within seven days hides the prompt")
+        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .none, "Mod data within seven days hides the prompt")
         fake.record = nil
         refresh(coordinator)
         XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .prompt(headless: false),
@@ -114,7 +114,7 @@ final class ModOnboardingCoordinatorTests: XCTestCase {
         let coordinator = makeCoordinator()
         refresh(coordinator)
         XCTAssertEqual(fake.reads, 1)
-        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .dataSources)
+        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .none)
 
         fake.version = .detected(ClaudeCodeVersion(major: 2, minor: 1, patch: 291))
         refresh(coordinator, force: false)
@@ -129,7 +129,7 @@ final class ModOnboardingCoordinatorTests: XCTestCase {
         XCTAssertEqual(fake.reads, 2, "a readable version is only re-read daily")
     }
 
-    func testDismissingThePromptSwapsItForTheDataSourcesRow() {
+    func testDismissingThePromptRemovesTheMenuRow() {
         let coordinator = makeCoordinator()
         refresh(coordinator)
         XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .prompt(headless: false))
@@ -139,7 +139,7 @@ final class ModOnboardingCoordinatorTests: XCTestCase {
         XCTAssertFalse(coordinator.controller.close(), "closing with the checkbox ticked shows the confirmed state")
         wait(for: [changed], timeout: 1)
         XCTAssertEqual(coordinator.controller.state, .dismissConfirmed)
-        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .dataSources)
+        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .none)
 
         coordinator.controller.setPromptEnabled(true)
         XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .prompt(headless: false))
@@ -149,9 +149,9 @@ final class ModOnboardingCoordinatorTests: XCTestCase {
         let coordinator = makeCoordinator()
         refresh(coordinator)
         fake.hud = true
-        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .dataSources)
+        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .none)
         fake.headless = ModOnboardingConfig.headlessDurationThreshold
-        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .dataSources, "exactly 30 minutes is not more than 30 minutes")
+        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .none, "exactly 30 minutes is not more than 30 minutes")
         fake.headless = ModOnboardingConfig.headlessDurationThreshold + 60
         XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .prompt(headless: true),
                        "a HUD user with enough headless time gets the headless wording")
@@ -162,7 +162,7 @@ final class ModOnboardingCoordinatorTests: XCTestCase {
         refresh(coordinator)
         fake.hud = true
         fake.headless = 20 * 60
-        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .dataSources)
+        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .none)
         XCTAssertEqual(headlessStore.accumulation.seconds, 20 * 60)
 
         // A restart: the HUD source counts from zero again, but the day's total is kept.
@@ -174,7 +174,7 @@ final class ModOnboardingCoordinatorTests: XCTestCase {
         // Once the day is over the sum starts again.
         clock.advance(by: ModOnboardingConfig.headlessAccumulationWindow + 60)
         fake.headless = 12 * 60
-        XCTAssertEqual(restarted.menuRow(isOfficialDirect: true), .dataSources)
+        XCTAssertEqual(restarted.menuRow(isOfficialDirect: true), .none)
         XCTAssertEqual(headlessStore.accumulation.seconds, 60)
     }
 
@@ -292,7 +292,7 @@ final class ModOnboardingCoordinatorTests: XCTestCase {
         fake.record = ModInstallRecord(installedAt: start)
         let restarted = makeCoordinator()
         refresh(restarted)
-        XCTAssertEqual(restarted.menuRow(isOfficialDirect: true), .dataSources)
+        XCTAssertEqual(restarted.menuRow(isOfficialDirect: true), .none)
     }
 
     // MARK: Install
@@ -404,7 +404,6 @@ final class ModOnboardingCoordinatorTests: XCTestCase {
                                normalized(text.defaultText), text.rawValue)
             }
         }
-        XCTAssertNotNil(LocalizationKey(rawValue: "mod.menu.data_sources"))
         // Status lines that embed a state, a time or a version keep a placeholder in every language.
         for language in AppLanguage.allCases where language != .system {
             for key in [LocalizationKey.keyModSettingsStatusTitleFormat, .keyModSettingsStatusLastData, .keyModSettingsStatusUnsupportedDetail] {

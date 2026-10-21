@@ -602,7 +602,6 @@
 "mod.settings.action.install" = "ワンクリックでインストール";
 "mod.settings.action.copy" = "コマンドをコピー";
 "mod.settings.prompt_toggle" = "メニューにインストールのヒントを表示";
-"mod.menu.data_sources" = "データソース";
 "mod.prompt.why" = "なぜ必要？";
 "mod.panel.subtitle" = "BalanceBar Mod は Claude Code 内で動く小さなプラグインで、返信のたびに公式の残量を BalanceBar に伝えます。";
 "mod.panel.later" = "あとで";
@@ -636,3 +635,4 @@
 "mod.settings.status.last_data" = "最新データ：%1$@";
 "mod.settings.status.silent_hint" = "新しいセッションを開くか、開いているセッションで /reload-plugins を実行してください";
 "mod.settings.status.unsupported_detail" = "現在 %1$@。v2.1.287 以降が必要です";
+"quota.status.realtime_mod" = "ライブ · Mod";

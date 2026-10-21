@@ -492,7 +492,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
 
         source.emit(hudObservation(used: 27, pipeline: pipeline))
         let live = try XCTUnwrap(waitForState(pipeline) { $0.windows.first?.remaining == 73 })
-        XCTAssertEqual(live.status, .realtime)
+        XCTAssertEqual(live.status, .realtime())
 
         let credentialReads = reader.reads
         pipeline.requestFetch(reason: .scheduled)
@@ -529,7 +529,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         let source = ManualRealtimeSource()
         let pipeline = try seededPipeline(source: source)
         source.emit(hudObservation(used: 27, pipeline: pipeline))
-        _ = try XCTUnwrap(waitForState(pipeline) { $0.status == .realtime })
+        _ = try XCTUnwrap(waitForState(pipeline) { $0.status == .realtime() })
 
         // The 5-hour reset time passes while the seven-day window keeps receiving live readings.
         clock.advance(by: 5 * 3_600)
@@ -566,7 +566,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         let pipeline = try seededPipeline(source: source)
         XCTAssertNil(pipeline.manualRefreshNotice())
         source.emit(hudObservation(used: 27, pipeline: pipeline))
-        _ = try XCTUnwrap(waitForState(pipeline) { $0.status == .realtime })
+        _ = try XCTUnwrap(waitForState(pipeline) { $0.status == .realtime() })
         XCTAssertEqual(pipeline.manualRefreshNotice(), .justRefreshed)
 
         pipeline.requestFetch(reason: .manual)
@@ -584,11 +584,11 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         let source = ManualRealtimeSource()
         let pipeline = try seededPipeline(source: source)
         source.emit(hudObservation(used: 27, pipeline: pipeline))
-        let live = try XCTUnwrap(waitForState(pipeline) { $0.status == .realtime })
+        let live = try XCTUnwrap(waitForState(pipeline) { $0.status == .realtime() })
 
         try writeAccount("account-b", email: "b@example.com")
         let switched = try XCTUnwrap(waitForState(pipeline) { $0.accountEpoch != live.accountEpoch && !$0.windows.isEmpty })
-        XCTAssertNotEqual(switched.status, .realtime, "the previous account's live reading never vouches for the new account")
+        XCTAssertNotEqual(switched.status, .realtime(), "the previous account's live reading never vouches for the new account")
         XCTAssertEqual(switched.windows.first?.remaining, 77, "the new account shows its own official reading")
     }
 

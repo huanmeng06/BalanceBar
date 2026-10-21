@@ -2221,8 +2221,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let manualRefreshNotice: () -> ClaudeManualRefreshNotice?
         /// Opens the real-time boost explanation window.
         let showModOnboarding: () -> Void
-        /// Opens Settings › Advanced, where the real-time boost and its data sources are managed.
-        let openDataSources: () -> Void
 
         init(
             manualRefresh: @escaping () -> Void,
@@ -2242,13 +2240,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             visibilityChanged: @escaping (StatusItemVisibility) -> Void = { _ in },
             manualRefreshBlockedUntil: @escaping () -> Date? = { nil },
             manualRefreshNotice: @escaping () -> ClaudeManualRefreshNotice? = { nil },
-            showModOnboarding: @escaping () -> Void = {},
-            openDataSources: @escaping () -> Void = {}
+            showModOnboarding: @escaping () -> Void = {}
         ) {
             self.manualRefreshBlockedUntil = manualRefreshBlockedUntil
             self.manualRefreshNotice = manualRefreshNotice
             self.showModOnboarding = showModOnboarding
-            self.openDataSources = openDataSources
             self.manualRefresh = manualRefresh
             self.openDashboard = openDashboard
             self.openChatGPT = openChatGPT
@@ -6162,20 +6158,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         return item
     }
 
-    /// "Data sources": a regular entry at the bottom that replaces the prompt and opens Settings › Advanced.
-    private func makeDataSourcesItem() -> NSMenuItem? {
-        guard menuInput.modRow == .dataSources else { return nil }
-        let item = NSMenuItem(title: tr(.keyModMenuDataSources), action: #selector(openDataSources), keyEquivalent: "")
-        item.target = self
-        return item
-    }
-
     private func openModOnboarding() {
         // The menu is closing; open the window once it is gone.
         DispatchQueue.main.async { [weak self] in self?.actions.showModOnboarding() }
     }
-
-    @objc private func openDataSources() { actions.openDataSources() }
 
     private func openCurrentAgentMenuTitle() -> String {
         switch menuInput.activeClient {
@@ -6304,7 +6290,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         if menuInput.showStatusMenu {
             menu.addItem(makeStatusLinksMenuItem())
         }
-        if let sources = makeDataSourcesItem() { menu.addItem(sources) }
         menu.addItem(.separator())
         menu.addItem(
             withTitle: tr(.keyStatusItemControllerQuitBalancebar),

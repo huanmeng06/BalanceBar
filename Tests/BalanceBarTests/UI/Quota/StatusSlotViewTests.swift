@@ -22,7 +22,7 @@ final class StatusSlotViewTests: XCTestCase {
             ("error", .error(at: time)),
             ("resetPending", .resetPending(at: time)),
             ("estimated", .estimated(at: time)),
-            ("realtime", .realtime),
+            ("realtime", .realtime()),("realtime-mod", .realtime(mod: true)),
             ("official", .official(at: time)),
         ]
     }
@@ -38,7 +38,9 @@ final class StatusSlotViewTests: XCTestCase {
         XCTAssertEqual(StatusSlotState.resolve(model: model(state: .expired), context: c), .error(at: time))
         XCTAssertEqual(StatusSlotState.resolve(model: model(state: .resetPendingConfirmation, estimated: true), context: c), .resetPending(at: time))
         XCTAssertEqual(StatusSlotState.resolve(model: model(estimated: true), context: c), .estimated(at: time))
-        XCTAssertEqual(StatusSlotState.resolve(model: model(), context: c), .realtime)
+        XCTAssertEqual(StatusSlotState.resolve(model: model(), context: c), .realtime())
+        var mod = c; mod.realtimeFromMod = true
+        XCTAssertEqual(StatusSlotState.resolve(model: model(), context: mod), .realtime(mod: true))
         c.source = .official
         XCTAssertEqual(StatusSlotState.resolve(model: model(), context: c), .official(at: time))
     }

@@ -545,6 +545,7 @@
 
     case keyQuotaStatusRefreshing = "quota.status.refreshing"
     case keyQuotaStatusRealtime = "quota.status.realtime"
+    case keyQuotaStatusRealtimeMod = "quota.status.realtime_mod"
     case keyQuotaStatusHoverRefreshing = "quota.status.hover.refreshing"
     case keyQuotaStatusHoverError = "quota.status.hover.error"
     case keyQuotaStatusHoverEstimated = "quota.status.hover.estimated"
@@ -587,7 +588,6 @@
     case keyModSettingsActionInstall = "mod.settings.action.install"
     case keyModSettingsActionCopy = "mod.settings.action.copy"
     case keyModSettingsPromptToggle = "mod.settings.prompt_toggle"
-    case keyModMenuDataSources = "mod.menu.data_sources"
 
     case keyModPromptWhy = "mod.prompt.why"
     case keyModPanelSubtitle = "mod.panel.subtitle"

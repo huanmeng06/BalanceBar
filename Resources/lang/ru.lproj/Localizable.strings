@@ -602,7 +602,6 @@
 "mod.settings.action.install" = "Установить в один клик";
 "mod.settings.action.copy" = "Скопировать команды";
 "mod.settings.prompt_toggle" = "Показывать в меню подсказку об установке";
-"mod.menu.data_sources" = "Источники данных";
 "mod.prompt.why" = "Зачем это?";
 "mod.panel.subtitle" = "BalanceBar Mod — небольшой плагин внутри Claude Code: после каждого ответа он передаёт BalanceBar официальную квоту.";
 "mod.panel.later" = "Позже";
@@ -636,3 +635,4 @@
 "mod.settings.status.last_data" = "Последние данные: %1$@";
 "mod.settings.status.silent_hint" = "Начните новую сессию или выполните /reload-plugins в открытой";
 "mod.settings.status.unsupported_detail" = "Сейчас %1$@; нужна версия 2.1.287 или новее";
+"quota.status.realtime_mod" = "Онлайн · Mod";

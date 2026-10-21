@@ -974,8 +974,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                     guard let self, self.activeClient == .claude, self.currentProviderIsOfficialCache else { return nil }
                     return self.claudeQuota.manualRefreshNotice()
                 },
-                showModOnboarding: { [weak self] in self?.modOnboarding.showWindow() },
-                openDataSources: { [weak self] in self?.openDashboardAdvanced() }
+                showModOnboarding: { [weak self] in self?.modOnboarding.showWindow() }
             ),
             codexAnimationBackend: MenuBarCodexAnimationBackend(
                 mode: preferences.menuBarAnimationMode

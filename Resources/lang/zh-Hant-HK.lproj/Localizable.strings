@@ -602,7 +602,6 @@
 "mod.settings.action.install" = "一鍵安裝";
 "mod.settings.action.copy" = "拷貝指令";
 "mod.settings.prompt_toggle" = "在選單中顯示安裝提示";
-"mod.menu.data_sources" = "資料來源";
 "mod.prompt.why" = "為什麼這麼做？";
 "mod.panel.subtitle" = "BalanceBar Mod 是在 Claude Code 內執行的小外掛程式，每輪回覆後把官方額度告訴 BalanceBar。";
 "mod.panel.later" = "稍後";
@@ -636,3 +635,4 @@
 "mod.settings.status.last_data" = "最新資料：%1$@";
 "mod.settings.status.silent_hint" = "請開啟新工作階段，或在已開啟的工作階段執行 /reload-plugins";
 "mod.settings.status.unsupported_detail" = "目前 %1$@，需要 v2.1.287 或更新版本";
+"quota.status.realtime_mod" = "即時 · Mod";
