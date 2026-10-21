@@ -555,7 +555,7 @@
 
 "dashboard.refresh.official_quota_frequency" = "Aktualisierung des offiziellen Kontingents";
 "dashboard.refresh.official_every_seconds" = "Alle %1$@ s";
-"dashboard.refresh.official_scope" = "Offizielle Konten wie Claude und Codex";
+"dashboard.refresh.official_scope" = "Codex u. a. lesen in dieser Frequenz; Claude höchstens etwa alle 3 Min.";
 "dashboard.refresh.api_scope" = "Drittanbieter-Relays / API-Schlüssel";
 
 "quota.status.refreshing" = "Lädt…";
@@ -646,17 +646,21 @@
 "refresh.status.phase_rate" = "Pausiert: Die offizielle Schnittstelle meldet „zu viele Anfragen“ (evtl. lesen andere Tools zu oft); noch %1$@";
 "refresh.status.phase_live" = "Die Live-Daten des Mod sind frisch (vor %1$@), daher bleibt die offizielle Schnittstelle vorerst unberührt";
 "refresh.status.phase_interval" = "Gerade gelesen; um nicht zu oft zu lesen, wird gewartet: nächstes Lesen in %1$@";
-"refresh.status.phase_tokens" = "Keine Lesungen mehr verfügbar; nächste in %1$@";
-"refresh.status.phase_ready" = "Bereit zum Lesen: die nächste planmäßige Prüfung erledigt es";
+"refresh.status.phase_tokens" = "Zu wenige Punkte für automatisches Lesen (kostet 2); genug in %1$@";
+"refresh.status.phase_ready" = "Genug Punkte: Die nächste geplante Prüfung liest (kostet 2)";
 "refresh.status.last_read" = "Zuletzt gelesen";
 "refresh.status.last_read_value" = "%1$@ (vor %2$@)";
 "refresh.status.last_read_none" = "noch nicht";
-"refresh.status.tokens_label" = "Verfügbare Lesungen";
+"refresh.status.tokens_label" = "Lesepunkte";
 "refresh.status.mod_label" = "Mod-Daten";
 "refresh.status.mod_value" = "vor %1$@";
 "refresh.help.mod_footer" = "Mit dem Mod: Update nach jeder Antwort";
 "refresh.help.mod_install" = "Installieren";
 "refresh.help.row_mod_now" = "Jetzt bei dir (Mod)";
 "refresh.help.expand" = "Warum ist es auch sonst nicht schneller?";
-"refresh.status.tokens_hint" = "Alle 3 Min. kommt 1 dazu; automatisches Lesen braucht 2, „Jetzt aktualisieren“ 1.";
+"refresh.status.last_failed" = "Das Lesen um %1$@ ist fehlgeschlagen; es wird erneut versucht";
+"refresh.help.overview_claude" = "Höchstens etwa alle 3 Min. (BalanceBar bremst sich selbst, siehe unten)";
+"refresh.help.overview_codex" = "In deiner Frequenz; während du Codex nutzt, direkt aus dem lokalen Log, fast live";
+"refresh.help.tooltip" = "Wie oft jedes offizielle Konto tatsächlich gelesen wird";
+"refresh.status.tokens_hint" = "Alle 3 Min. kommt 1 Punkt dazu, höchstens 3; automatisches Lesen kostet 2, „Jetzt aktualisieren“ 1.";
 "refresh.help.other_tools" = "Tools wie CC Switch fragen dieselbe Schnittstelle für dasselbe Konto; je öfter sie aktualisieren, desto eher wird auch BalanceBar pausiert.";

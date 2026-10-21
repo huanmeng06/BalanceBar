@@ -555,7 +555,7 @@
 
 "dashboard.refresh.official_quota_frequency" = "官方额度刷新频率";
 "dashboard.refresh.official_every_seconds" = "每 %1$@ 秒";
-"dashboard.refresh.official_scope" = "Claude、Codex 等官方账号";
+"dashboard.refresh.official_scope" = "Codex 等按这个频率读取；Claude 最快约 3 分钟一次";
 "dashboard.refresh.api_scope" = "第三方中转 / API Key";
 
 "quota.status.refreshing" = "刷新中…";
@@ -646,17 +646,21 @@
 "refresh.status.phase_rate" = "已暂停：官方接口返回了“请求过多”（也可能是其他工具查得太勤），还要等 %1$@";
 "refresh.status.phase_live" = "Mod 数据很新（%1$@前），暂时不用问官方接口";
 "refresh.status.phase_interval" = "刚读过，为免读得太勤先等等：%1$@后再读";
-"refresh.status.phase_tokens" = "可用次数用完了，要等 %1$@ 才能再读";
-"refresh.status.phase_ready" = "随时可以读取：下一次定时检查就会去读";
+"refresh.status.phase_tokens" = "点数不够自动读取（每次要 2 点），%1$@后补够";
+"refresh.status.phase_ready" = "点数够了：下一次定时检查就会去读（花 2 点）";
 "refresh.status.last_read" = "上次读取";
 "refresh.status.last_read_value" = "%1$@（%2$@前）";
 "refresh.status.last_read_none" = "还没读过";
-"refresh.status.tokens_label" = "可用次数";
+"refresh.status.tokens_label" = "读取点数";
 "refresh.status.mod_label" = "Mod 数据";
 "refresh.status.mod_value" = "%1$@前";
 "refresh.help.mod_footer" = "装 Mod：每轮回复后立即更新";
 "refresh.help.mod_install" = "去安装";
 "refresh.help.row_mod_now" = "你现在（Mod）";
 "refresh.help.expand" = "为什么平时也没那么快？";
-"refresh.status.tokens_hint" = "每 3 分钟补 1 个；自动读取用 2 个，“立即刷新”用 1 个。";
+"refresh.status.last_failed" = "%1$@ 那次没读到，下次会再试";
+"refresh.help.overview_claude" = "最快约 3 分钟一次（BalanceBar 主动放慢，见下）";
+"refresh.help.overview_codex" = "按你设的频率；用 Codex 时直接读本地日志，几乎实时";
+"refresh.help.tooltip" = "各官方账号实际多久读一次";
+"refresh.status.tokens_hint" = "每 3 分钟回 1 点，最多存 3 点；自动读取花 2 点，“立即刷新”花 1 点。";
 "refresh.help.other_tools" = "CC Switch 等工具查的是同一个接口、同一个账号，它们刷得勤，BalanceBar 也更容易被暂停。";

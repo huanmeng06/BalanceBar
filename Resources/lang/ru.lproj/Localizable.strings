@@ -555,7 +555,7 @@
 
 "dashboard.refresh.official_quota_frequency" = "Частота обновления официальной квоты";
 "dashboard.refresh.official_every_seconds" = "Каждые %1$@ с";
-"dashboard.refresh.official_scope" = "Официальные аккаунты, например Claude и Codex";
+"dashboard.refresh.official_scope" = "Codex и др. читаются с этой частотой; Claude — не чаще ~раза в 3 мин";
 "dashboard.refresh.api_scope" = "Сторонние релеи / API-ключи";
 
 "quota.status.refreshing" = "Чтение…";
@@ -646,17 +646,21 @@
 "refresh.status.phase_rate" = "Приостановлено: официальный API ответил «слишком много запросов» (возможно, другие инструменты читают слишком часто); ещё %1$@";
 "refresh.status.phase_live" = "Данные Mod свежие (%1$@ назад), поэтому официальный API пока не опрашивается";
 "refresh.status.phase_interval" = "Только что прочитали; чтобы не читать слишком часто, нужно подождать: следующее чтение через %1$@";
-"refresh.status.phase_tokens" = "Доступных чтений нет; следующее через %1$@";
-"refresh.status.phase_ready" = "Готово к чтению: это сделает следующая плановая проверка";
+"refresh.status.phase_tokens" = "Не хватает очков для автоматического чтения (нужно 2); хватит через %1$@";
+"refresh.status.phase_ready" = "Очков хватает: следующая плановая проверка прочитает (стоит 2)";
 "refresh.status.last_read" = "Последнее чтение";
 "refresh.status.last_read_value" = "%1$@ (%2$@ назад)";
 "refresh.status.last_read_none" = "ещё нет";
-"refresh.status.tokens_label" = "Доступные чтения";
+"refresh.status.tokens_label" = "Очки чтения";
 "refresh.status.mod_label" = "Данные Mod";
 "refresh.status.mod_value" = "%1$@ назад";
 "refresh.help.mod_footer" = "С Mod: обновление после каждого ответа";
 "refresh.help.mod_install" = "Установить";
 "refresh.help.row_mod_now" = "У вас сейчас (Mod)";
 "refresh.help.expand" = "Почему и обычно не быстрее?";
-"refresh.status.tokens_hint" = "1 восстанавливается за 3 мин; автоматическое чтение тратит 2, «Обновить сейчас» — 1.";
+"refresh.status.last_failed" = "Чтение в %1$@ не удалось; будет новая попытка";
+"refresh.help.overview_claude" = "Не чаще примерно раза в 3 мин (BalanceBar сам притормаживает, см. ниже)";
+"refresh.help.overview_codex" = "С вашей частотой; пока вы работаете в Codex — прямо из его локального журнала, почти в реальном времени";
+"refresh.help.tooltip" = "Как часто на самом деле читается каждый официальный аккаунт";
+"refresh.status.tokens_hint" = "1 очко восстанавливается за 3 мин, максимум 3; автоматическое чтение стоит 2, «Обновить сейчас» — 1.";
 "refresh.help.other_tools" = "Инструменты вроде CC Switch опрашивают тот же API для того же аккаунта; чем чаще они обновляют, тем быстрее приостанавливается и BalanceBar.";

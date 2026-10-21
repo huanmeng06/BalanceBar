@@ -56,7 +56,8 @@ private extension NSBox {
     }
 }
 
-/// The reads still available out of the bucket's capacity. Plain label color, so color only ever means a state.
+/// The read points left out of the bucket's capacity (an automatic read spends 2, a manual one 1). Plain label
+/// color, so color only ever means a state.
 final class RefreshTokenDotsView: NSView {
     var filled = 0 { didSet { if filled != oldValue { needsDisplay = true } } }
     private let total: Int
@@ -153,6 +154,8 @@ final class RefreshRateLiveStatusView: NSView {
     private let copyRow = NSStackView()
     private var meta = NSStackView()
     private var modRow = NSView()
+    private let failureValue = NSTextField(labelWithString: "")
+    private var failureRow = NSView()
     private var timer: Timer?
     private var copiedResetTimer: Timer?
     private var tint = NSColor.systemGreen
@@ -161,6 +164,7 @@ final class RefreshRateLiveStatusView: NSView {
     var showsDetails: Bool { !meta.isHidden }
     var showsCopyCommand: Bool { !copyRow.isHidden }
     var showsModAge: Bool { !modRow.isHidden }
+    var showsLastFailure: Bool { !failureRow.isHidden }
     /// Called after every update, so the popover can re-arrange itself and follow the card's height.
     var onUpdate: (() -> Void)?
     private(set) var mood: RefreshHelpMood = .normal
@@ -251,13 +255,24 @@ final class RefreshRateLiveStatusView: NSView {
             meta.spacing = 6
         }
         modRow = row([caption(localize(.keyRefreshStatusModLabel)), modValue])
+        // A read that failed quietly: otherwise "last read" just stays old and nothing says why.
+        let warning = NSImageView()
+        warning.image = NSImage(systemSymbolName: "exclamationmark.triangle.fill", accessibilityDescription: nil)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 10, weight: .regular))
+        warning.contentTintColor = .systemOrange
+        failureValue.font = .systemFont(ofSize: 11)
+        failureValue.textColor = .systemOrange
+        failureValue.lineBreakMode = .byTruncatingTail
+        failureRow = row([warning, failureValue])
+        (failureRow as? NSStackView)?.spacing = 4
+        failureRow.isHidden = true
 
         // Under the sentence, not under the dot.
         copyRow.setViews([copyButton], in: .leading)
         copyRow.edgeInsets = NSEdgeInsets(top: 0, left: 16, bottom: 0, right: 0)
         copyRow.isHidden = true
 
-        let stack = NSStackView(views: [header, copyRow, bar, meta, modRow])
+        let stack = NSStackView(views: [header, copyRow, bar, meta, failureRow, modRow])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 8
@@ -381,6 +396,12 @@ final class RefreshRateLiveStatusView: NSView {
             lastReadValue.stringValue = localize(.keyRefreshStatusLastReadNone)
         }
         tokenDots.filled = status.tokensAvailable(at: date)
+        if let failedAt = status.scheduler.lastFailureAt, newMood == .normal {
+            failureValue.stringValue = localize(.keyRefreshStatusLastFailed, [clockTime(failedAt)])
+            failureRow.isHidden = false
+        } else {
+            failureRow.isHidden = true
+        }
         // Only once the Mod's data went stale: while it is fresh, the sentence already says how old it is.
         if let realtimeAt = status.realtimeAt, newMood == .normal {
             modValue.stringValue = localize(.keyRefreshStatusModValue, [duration(max(0, date.timeIntervalSince(realtimeAt)))])
@@ -524,10 +545,44 @@ final class RefreshRateHelpContentView: NSView {
         footer.alignment = .leading
         footer.spacing = 10
 
-        var arranged: [NSView] = []
+        // ⓪ Who the setting applies to: Codex follows it, Claude has a floor. Everything below is about Claude.
+        func overviewRow(_ name: String, _ detail: String, color: NSColor) -> NSStackView {
+            // A symbol, so the color follows light and dark mode like the timeline dots.
+            let dot = NSImageView()
+            dot.image = NSImage(systemSymbolName: "circle.fill", accessibilityDescription: nil)?
+                .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 6, weight: .regular))
+            dot.contentTintColor = color
+            dot.translatesAutoresizingMaskIntoConstraints = false
+            dot.widthAnchor.constraint(equalToConstant: 6).isActive = true
+            dot.heightAnchor.constraint(equalToConstant: 6).isActive = true
+            let nameLabel = NSTextField(labelWithString: name)
+            nameLabel.font = .systemFont(ofSize: 12, weight: .semibold)
+            nameLabel.translatesAutoresizingMaskIntoConstraints = false
+            nameLabel.widthAnchor.constraint(equalToConstant: 52).isActive = true
+            let detailLabel = text(detail, size: 12)
+            detailLabel.preferredMaxLayoutWidth = contentWidth - 6 - 52 - 2 * 8
+            let row = NSStackView(views: [dot, nameLabel, detailLabel])
+            row.orientation = .horizontal
+            row.alignment = .firstBaseline
+            row.spacing = 8
+            dot.centerYAnchor.constraint(equalTo: nameLabel.centerYAnchor).isActive = true
+            return row
+        }
+        let overview = NSStackView(views: [
+            overviewRow("Codex", localize(.keyRefreshHelpOverviewCodex), color: .systemGreen),
+            overviewRow("Claude", localize(.keyRefreshHelpOverviewClaude), color: .systemOrange),
+        ])
+        overview.orientation = .vertical
+        overview.alignment = .leading
+        overview.spacing = 6
+        let claudeHeader = NSTextField(labelWithString: "Claude")
+        claudeHeader.font = .systemFont(ofSize: 13, weight: .semibold)
+
+        var arranged: [NSView] = [overview, NSBox.separator(width: contentWidth), claudeHeader]
         if let statusView { arranged.append(statusView) }
         arranged += [expandButton, explanation, footer]
         stack.setViews(arranged, in: .top)
+        stack.setCustomSpacing(8, after: claudeHeader)
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 14
@@ -593,6 +648,7 @@ final class RefreshRateHelpContentView: NSView {
     var isMetaVisible: Bool { statusView?.showsDetails ?? false }
     var isCopyCommandVisible: Bool { statusView?.showsCopyCommand ?? false }
     var isModAgeVisible: Bool { statusView?.showsModAge ?? false }
+    var isLastFailureVisible: Bool { statusView?.showsLastFailure ?? false }
     func refreshStatusForTesting() { statusView?.update() }
     func toggleExplanationForTesting() { toggleExpanded() }
     func tapInstallForTesting() { installTapped() }
@@ -618,8 +674,8 @@ final class RefreshRateHelpButton: NSButton {
         imageScaling = .scaleNone
         isBordered = false
         contentTintColor = .secondaryLabelColor
-        toolTip = tr(.keyRefreshHelpTitle)
-        setAccessibilityLabel(tr(.keyRefreshHelpTitle))
+        toolTip = tr(.keyRefreshHelpTooltip)
+        setAccessibilityLabel(tr(.keyRefreshHelpTooltip))
         identifier = NSUserInterfaceItemIdentifier("refreshRateHelp")
         target = self
         action = #selector(toggle)

@@ -480,6 +480,7 @@ enum DashboardSettingsSearchCatalog {
                 .keyDashboardRefreshOfficialScope,
                 .keyDashboardRefreshAPIScope,
                 .keyRefreshHelpTitle,
+                .keyRefreshHelpTooltip,
                 .keyDashboardGeneralAndRefreshPagesBalanceUpdatesDuringTasks,
                 .keyDashboardGeneralAndRefreshPagesRefreshNow,
                 .keyDashboardGeneralAndRefreshPagesBalanceData,

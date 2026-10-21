@@ -536,6 +536,8 @@ final class OfficialQuotaClient {
         claudeSession().dataTask(with: request) { data, response, error in
             if let error {
                 let failure = OfficialQuotaClientError.transport(Self.transportError(from: error, client: .claude))
+                SwitchLog.write("official quota request failed; client=claude; transport=\((error as NSError).domain)/\((error as NSError).code)",
+                                level: .warning, category: "refresh.transport")
                 completion(.failure("transport"), failure)
                 return
             }

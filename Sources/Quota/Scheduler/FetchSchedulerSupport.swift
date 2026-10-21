@@ -167,6 +167,9 @@ public struct FetchSchedulerStatus: Equatable {
     public var automaticMinimumInterval: TimeInterval
     /// Last successful read for the current account.
     public var lastSuccessAt: Date?
+    /// A read for the current account that failed (transport or server error) after the last success; `nil` once a
+    /// read succeeds again. 429 and 401 have their own fields.
+    public var lastFailureAt: Date? = nil
     /// Remaining 429 cooldown at `at`.
     public var cooldownRemaining: TimeInterval
     public var isUnauthorizedPaused: Bool

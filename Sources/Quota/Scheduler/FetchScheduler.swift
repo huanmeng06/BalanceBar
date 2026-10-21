@@ -27,6 +27,8 @@ public final class FetchScheduler: FetchScheduling {
     private var isBusy = false
     private var lastDispatchAt: Date?
     private var lastSuccess: (at: Date, epoch: AccountEpoch)?
+    /// Last read that failed without a 429 or 401, cleared by the next success.
+    private var lastFailure: (at: Date, epoch: AccountEpoch)?
     private var resultHandlers: [(FetchSchedulerDelivery) -> Void] = []
 
     /// - Parameter calibrationIntervalCap: Reads the existing refresh-interval setting, used as an
@@ -100,6 +102,7 @@ public final class FetchScheduler: FetchScheduling {
                 lastDispatchAt: lastDispatchAt,
                 automaticMinimumInterval: configuration.automaticMinimumInterval,
                 lastSuccessAt: currentEpochLastSuccessAt,
+                lastFailureAt: lastFailure.flatMap { $0.epoch == identity.accountEpoch ? $0.at : nil },
                 cooldownRemaining: cooldownRemaining(now: now),
                 isUnauthorizedPaused: persistent.isUnauthorizedPaused,
                 isBusy: isBusy,
@@ -223,6 +226,7 @@ public final class FetchScheduler: FetchScheduling {
         switch result {
         case .success:
             lastSuccess = (now, epoch)
+            lastFailure = nil
             if persistent.consecutiveRateLimitBackoffs != 0 || persistent.cooldownUntil != nil {
                 persistent.consecutiveRateLimitBackoffs = 0
                 persistent.cooldownUntil = nil
@@ -235,7 +239,9 @@ public final class FetchScheduler: FetchScheduling {
                 persistent.unauthorizedCredentialVersion = credentialVersion
                 stateStore.save(persistent)
             }
-        case .rateLimited, .failure:
+        case .failure:
+            lastFailure = (now, epoch)
+        case .rateLimited:
             break
         }
         log(.completed, reasons: reasons, outcome: Self.label(result))

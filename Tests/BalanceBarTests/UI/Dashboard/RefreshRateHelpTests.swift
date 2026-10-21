@@ -6,13 +6,14 @@ import XCTest
 final class RefreshRateHelpTests: XCTestCase {
     private let base = Date(timeIntervalSince1970: 1_800_000_000)
 
-    private enum Sample { case waiting, reading, live, staleMod, loginExpired }
+    private enum Sample { case waiting, reading, failed, live, staleMod, loginExpired }
 
     private func status(_ sample: Sample) -> ClaudeRefreshStatus {
         ClaudeRefreshStatus(
             scheduler: FetchSchedulerStatus(
                 tokens: 1, tokenCapacity: 3, tokenRefillInterval: 180, nextTokenAt: base.addingTimeInterval(100), automaticTokenCost: 2,
                 lastDispatchAt: base.addingTimeInterval(-60), automaticMinimumInterval: 180, lastSuccessAt: base.addingTimeInterval(-60),
+                lastFailureAt: sample == .failed ? base.addingTimeInterval(-20) : nil,
                 cooldownRemaining: 0, isUnauthorizedPaused: sample == .loginExpired, isBusy: sample == .reading, at: base),
             realtimeAt: {
                 switch sample {
@@ -100,10 +101,52 @@ final class RefreshRateHelpTests: XCTestCase {
         }
     }
 
-        func testTheReadsRowExplainsItsRulesOnHover() {
+        /// The dots are points, not reads: every sentence about them says what an automatic read costs, and that cost
+    /// is the scheduler's.
+    func testThePointSentencesStateTheRealCostInEveryLanguage() {
+        let automatic = String(QuotaConstants.automaticRequestTokenCost)
+        let manual = String(QuotaConstants.manualRequestTokenCost)
+        let capacity = String(QuotaConstants.requestTokenBucketCapacity)
+        for language in AppLanguage.allCases where language != .system {
+            XCTAssertTrue(tr(.keyRefreshStatusPhaseTokens, arguments: ["1 min"], language: language).contains(automatic), "\(language) tokens")
+            XCTAssertTrue(tr(.keyRefreshStatusPhaseReady, language: language).contains(automatic), "\(language) ready")
+            let hint = tr(.keyRefreshStatusTokensHint, language: language)
+            for number in [automatic, manual, capacity] {
+                XCTAssertTrue(hint.contains(number), "\(language) hint lacks \(number)")
+            }
+        }
+    }
+
+    func testTheReadsRowExplainsItsRulesOnHover() {
         let card = RefreshRateLiveStatusView(width: 308, language: .english, now: { self.base }, provider: { self.status(.waiting) })
         func tips(_ view: NSView) -> [String] { [view.toolTip].compactMap { $0 } + view.subviews.flatMap(tips) }
         XCTAssertTrue(tips(card).contains(tr(.keyRefreshStatusTokensHint, language: .english)))
+    }
+
+    func testTheOverviewSaysCodexFollowsTheSettingAndTheRestIsAboutClaudeInEveryLanguage() {
+        for language in AppLanguage.allCases where language != .system {
+            let texts = allText(in: content(.waiting, language: language))
+            XCTAssertTrue(texts.contains(tr(.keyRefreshHelpOverviewCodex, language: language)), "\(language) Codex")
+            XCTAssertTrue(texts.contains(tr(.keyRefreshHelpOverviewClaude, language: language)), "\(language) Claude")
+            XCTAssertTrue(texts.contains("Codex") && texts.contains("Claude"), "\(language) names and the Claude section")
+        }
+    }
+
+    func testAFailedReadIsShownUntilTheNextSuccessButNotOverAProblem() {
+        let failed = content(.failed)
+        XCTAssertTrue(failed.isLastFailureVisible)
+        let formatter = DateFormatter()
+        formatter.locale = AppLanguage.english.formattingLocale
+        formatter.dateStyle = .none
+        formatter.timeStyle = .short
+        let expected = tr(.keyRefreshStatusLastFailed, arguments: [formatter.string(from: base.addingTimeInterval(-20))], language: .english)
+        XCTAssertTrue(allText(in: failed).contains(expected), "names when the failed read was")
+        XCTAssertFalse(content(.waiting).isLastFailureVisible)
+        XCTAssertFalse(content(.loginExpired).isLastFailureVisible)
+        for language in AppLanguage.allCases where language != .system {
+            let card = RefreshRateLiveStatusView(width: 308, language: language, now: { self.base }, provider: { self.status(.failed) })
+            XCTAssertFalse(allText(in: card).joined().contains("%1$@"), "\(language) failure line")
+        }
     }
 
     func testFreshModDataIsNotRepeatedBelowTheSentence() {
@@ -175,7 +218,7 @@ final class RefreshRateHelpTests: XCTestCase {
         button.frame.origin = NSPoint(x: 20, y: 60)
         window.orderFront(nil)
         defer { window.orderOut(nil) }
-        XCTAssertEqual(button.toolTip, tr(.keyRefreshHelpTitle))
+        XCTAssertEqual(button.toolTip, tr(.keyRefreshHelpTooltip))
         button.performClick(nil)
         let popoverShown = try XCTUnwrap(Mirror(reflecting: button).children.first { $0.label == "popover" }?.value as? NSPopover?)
         XCTAssertTrue(popoverShown?.isShown == true)
@@ -187,7 +230,7 @@ final class RefreshRateHelpTests: XCTestCase {
         guard let directory = ProcessInfo.processInfo.environment["BB_HELP_RENDER_DIR"] else { return }
         try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
         for language in [AppLanguage.simplifiedChinese, .english, .russian] {
-            for (sampleName, sample) in [("waiting", Sample.waiting), ("live", .live), ("stale", .staleMod), ("login", .loginExpired)] {
+            for (sampleName, sample) in [("waiting", Sample.waiting), ("failed", .failed), ("live", .live), ("stale", .staleMod), ("login", .loginExpired)] {
                 for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
                     let view = content(sample, language: language)
                     view.appearance = NSAppearance(named: appearance)

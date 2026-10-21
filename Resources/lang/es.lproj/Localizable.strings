@@ -555,7 +555,7 @@
 
 "dashboard.refresh.official_quota_frequency" = "Frecuencia de actualización de cuota oficial";
 "dashboard.refresh.official_every_seconds" = "Cada %1$@ s";
-"dashboard.refresh.official_scope" = "Cuentas oficiales como Claude y Codex";
+"dashboard.refresh.official_scope" = "Codex y otros leen con esta frecuencia; Claude como mucho cada 3 min aprox.";
 "dashboard.refresh.api_scope" = "Relés de terceros / claves API";
 
 "quota.status.refreshing" = "Cargando…";
@@ -646,17 +646,21 @@
 "refresh.status.phase_rate" = "En pausa: el endpoint oficial respondió «demasiadas solicitudes» (quizá otras herramientas consultan demasiado); faltan %1$@";
 "refresh.status.phase_live" = "Los datos en vivo del Mod son recientes (hace %1$@), así que no se consulta el endpoint oficial";
 "refresh.status.phase_interval" = "Se acaba de leer; para no leer demasiado a menudo hay que esperar: la próxima lectura en %1$@";
-"refresh.status.phase_tokens" = "No quedan lecturas por ahora; la próxima en %1$@";
-"refresh.status.phase_ready" = "Listo para leer: la próxima comprobación programada lo hará";
+"refresh.status.phase_tokens" = "No hay puntos suficientes para una lectura automática (cuesta 2); habrá en %1$@";
+"refresh.status.phase_ready" = "Puntos suficientes: la próxima comprobación programada leerá (cuesta 2)";
 "refresh.status.last_read" = "Última lectura";
 "refresh.status.last_read_value" = "%1$@ (hace %2$@)";
 "refresh.status.last_read_none" = "todavía no";
-"refresh.status.tokens_label" = "Lecturas disponibles";
+"refresh.status.tokens_label" = "Puntos de lectura";
 "refresh.status.mod_label" = "Datos del Mod";
 "refresh.status.mod_value" = "hace %1$@";
 "refresh.help.mod_footer" = "Con el Mod: se actualiza tras cada respuesta";
 "refresh.help.mod_install" = "Instalar";
 "refresh.help.row_mod_now" = "Tú ahora (Mod)";
 "refresh.help.expand" = "¿Por qué tampoco es más rápido normalmente?";
-"refresh.status.tokens_hint" = "Se repone 1 cada 3 min; una lectura automática usa 2 y «Actualizar ahora» 1.";
+"refresh.status.last_failed" = "La lectura de las %1$@ falló; se volverá a intentar";
+"refresh.help.overview_claude" = "Como mucho cada 3 min aprox. (BalanceBar se frena a sí mismo, ver abajo)";
+"refresh.help.overview_codex" = "Con tu frecuencia; mientras usas Codex, se lee de su registro local, casi en vivo";
+"refresh.help.tooltip" = "Con qué frecuencia se lee realmente cada cuenta oficial";
+"refresh.status.tokens_hint" = "Se recupera 1 punto cada 3 min, hasta 3; una lectura automática cuesta 2 y «Actualizar ahora» 1.";
 "refresh.help.other_tools" = "Herramientas como CC Switch consultan el mismo endpoint con la misma cuenta; cuanto más actualizan, antes se pausa también BalanceBar.";

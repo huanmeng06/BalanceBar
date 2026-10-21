@@ -138,6 +138,31 @@ final class FetchSchedulerTests: XCTestCase {
         XCTAssertEqual(done.at, clock.now)
     }
 
+    func testStatusSnapshotRemembersAFailedReadUntilTheNextSuccess() {
+        let scheduler = makeScheduler()
+        let failedAt = clock.now
+        request(scheduler, .scheduled)
+        complete(scheduler, .failure("transport"))
+        XCTAssertEqual(scheduler.statusSnapshot().lastFailureAt, failedAt)
+        XCTAssertNil(scheduler.statusSnapshot().lastSuccessAt)
+
+        // A failure is only remembered: the next automatic read still waits for the minimum interval.
+        clock.advance(QuotaConstants.automaticRequestMinimumInterval - 1)
+        request(scheduler, .scheduled)
+        XCTAssertEqual(lastSkip, .minimumInterval)
+        XCTAssertTrue(transport.completions.isEmpty, "no immediate retry after a failure")
+
+        clock.advance(360)
+        request(scheduler, .scheduled)
+        complete(scheduler, .success(Data()))
+        XCTAssertNil(scheduler.statusSnapshot().lastFailureAt, "a success clears it")
+
+        clock.advance(360)
+        request(scheduler, .scheduled)
+        complete(scheduler, .rateLimited(retryAfter: nil))
+        XCTAssertNil(scheduler.statusSnapshot().lastFailureAt, "a 429 is reported as a cooldown, not as a failed read")
+    }
+
     func testAutomaticMinimumInterval() {
         let scheduler = makeScheduler()
         request(scheduler, .scheduled)

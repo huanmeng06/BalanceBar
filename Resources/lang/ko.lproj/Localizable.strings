@@ -555,7 +555,7 @@
 
 "dashboard.refresh.official_quota_frequency" = "공식 할당량 새로 고침 빈도";
 "dashboard.refresh.official_every_seconds" = "%1$@초마다";
-"dashboard.refresh.official_scope" = "Claude, Codex 등 공식 계정";
+"dashboard.refresh.official_scope" = "Codex 등은 이 빈도로 읽고, Claude는 최대 약 3분에 한 번";
 "dashboard.refresh.api_scope" = "서드파티 중계 / API 키";
 
 "quota.status.refreshing" = "업데이트 중…";
@@ -646,17 +646,21 @@
 "refresh.status.phase_rate" = "일시 중지: 공식 API가 ‘요청이 너무 많음’을 반환했습니다(다른 도구가 너무 자주 읽었을 수도 있음). %1$@ 더 기다려야 합니다";
 "refresh.status.phase_live" = "Mod 실시간 데이터가 최신(%1$@ 전)이라 공식 API는 잠시 건너뜁니다";
 "refresh.status.phase_interval" = "방금 읽었습니다. 너무 자주 읽지 않도록 기다리며 %1$@ 후에 다시 읽을 수 있습니다";
-"refresh.status.phase_tokens" = "사용 가능 횟수가 없습니다. %1$@ 후에 다시 읽을 수 있습니다";
-"refresh.status.phase_ready" = "언제든 읽을 수 있습니다. 다음 정기 점검에서 읽습니다";
+"refresh.status.phase_tokens" = "자동 읽기에 포인트가 부족합니다(1회 2포인트). %1$@ 후 충분해집니다";
+"refresh.status.phase_ready" = "포인트 충분: 다음 정기 확인 때 읽습니다(2포인트)";
 "refresh.status.last_read" = "마지막 읽기";
 "refresh.status.last_read_value" = "%1$@ (%2$@ 전)";
 "refresh.status.last_read_none" = "아직 없음";
-"refresh.status.tokens_label" = "사용 가능 횟수";
+"refresh.status.tokens_label" = "읽기 포인트";
 "refresh.status.mod_label" = "Mod 데이터";
 "refresh.status.mod_value" = "%1$@ 전";
 "refresh.help.mod_footer" = "Mod가 있으면 답변마다 바로 갱신";
 "refresh.help.mod_install" = "설치하기";
 "refresh.help.row_mod_now" = "지금(Mod)";
 "refresh.help.expand" = "평소에도 빠르지 않은 이유는?";
-"refresh.status.tokens_hint" = "3분마다 1개 회복, 자동 읽기는 2개, ‘지금 새로고침’은 1개를 씁니다.";
+"refresh.status.last_failed" = "%1$@ 읽기에 실패했습니다. 다시 시도합니다";
+"refresh.help.overview_claude" = "최대 약 3분에 한 번(BalanceBar가 스스로 늦춤, 아래 참고)";
+"refresh.help.overview_codex" = "설정한 빈도대로. Codex 사용 중에는 로컬 로그에서 바로 읽어 거의 실시간";
+"refresh.help.tooltip" = "공식 계정별 실제 읽기 빈도";
+"refresh.status.tokens_hint" = "3분마다 1포인트 회복(최대 3). 자동 읽기는 2포인트, ‘지금 새로고침’은 1포인트를 씁니다.";
 "refresh.help.other_tools" = "CC Switch 같은 도구도 같은 계정으로 같은 API를 씁니다. 그런 도구가 자주 새로고침할수록 BalanceBar도 더 쉽게 일시 중지됩니다.";

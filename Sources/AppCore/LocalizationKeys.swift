@@ -653,6 +653,10 @@
     case keyRefreshHelpExpand = "refresh.help.expand"
     case keyRefreshHelpOtherTools = "refresh.help.other_tools"
     case keyRefreshStatusTokensHint = "refresh.status.tokens_hint"
+    case keyRefreshHelpTooltip = "refresh.help.tooltip"
+    case keyRefreshHelpOverviewCodex = "refresh.help.overview_codex"
+    case keyRefreshHelpOverviewClaude = "refresh.help.overview_claude"
+    case keyRefreshStatusLastFailed = "refresh.status.last_failed"
 
     var rawKey: String { rawValue }
 }

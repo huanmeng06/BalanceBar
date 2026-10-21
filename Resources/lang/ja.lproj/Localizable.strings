@@ -555,7 +555,7 @@
 
 "dashboard.refresh.official_quota_frequency" = "公式クォータの更新頻度";
 "dashboard.refresh.official_every_seconds" = "%1$@ 秒ごと";
-"dashboard.refresh.official_scope" = "Claude、Codex などの公式アカウント";
+"dashboard.refresh.official_scope" = "Codex などはこの頻度で取得。Claude は最短約 3 分に 1 回";
 "dashboard.refresh.api_scope" = "サードパーティ中継 / API キー";
 
 "quota.status.refreshing" = "更新中…";
@@ -646,17 +646,21 @@
 "refresh.status.phase_rate" = "一時停止中：公式 API が「リクエストが多すぎます」と返しました（他のツールの取得が多すぎる可能性もあります）。あと %1$@";
 "refresh.status.phase_live" = "Mod のリアルタイムデータは新しい（%1$@前）ので、公式への問い合わせは控えています";
 "refresh.status.phase_interval" = "取得したばかりです。取得しすぎを避けるため、次に取得できるのは %1$@ 後";
-"refresh.status.phase_tokens" = "取得できる回数がなくなりました。次は %1$@ 後";
-"refresh.status.phase_ready" = "いつでも取得できます。次の定期チェックで取得します";
+"refresh.status.phase_tokens" = "自動取得にはポイントが足りません（1 回 2 ポイント）。%1$@後に貯まります";
+"refresh.status.phase_ready" = "ポイントは足りています：次の定期チェックで取得します（2 ポイント）";
 "refresh.status.last_read" = "前回の取得";
 "refresh.status.last_read_value" = "%1$@（%2$@前）";
 "refresh.status.last_read_none" = "まだ";
-"refresh.status.tokens_label" = "取得できる回数";
+"refresh.status.tokens_label" = "取得ポイント";
 "refresh.status.mod_label" = "Mod データ";
 "refresh.status.mod_value" = "%1$@前";
 "refresh.help.mod_footer" = "Mod があれば返信のたびにすぐ更新";
 "refresh.help.mod_install" = "インストール";
 "refresh.help.row_mod_now" = "いま（Mod）";
 "refresh.help.expand" = "普段も速くならないのはなぜ？";
-"refresh.status.tokens_hint" = "3 分ごとに 1 回復。自動取得は 2、「今すぐ更新」は 1 使います。";
+"refresh.status.last_failed" = "%1$@ の取得に失敗しました。再試行します";
+"refresh.help.overview_claude" = "最短約 3 分に 1 回（BalanceBar が自分で間隔を空けています。下記参照）";
+"refresh.help.overview_codex" = "設定どおりの頻度。Codex 使用中はローカルログから直接読み、ほぼリアルタイム";
+"refresh.help.tooltip" = "各公式アカウントの実際の取得頻度";
+"refresh.status.tokens_hint" = "3 分ごとに 1 ポイント回復（最大 3）。自動取得は 2、「今すぐ更新」は 1 ポイント使います。";
 "refresh.help.other_tools" = "CC Switch などのツールも同じアカウントで同じ API を使います。それらが頻繁に更新すると、BalanceBar も止められやすくなります。";

@@ -555,7 +555,7 @@
 
 "dashboard.refresh.official_quota_frequency" = "Frequência de atualização da cota oficial";
 "dashboard.refresh.official_every_seconds" = "A cada %1$@ s";
-"dashboard.refresh.official_scope" = "Contas oficiais como Claude e Codex";
+"dashboard.refresh.official_scope" = "O Codex e outros leem com esta frequência; o Claude no máximo a cada 3 min";
 "dashboard.refresh.api_scope" = "Relays de terceiros / chaves de API";
 
 "quota.status.refreshing" = "Lendo…";
@@ -646,17 +646,21 @@
 "refresh.status.phase_rate" = "Em pausa: o endpoint oficial respondeu «demasiados pedidos» (talvez outras ferramentas leiam demasiado); faltam %1$@";
 "refresh.status.phase_live" = "Os dados em tempo real do Mod são recentes (há %1$@), por isso o endpoint oficial fica de fora";
 "refresh.status.phase_interval" = "Acabou de ler; para não ler com demasiada frequência é preciso esperar: próxima leitura em %1$@";
-"refresh.status.phase_tokens" = "Sem leituras disponíveis; a próxima em %1$@";
-"refresh.status.phase_ready" = "Pronto para ler: a próxima verificação agendada fará isso";
+"refresh.status.phase_tokens" = "Pontos insuficientes para uma leitura automática (custa 2); suficientes em %1$@";
+"refresh.status.phase_ready" = "Pontos suficientes: a próxima verificação agendada vai ler (custa 2)";
 "refresh.status.last_read" = "Última leitura";
 "refresh.status.last_read_value" = "%1$@ (há %2$@)";
 "refresh.status.last_read_none" = "ainda não";
-"refresh.status.tokens_label" = "Leituras disponíveis";
+"refresh.status.tokens_label" = "Pontos de leitura";
 "refresh.status.mod_label" = "Dados do Mod";
 "refresh.status.mod_value" = "há %1$@";
 "refresh.help.mod_footer" = "Com o Mod: atualiza após cada resposta";
 "refresh.help.mod_install" = "Instalar";
 "refresh.help.row_mod_now" = "Agora consigo (Mod)";
 "refresh.help.expand" = "Porque também não é mais rápido normalmente?";
-"refresh.status.tokens_hint" = "Repõe-se 1 a cada 3 min; uma leitura automática usa 2 e «Atualizar agora» 1.";
+"refresh.status.last_failed" = "A leitura das %1$@ falhou; será tentada de novo";
+"refresh.help.overview_claude" = "No máximo a cada 3 min (o BalanceBar abranda por si, ver abaixo)";
+"refresh.help.overview_codex" = "Com a sua frequência; enquanto usa o Codex, lê-se do registo local, quase em tempo real";
+"refresh.help.tooltip" = "Com que frequência cada conta oficial é realmente lida";
+"refresh.status.tokens_hint" = "Repõe-se 1 ponto a cada 3 min, até 3; uma leitura automática custa 2 e «Atualizar agora» 1.";
 "refresh.help.other_tools" = "Ferramentas como o CC Switch consultam o mesmo endpoint com a mesma conta; quanto mais atualizam, mais depressa o BalanceBar também é pausado.";

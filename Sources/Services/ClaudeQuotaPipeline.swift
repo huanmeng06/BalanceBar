@@ -525,7 +525,12 @@ final class ClaudeQuotaPipeline {
                 lock.withLock { failure = skipFailure }
                 publish()
             }
-        case .requested, .completed:
+        case .completed:
+            // Without the outcome, a read that failed quietly (a transport error) is indistinguishable from one
+            // still in flight; "last read" in Settings only moves on success.
+            let outcome = event.outcome ?? "unknown"
+            diagnostics("claude fetch completed; outcome=\(outcome); tokens=\(event.tokens)", outcome == "success" ? .debug : .warning)
+        case .requested:
             break
         }
     }
