@@ -614,7 +614,6 @@
 "mod.panel.point3.detail" = "No Usage API requests, no more HTTP 429";
 "mod.panel.point4.title" = "Read-only, removable any time";
 "mod.panel.point4.detail" = "Never reads conversations; remove it with /plugin";
-"mod.prompt.headless" = "Headless runs detected: install the Mod to keep these live too";
 "mod.silent.title" = "Installed, but no data yet";
 "mod.silent.intro" = "Claude Code is running, but the Mod has sent nothing for 10 minutes. Please check:";
 "mod.silent.item1" = "Claude Code is v2.1.287 or later";

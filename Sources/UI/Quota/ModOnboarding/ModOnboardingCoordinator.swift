@@ -3,9 +3,8 @@ import AppKit
 /// What the status menu shows for the real-time boost.
 enum ModMenuRow: Equatable {
     case none
-    /// The accent-tinted prompt under the quota card; opens the explanation window. `headless` switches to the
-    /// wording for a user whose HUD does not follow headless runs.
-    case prompt(headless: Bool)
+    /// The accent-tinted prompt under the quota card; opens the explanation window.
+    case prompt
 }
 
 /// The Mod's entry in Claude Code's plugin registry.
@@ -50,35 +49,6 @@ final class UserDefaultsModDataTimestamp: ModDataTimestampStoring {
     }
 }
 
-/// Headless Claude Code time accumulated within the current day, persisted across launches.
-struct ModHeadlessAccumulation: Equatable {
-    var windowStart: Date?
-    var seconds: TimeInterval = 0
-}
-
-protocol ModHeadlessStoring: AnyObject {
-    var accumulation: ModHeadlessAccumulation { get set }
-}
-
-final class UserDefaultsModHeadlessStore: ModHeadlessStoring {
-    static let startKey = "modOnboarding.headlessWindowStart"
-    static let secondsKey = "modOnboarding.headlessSeconds"
-    private let defaults: UserDefaults
-    init(defaults: UserDefaults = .standard) { self.defaults = defaults }
-    var accumulation: ModHeadlessAccumulation {
-        get {
-            ModHeadlessAccumulation(
-                windowStart: defaults.object(forKey: Self.startKey) == nil
-                    ? nil : Date(timeIntervalSince1970: defaults.double(forKey: Self.startKey)),
-                seconds: defaults.double(forKey: Self.secondsKey))
-        }
-        set {
-            defaults.set(newValue.windowStart?.timeIntervalSince1970, forKey: Self.startKey)
-            defaults.set(newValue.seconds, forKey: Self.secondsKey)
-        }
-    }
-}
-
 /// Forwards the prompt-dismissal preference and tells the coordinator when it changes.
 private final class NotifyingPromptPreference: ModPromptPreferenceStoring {
     private let base: ModPromptPreferenceStoring
@@ -105,12 +75,8 @@ final class ModOnboardingCoordinator {
         var detectClaudeCode: () -> ClaudeCodeVersionStatus
         /// Blocking; called off the main thread. `nil` means the Mod is not installed.
         var readInstallRecord: () -> ModInstallRecord?
-        /// A Claude HUD usage snapshot has been read.
-        var hasHUDSnapshot: () -> Bool
-        /// Headless Claude Code time seen by the HUD source since launch.
-        var headlessDuration: () -> TimeInterval
 
-        static func production(plan: ModInstallPlan, hud: ClaudeHUDSource?) -> Environment {
+        static func production(plan: ModInstallPlan) -> Environment {
             Environment(
                 detectClaudeCode: {
                     guard let path = DefaultClaudeExecutableLocator().locate(),
@@ -122,13 +88,7 @@ final class ModOnboardingCoordinator {
                 readInstallRecord: {
                     (try? Data(contentsOf: ClaudePluginRegistry.defaultURL()))
                         .flatMap { ClaudePluginRegistry.record(from: $0, pluginID: plan.pluginID) }
-                },
-                hasHUDSnapshot: {
-                    guard let diagnostics = hud?.diagnostics, case .exporting = diagnostics.status else { return false }
-                    if case .unavailable = diagnostics.health { return false }
-                    return true
-                },
-                headlessDuration: { hud?.headlessDuration ?? 0 })
+                })
         }
     }
 
@@ -138,8 +98,6 @@ final class ModOnboardingCoordinator {
 
     private let environment: Environment
     private let timestamps: ModDataTimestampStoring
-    private let headlessStore: ModHeadlessStoring
-    private var lastHeadlessSeen: TimeInterval = 0
     private let preference: NotifyingPromptPreference
     private let now: () -> Date
     private let queue = DispatchQueue(label: "balancebar.mod-environment", qos: .utility)
@@ -162,14 +120,12 @@ final class ModOnboardingCoordinator {
         environment: Environment,
         promptPreference: ModPromptPreferenceStoring = UserDefaultsModPromptPreference(),
         timestamps: ModDataTimestampStoring = UserDefaultsModDataTimestamp(),
-        headlessStore: ModHeadlessStoring = UserDefaultsModHeadlessStore(),
         installer: ModInstaller? = nil,
         copyToPasteboard: ((String) -> Void)? = nil,
         now: @escaping () -> Date = Date.init
     ) {
         self.environment = environment
         self.timestamps = timestamps
-        self.headlessStore = headlessStore
         self.now = now
         preference = NotifyingPromptPreference(base: promptPreference)
         if let copyToPasteboard {
@@ -207,43 +163,20 @@ final class ModOnboardingCoordinator {
     func menuRow(isOfficialDirect: Bool) -> ModMenuRow {
         guard isOfficialDirect else { return .none }
         guard promptVisibility(isOfficialDirect: true).isVisible else { return .none }
-        return .prompt(headless: environment.hasHUDSnapshot())
+        return .prompt
     }
 
     func promptVisibility(isOfficialDirect: Bool) -> ModPromptVisibility {
         let (claudeCode, lastModDataAt, notInstalled) = lock.withLock {
             (self.claudeCode, self.lastModDataAt, self.installChecked && self.installRecord == nil)
         }
-        let hasSnapshot = environment.hasHUDSnapshot()
         let inputs = ModPromptInputs(
             isOfficialDirect: isOfficialDirect,
             lastModDataAt: lastModDataAt,
             claudeCode: claudeCode,
             promptDismissed: controller.isPromptDismissed,
-            confirmedNotInstalled: notInstalled,
-            hasHUDSnapshot: hasSnapshot,
-            headlessSignalSatisfied: accumulatedHeadlessTime() > ModOnboardingConfig.headlessDurationThreshold)
+            confirmedNotInstalled: notInstalled)
         return ModPromptVisibility.evaluate(inputs, now: now())
-    }
-
-    /// Headless time within the last day. The HUD source reports time since launch, so only the growth since the
-    /// previous look is added; the sum survives restarts and restarts its day once the window is over.
-    private func accumulatedHeadlessTime() -> TimeInterval {
-        let current = environment.headlessDuration()
-        return lock.withLock {
-            let delta = current >= lastHeadlessSeen ? current - lastHeadlessSeen : current
-            lastHeadlessSeen = current
-            var accumulation = headlessStore.accumulation
-            let date = now()
-            if let start = accumulation.windowStart, date.timeIntervalSince(start) <= ModOnboardingConfig.headlessAccumulationWindow,
-               date >= start {
-                accumulation.seconds += delta
-            } else {
-                accumulation = ModHeadlessAccumulation(windowStart: date, seconds: delta)
-            }
-            if delta > 0 || headlessStore.accumulation.windowStart == nil { headlessStore.accumulation = accumulation }
-            return accumulation.seconds
-        }
     }
 
     func enhancementStatus() -> ModEnhancementStatus {

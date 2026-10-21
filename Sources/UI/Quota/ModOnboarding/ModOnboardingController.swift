@@ -3,7 +3,6 @@ import AppKit
 /// User-visible copy. Defaults are Simplified Chinese; the integration layer can inject `localize`.
 enum ModOnboardingText: String, CaseIterable {
     case promptRow = "mod.prompt.row"
-    case promptHeadless = "mod.prompt.headless"
     case promptWhy = "mod.prompt.why"
     case panelTitle = "mod.panel.title"
     case panelSubtitle = "mod.panel.subtitle"
@@ -51,7 +50,6 @@ enum ModOnboardingText: String, CaseIterable {
     var defaultText: String {
         switch self {
         case .promptRow: return "为 Claude 安装 Mod，额度实时更新"
-        case .promptHeadless: return "检测到 headless 运行，安装 Mod 可让这部分也实时更新"
         case .promptWhy: return "为什么这么做？"
         case .panelTitle: return "让 Claude 额度实时更新"
         case .panelSubtitle: return "BalanceBar Mod 是运行在 Claude Code 里的小插件，每轮回复后把官方额度告诉 BalanceBar。"

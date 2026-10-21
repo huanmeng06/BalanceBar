@@ -187,9 +187,8 @@ final class ModPromptRowView: NSView {
     var mainText: String { mainLabel.stringValue }
     var whyText: String { whyLabel.stringValue }
 
-    /// - Parameter headless: shows the headless wording (a HUD user whose headless runs go untracked).
-    init(headless: Bool = false, localize: (ModOnboardingText) -> String = ModOnboardingText.defaultLocalize) {
-        mainLabel = NSTextField(wrappingLabelWithString: localize(headless ? .promptHeadless : .promptRow))
+    init(localize: (ModOnboardingText) -> String = ModOnboardingText.defaultLocalize) {
+        mainLabel = NSTextField(wrappingLabelWithString: localize(.promptRow))
         whyLabel = NSTextField(labelWithString: localize(.promptWhy))
         super.init(frame: NSRect(x: 0, y: 0, width: Self.width, height: Self.rowHeight))
         autoresizingMask = [.width]

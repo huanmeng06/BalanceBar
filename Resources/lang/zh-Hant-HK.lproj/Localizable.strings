@@ -614,7 +614,6 @@
 "mod.panel.point3.detail" = "不請求 Usage API，告別 429";
 "mod.panel.point4.title" = "唯讀，可隨時移除";
 "mod.panel.point4.detail" = "不讀取對話內容；在 /plugin 中即可解除安裝";
-"mod.prompt.headless" = "偵測到 headless 執行，安裝 Mod 可讓這部分也即時更新";
 "mod.silent.title" = "已安裝，但還沒收到資料";
 "mod.silent.intro" = "Claude Code 正在執行，但 10 分鐘內沒有收到 Mod 的資料。請檢查：";
 "mod.silent.item1" = "Claude Code 版本是否為 v2.1.287 或更新";

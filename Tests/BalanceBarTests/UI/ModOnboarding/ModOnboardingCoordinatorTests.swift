@@ -6,8 +6,6 @@ private final class MemoryPromptPreference: ModPromptPreferenceStoring { var isP
 
 private final class MemoryTimestamp: ModDataTimestampStoring { var lastModDataAt: Date? }
 
-private final class MemoryHeadless: ModHeadlessStoring { var accumulation = ModHeadlessAccumulation() }
-
 private final class MutableClock {
     private let lock = NSLock()
     private var value: Date
@@ -16,12 +14,12 @@ private final class MutableClock {
     func advance(by interval: TimeInterval) { lock.withLock { value.addTimeInterval(interval) } }
 }
 
-/// Scriptable stand-in for `claude --version`, the plugin registry and the HUD source.
+/// Scriptable stand-in for `claude --version`, and the plugin registry.
 private final class FakeEnvironment {
     private let lock = NSLock()
     private var state = (
         version: ClaudeCodeVersionStatus.detected(ClaudeCodeVersion(major: 2, minor: 1, patch: 291)),
-        record: ModInstallRecord?.none, hud: false, headless: TimeInterval(0), reads: 0)
+        record: ModInstallRecord?.none, reads: 0)
 
     var version: ClaudeCodeVersionStatus {
         get { lock.withLock { state.version } } set { lock.withLock { state.version = newValue } }
@@ -29,20 +27,12 @@ private final class FakeEnvironment {
     var record: ModInstallRecord? {
         get { lock.withLock { state.record } } set { lock.withLock { state.record = newValue } }
     }
-    var hud: Bool {
-        get { lock.withLock { state.hud } } set { lock.withLock { state.hud = newValue } }
-    }
-    var headless: TimeInterval {
-        get { lock.withLock { state.headless } } set { lock.withLock { state.headless = newValue } }
-    }
     var reads: Int { lock.withLock { state.reads } }
 
     var environment: ModOnboardingCoordinator.Environment {
         .init(
             detectClaudeCode: { self.lock.withLock { self.state.reads += 1; return self.state.version } },
-            readInstallRecord: { self.lock.withLock { self.state.record } },
-            hasHUDSnapshot: { self.hud },
-            headlessDuration: { self.headless })
+            readInstallRecord: { self.lock.withLock { self.state.record } })
     }
 }
 
@@ -52,7 +42,6 @@ final class ModOnboardingCoordinatorTests: XCTestCase {
     private var fake: FakeEnvironment!
     private var preference: MemoryPromptPreference!
     private var timestamps: MemoryTimestamp!
-    private var headlessStore: MemoryHeadless!
 
     override func setUp() {
         super.setUp()
@@ -60,12 +49,11 @@ final class ModOnboardingCoordinatorTests: XCTestCase {
         fake = FakeEnvironment()
         preference = MemoryPromptPreference()
         timestamps = MemoryTimestamp()
-        headlessStore = MemoryHeadless()
     }
 
     private func makeCoordinator(installer: ModInstaller? = nil) -> ModOnboardingCoordinator {
         ModOnboardingCoordinator(
-            plan: .standard, environment: fake.environment, promptPreference: preference, timestamps: timestamps, headlessStore: headlessStore,
+            plan: .standard, environment: fake.environment, promptPreference: preference, timestamps: timestamps,
             installer: installer, copyToPasteboard: { _ in }, now: { [clock] in clock!.now })
     }
 
@@ -93,7 +81,7 @@ final class ModOnboardingCoordinatorTests: XCTestCase {
         XCTAssertEqual(coordinator.menuRow(isOfficialDirect: false), .none)
 
         refresh(coordinator)
-        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .prompt(headless: false))
+        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .prompt)
 
         fake.record = ModInstallRecord(installedAt: start)
         refresh(coordinator)
@@ -101,12 +89,12 @@ final class ModOnboardingCoordinatorTests: XCTestCase {
         XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .none, "Mod data within seven days hides the prompt")
         fake.record = nil
         refresh(coordinator)
-        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .prompt(headless: false),
+        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .prompt,
                        "uninstalled: leftover data from a session that still has the Mod loaded no longer hides it")
         fake.record = ModInstallRecord(installedAt: start)
         refresh(coordinator)
         clock.advance(by: 8 * 86_400)
-        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .prompt(headless: false), "…and an old one no longer does")
+        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .prompt, "…and an old one no longer does")
     }
 
     func testAnUnreadableClaudeVersionIsRetriedAfterAMinuteInsteadOfADay() {
@@ -122,7 +110,7 @@ final class ModOnboardingCoordinatorTests: XCTestCase {
         clock.advance(by: ModOnboardingConfig.unknownVersionRetryInterval + 1)
         refresh(coordinator, force: false)
         XCTAssertEqual(fake.reads, 2)
-        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .prompt(headless: false), "installing Claude Code shows the prompt")
+        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .prompt, "installing Claude Code shows the prompt")
 
         clock.advance(by: 3_600)
         refresh(coordinator, force: false)
@@ -132,7 +120,7 @@ final class ModOnboardingCoordinatorTests: XCTestCase {
     func testDismissingThePromptRemovesTheMenuRow() {
         let coordinator = makeCoordinator()
         refresh(coordinator)
-        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .prompt(headless: false))
+        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .prompt)
         let changed = expectation(description: "menu input refresh requested")
         coordinator.onChange = { changed.fulfill() }
         coordinator.controller.setDismissChecked(true)
@@ -142,40 +130,7 @@ final class ModOnboardingCoordinatorTests: XCTestCase {
         XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .none)
 
         coordinator.controller.setPromptEnabled(true)
-        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .prompt(headless: false))
-    }
-
-    func testHUDSnapshotNeedsTheHeadlessSignalBeforeThePromptShows() {
-        let coordinator = makeCoordinator()
-        refresh(coordinator)
-        fake.hud = true
-        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .none)
-        fake.headless = ModOnboardingConfig.headlessDurationThreshold
-        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .none, "exactly 30 minutes is not more than 30 minutes")
-        fake.headless = ModOnboardingConfig.headlessDurationThreshold + 60
-        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .prompt(headless: true),
-                       "a HUD user with enough headless time gets the headless wording")
-    }
-
-    func testHeadlessTimeAccumulatesPerDayAndSurvivesARestart() {
-        let coordinator = makeCoordinator()
-        refresh(coordinator)
-        fake.hud = true
-        fake.headless = 20 * 60
-        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .none)
-        XCTAssertEqual(headlessStore.accumulation.seconds, 20 * 60)
-
-        // A restart: the HUD source counts from zero again, but the day's total is kept.
-        let restarted = makeCoordinator()
-        refresh(restarted)
-        fake.headless = 11 * 60
-        XCTAssertEqual(restarted.menuRow(isOfficialDirect: true), .prompt(headless: true), "20 + 11 minutes within one day")
-
-        // Once the day is over the sum starts again.
-        clock.advance(by: ModOnboardingConfig.headlessAccumulationWindow + 60)
-        fake.headless = 12 * 60
-        XCTAssertEqual(restarted.menuRow(isOfficialDirect: true), .none)
-        XCTAssertEqual(headlessStore.accumulation.seconds, 60)
+        XCTAssertEqual(coordinator.menuRow(isOfficialDirect: true), .prompt)
     }
 
     func testClaudeCodeVersionIsReadOncePerDayAndAfterAnInstall() {
@@ -278,8 +233,8 @@ final class ModOnboardingCoordinatorTests: XCTestCase {
 
     func testOnlyModObservationsCountAndTheTimestampIsPersistedAndCappedAtNow() {
         let coordinator = makeCoordinator()
-        coordinator.recordObservation(observation(source: "claude-hud", observedAt: clock.now))
-        XCTAssertNil(timestamps.lastModDataAt, "HUD data is not Mod data")
+        coordinator.recordObservation(observation(source: "oauth-api", observedAt: clock.now))
+        XCTAssertNil(timestamps.lastModDataAt, "only the Mod's own snapshots count as Mod data")
 
         coordinator.recordObservation(observation(source: ModOnboardingConfig.modSourceID, observedAt: clock.now.addingTimeInterval(3_600)))
         XCTAssertEqual(timestamps.lastModDataAt, clock.now, "a clock-skewed snapshot cannot lie in the future")
@@ -558,8 +513,8 @@ final class ModOnboardingCoordinatorTests: XCTestCase {
             }
             // The menu prompt row on a menu-like background, in every language (the row sizes itself to the wording).
             for language in AppLanguage.allCases where language != .system {
-                for headless in [false, true] {
-                    let row = ModPromptRowView(headless: headless, localize: { text in
+                do {
+                    let row = ModPromptRowView(localize: { text in
                         LocalizationKey(rawValue: text.rawValue).map { tr($0, language: language) } ?? text.defaultText
                     })
                     row.appearance = NSAppearance(named: name)
@@ -572,7 +527,7 @@ final class ModOnboardingCoordinatorTests: XCTestCase {
                     row.cacheDisplay(in: row.bounds, to: rep)
                     try XCTUnwrap(rep.representation(using: .png, properties: [:]))
                         .write(to: URL(fileURLWithPath: directory).appendingPathComponent(
-                            "prompt-row-\(language.rawValue)\(headless ? "-headless" : "")-\(appearanceName).png"))
+                            "prompt-row-\(language.rawValue)-\(appearanceName).png"))
                 }
             }
         }

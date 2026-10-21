@@ -614,7 +614,6 @@
 "mod.panel.point3.detail" = "Usage API 요청이 없어 429 오류가 사라집니다";
 "mod.panel.point4.title" = "읽기 전용, 언제든 제거 가능";
 "mod.panel.point4.detail" = "대화 내용은 읽지 않으며 /plugin 으로 제거할 수 있습니다";
-"mod.prompt.headless" = "headless 실행이 감지되었습니다. Mod를 설치하면 이 부분도 실시간으로 갱신됩니다";
 "mod.silent.title" = "설치되었지만 아직 데이터가 없습니다";
 "mod.silent.intro" = "Claude Code는 실행 중이지만 10분 동안 Mod의 데이터가 없습니다. 다음을 확인하세요:";
 "mod.silent.item1" = "Claude Code가 v2.1.287 이상인지";

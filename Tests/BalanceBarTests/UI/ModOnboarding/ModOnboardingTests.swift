@@ -2,8 +2,6 @@ import AppKit
 import XCTest
 @testable import BalanceBar
 
-private struct FakeHeadless: ModHeadlessSignalProviding { var isSatisfied: Bool }
-
 private final class MemoryPreference: ModPromptPreferenceStoring { var isPromptDismissed = false }
 
 private struct FakeLocator: ClaudeExecutableLocating { var path: String?; func locate() -> String? { path } }
@@ -46,13 +44,6 @@ final class ModPromptVisibilityTests: XCTestCase {
         XCTAssertEqual(ModPromptVisibility.evaluate(inputs { $0.lastModDataAt = now.addingTimeInterval(-7 * 86_400) }, now: now), .visible)
         XCTAssertEqual(ModPromptVisibility.evaluate(inputs { $0.claudeCode = .detected(.init(major: 2, minor: 1, patch: 287)) }, now: now), .visible)
         XCTAssertEqual(ModPromptVisibility.evaluate(inputs { $0.claudeCode = .detected(.init(major: 3, minor: 0, patch: 0)) }, now: now), .visible)
-    }
-
-    func testHeadlessSignalOnlyMattersWithHUDSnapshot() {
-        let unmet = FakeHeadless(isSatisfied: false), met = FakeHeadless(isSatisfied: true)
-        XCTAssertEqual(ModPromptVisibility.evaluate(inputs { $0.headlessSignalSatisfied = unmet.isSatisfied }, now: now), .visible)
-        XCTAssertEqual(ModPromptVisibility.evaluate(inputs { $0.hasHUDSnapshot = true; $0.headlessSignalSatisfied = unmet.isSatisfied }, now: now), .hidden(.headlessSignalNotSatisfied))
-        XCTAssertEqual(ModPromptVisibility.evaluate(inputs { $0.hasHUDSnapshot = true; $0.headlessSignalSatisfied = met.isSatisfied }, now: now), .visible)
     }
 
     func testVersionParsing() {
@@ -423,18 +414,18 @@ final class ModOnboardingPanelTests: XCTestCase {
 
     func testPromptRowNeverWidensTheMenuInAnyLanguage() {
         for language in AppLanguage.allCases where language != .system {
-            for headless in [false, true] {
-                let row = ModPromptRowView(headless: headless, localize: { text in
+            do {
+                let row = ModPromptRowView(localize: { text in
                     LocalizationKey(rawValue: text.rawValue).map { tr($0, language: language) } ?? text.defaultText
                 })
-                let label = "\(language) headless=\(headless)"
+                let label = "\(language)"
                 XCTAssertEqual(row.frame.width, OpenCodexCardLayout.cardWidth, label)
                 XCTAssertEqual(row.intrinsicContentSize.width, OpenCodexCardLayout.cardWidth, label)
                 row.layoutSubtreeIfNeeded()
                 XCTAssertLessThanOrEqual(row.fittingSize.width, OpenCodexCardLayout.cardWidth + 0.5, "\(label): the row must not widen the menu")
                 XCTAssertGreaterThanOrEqual(row.frame.height, ModPromptRowView.rowHeight, label)
                 XCTAssertEqual(row.frame.height, row.intrinsicContentSize.height, label)
-                if !headless { XCTAssertFalse(row.mainTextIsTruncated, "\(label): the standard prompt fits in three lines") }
+                XCTAssertFalse(row.mainTextIsTruncated, "\(label): the standard prompt fits in three lines")
             }
         }
     }
@@ -515,7 +506,6 @@ final class ModOnboardingPanelTests: XCTestCase {
         let row = ModPromptRowView()
         XCTAssertEqual(row.mainText, "为 Claude 安装 Mod，额度实时更新")
         XCTAssertEqual(row.whyText, "为什么这么做？")
-        XCTAssertEqual(ModPromptRowView(headless: true).mainText, "检测到 headless 运行，安装 Mod 可让这部分也实时更新")
         var clicks = 0
         row.onClick = { clicks += 1 }
         XCTAssertTrue(row.accessibilityPerformPress())

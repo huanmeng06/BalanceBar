@@ -2,7 +2,7 @@ import AppKit
 
 /// Where the most recent non-estimated value came from.
 enum StatusSlotSource: Equatable {
-    /// A real-time local source (e.g. HUD / Mod snapshot) is fresh.
+    /// A real-time local source (the BalanceBar Mod's snapshot) is fresh.
     case realtime
     /// The value was read from the official usage endpoint.
     case official

@@ -3384,7 +3384,7 @@ extension StatusItemControllerTests {
         controller.start(snapshot: .placeholder, refreshDate: Date(), menuInput: input(.none), settings: makeSettings())
         XCTAssertNil(promptItem())
 
-        controller.update(snapshot: .placeholder, refreshDate: Date(), menuInput: input(.prompt(headless: false)), settings: makeSettings())
+        controller.update(snapshot: .placeholder, refreshDate: Date(), menuInput: input(.prompt), settings: makeSettings())
         let prompt = try XCTUnwrap(promptItem(), "the install-hint row appears")
         let rowView = try XCTUnwrap(prompt.view as? ModPromptRowView)
         XCTAssertEqual(rowView.mainText, ModOnboardingText.appLocalize(.promptRow))
@@ -3399,9 +3399,6 @@ extension StatusItemControllerTests {
         let deadline = Date().addingTimeInterval(1)
         while windowRequests == 0, Date() < deadline { RunLoop.current.run(until: Date().addingTimeInterval(0.01)) }
         XCTAssertEqual(windowRequests, 1, "the row opens the explanation window once the menu has closed")
-
-        controller.update(snapshot: .placeholder, refreshDate: Date(), menuInput: input(.prompt(headless: true)), settings: makeSettings())
-        XCTAssertEqual((promptItem()?.view as? ModPromptRowView)?.mainText, ModOnboardingText.appLocalize(.promptHeadless))
 
         controller.update(snapshot: .placeholder, refreshDate: Date(), menuInput: input(.none), settings: makeSettings())
         XCTAssertNil(promptItem(), "dismissing removes the prompt and leaves nothing in its place")

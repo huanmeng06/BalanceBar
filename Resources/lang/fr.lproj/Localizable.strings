@@ -614,7 +614,6 @@
 "mod.panel.point3.detail" = "Aucune requête à l’API Usage, fini les erreurs 429";
 "mod.panel.point4.title" = "Lecture seule, retirable à tout moment";
 "mod.panel.point4.detail" = "Ne lit pas les conversations ; se désinstalle avec /plugin";
-"mod.prompt.headless" = "Exécutions headless détectées : installez le Mod pour qu’elles soient aussi en direct";
 "mod.silent.title" = "Installé, mais pas encore de données";
 "mod.silent.intro" = "Claude Code tourne, mais le Mod n’a rien envoyé depuis 10 minutes. Vérifiez :";
 "mod.silent.item1" = "Claude Code est en v2.1.287 ou ultérieure";

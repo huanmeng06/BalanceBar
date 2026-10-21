@@ -142,17 +142,22 @@ bound of the calibration interval; automatic reads are never closer than three
 minutes. The pipeline builds its engine and reads account and merge state on
 background queues; the main thread only reads published values.
 
-Two local real-time sources feed the same merge engine as grade-B observations
-(`ClaudeHUDSource` and `SnapshotInbox`, which also carries the BalanceBar Mod's
-snapshots). An observation counts as a trusted real-time answer only when the
-engine actually displayed it; while one is younger than
-`QuotaConstants.realtimeSourceFreshness` the scheduler skips automatic reads and
-answers manual refreshes without a request, except for one calibration read after
+Claude quota has exactly two paths: the official endpoint and the BalanceBar Mod.
+The Mod's snapshots arrive through `SnapshotInbox` and feed the same merge engine
+as grade-B observations; the Claude HUD is no longer wired in (its module under
+Sources/Quota/Sources/HUD/ is kept for now and is not referenced by the pipeline).
+An observation counts as a trusted real-time answer only when the engine actually
+displayed it; while one is younger than `QuotaConstants.realtimeSourceFreshness`
+the scheduler skips automatic reads and answers manual refreshes without a
+request, except for one calibration read after
 `QuotaConstants.realtimeCalibrationInterval` and whenever a window waits for a
-reset confirmation. A snapshot that names another account (`account.email_hash`)
+reset confirmation. A grade-B reading is only admitted next to a same-epoch grade-A
+(official) reading, and a snapshot that names another account (`account.email_hash`)
 is dropped. `ModOnboardingCoordinator` (Sources/UI/Quota/ModOnboarding/) owns the
 real-time boost prompt state shared by the menu row, the explanation panel and
-Settings › Advanced.
+Settings › Advanced. The menu prompt shows for an official Claude account whose
+Claude Code is v2.1.287 or later when the Mod is not installed, the prompt is not
+dismissed and no Mod data arrived within seven days.
 
 Codex official quota keeps its request path (including reset cards and
 forecasts). `CodexLocalQuota` (Sources/Services/CodexLocalQuota.swift) reads

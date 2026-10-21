@@ -614,7 +614,6 @@
 "mod.panel.point3.detail" = "Keine Usage-API-Anfragen, kein HTTP 429 mehr";
 "mod.panel.point4.title" = "Nur lesend, jederzeit entfernbar";
 "mod.panel.point4.detail" = "Liest keine Unterhaltungen; Entfernen mit /plugin";
-"mod.prompt.headless" = "Headless-Läufe erkannt: Mit dem Mod werden auch sie live aktualisiert";
 "mod.silent.title" = "Installiert, aber noch keine Daten";
 "mod.silent.intro" = "Claude Code läuft, aber der Mod hat seit 10 Minuten nichts gesendet. Bitte prüfen:";
 "mod.silent.item1" = "Claude Code ist v2.1.287 oder neuer";

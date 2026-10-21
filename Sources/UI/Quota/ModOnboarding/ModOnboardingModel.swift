@@ -9,11 +9,6 @@ enum ModOnboardingConfig {
     static let minimumClaudeCodeVersion = ClaudeCodeVersion(major: 2, minor: 1, patch: 287)
     /// Source label the Mod writes into its snapshots.
     static let modSourceID = "balancebar-mod"
-    /// Headless Claude Code activity (transcripts written while the HUD snapshot stays quiet) that makes the
-    /// Mod worth offering to a user who already has the HUD: more than 30 minutes within one day.
-    static let headlessDurationThreshold: TimeInterval = 30 * 60
-    /// The window over which headless time accumulates.
-    static let headlessAccumulationWindow: TimeInterval = 24 * 60 * 60
     /// `claude --version` is read once a day (and again right after an install).
     static let environmentRefreshInterval: TimeInterval = 24 * 60 * 60
     /// While the version could not be read (for example `claude` was not found), look again after a minute
@@ -46,12 +41,6 @@ enum ClaudeCodeVersionStatus: Equatable {
     case detected(ClaudeCodeVersion)
 }
 
-/// Headless (`claude -p` / Agent SDK) signal from the BB-12 adapter. Tests use a fake.
-protocol ModHeadlessSignalProviding {
-    /// True when the headless signal protocol says the Mod is worth offering.
-    var isSatisfied: Bool { get }
-}
-
 struct ModPromptInputs: Equatable {
     /// Quota is read straight from the official endpoint (not a third-party relay).
     var isOfficialDirect: Bool
@@ -61,26 +50,19 @@ struct ModPromptInputs: Equatable {
     /// The plugin registry was read and does not list the Mod: leftover data from sessions that still have it loaded
     /// no longer counts as "the user already has the Mod".
     var confirmedNotInstalled: Bool
-    /// A HUD snapshot exists; the headless signal must then be satisfied too.
-    var hasHUDSnapshot: Bool
-    var headlessSignalSatisfied: Bool
 
     init(
         isOfficialDirect: Bool,
         lastModDataAt: Date? = nil,
         claudeCode: ClaudeCodeVersionStatus = .unknown,
         promptDismissed: Bool = false,
-        confirmedNotInstalled: Bool = false,
-        hasHUDSnapshot: Bool = false,
-        headlessSignalSatisfied: Bool = true
+        confirmedNotInstalled: Bool = false
     ) {
         self.isOfficialDirect = isOfficialDirect
         self.lastModDataAt = lastModDataAt
         self.claudeCode = claudeCode
         self.promptDismissed = promptDismissed
         self.confirmedNotInstalled = confirmedNotInstalled
-        self.hasHUDSnapshot = hasHUDSnapshot
-        self.headlessSignalSatisfied = headlessSignalSatisfied
     }
 }
 
@@ -90,7 +72,6 @@ enum ModPromptHiddenReason: Equatable {
     case claudeCodeTooOld
     case claudeCodeVersionUnknown
     case dismissed
-    case headlessSignalNotSatisfied
 }
 
 enum ModPromptVisibility: Equatable {
@@ -100,7 +81,7 @@ enum ModPromptVisibility: Equatable {
     var isVisible: Bool { self == .visible }
 
     /// Menu prompt row display rule: official direct, no Mod data within 7 days (unless the Mod is confirmed uninstalled), Claude Code >= v2.1.287,
-    /// not dismissed, and (with a HUD snapshot) the headless signal satisfied.
+    /// not dismissed.
     static func evaluate(_ inputs: ModPromptInputs, now: Date) -> ModPromptVisibility {
         guard inputs.isOfficialDirect else { return .hidden(.notOfficialDirect) }
         if !inputs.confirmedNotInstalled, let last = inputs.lastModDataAt,
@@ -113,7 +94,6 @@ enum ModPromptVisibility: Equatable {
             if version < ModOnboardingConfig.minimumClaudeCodeVersion { return .hidden(.claudeCodeTooOld) }
         }
         guard !inputs.promptDismissed else { return .hidden(.dismissed) }
-        if inputs.hasHUDSnapshot, !inputs.headlessSignalSatisfied { return .hidden(.headlessSignalNotSatisfied) }
         return .visible
     }
 }

@@ -6150,8 +6150,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     /// The accent-tinted prompt row under the quota card.
     private func makeModPromptItem() -> NSMenuItem? {
-        guard case let .prompt(headless) = menuInput.modRow else { return nil }
-        let view = ModPromptRowView(headless: headless, localize: ModOnboardingText.appLocalize)
+        guard case .prompt = menuInput.modRow else { return nil }
+        let view = ModPromptRowView(localize: ModOnboardingText.appLocalize)
         view.onClick = { [weak self] in self?.openModOnboarding() }
         let item = NSMenuItem()
         item.view = view

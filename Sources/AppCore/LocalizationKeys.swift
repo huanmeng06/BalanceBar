@@ -602,7 +602,6 @@
     case keyModPanelPoint3Detail = "mod.panel.point3.detail"
     case keyModPanelPoint4Title = "mod.panel.point4.title"
     case keyModPanelPoint4Detail = "mod.panel.point4.detail"
-    case keyModPromptHeadless = "mod.prompt.headless"
     case keyModSilentTitle = "mod.silent.title"
     case keyModSilentIntro = "mod.silent.intro"
     case keyModSilentItem1 = "mod.silent.item1"

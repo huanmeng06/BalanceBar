@@ -52,7 +52,7 @@ public protocol ManualRefreshFreePathChecking {
     func checkFreePath(within window: TimeInterval, completion: @escaping (Bool) -> Void)
 }
 
-/// Reports when a trusted real-time source (such as the HUD) last delivered data.
+/// Reports when a trusted real-time source (the BalanceBar Mod) last delivered data.
 public protocol RealtimeSourceFreshnessProviding {
     /// Receipt time of the latest trusted real-time observation, or `nil`.
     var lastTrustedRealtimeObservationAt: Date? { get }

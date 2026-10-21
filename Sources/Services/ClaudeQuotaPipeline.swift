@@ -117,7 +117,7 @@ final class ClaudeMergeEngineBox {
     }
 }
 
-/// Remembers when a trusted real-time source (Claude HUD, the BalanceBar Mod) last had an observation
+/// Remembers when the trusted real-time source (the BalanceBar Mod, delivered through the snapshot inbox) last had an observation
 /// accepted by the merge engine, so the scheduler can skip requests the local sources already answer.
 ///
 /// Only accepted observations count: a snapshot rejected by the merge rules (another account, a stale
@@ -226,7 +226,7 @@ final class ClaudeQuotaPipeline {
     private var updateHandler: ((ClaudeQuotaState) -> Void)?
 
     /// - Parameters:
-    ///   - realtimeSources: Local real-time sources (Claude HUD, snapshot inbox). They start with the pipeline
+    ///   - realtimeSources: Local real-time sources (in production only the Mod's snapshot inbox). They start with the pipeline
     ///     and deliver grade-B observations to the merge engine.
     ///   - calibrationIntervalCap: Upper bound for how long a fresh real-time source may suppress requests.
     ///   - diagnostics: Receives scheduler skip reasons; production writes them to `SwitchLog`.
@@ -287,8 +287,6 @@ final class ClaudeQuotaPipeline {
     }
     private var observerHandler: ((QuotaObservation, Bool) -> Void)?
 
-    /// Production HUD source, kept for diagnostics and the headless signal. `nil` when injected sources are used.
-    private(set) var hudSource: ClaudeHUDSource?
     /// Production snapshot inbox, kept for health reporting.
     private(set) var snapshotInbox: SnapshotInbox?
 
@@ -638,7 +636,7 @@ private final class ClaudeUsageTransport: UsageFetchTransport {
 }
 
 extension ClaudeQuotaPipeline {
-    /// Production wiring: `~/.claude.json` identity, the Claude HUD and snapshot inbox sources, state under
+    /// Production wiring: `~/.claude.json` identity, the BalanceBar Mod snapshot inbox as the only real-time source, state under
     /// Application Support. Nothing is read or watched until the first Claude read is requested.
     static func makeProduction(
         client: OfficialQuotaClient,
@@ -651,16 +649,14 @@ extension ClaudeQuotaPipeline {
             .appendingPathComponent(Bundle.main.bundleIdentifier ?? "BalanceBar", isDirectory: true)
             .appendingPathComponent("Quota", isDirectory: true)
         let identity = ClaudeAccountIdentityProvider(workQueue: identityQueue)
-        let hud = ClaudeHUDSource(accountProvider: identity)
         let inbox = SnapshotInbox(identity: identity)
         let pipeline = ClaudeQuotaPipeline(
             client: client,
             identity: identity,
             identityQueue: identityQueue,
             stateDirectory: directory,
-            realtimeSources: [hud, inbox],
+            realtimeSources: [inbox],
             calibrationIntervalCap: calibrationIntervalCap)
-        pipeline.hudSource = hud
         pipeline.snapshotInbox = inbox
         return pipeline
     }

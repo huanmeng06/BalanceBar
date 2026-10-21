@@ -614,7 +614,6 @@
 "mod.panel.point3.detail" = "不请求 Usage API，告别 429";
 "mod.panel.point4.title" = "只读，可随时移除";
 "mod.panel.point4.detail" = "不读对话内容；在 /plugin 中即可卸载";
-"mod.prompt.headless" = "检测到 headless 运行，安装 Mod 可让这部分也实时更新";
 "mod.silent.title" = "已安装，但还没收到数据";
 "mod.silent.intro" = "Claude Code 在运行，但 10 分钟内没有收到 Mod 的数据。请检查：";
 "mod.silent.item1" = "Claude Code 版本是否为 v2.1.287 或更高";

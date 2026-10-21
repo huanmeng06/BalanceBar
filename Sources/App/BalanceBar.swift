@@ -725,7 +725,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         self.codexLocal = CodexLocalQuota.makeProduction(officialQuotaClient: officialQuotaClient)
         let modPlan = ModInstallPlan.resolved()
         self.modOnboarding = ModOnboardingCoordinator(
-            plan: modPlan, environment: .production(plan: modPlan, hud: claudePipeline.hudSource))
+            plan: modPlan, environment: .production(plan: modPlan))
         self.launchAtLoginController = LaunchAtLoginController(service: launchAtLoginService)
         self.launchWithChatGPTController = LaunchWithChatGPTController(service: launchWithChatGPTService)
         self.updateService = updateService ?? UpdateService(

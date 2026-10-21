@@ -33,7 +33,7 @@ public protocol QuotaSourceAdapter: AnyObject {
     var health: QuotaAdapterHealth { get set }
 }
 
-/// The default adapter for files that already use Schema v1 (Claude HUD and the BalanceBar Mod).
+/// The default adapter for files that already use Schema v1 (the BalanceBar Mod).
 public final class SchemaV1InboxAdapter: QuotaSourceAdapter {
     public let sourceID: String
     public let trust: QuotaTrust

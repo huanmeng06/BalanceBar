@@ -614,7 +614,6 @@
 "mod.panel.point3.detail" = "Usage API へのリクエストがなくなり、429 エラーも解消します";
 "mod.panel.point4.title" = "読み取り専用でいつでも削除可能";
 "mod.panel.point4.detail" = "会話の内容は読まず、/plugin で削除できます";
-"mod.prompt.headless" = "headless 実行を検出：Mod を入れるとこの分もリアルタイムで更新されます";
 "mod.silent.title" = "インストール済みですが、まだデータがありません";
 "mod.silent.intro" = "Claude Code は動作中ですが、10 分間 Mod からデータがありません。次を確認してください：";
 "mod.silent.item1" = "Claude Code が v2.1.287 以降であること";

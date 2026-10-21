@@ -614,7 +614,6 @@
 "mod.panel.point3.detail" = "Нет запросов к Usage API и ошибок 429";
 "mod.panel.point4.title" = "Только чтение, можно удалить в любой момент";
 "mod.panel.point4.detail" = "Диалоги не читает; удаление через /plugin";
-"mod.prompt.headless" = "Обнаружены headless-запуски: установите Mod, чтобы и они обновлялись в реальном времени";
 "mod.silent.title" = "Установлено, но данных пока нет";
 "mod.silent.intro" = "Claude Code работает, но Mod уже 10 минут ничего не присылает. Проверьте:";
 "mod.silent.item1" = "Claude Code версии 2.1.287 или новее";

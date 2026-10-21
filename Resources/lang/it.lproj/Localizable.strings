@@ -614,7 +614,6 @@
 "mod.panel.point3.detail" = "Nessuna richiesta alla Usage API, addio errori 429";
 "mod.panel.point4.title" = "Sola lettura, rimovibile in ogni momento";
 "mod.panel.point4.detail" = "Non legge le conversazioni; si rimuove con /plugin";
-"mod.prompt.headless" = "Rilevate esecuzioni headless: installa il Mod per aggiornarle in tempo reale";
 "mod.silent.title" = "Installato, ma ancora nessun dato";
 "mod.silent.intro" = "Claude Code è in esecuzione, ma il Mod non ha inviato nulla da 10 minuti. Controlla:";
 "mod.silent.item1" = "Claude Code è v2.1.287 o successivo";
