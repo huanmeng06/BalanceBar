@@ -3323,6 +3323,20 @@ extension StatusItemControllerTests {
         XCTAssertTrue(controller.validateMenuItem(refresh))
     }
 
+    func testLongRefreshTitlesAreCutToTheCardWidthSoTheMenuDoesNotGrowBeyondTheCard() {
+        let limit = OpenCodexCardLayout.cardWidth - 28 - 40
+        let font = NSFont.menuFont(ofSize: 0)
+        func width(_ text: String) -> CGFloat { (text as NSString).size(withAttributes: [.font: font]).width }
+        XCTAssertEqual(StatusItemController.fittedMenuTitle("Refresh Now"), "Refresh Now")
+        let long = "Refresh Now (Claude sign-in expired, run claude first, then try again later today)"
+        let fitted = StatusItemController.fittedMenuTitle(long)
+        XCTAssertTrue(fitted.hasSuffix("…"))
+        XCTAssertLessThanOrEqual(width(fitted), limit)
+        XCTAssertLessThanOrEqual(width(StatusItemController.fittedMenuTitle("立即刷新（登录已过期，请运行 claude）")), limit)
+        XCTAssertEqual(StatusItemController.fittedMenuTitle("立即刷新（登录已过期，请运行 claude）"), "立即刷新（登录已过期，请运行 claude）",
+                       "the Chinese login-expired text fits without cutting")
+    }
+
     @MainActor
     func testRefreshItemExplainsLoginExpiredRateLimitAndJustRefreshed() throws {
         var notice: ClaudeManualRefreshNotice?
@@ -3338,10 +3352,10 @@ extension StatusItemControllerTests {
 
         notice = .loginExpired
         XCTAssertTrue(controller.validateMenuItem(refresh), "a paused login can still be retried after claude renews it")
-        XCTAssertEqual(refresh.title, tr(.keyStatusItemControllerRefreshNowLoginExpired))
+        XCTAssertEqual(refresh.title, StatusItemController.fittedMenuTitle(tr(.keyStatusItemControllerRefreshNowLoginExpired)))
         notice = .rateLimited(until: Date().addingTimeInterval(900))
         _ = controller.validateMenuItem(refresh)
-        XCTAssertEqual(refresh.title, tr(.keyStatusItemControllerRefreshNowRateLimited, arguments: ["15m"]))
+        XCTAssertEqual(refresh.title, StatusItemController.fittedMenuTitle(tr(.keyStatusItemControllerRefreshNowRateLimited, arguments: ["15m"])))
         notice = .justRefreshed
         _ = controller.validateMenuItem(refresh)
         XCTAssertEqual(refresh.title, tr(.keyStatusItemControllerRefreshNowJustRefreshed))
@@ -3394,12 +3408,9 @@ extension StatusItemControllerTests {
         XCTAssertEqual((promptItem()?.view as? ModPromptRowView)?.mainText, ModOnboardingText.appLocalize(.promptHeadless))
 
         controller.update(snapshot: .placeholder, refreshDate: Date(), menuInput: input(.dataSources), settings: makeSettings())
-        XCTAssertNil(promptItem(), "dismissing swaps the prompt for the quiet data-sources entry")
+        XCTAssertNil(promptItem(), "dismissing swaps the prompt for the regular data-sources entry")
         let sources = try XCTUnwrap(item(dataSourcesTitle))
-        let color = sources.attributedTitle?.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
-        XCTAssertEqual(color, .secondaryLabelColor, "gray")
-        let font = sources.attributedTitle?.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
-        XCTAssertEqual(font?.pointSize, 11, "small")
+        XCTAssertNil(sources.attributedTitle, "a regular menu entry, not small gray text")
         XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(sources.action), to: sources.target, from: sources))
         XCTAssertEqual(dataSourceOpens, 1)
 

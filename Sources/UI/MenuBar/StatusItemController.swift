@@ -6114,6 +6114,24 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
     }
 
+    /// The refresh title cut to the quota card's width. A longer title widens the whole menu and leaves a gap
+    /// beside the fixed-width card; the full text stays available as the tooltip.
+    static func fittedMenuTitle(_ title: String, availableWidth: CGFloat = OpenCodexCardLayout.cardWidth - 28 - 40) -> String {
+        let font = NSFont.menuFont(ofSize: 0)
+        func width(_ text: String) -> CGFloat { (text as NSString).size(withAttributes: [.font: font]).width }
+        guard width(title) > availableWidth else { return title }
+        var characters = Array(title)
+        while !characters.isEmpty, width(String(characters) + "…") > availableWidth { characters.removeLast() }
+        return String(characters) + "…"
+    }
+
+    private func applyManualRefreshTitle(to item: NSMenuItem) {
+        let full = manualRefreshMenuTitle()
+        let fitted = Self.fittedMenuTitle(full)
+        item.title = fitted
+        item.toolTip = fitted == full ? nil : full
+    }
+
     @objc private func manualRefresh() {
         guard isManualRefreshAvailable else { return }
         actions.manualRefresh()
@@ -6137,16 +6155,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         return item
     }
 
-    /// "数据来源": the quiet gray entry at the bottom that replaces the prompt.
+    /// "Data sources": a regular entry at the bottom that replaces the prompt and opens Settings › Advanced.
     private func makeDataSourcesItem() -> NSMenuItem? {
         guard menuInput.modRow == .dataSources else { return nil }
-        let title = tr(.keyModMenuDataSources)
-        let item = NSMenuItem(title: title, action: #selector(openDataSources), keyEquivalent: "")
+        let item = NSMenuItem(title: tr(.keyModMenuDataSources), action: #selector(openDataSources), keyEquivalent: "")
         item.target = self
-        item.attributedTitle = NSAttributedString(string: title, attributes: [
-            .font: NSFont.menuFont(ofSize: 11),
-            .foregroundColor: NSColor.secondaryLabelColor,
-        ])
         return item
     }
 
@@ -6258,11 +6271,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         if menuInput.showQuickSwitchMenu {
             menu.addItem(makeQuickSwitchMenuItem())
         }
-        menu.addItem(
+        let refreshItem = menu.addItem(
             withTitle: manualRefreshMenuTitle(),
             action: #selector(manualRefresh),
             keyEquivalent: "r"
-        ).target = self
+        )
+        refreshItem.target = self
+        applyManualRefreshTitle(to: refreshItem)
         menu.addItem(.separator())
         menu.addItem(makeOpenDashboardMenuItem())
         if menuInput.showOpenChatGPTMenu {
@@ -8672,7 +8687,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 extension StatusItemController: NSMenuItemValidation {
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         guard menuItem.action == #selector(manualRefresh) else { return true }
-        menuItem.title = manualRefreshMenuTitle()
+        applyManualRefreshTitle(to: menuItem)
         return isManualRefreshAvailable
     }
 }

@@ -572,7 +572,7 @@
 "quota.failure.open_usage_page" = "開啟官方用量頁面";
 "quota.status.accessibility" = "額度狀態：%1$@";
 "claude.refresh.login_expired" = "Claude Code 登入已過期。在終端機執行一次 claude 即可恢復；BalanceBar 不會自行續期登入。";
-"status.item.controller.refresh_now_login_expired" = "立即刷新（Claude 登入已過期，請先執行 claude）";
+"status.item.controller.refresh_now_login_expired" = "立即刷新（登入已過期，請執行 claude）";
 "status.item.controller.refresh_now_rate_limited" = "立即刷新（被限流，%1$@後可用）";
 "status.item.controller.refresh_now_just_refreshed" = "立即刷新（剛剛已刷新）";
 "mod.prompt.row" = "安裝 BalanceBar Mod，額度即時更新";
