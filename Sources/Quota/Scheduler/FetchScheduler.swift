@@ -25,8 +25,12 @@ public final class FetchScheduler: FetchScheduling {
     private var pendingReasons: Set<FetchRequestReason> = []
     private var isCoalescing = false
     private var isBusy = false
-    private var lastDispatchAt: Date?
+    private var lastServerAttemptAt: Date?
     private var lastSuccess: (at: Date, epoch: AccountEpoch)?
+    private var consecutiveFailures = 0
+    private var lastFailureAt: Date?
+    private var demandEnabled = false
+    private var timerGeneration = 0
     private var resultHandlers: [(FetchSchedulerDelivery) -> Void] = []
 
     /// - Parameter calibrationIntervalCap: Reads the existing refresh-interval setting, used as an
@@ -60,7 +64,15 @@ public final class FetchScheduler: FetchScheduling {
         tokens = configuration.tokenCapacity
         tokenRefillAnchor = clock.now
         queue.async { [self] in
-            if let loaded = stateStore.load() { persistent = loaded }
+            if let loaded = stateStore.load() {
+                persistent = loaded
+                lastServerAttemptAt = loaded.lastServerAttemptAt
+                consecutiveFailures = loaded.consecutiveFailures
+                if loaded.lastSuccessAccountKey == identity.accountKey,
+                   let at = loaded.lastServerSuccessAt {
+                    lastSuccess = (at, identity.accountEpoch)
+                }
+            }
         }
     }
 
@@ -85,6 +97,44 @@ public final class FetchScheduler: FetchScheduling {
         }
     }
 
+    /// Enables or disables scheduler-owned automatic checks.
+    public func setDemand(_ enabled: Bool) {
+        queue.async { [self] in
+            demandEnabled = enabled
+            rearmOnQueue()
+        }
+    }
+
+    /// Recomputes the single pending automatic check without replaying history.
+    public func rearm() {
+        queue.async { [self] in rearmOnQueue() }
+    }
+
+    /// Returns a consistent, queue-protected view for menu and diagnostic consumers.
+    public func statusSnapshot() -> FetchSchedulerStatus {
+        queue.sync {
+            let now = clock.now
+            refillTokens(now: now)
+            return FetchSchedulerStatus(
+                tokens: tokens,
+                tokenCapacity: configuration.tokenCapacity,
+                tokenRefillInterval: configuration.tokenRefillInterval,
+                nextTokenAt: tokens < configuration.tokenCapacity
+                    ? tokenRefillAnchor.addingTimeInterval(configuration.tokenRefillInterval) : nil,
+                automaticTokenCost: configuration.automaticTokenCost,
+                lastServerAttemptAt: lastServerAttemptAt,
+                automaticMinimumInterval: configuration.automaticMinimumInterval,
+                lastSuccessAt: currentEpochLastSuccessAt,
+                lastFailureAt: lastFailureAt,
+                manualTokenCost: configuration.manualTokenCost,
+                manualRefreshWindow: configuration.manualRefreshWindow,
+                cooldownRemaining: cooldownRemaining(now: now),
+                isUnauthorizedPaused: persistent.isUnauthorizedPaused,
+                isBusy: isBusy,
+                at: now)
+        }
+    }
+
     /// Blocks until previously enqueued scheduler work has run. Intended for tests and shutdown.
     public func waitUntilIdle() {
         queue.sync {}
@@ -101,6 +151,7 @@ public final class FetchScheduler: FetchScheduling {
     }
 
     private func evaluate(_ reasons: [FetchRequestReason]) {
+        defer { rearmOnQueue() }
         let now = clock.now
         refillTokens(now: now)
 
@@ -114,6 +165,12 @@ public final class FetchScheduler: FetchScheduling {
         }
         if cooldownRemaining(now: now) > 0 {
             return log(.skipped, reasons: reasons, skip: .cooldown)
+        }
+
+        if let lastServerAttemptAt,
+           consecutiveFailures > 0,
+           now.timeIntervalSince(lastServerAttemptAt) < failureBackoffInterval {
+            return log(.skipped, reasons: reasons, skip: .failureBackoff)
         }
 
         if reasons.contains(.manual) {
@@ -143,10 +200,15 @@ public final class FetchScheduler: FetchScheduling {
     }
 
     private func evaluateAutomatic(_ reasons: [FetchRequestReason], now: Date) {
-        if let lastDispatchAt, now.timeIntervalSince(lastDispatchAt) < configuration.automaticMinimumInterval {
+        let bypassMinimum = (reasons.contains(.initial) || reasons.contains(.accountChanged))
+            && currentEpochLastSuccessAt == nil
+        if !bypassMinimum,
+           let lastSuccessAt = currentEpochLastSuccessAt,
+           now.timeIntervalSince(lastSuccessAt) < configuration.automaticMinimumInterval {
             return log(.skipped, reasons: reasons, skip: .minimumInterval)
         }
-        if let realtimeAt = realtimeFreshness?.lastTrustedRealtimeObservationAt,
+        if !reasons.contains(.resetConfirmation),
+           let realtimeAt = realtimeFreshness?.lastTrustedRealtimeObservationAt,
            now.timeIntervalSince(realtimeAt) < configuration.realtimeSourceFreshness,
            !calibrationCapExceeded(now: now) {
             return log(.skipped, reasons: reasons, skip: .realtimeSourceFresh)
@@ -161,7 +223,8 @@ public final class FetchScheduler: FetchScheduling {
     }
 
     private func calibrationCapExceeded(now: Date) -> Bool {
-        guard let cap = calibrationIntervalCap(), cap > 0 else { return false }
+        let cap = calibrationIntervalCap() ?? configuration.realtimeCalibrationCap
+        guard let cap, cap > 0 else { return false }
         guard let lastSuccessAt = currentEpochLastSuccessAt else { return true }
         return now.timeIntervalSince(lastSuccessAt) >= cap
     }
@@ -172,7 +235,9 @@ public final class FetchScheduler: FetchScheduling {
         }
         tokens -= cost
         isBusy = true
-        lastDispatchAt = clock.now
+        lastServerAttemptAt = clock.now
+        persistent.lastServerAttemptAt = lastServerAttemptAt
+        stateStore.save(persistent)
         let epoch = identity.accountEpoch
         let credentialVersion = identity.credentialVersion
         log(.dispatched, reasons: reasons)
@@ -201,11 +266,15 @@ public final class FetchScheduler: FetchScheduling {
         switch result {
         case .success:
             lastSuccess = (now, epoch)
+            consecutiveFailures = 0
+            persistent.consecutiveFailures = 0
+            persistent.lastServerSuccessAt = now
+            persistent.lastSuccessAccountKey = identity.accountKey
             if persistent.consecutiveRateLimitBackoffs != 0 || persistent.cooldownUntil != nil {
                 persistent.consecutiveRateLimitBackoffs = 0
                 persistent.cooldownUntil = nil
-                stateStore.save(persistent)
             }
+            stateStore.save(persistent)
         case .unauthorized:
             // A 401 for credentials replaced mid-flight must not pause the new credentials.
             if identity.credentialVersion == credentialVersion {
@@ -213,12 +282,18 @@ public final class FetchScheduler: FetchScheduling {
                 persistent.unauthorizedCredentialVersion = credentialVersion
                 stateStore.save(persistent)
             }
-        case .rateLimited, .failure:
+        case .rateLimited:
             break
+        case .failure:
+            lastFailureAt = now
+            consecutiveFailures += 1
+            persistent.consecutiveFailures = consecutiveFailures
+            stateStore.save(persistent)
         }
         log(.completed, reasons: reasons, outcome: Self.label(result))
         let delivery = FetchSchedulerDelivery(result: result, reasons: reasons, epoch: epoch, receivedAt: now)
         resultHandlers.forEach { $0(delivery) }
+        rearmOnQueue()
     }
 
     private func applyRateLimit(retryAfter: String?, now: Date) {
@@ -249,6 +324,39 @@ public final class FetchScheduler: FetchScheduling {
     private func cooldownRemaining(now: Date) -> TimeInterval {
         guard let until = persistent.cooldownUntil else { return 0 }
         return max(0, until.timeIntervalSince(now))
+    }
+
+    private var failureBackoffInterval: TimeInterval {
+        guard !configuration.failureBackoff.isEmpty else { return 0 }
+        let index = min(max(0, consecutiveFailures - 1), configuration.failureBackoff.count - 1)
+        return configuration.failureBackoff[index]
+    }
+
+    private func rearmOnQueue() {
+        timerGeneration += 1
+        guard demandEnabled, !isBusy else { return }
+        let generation = timerGeneration
+        let now = clock.now
+        var next = now.addingTimeInterval(configuration.automaticMinimumInterval)
+        if let successAt = currentEpochLastSuccessAt {
+            next = successAt.addingTimeInterval(configuration.automaticMinimumInterval)
+        }
+        if let lastServerAttemptAt, consecutiveFailures > 0 {
+            next = max(next, lastServerAttemptAt.addingTimeInterval(failureBackoffInterval))
+        }
+        if let cooldownUntil = persistent.cooldownUntil { next = max(next, cooldownUntil) }
+        if let realtimeAt = realtimeFreshness?.lastTrustedRealtimeObservationAt,
+           !calibrationCapExceeded(now: now) {
+            next = max(next, realtimeAt.addingTimeInterval(configuration.realtimeSourceFreshness))
+        }
+        let delay = max(configuration.coalescingWindow, next.timeIntervalSince(now))
+        timer.schedule(after: delay) { [weak self] in
+            guard let self else { return }
+            queue.async {
+                guard self.demandEnabled, self.timerGeneration == generation else { return }
+                self.requestFetch(reason: .scheduled)
+            }
+        }
     }
 
     private func log(

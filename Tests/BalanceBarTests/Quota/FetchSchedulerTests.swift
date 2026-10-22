@@ -66,11 +66,13 @@ final class FetchSchedulerTests: XCTestCase {
     private func makeScheduler(
         freePath: ManualRefreshFreePathChecking? = nil,
         realtime: RealtimeSourceFreshnessProviding? = nil,
-        cap: TimeInterval? = nil
+        cap: TimeInterval? = nil,
+        configuration: FetchSchedulerConfiguration = FetchSchedulerConfiguration()
     ) -> FetchScheduler {
         let scheduler = FetchScheduler(
             transport: transport, identity: identity, stateStore: store, clock: clock, timer: timer,
             freePathChecker: freePath, realtimeFreshness: realtime, calibrationIntervalCap: { cap },
+            configuration: configuration,
             logSink: { [unowned self] in logs.append($0) })
         scheduler.addResultHandler { [unowned self] in deliveries.append($0) }
         scheduler.waitUntilIdle()
@@ -123,6 +125,42 @@ final class FetchSchedulerTests: XCTestCase {
         XCTAssertEqual(lastSkip, .minimumInterval)
         clock.advance(1)
         request(scheduler, .scheduled)
+        XCTAssertEqual(transport.completions.count, 1)
+    }
+
+    func testClaudeV1UsesFiveMinuteCadenceAndOneTokenPerRequest() {
+        let configuration = FetchSchedulerConfiguration.claudeV1
+        XCTAssertEqual(configuration.automaticMinimumInterval, 300)
+        XCTAssertEqual(configuration.tokenRefillInterval, 300)
+        XCTAssertEqual(configuration.automaticTokenCost, 1)
+        XCTAssertEqual(configuration.manualTokenCost, 1)
+        XCTAssertEqual(configuration.failureBackoff, [60, 120, 240, 480, 900])
+    }
+
+    func testClaudeFailureBackoffStartsAtLastAttempt() {
+        let scheduler = makeScheduler(configuration: .claudeV1)
+        request(scheduler, .initial)
+        complete(scheduler, .failure("network"))
+        clock.advance(59)
+        request(scheduler, .scheduled)
+        XCTAssertEqual(lastSkip, .failureBackoff)
+        clock.advance(1)
+        request(scheduler, .scheduled)
+        XCTAssertEqual(transport.completions.count, 1)
+    }
+
+    func testClaudeSuccessTimeRestoresOnlyForSameAccount() {
+        let scheduler = makeScheduler(configuration: .claudeV1)
+        request(scheduler, .initial)
+        complete(scheduler, .success(Data()))
+
+        let sameAccount = makeScheduler(configuration: .claudeV1)
+        request(sameAccount, .manual)
+        XCTAssertEqual(lastSkip, .recentResult)
+
+        identity.accountIdentity = AccountIdentity(stableID: "other", idSource: .accountUUID)
+        let otherAccount = makeScheduler(configuration: .claudeV1)
+        request(otherAccount, .manual)
         XCTAssertEqual(transport.completions.count, 1)
     }
 

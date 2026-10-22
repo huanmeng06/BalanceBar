@@ -717,12 +717,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     ) {
         self.ccSwitchRepository = repository
         self.officialQuotaClient = officialQuotaClient
-        let calibrationPreferences = preferences
         self.claudeQuota = claudeQuota ?? ClaudeQuotaPipeline.makeProduction(
             client: officialQuotaClient,
-            calibrationIntervalCap: {
-                RefreshPolicy.officialInterval(selected: calibrationPreferences.officialUsageRefreshInterval, client: .claude)
-            })
+            calibrationIntervalCap: { nil })
         self.launchAtLoginController = LaunchAtLoginController(service: launchAtLoginService)
         self.launchWithChatGPTController = LaunchWithChatGPTController(service: launchWithChatGPTService)
         self.updateService = updateService ?? UpdateService(

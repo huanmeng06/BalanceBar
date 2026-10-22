@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import AppKit
 
 /// Why the latest Claude official refresh did not produce new data.
 enum ClaudeQuotaFailure: Equatable {
@@ -115,7 +116,7 @@ final class ClaudeQuotaPipeline {
     private let stateStore: ObservedFetchSchedulerStateStore
     private let mergeFileStore: QuotaMergeFileStore
     private let notificationRouter = ClaudeNotificationRouter()
-    private let now: () -> Date
+    fileprivate let now: () -> Date
     private let manualRefreshWindow: TimeInterval
     private let diagnostics: (String, SwitchLog.Level) -> Void
     private let queue = DispatchQueue(label: "BalanceBar.ClaudeQuotaPipeline", qos: .utility)
@@ -125,6 +126,7 @@ final class ClaudeQuotaPipeline {
     private var engine: QuotaMergeEngine?
     private var adapter: QuotaNotificationAdapter?
     private var observerToken: AnyObject?
+    private var wakeObserver: NSObjectProtocol?
     private var started = false
     private var pendingReasons: [FetchRequestReason] = []
     private var failure: ClaudeQuotaFailure?
@@ -181,6 +183,7 @@ final class ClaudeQuotaPipeline {
     }
 
     deinit {
+        if let wakeObserver { NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver) }
         identity.stopMonitoring()
     }
 
@@ -228,6 +231,15 @@ final class ClaudeQuotaPipeline {
         }
     }
 
+    /// Enables scheduler-owned automatic calibration while Claude is being monitored.
+    func setDemand(_ enabled: Bool) {
+        scheduler.setDemand(enabled)
+    }
+
+    func schedulerStatus() -> FetchSchedulerStatus {
+        scheduler.statusSnapshot()
+    }
+
     /// Re-evaluates reset deadlines; may ask the scheduler to confirm a reset.
     func tick() {
         queue.async { [self] in
@@ -263,6 +275,11 @@ final class ClaudeQuotaPipeline {
         observerToken = identity.addObserver { [weak self] change in
             self?.queue.async { self?.identityChanged(change) }
         }
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: nil
+        ) { [weak self] _ in
+            self?.scheduler.rearm()
+        }
         let restoring = RebasingMergeStore(
             base: mergeFileStore, accountID: identity.accountIdentity?.stableID, epoch: identity.accountEpoch)
         let adapter = QuotaNotificationAdapter(processor: notificationRouter, providerID: "claude")
@@ -295,10 +312,10 @@ final class ClaudeQuotaPipeline {
         if change.identity != nil { requestForNewAccount() }
     }
 
-    /// The scheduler's automatic minimum interval spans accounts, so a new account would
-    /// wait for the previous account's interval. A manual-class read is epoch-aware instead.
+    /// A new account must be read immediately, subject only to auth, cooldown, budget and
+    /// failure-backoff constraints.
     private func requestForNewAccount() {
-        prepareAndRequest(.manual)
+        prepareAndRequest(.accountChanged)
     }
 
     private func handle(_ delivery: FetchSchedulerDelivery) {
@@ -487,7 +504,17 @@ private final class ClaudeUsageTransport: UsageFetchTransport {
             didReadToken: { pipeline.recordCredentialRead($0, epoch: epoch) },
             completion: { result, error in
                 pipeline.recordClientError(error)
-                completion(result)
+                guard case let .success(data) = result else {
+                    completion(result)
+                    return
+                }
+                do {
+                    _ = try OfficialQuotaResponseParser.claudeReadings(data: data, now: pipeline.now())
+                    completion(.success(data))
+                } catch {
+                    pipeline.recordClientError(.unsupportedFormat(dataSize: data.count))
+                    completion(.failure("invalid_response"))
+                }
             })
     }
 }
@@ -510,6 +537,7 @@ extension ClaudeQuotaPipeline {
             identity: ClaudeAccountIdentityProvider(workQueue: identityQueue),
             identityQueue: identityQueue,
             stateDirectory: directory,
-            calibrationIntervalCap: calibrationIntervalCap)
+            calibrationIntervalCap: calibrationIntervalCap,
+            schedulerConfiguration: .claudeV1)
     }
 }

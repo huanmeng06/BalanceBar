@@ -877,6 +877,7 @@ final class ProviderRefreshCoordinator {
             } else if current.isOfficial, client == .claude {
                 self.claudeStandardTarget = (current.id, current.name, revision)
                 self.claudeQuota?.start()
+                self.claudeQuota?.setDemand(true)
                 self.claudeQuota?.requestFetch(reason: .initial)
                 if let state = self.claudeQuota?.latestState { self.applyClaudeState(state) }
             } else if current.isOfficial, client == .codex {
@@ -908,7 +909,7 @@ final class ProviderRefreshCoordinator {
             }
             SwitchLog.write("quick-switch refresh triggered; force=\(force); api_ttl_due=\(apiDue); configuration_event=\(configurationChanged)", level: .debug,
                 category: "refresh.summary", throttleKey: "summary-trigger-\(force)", minimumInterval: 1)
-            let knownOfficialDue = self.knownOfficialSummaryIDs.contains { identity in
+            let knownOfficialDue = client == .claude ? false : self.knownOfficialSummaryIDs.contains { identity in
                 guard identity.client == client else { return false }
                 if let providerIDs, !providerIDs.contains(identity.providerID) { return false }
                 guard !aggregatedIDs.contains(identity.providerID) else { return false }
@@ -945,13 +946,8 @@ final class ProviderRefreshCoordinator {
                 if source.isOfficial, client == .claude {
                     // One account-wide read serves every Claude official Provider; the
                     // scheduler decides whether it is sent. Results fan out in applyClaudeState.
-                    let identity = SummaryIdentity(client: client, providerID: source.id)
-                    let officialDue = self.lastOfficialSummaryFetch[identity].map {
-                        currentDate.timeIntervalSince($0) >= self.officialInterval(for: client)
-                    } ?? true
-                    guard officialDue || configurationChanged || previousRevisions[source.id] != source.configurationRevision else { continue }
-                    self.lastOfficialSummaryFetch[identity] = currentDate
-                    claudeFetchReason = initialLoad || configurationChanged ? .initial : (claudeFetchReason ?? .scheduled)
+                    guard force || initialLoad || configurationChanged || previousRevisions[source.id] != source.configurationRevision else { continue }
+                    claudeFetchReason = force ? .manual : .initial
                     continue
                 }
                 if source.isOfficial {
@@ -1077,6 +1073,7 @@ final class ProviderRefreshCoordinator {
             }
             if client == .claude, let claudeQuota = self.claudeQuota {
                 claudeQuota.start()
+                claudeQuota.setDemand(true)
                 if let reason = claudeFetchReason { claudeQuota.requestFetch(reason: reason) }
                 // A Provider added or edited since the last read shows the account's
                 // current data at once instead of waiting for the next request.
@@ -1314,16 +1311,16 @@ final class ProviderRefreshCoordinator {
     /// when one is due and publishes whatever the merge engine already knows.
     private func refreshClaudeStandard(current: CCSwitchProvider, sourceKey: String, sourceChanged: Bool, userInitiated: Bool) {
         guard let claudeQuota else { return }
-        let currentDate = now()
-        let due = lastOfficialFetch.map { currentDate.timeIntervalSince($0) >= officialInterval(for: .claude) } ?? true
         lastStandardSourceKey = sourceKey
         claudeStandardTarget = (current.id, current.name, current.configurationRevision)
         if sourceChanged { lastClaudePublication = nil }
         claudeQuota.start()
+        claudeQuota.setDemand(true)
         claudeQuota.tick()
-        if sourceChanged || due || userInitiated {
-            lastOfficialFetch = currentDate
-            claudeQuota.requestFetch(reason: userInitiated ? .manual : (sourceChanged ? .initial : .scheduled))
+        if userInitiated {
+            claudeQuota.requestFetch(reason: .manual)
+        } else if sourceChanged {
+            claudeQuota.requestFetch(reason: .initial)
         }
         if sourceChanged, let state = claudeQuota.latestState { applyClaudeState(state) }
     }
