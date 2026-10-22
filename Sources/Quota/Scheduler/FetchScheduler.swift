@@ -337,10 +337,7 @@ public final class FetchScheduler: FetchScheduling {
         guard demandEnabled, !isBusy else { return }
         let generation = timerGeneration
         let now = clock.now
-        var next = now.addingTimeInterval(configuration.automaticMinimumInterval)
-        if let successAt = currentEpochLastSuccessAt {
-            next = successAt.addingTimeInterval(configuration.automaticMinimumInterval)
-        }
+        var next = currentEpochLastSuccessAt?.addingTimeInterval(configuration.automaticMinimumInterval) ?? now
         if let lastServerAttemptAt, consecutiveFailures > 0 {
             next = max(next, lastServerAttemptAt.addingTimeInterval(failureBackoffInterval))
         }
