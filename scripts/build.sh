@@ -157,6 +157,8 @@ executable="$executable_dir/BalanceBar"
 launch_agents_dir="$contents_dir/Library/LaunchAgents"
 launch_agent_executable="$launch_agents_dir/BalanceBarChatGPTLaunchAgent"
 launch_agent_plist="$launch_agents_dir/balancebar-chatgpt-launch-agent.plist"
+helpers_dir="$contents_dir/Helpers"
+statusline_bridge_executable="$helpers_dir/balancebar-statusline"
 launch_agent_source_dir="$sources_dir/LaunchAgent"
 launch_agent_module_cache_dir="$build_dir/chatgpt-launch-agent-swift-module-cache"
 
@@ -224,13 +226,13 @@ do
     printf 'build-balancebar: cleaning %s\n' "$clean_path"
     rm -rf "$clean_path"
 done
-mkdir -p "$executable_dir" "$resources_dir" "$launch_agents_dir" "$module_cache_dir" "$launch_agent_module_cache_dir"
+mkdir -p "$executable_dir" "$resources_dir" "$launch_agents_dir" "$helpers_dir" "$module_cache_dir" "$launch_agent_module_cache_dir"
 
 swift_sources=()
 while IFS= read -r source_file
 do
     swift_sources+=("$source_file")
-done < <(find "$sources_dir" -type f -name '*.swift' ! -path '*/LaunchAgent/*' -print | LC_ALL=C sort)
+done < <(find "$sources_dir" -type f -name '*.swift' ! -path '*/LaunchAgent/*' ! -path '*/StatusLineBridge/*' -print | LC_ALL=C sort)
 
 (( ${#swift_sources[@]} > 0 )) || die "no Swift source files found in $sources_dir"
 
@@ -251,6 +253,16 @@ swiftc \
     -framework SwiftUI \
     -lsqlite3 \
     -module-cache-path "$module_cache_dir"
+
+printf 'build-balancebar: compiling statusLine bridge helper\n'
+swiftc \
+    -sdk "$balancebar_sdk_path" \
+    -target "$balancebar_swift_target" \
+    "$sources_dir/StatusLineBridge/main.swift" \
+    -o "$statusline_bridge_executable" \
+    -framework Foundation \
+    -module-cache-path "$module_cache_dir"
+[[ -x "$statusline_bridge_executable" ]] || die "statusLine bridge helper is not executable"
 
 balancebar_build_metadata="$(xcrun vtool -show-build "$executable")"
 balancebar_binary_minos="$(awk '$1 == "minos" { print $2; exit }' <<< "$balancebar_build_metadata")"

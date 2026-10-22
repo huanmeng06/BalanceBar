@@ -575,3 +575,6 @@
 "status.item.controller.refresh_now_login_expired" = "Обновить сейчас (вход в Claude истёк, сначала запустите claude)";
 "status.item.controller.refresh_now_rate_limited" = "Обновить сейчас (лимит запросов, доступно через %1$@)";
 "status.item.controller.refresh_now_just_refreshed" = "Обновить сейчас (только что обновлено)";
+"claude.status_line.enabled" = "Нативная синхронизация Claude Code";
+"claude.status_line.description" = "Использует данные statusLine Claude Code для быстрой локальной синхронизации квот. После настройки statusLine Claude Code может скрыть часть подсказок внизу.";
+"claude.status_line.calibration" = "Калибровка квоты Claude: примерно каждые 5 минут";

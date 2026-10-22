@@ -20,6 +20,11 @@ enum ClaudeManualRefreshNotice: Equatable {
     case rateLimited(until: Date)
     /// A read succeeded within the manual-refresh window.
     case justRefreshed
+    case localFresh
+    case recentResult(until: Date)
+    case inFlight
+    case networkUnavailable
+    case succeeded
 }
 
 /// Everything the refresh coordinator needs to publish Claude official quota.
@@ -116,6 +121,8 @@ final class ClaudeQuotaPipeline {
     private let stateStore: ObservedFetchSchedulerStateStore
     private let mergeFileStore: QuotaMergeFileStore
     private let notificationRouter = ClaudeNotificationRouter()
+    private let realtimeTracker: ClaudeRealtimeTracker?
+    private let statusLineSource: ClaudeStatusLineSource?
     fileprivate let now: () -> Date
     private let manualRefreshWindow: TimeInterval
     private let diagnostics: (String, SwitchLog.Level) -> Void
@@ -128,6 +135,7 @@ final class ClaudeQuotaPipeline {
     private var observerToken: AnyObject?
     private var wakeObserver: NSObjectProtocol?
     private var started = false
+    private var statusLineEnabled = false
     private var pendingReasons: [FetchRequestReason] = []
     private var failure: ClaudeQuotaFailure?
     private var refreshing = false
@@ -154,6 +162,9 @@ final class ClaudeQuotaPipeline {
         schedulerClock: SchedulerClock = SystemSchedulerClock(),
         schedulerTimer: SchedulerTimer = DispatchSchedulerTimer(),
         schedulerConfiguration: FetchSchedulerConfiguration = FetchSchedulerConfiguration(),
+        realtimeTracker: ClaudeRealtimeTracker? = nil,
+        statusLineSource: ClaudeStatusLineSource? = nil,
+        statusLineEnabled: Bool = false,
         now: @escaping () -> Date = Date.init,
         diagnostics: @escaping (String, SwitchLog.Level) -> Void = { message, level in
             SwitchLog.write(message, level: level, category: "refresh.claude")
@@ -165,6 +176,9 @@ final class ClaudeQuotaPipeline {
         self.identity = identity
         self.identityQueue = identityQueue
         self.now = now
+        self.realtimeTracker = realtimeTracker
+        self.statusLineSource = statusLineSource
+        self.statusLineEnabled = statusLineEnabled
         stateStore = ObservedFetchSchedulerStateStore(
             base: FileFetchSchedulerStateStore(fileURL: stateDirectory.appendingPathComponent("claude-fetch-scheduler.json")))
         mergeFileStore = QuotaMergeFileStore(url: stateDirectory.appendingPathComponent("claude-quota-merge.json"))
@@ -174,6 +188,8 @@ final class ClaudeQuotaPipeline {
             stateStore: stateStore,
             clock: schedulerClock,
             timer: schedulerTimer,
+            freePathChecker: statusLineSource,
+            realtimeFreshness: realtimeTracker,
             calibrationIntervalCap: calibrationIntervalCap,
             configuration: schedulerConfiguration,
             logSink: { [weak self] event in self?.schedulerEvent(event) })
@@ -189,6 +205,7 @@ final class ClaudeQuotaPipeline {
 
     deinit {
         if let wakeObserver { NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver) }
+        statusLineSource?.stop()
         identity.stopMonitoring()
     }
 
@@ -245,6 +262,21 @@ final class ClaudeQuotaPipeline {
         scheduler.statusSnapshot()
     }
 
+    func setStatusLineEnabled(_ enabled: Bool) {
+        queue.async { [self] in
+            statusLineEnabled = enabled
+            guard let statusLineSource else { return }
+            if enabled {
+                statusLineSource.start { [weak self] observation in
+                    self?.queue.async { self?.receiveNative(observation) }
+                }
+            } else {
+                statusLineSource.stop()
+                realtimeTracker?.reset(epoch: identity.accountEpoch)
+            }
+        }
+    }
+
     /// Re-evaluates reset deadlines; may ask the scheduler to confirm a reset.
     func tick() {
         queue.async { [self] in
@@ -290,6 +322,11 @@ final class ClaudeQuotaPipeline {
         let adapter = QuotaNotificationAdapter(processor: notificationRouter, providerID: "claude")
         self.adapter = adapter
         engine = QuotaMergeEngine(scheduler: scheduler, notifications: adapter, store: restoring, now: now)
+        if statusLineEnabled, let statusLineSource {
+            statusLineSource.start { [weak self] observation in
+                self?.queue.async { self?.receiveNative(observation) }
+            }
+        }
         publish()
         let reasons = pendingReasons
         pendingReasons.removeAll()
@@ -307,6 +344,7 @@ final class ClaudeQuotaPipeline {
     private func identityChanged(_ change: AccountIdentityChange) {
         guard change.accountChanged, let engine else { return }
         engine.accountDidChange(epoch: change.epoch, accountID: change.identity?.stableID)
+        realtimeTracker?.reset(epoch: change.epoch)
         lock.withLock {
             failure = nil
             refreshing = false
@@ -315,6 +353,19 @@ final class ClaudeQuotaPipeline {
         adapter?.update(engine.displayModel, accountScope: Self.accountScope(for: change.identity))
         publish()
         if change.identity != nil { requestForNewAccount() }
+    }
+
+    private func receiveNative(_ observation: QuotaObservation) {
+        guard let engine else { return }
+        _ = engine.merge(observation)
+        let displayed = engine.currentState.windows[observation.window.rawValue]?.displayed
+        if displayed?.source == observation.source,
+           displayed?.receivedAt == observation.receivedAt {
+            realtimeTracker?.recordTrustedObservation(
+                window: observation.window, receivedAt: observation.receivedAt, epoch: observation.epoch)
+        }
+        realtimeTracker?.markPendingReset(engine.currentState.windows.values.contains { $0.pendingResetOf != nil })
+        publish()
     }
 
     /// A new account must be read immediately, subject only to auth, cooldown, budget and
@@ -362,6 +413,10 @@ final class ClaudeQuotaPipeline {
                 epoch: delivery.epoch) else { continue }
             engine.merge(observation)
         }
+        statusLineSource?.setGradeAResets(Dictionary(uniqueKeysWithValues: readings.map {
+            ($0.quotaKind, $0.resetsAt)
+        }))
+        realtimeTracker?.markPendingReset(engine.currentState.windows.values.contains { $0.pendingResetOf != nil })
         adapter?.update(engine.displayModel, accountScope: Self.accountScope(for: account))
         return nil
     }
@@ -420,9 +475,14 @@ final class ClaudeQuotaPipeline {
         // A failure marks the displayed values as outdated without discarding them.
         let shown = failure == nil ? model : QuotaDisplayModel(
             windows: model.windows, isEstimated: model.isEstimated, state: .error, hoverTextKey: model.hoverTextKey)
+        let nativeDisplayed = statusLineSource != nil
+            && realtimeTracker?.lastTrustedRealtimeObservationAt != nil
+            && engine.currentState.windows[QuotaWindowKind.fiveHour.rawValue]?.displayed?.source == ClaudeStatusLineSource.identifier
+            && engine.currentState.windows[QuotaWindowKind.sevenDay.rawValue]?.displayed?.source == ClaudeStatusLineSource.identifier
         let status = StatusSlotState.resolve(
             model: shown,
-            context: StatusSlotContext(isRefreshing: refreshing, source: .official, updatedAt: updatedAt))
+            context: StatusSlotContext(isRefreshing: refreshing,
+                source: nativeDisplayed ? .realtime : .official, updatedAt: updatedAt))
         let next = ClaudeQuotaState(
             display: model,
             windows: Self.cardWindows(from: model, now: date),
@@ -529,7 +589,8 @@ extension ClaudeQuotaPipeline {
     /// Nothing is read or watched until the first Claude read is requested.
     static func makeProduction(
         client: OfficialQuotaClient,
-        calibrationIntervalCap: @escaping () -> TimeInterval?
+        calibrationIntervalCap: @escaping () -> TimeInterval?,
+        statusLineEnabled: Bool = false
     ) -> ClaudeQuotaPipeline {
         let identityQueue = DispatchQueue(label: "BalanceBar.AccountIdentity", qos: .utility)
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
@@ -537,12 +598,23 @@ extension ClaudeQuotaPipeline {
         let directory = support
             .appendingPathComponent(Bundle.main.bundleIdentifier ?? "BalanceBar", isDirectory: true)
             .appendingPathComponent("Quota", isDirectory: true)
+        let identity = ClaudeAccountIdentityProvider(workQueue: identityQueue)
+        let tracker = ClaudeRealtimeTracker(now: Date.init)
+        let source = ClaudeStatusLineSource(accountProvider: identity, tracker: tracker)
+        if statusLineEnabled {
+            let installer = ClaudeStatusLineInstaller()
+            _ = try? installer.installBundledWrapper()
+            if installer.canReconcileWithoutTakingOwnership() { _ = try? installer.install() }
+        }
         return ClaudeQuotaPipeline(
             client: client,
-            identity: ClaudeAccountIdentityProvider(workQueue: identityQueue),
+            identity: identity,
             identityQueue: identityQueue,
             stateDirectory: directory,
             calibrationIntervalCap: calibrationIntervalCap,
-            schedulerConfiguration: .claudeV1)
+            schedulerConfiguration: .claudeV1,
+            realtimeTracker: tracker,
+            statusLineSource: source,
+            statusLineEnabled: statusLineEnabled)
     }
 }

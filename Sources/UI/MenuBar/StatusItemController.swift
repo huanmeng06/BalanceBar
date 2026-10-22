@@ -6097,6 +6097,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             return tr(.keyStatusItemControllerRefreshNowRateLimited, arguments: [text])
         case .justRefreshed?:
             return tr(.keyStatusItemControllerRefreshNowJustRefreshed)
+        case .localFresh?, .recentResult?, .inFlight?:
+            return tr(.keyStatusItemControllerRefreshNowJustRefreshed)
+        case .networkUnavailable?, .succeeded?:
+            return tr(.keyStatusItemControllerRefreshNow)
         }
     }
 

@@ -575,3 +575,6 @@
 "status.item.controller.refresh_now_login_expired" = "Atualizar agora (login do Claude expirado, execute claude primeiro)";
 "status.item.controller.refresh_now_rate_limited" = "Atualizar agora (limite de requisições, disponível em %1$@)";
 "status.item.controller.refresh_now_just_refreshed" = "Atualizar agora (acabou de atualizar)";
+"claude.status_line.enabled" = "Sincronização nativa do Claude Code";
+"claude.status_line.description" = "Usa os dados statusLine do Claude Code para atualizar rapidamente as cotas locais. O Claude Code pode ocultar alguns atalhos no rodapé após configurar o statusLine.";
+"claude.status_line.calibration" = "Calibração de cota do Claude: aproximadamente a cada 5 minutos";

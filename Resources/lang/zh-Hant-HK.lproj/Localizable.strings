@@ -575,3 +575,6 @@
 "status.item.controller.refresh_now_login_expired" = "立即刷新（Claude 登入已過期，請先執行 claude）";
 "status.item.controller.refresh_now_rate_limited" = "立即刷新（被限流，%1$@後可用）";
 "status.item.controller.refresh_now_just_refreshed" = "立即刷新（剛剛已刷新）";
+"claude.status_line.enabled" = "Claude Code native sync";
+"claude.status_line.description" = "Use Claude Code statusLine data for fast local quota updates. Claude Code may hide some footer shortcuts after statusLine is configured.";
+"claude.status_line.calibration" = "Claude quota calibration: about every 5 minutes";

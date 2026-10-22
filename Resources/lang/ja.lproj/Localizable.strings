@@ -575,3 +575,6 @@
 "status.item.controller.refresh_now_login_expired" = "今すぐ更新（Claude のサインインが期限切れ。先に claude を実行）";
 "status.item.controller.refresh_now_rate_limited" = "今すぐ更新（レート制限中、%1$@後に利用可能）";
 "status.item.controller.refresh_now_just_refreshed" = "今すぐ更新（直前に更新済み）";
+"claude.status_line.enabled" = "Claude Code native sync";
+"claude.status_line.description" = "Use Claude Code statusLine data for fast local quota updates. Claude Code may hide some footer shortcuts after statusLine is configured.";
+"claude.status_line.calibration" = "Claude quota calibration: about every 5 minutes";

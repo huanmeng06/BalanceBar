@@ -462,9 +462,26 @@ final class DashboardGeneralPage {
             target: input.relay,
             action: #selector(DashboardPreferencePageRelay.manualRefresh(_:))
         )
+        let claudeStatusLineSwitch = DashboardSettingsComponents.makeSwitch(
+            identifier: "claudeStatusLineEnabled",
+            isOn: input.preferences.claudeStatusLineEnabled,
+            target: input.relay,
+            action: #selector(DashboardPreferencePageRelay.toggle(_:))
+        )
+        let claudeStatusLineRow = SettingsRowView(
+            title: tr(.keyClaudeStatusLineEnabled),
+            detail: tr(.keyClaudeStatusLineDescription),
+            accessoryView: claudeStatusLineSwitch
+        )
+        let claudeCalibrationRow = SettingsRowView(
+            title: tr(.keyClaudeStatusLineCalibration),
+            detail: tr(.keyDashboardRefreshOfficialScope)
+        )
         let refreshing = SettingsSectionView(
             title: tr(.keyDashboardGeneralAndRefreshPagesRefresh),
             contentViews: [
+                claudeStatusLineRow,
+                claudeCalibrationRow,
                 SettingsRowView(title: tr(.keyDashboardOfficialQuotaRefreshFrequency),
                     detail: tr(.keyDashboardRefreshOfficialScope),
                     accessoryView: refreshControls(officialActivePopup)),

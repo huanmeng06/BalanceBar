@@ -575,3 +575,6 @@
 "status.item.controller.refresh_now_login_expired" = "立即刷新（Claude 登录已过期，请先运行 claude）";
 "status.item.controller.refresh_now_rate_limited" = "立即刷新（被限流，%1$@后可用）";
 "status.item.controller.refresh_now_just_refreshed" = "立即刷新（刚刚已刷新）";
+"claude.status_line.enabled" = "Claude Code 原生同步";
+"claude.status_line.description" = "使用 Claude Code statusLine 数据快速同步额度。配置 statusLine 后，Claude Code 可能隐藏部分底部快捷键提示。";
+"claude.status_line.calibration" = "Claude 额度自动校准：约每 5 分钟";

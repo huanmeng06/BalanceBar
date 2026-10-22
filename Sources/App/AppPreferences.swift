@@ -487,6 +487,8 @@ final class AppPreferences {
         set { defaults.set(Self.officialUsageRefreshIntervals.contains(newValue) ? newValue : 60, forKey: "officialUsageRefreshInterval") }
     }
     var codexUsageRefreshInterval: TimeInterval { get { positiveDouble("codexUsageRefreshInterval", default: 3) } set { defaults.set(newValue, forKey: "codexUsageRefreshInterval") } }
+    /// Enables the native Claude Code statusLine bridge.
+    var claudeStatusLineEnabled: Bool { get { bool("claudeStatusLineEnabled", default: false) } set { defaults.set(newValue, forKey: "claudeStatusLineEnabled") } }
     var showQuickSwitchMenu: Bool { get { bool("showQuickSwitchMenu", default: true) } set { defaults.set(newValue, forKey: "showQuickSwitchMenu") } }
     var showOpenCCSwitchMenu: Bool { get { bool("showOpenCCSwitchMenu", default: true) } set { defaults.set(newValue, forKey: "showOpenCCSwitchMenu") } }
     var showOpenChatGPTMenu: Bool { get { bool("showOpenChatGPTMenu", default: true) } set { defaults.set(newValue, forKey: "showOpenChatGPTMenu") } }
