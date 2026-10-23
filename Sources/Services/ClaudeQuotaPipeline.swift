@@ -345,6 +345,7 @@ final class ClaudeQuotaPipeline {
         guard change.accountChanged, let engine else { return }
         engine.accountDidChange(epoch: change.epoch, accountID: change.identity?.stableID)
         realtimeTracker?.reset(epoch: change.epoch)
+        statusLineSource?.accountDidChange(epoch: change.epoch)
         lock.withLock {
             failure = nil
             refreshing = false
@@ -589,8 +590,7 @@ extension ClaudeQuotaPipeline {
     /// Nothing is read or watched until the first Claude read is requested.
     static func makeProduction(
         client: OfficialQuotaClient,
-        calibrationIntervalCap: @escaping () -> TimeInterval?,
-        statusLineEnabled: Bool = false
+        calibrationIntervalCap: @escaping () -> TimeInterval?
     ) -> ClaudeQuotaPipeline {
         let identityQueue = DispatchQueue(label: "BalanceBar.AccountIdentity", qos: .utility)
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
@@ -601,11 +601,6 @@ extension ClaudeQuotaPipeline {
         let identity = ClaudeAccountIdentityProvider(workQueue: identityQueue)
         let tracker = ClaudeRealtimeTracker(now: Date.init)
         let source = ClaudeStatusLineSource(accountProvider: identity, tracker: tracker)
-        if statusLineEnabled {
-            let installer = ClaudeStatusLineInstaller()
-            _ = try? installer.installBundledWrapper()
-            if installer.canReconcileWithoutTakingOwnership() { _ = try? installer.install() }
-        }
         return ClaudeQuotaPipeline(
             client: client,
             identity: identity,
@@ -614,7 +609,6 @@ extension ClaudeQuotaPipeline {
             calibrationIntervalCap: calibrationIntervalCap,
             schedulerConfiguration: .claudeV1,
             realtimeTracker: tracker,
-            statusLineSource: source,
-            statusLineEnabled: statusLineEnabled)
+            statusLineSource: source)
     }
 }

@@ -719,8 +719,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         self.officialQuotaClient = officialQuotaClient
         self.claudeQuota = claudeQuota ?? ClaudeQuotaPipeline.makeProduction(
             client: officialQuotaClient,
-            calibrationIntervalCap: { nil },
-            statusLineEnabled: preferences.claudeStatusLineEnabled)
+            calibrationIntervalCap: { nil })
         self.launchAtLoginController = LaunchAtLoginController(service: launchAtLoginService)
         self.launchWithChatGPTController = LaunchWithChatGPTController(service: launchWithChatGPTService)
         self.updateService = updateService ?? UpdateService(
@@ -1137,7 +1136,62 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         }
     }
 
+    /// Settings IO for the statusLine bridge runs off the main thread; the preference only
+    /// turns on once the wrapper is actually installed.
+    private func setClaudeStatusLineEnabled(_ enabled: Bool) {
+        let claudeQuota = claudeQuota
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let installer = ClaudeStatusLineInstaller()
+            let outcome: String
+            let active: Bool
+            if enabled {
+                do {
+                    try installer.installBundledWrapper()
+                    _ = try installer.install()
+                    outcome = "installed"
+                    active = true
+                } catch {
+                    outcome = "install_failed:\(error)"
+                    active = false
+                }
+            } else {
+                do {
+                    _ = try installer.uninstall()
+                    installer.removeInstalledWrapper()
+                    outcome = "restored"
+                } catch ClaudeStatusLineInstallerError.notOwned {
+                    // Another tool changed statusLine since; leave its configuration alone.
+                    outcome = "not_owned_left_unchanged"
+                } catch {
+                    outcome = "restore_failed:\(error)"
+                }
+                active = false
+            }
+            claudeQuota.setStatusLineEnabled(active)
+            SwitchLog.write("Claude statusLine bridge \(outcome)", level: active || !enabled ? .info : .warning, category: "configuration")
+            DispatchQueue.main.async { self?.preferences.claudeStatusLineEnabled = active }
+        }
+    }
+
+    /// At launch the bridge is only resumed, never re-installed: if something else replaced the
+    /// statusLine command, BalanceBar does not take it back.
+    private func resumeClaudeStatusLineIfInstalled() {
+        guard preferences.claudeStatusLineEnabled else { return }
+        let claudeQuota = claudeQuota
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let installer = ClaudeStatusLineInstaller()
+            let installed = installer.isInstalled()
+            if installed { try? installer.installBundledWrapper() }
+            claudeQuota.setStatusLineEnabled(installed)
+            if !installed {
+                SwitchLog.write("Claude statusLine bridge no longer configured; staying off", level: .info, category: "configuration")
+                DispatchQueue.main.async { self?.preferences.claudeStatusLineEnabled = false }
+            }
+        }
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        resumeClaudeStatusLineIfInstalled()
         guard lifecycle.beginStart() else { return }
         if AggregationOverviewScrollView.diagnosticsEnabled {
             let sha = Bundle.main.object(forInfoDictionaryKey: "BalanceBarBuildSHA") as? String ?? "unknown"
@@ -1504,22 +1558,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         case "keepMenuOpenAfterRefresh":
             keepMenuOpenAfterRefresh = enabled
         case "claudeStatusLineEnabled":
-            let installer = ClaudeStatusLineInstaller()
-            if enabled {
-                do {
-                    try installer.installBundledWrapper()
-                    _ = try installer.install()
-                    preferences.claudeStatusLineEnabled = true
-                    claudeQuota.setStatusLineEnabled(true)
-                } catch {
-                    preferences.claudeStatusLineEnabled = false
-                    SwitchLog.write("Claude statusLine installation failed; error_category=configuration", level: .warning, category: "configuration")
-                }
-            } else {
-                preferences.claudeStatusLineEnabled = false
-                _ = try? installer.uninstall()
-                claudeQuota.setStatusLineEnabled(false)
-            }
+            setClaudeStatusLineEnabled(enabled)
         case AppPreferences.silentLaunchKey:
             preferences.silentLaunch = enabled
         case AppPreferences.menuBarReverseMouseButtonsKey:
