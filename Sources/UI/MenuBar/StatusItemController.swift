@@ -7743,10 +7743,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     /// Each card is validated against its own account: aggregated Codex
-    /// cards may belong to accounts other than the active one.
+    /// cards may belong to accounts other than the active one. Claude cards
+    /// use the same rule; their contexts are recorded by the refresh
+    /// coordinator from the account-wide Claude quota pipeline.
     private func quotaPaceCycleStart(for window: OfficialQuotaWindow, context: OverviewCardContext) -> Date? {
         let snapshot = context.snapshot
-        guard context.paceClient == .codex, snapshot.kind == .official,
+        guard context.paceClient == .codex || context.paceClient == .claude, snapshot.kind == .official,
               case .available(let email) = context.account?.state,
               snapshot.quotaPredictionAccountKey == email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
               let cycle = QuotaPredictionCycle(window: window) else { return nil }
