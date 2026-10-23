@@ -480,7 +480,7 @@
 
 "codex.banked_reset.official_hint_confirmed" = "This round completed";
 "codex.banked_reset.official_reset_confirmed" = "✅ Reset";
-"codex.banked_reset.window_deadline_countdown" = "Window deadline countdown";
+"codex.banked_reset.window_deadline_countdown" = "Reset DDL";
 
 "codex.reset_signal.tooltip_title" = "Official reset signal";
 "codex.reset_signal.tooltip_body" = "Strong-signal probability or countdown for the current official signal, separate from the ordinary 24 / 48-hour forecast.";

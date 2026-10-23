@@ -480,7 +480,7 @@
 
 "codex.banked_reset.official_hint_confirmed" = "Terminé pour ce cycle";
 "codex.banked_reset.official_reset_confirmed" = "✅ Réinitialisé";
-"codex.banked_reset.window_deadline_countdown" = "Compte à rebours de l’échéance";
+"codex.banked_reset.window_deadline_countdown" = "Échéance reset";
 
 "codex.reset_signal.tooltip_title" = "Signal officiel de réinitialisation";
 "codex.reset_signal.tooltip_body" = "Probabilité du signal officiel fort actuel ou compte à rebours, distincts des prévisions ordinaires à 24 / 48 heures.";

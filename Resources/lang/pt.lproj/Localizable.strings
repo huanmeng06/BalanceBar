@@ -480,7 +480,7 @@
 
 "codex.banked_reset.official_hint_confirmed" = "Concluído neste ciclo";
 "codex.banked_reset.official_reset_confirmed" = "✅ Redefinido";
-"codex.banked_reset.window_deadline_countdown" = "Contagem regressiva do prazo";
+"codex.banked_reset.window_deadline_countdown" = "Prazo reset";
 
 "codex.reset_signal.tooltip_title" = "Sinal oficial de redefinição";
 "codex.reset_signal.tooltip_body" = "Probabilidade do sinal oficial forte atual ou contagem regressiva, separadas da previsão normal de 24 / 48 horas.";

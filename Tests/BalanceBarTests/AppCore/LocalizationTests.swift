@@ -316,11 +316,11 @@ final class LocalizationTests: XCTestCase {
         )
         XCTAssertEqual(
             tr(.keyCodexBankedResetWindowDeadlineCountdown, language: .simplifiedChinese),
-            "窗口截止倒计时"
+            "重置 DDL"
         )
         XCTAssertEqual(
             tr(.keyCodexBankedResetWindowDeadlineCountdown, language: .english),
-            "Window deadline countdown"
+            "Reset DDL"
         )
         XCTAssertEqual(
             tr(.keyCodexBankedResetProbabilitySource, language: .simplifiedChinese),
