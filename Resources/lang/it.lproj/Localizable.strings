@@ -201,6 +201,13 @@
 "dashboard.general.and.refresh.pages.launch_with_chatgpt_operation_failed" = "Impossibile aggiornare “Avvia con ChatGPT”. Controlla Impostazioni di Sistema → Generali → Elementi login e riprova.";
 "dashboard.general.and.refresh.pages.launch_with_chatgpt_unavailable" = "Impossibile leggere lo stato del servizio di avvio con ChatGPT";
 "dashboard.general.and.refresh.pages.current_provider_value" = "Provider attuale: %1$@";
+"dashboard.general.and.refresh.pages.connection_mode_line" = "%1$@: %2$@ · %3$@";
+"dashboard.general.and.refresh.pages.connection_mode_line_only" = "%1$@: %2$@";
+"dashboard.general.and.refresh.pages.connection_mode_more" = ", ecc.";
+"dashboard.general.and.refresh.pages.connection_mode_direct" = "Diretto";
+"dashboard.general.and.refresh.pages.connection_mode_aggregation" = "Aggregazione";
+"dashboard.general.and.refresh.pages.connection_mode_proxy" = "Routing";
+"dashboard.general.and.refresh.pages.connection_mode_unknown" = "Sconosciuto";
 "dashboard.general.and.refresh.pages.system" = "Sistema";
 "dashboard.general.and.refresh.pages.every_1_sec" = "Ogni 1 s";
 "dashboard.general.and.refresh.pages.every_2_sec" = "Ogni 2 s";

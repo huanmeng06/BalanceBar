@@ -378,7 +378,6 @@ final class SettingsRowViewTests: XCTestCase {
 
         let page = DashboardGeneralPage().make(.init(
             preferences: AppPreferences(defaults: defaults),
-            currentProviderName: "OpenAI",
             relay: DashboardPreferencePageRelay(),
             updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6"))),
             launchAtLoginState: LaunchAtLoginState(status: .notRegistered),
@@ -580,7 +579,6 @@ final class SettingsRowViewTests: XCTestCase {
 
         let page = DashboardGeneralPage().make(.init(
             preferences: AppPreferences(defaults: defaults),
-            currentProviderName: "OpenAI",
             relay: DashboardPreferencePageRelay(),
             updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6"))),
             launchAtLoginState: LaunchAtLoginState(status: .notRegistered),
@@ -883,7 +881,6 @@ final class SettingsRowViewTests: XCTestCase {
 
         let page = DashboardGeneralPage().make(.init(
             preferences: AppPreferences(defaults: defaults),
-            currentProviderName: "OpenAI",
             relay: DashboardPreferencePageRelay(),
             updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6"))),
             launchAtLoginState: LaunchAtLoginState(status: .notRegistered),
@@ -951,7 +948,6 @@ final class SettingsRowViewTests: XCTestCase {
 
         let page = DashboardGeneralPage().make(.init(
             preferences: AppPreferences(defaults: defaults),
-            currentProviderName: "OpenAI",
             relay: DashboardPreferencePageRelay(),
             updateState: .available(
                 current: try XCTUnwrap(AppSemanticVersion("1.2.3")),

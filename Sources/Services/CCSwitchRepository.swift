@@ -46,6 +46,31 @@ enum CCSwitchQuickSwitchSafety: Equatable {
     }
 }
 
+enum CCSwitchConnectionMode: Equatable, Sendable {
+    case direct, aggregation, proxy, unknown
+}
+
+/// One app's connection mode plus the provider names the General page shows
+/// beside it: the current provider for direct/proxy, the stack members
+/// (default route first) for aggregation, and no names for `.unknown`.
+struct CCSwitchConnectionSummary: Equatable, Sendable {
+    let mode: CCSwitchConnectionMode
+    let providerNames: [String]
+
+    static let unknown = CCSwitchConnectionSummary(mode: .unknown, providerNames: [])
+}
+
+/// All three apps' display data from one read pass.
+struct CCSwitchConnectionSummaries: Equatable, Sendable {
+    let codex: CCSwitchConnectionSummary
+    let claude: CCSwitchConnectionSummary
+    let grok: CCSwitchConnectionSummary
+
+    static let unknown = CCSwitchConnectionSummaries(
+        codex: .unknown, claude: .unknown, grok: .unknown
+    )
+}
+
 enum CCSwitchReadError: Error {
     case sqlite(Int32)
     var sqliteCode: Int32 { switch self { case .sqlite(let code): return code } }
@@ -241,6 +266,156 @@ final class CCSwitchRepository {
 
     var deviceStateURL: URL { homeDirectoryURL.appendingPathComponent(".cc-switch/live-state.json") }
 
+    /// One app's view of CC Switch's live-state.json, shared by quick-switch
+    /// safety and connection-summary reads so the two cannot diverge. A
+    /// missing file or missing app entry keeps `mode == nil` (legacy direct);
+    /// a present-but-untrusted payload reports `.untrusted`. Stack member IDs
+    /// and the default route are display-only extras the safety checks ignore.
+    private enum DeviceAppState: Equatable {
+        case trusted(
+            mode: String?, hasEntry: Bool, stackEnabled: Bool, attached: Bool,
+            stackMembers: [String], route: String?
+        )
+        case untrusted
+    }
+
+    private static func parseDeviceAppState(_ data: Data?, appType: String) -> DeviceAppState {
+        let absent = DeviceAppState.trusted(
+            mode: nil, hasEntry: false, stackEnabled: false, attached: false,
+            stackMembers: [], route: nil
+        )
+        guard let data else { return absent }
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              object["version"] == nil || ((object["version"] as? NSNumber).map { CFGetTypeID($0) != CFBooleanGetTypeID() && $0.intValue == 1 && $0.doubleValue == 1 } == true),
+              let apps = object["apps"] as? [String: Any] else { return .untrusted }
+        guard let raw = apps[appType] else { return absent }
+        guard let entry = raw as? [String: Any],
+              entry["pending"] == nil || entry["pending"] is NSNull else { return .untrusted }
+        let stack = entry["stack"] as? [String: Any]
+        return .trusted(
+            mode: entry["mode"] as? String,
+            hasEntry: true,
+            stackEnabled: stack?["enabled"] as? Bool == true,
+            attached: entry["attached"] as? Bool == true,
+            stackMembers: (stack?["members"] as? [String] ?? []).filter { !$0.isEmpty },
+            route: (entry["proxy_route"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        )
+    }
+
+    /// Read-only connection mode for the General page. Unreadable or untrusted
+    /// state — including a missing CC Switch install — reports `.unknown`
+    /// instead of guessing.
+    func connectionMode(appType: String, stateURL: URL? = nil, readState: (URL) throws -> Data = { try Data(contentsOf: $0) }) -> CCSwitchConnectionMode {
+        let data = try? readState(stateURL ?? deviceStateURL)
+        return Self.connectionMode(appType: appType, stateData: data)
+    }
+
+    /// Display data for the General page's CC Switch row: one state read for
+    /// all three apps' modes, then one database read for the current provider
+    /// names and aggregation stack members. A database that cannot be opened
+    /// leaves the names empty without failing the modes.
+    func connectionSummaries(stateURL: URL? = nil, readState: (URL) throws -> Data = { try Data(contentsOf: $0) }) -> CCSwitchConnectionSummaries {
+        let data = try? readState(stateURL ?? deviceStateURL)
+        let codexState = Self.parseDeviceAppState(data, appType: "codex")
+        var codex = CCSwitchConnectionSummary(mode: Self.connectionMode(appType: "codex", stateData: data), providerNames: [])
+        var claude = CCSwitchConnectionSummary(mode: Self.connectionMode(appType: "claude", stateData: data), providerNames: [])
+        var grok = CCSwitchConnectionSummary(mode: Self.connectionMode(appType: "grokbuild", stateData: data), providerNames: [])
+
+        var database: OpaquePointer?
+        let openCode = sqlite3_open_v2(databaseURL.path, &database, SQLITE_OPEN_READONLY, nil)
+        // Issue #577 acceptance: an unreadable database must degrade the whole
+        // display to 未知 instead of showing modes without complete evidence.
+        guard openCode == SQLITE_OK, let database else {
+            if let database { sqlite3_close(database) }
+            return .unknown
+        }
+        defer { sqlite3_close(database) }
+        sqlite3_busy_timeout(database, 100)
+
+        // Current provider names for all three apps in one query.
+        var currentNames: [String: String] = [:]
+        var currentStatement: OpaquePointer?
+        defer { sqlite3_finalize(currentStatement) }
+        let currentSQL = "SELECT app_type, name FROM providers WHERE is_current = 1 AND app_type IN ('codex', 'claude', 'grokbuild')"
+        guard sqlite3_prepare_v2(database, currentSQL, -1, &currentStatement, nil) == SQLITE_OK, let currentStatement else {
+            return .unknown
+        }
+        // A read can still fail mid-iteration (BUSY after the 100 ms wait,
+        // IOERR); only SQLITE_DONE counts as a complete result.
+        var currentStep = sqlite3_step(currentStatement)
+        while currentStep == SQLITE_ROW {
+            if let appType = text(from: currentStatement, column: 0),
+               let name = text(from: currentStatement, column: 1) {
+                currentNames[appType] = name
+            }
+            currentStep = sqlite3_step(currentStatement)
+        }
+        guard currentStep == SQLITE_DONE else { return .unknown }
+        claude = Self.displaySummary(mode: claude.mode, names: currentNames["claude"].map { [$0] } ?? [])
+        grok = Self.displaySummary(mode: grok.mode, names: currentNames["grokbuild"].map { [$0] } ?? [])
+        if codex.mode == .aggregation,
+           case let .trusted(_, _, _, _, stackMembers, route) = codexState {
+            // Default route first, then the remaining members in stack order.
+            var ids: [String] = []
+            for id in ([route].compactMap { $0 } + stackMembers) where !ids.contains(id) {
+                ids.append(id)
+            }
+            guard let members = providerNames(database: database, appType: "codex", ids: ids) else {
+                return .unknown
+            }
+            codex = Self.displaySummary(mode: codex.mode, names: members)
+        } else {
+            codex = Self.displaySummary(mode: codex.mode, names: currentNames["codex"].map { [$0] } ?? [])
+        }
+        return CCSwitchConnectionSummaries(codex: codex, claude: claude, grok: grok)
+    }
+
+    /// An unknown mode never carries provider names: without a trustworthy
+    /// state the display must not guess a provider either.
+    private static func displaySummary(mode: CCSwitchConnectionMode, names: [String]) -> CCSwitchConnectionSummary {
+        CCSwitchConnectionSummary(mode: mode, providerNames: mode == .unknown ? [] : names)
+    }
+
+    /// nil when the member query cannot run; callers degrade to `.unknown`.
+    private func providerNames(database: OpaquePointer, appType: String, ids: [String]) -> [String]? {
+        guard !ids.isEmpty else { return [] }
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        let sql = "SELECT id, name FROM providers WHERE app_type = ? AND id IN (" + Array(repeating: "?", count: ids.count).joined(separator: ",") + ")"
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK, let statement else { return nil }
+        bind(appType, to: statement, at: 1)
+        for (index, id) in ids.enumerated() { bind(id, to: statement, at: Int32(index + 2)) }
+        var byID: [String: String] = [:]
+        var step = sqlite3_step(statement)
+        while step == SQLITE_ROW {
+            if let id = text(from: statement, column: 0),
+               let name = text(from: statement, column: 1) {
+                byID[id] = name
+            }
+            step = sqlite3_step(statement)
+        }
+        guard step == SQLITE_DONE else { return nil }
+        return ids.compactMap { byID[$0] }
+    }
+
+    private static func connectionMode(appType: String, stateData: Data?) -> CCSwitchConnectionMode {
+        guard appType == "codex" || appType == "claude" || appType == "grokbuild" else { return .unknown }
+        guard case let .trusted(mode, hasEntry, stackEnabled, attached, _, _) = parseDeviceAppState(stateData, appType: appType),
+              hasEntry, let mode else { return .unknown }
+        switch mode {
+        case "direct":
+            // `attached` marks proxy-managed residue; a "direct" claim with it
+            // is not trustworthy, exactly like quick-switch safety.
+            return attached ? .unknown : .direct
+        case "proxy":
+            // CC Switch's stack aggregation is Codex-only; other apps' proxy
+            // takeovers stay `.proxy`, mirroring quick-switch safety.
+            return appType == "codex" && stackEnabled ? .aggregation : .proxy
+        default:
+            return .unknown
+        }
+    }
+
     /// Reads only the proxy settings used for Claude's official HTTPS quota
     /// request. Invalid or non-string values fail closed to direct transport.
     func claudeProxyConfiguration(
@@ -281,9 +456,8 @@ final class CCSwitchRepository {
         let proxyHistoryKey = proxyHistoryKey(appType: appType)
         // Remember a local proxy observation even when the database is temporarily unavailable.
         if let data = try? readState(stateURL ?? deviceStateURL),
-           let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           let codex = (object["apps"] as? [String: Any])?[appType] as? [String: Any],
-           codex["mode"] as? String == "proxy", !UserDefaults.standard.bool(forKey: proxyHistoryKey) {
+           case let .trusted(mode, _, _, _, _, _) = Self.parseDeviceAppState(data, appType: appType),
+           mode == "proxy", !UserDefaults.standard.bool(forKey: proxyHistoryKey) {
             UserDefaults.standard.set(true, forKey: proxyHistoryKey)
         }
         var database: OpaquePointer?
@@ -305,22 +479,16 @@ final class CCSwitchRepository {
                 catch let error as CocoaError where error.code == .fileReadNoSuchFile { return nil }
             }
             let before = try stateData()
-            var mode: String?
-            if let before {
-                guard let object = try JSONSerialization.jsonObject(with: before) as? [String: Any],
-                      object["version"] == nil || ((object["version"] as? NSNumber).map { CFGetTypeID($0) != CFBooleanGetTypeID() && $0.intValue == 1 && $0.doubleValue == 1 } == true),
-                      let apps = object["apps"] as? [String: Any] else { return .blockedUntrusted }
-                if let raw = apps[appType] {
-                    guard let codex = raw as? [String: Any],
-                          codex["pending"] == nil || codex["pending"] is NSNull else { return .blockedUntrusted }
-                    mode = codex["mode"] as? String
-                    if mode == "proxy" {
-                        if !UserDefaults.standard.bool(forKey: proxyHistoryKey) { UserDefaults.standard.set(true, forKey: proxyHistoryKey) }
-                        return appType == "codex" && (codex["stack"] as? [String: Any])?["enabled"] as? Bool == true
-                            ? .blockedAggregation : .blockedRouting
-                    }
-                    guard mode == "direct", codex["attached"] as? Bool != true else { return .blockedUntrusted }
-                }
+            guard case let .trusted(mode, hasEntry, stackEnabled, attached, _, _) = Self.parseDeviceAppState(before, appType: appType) else {
+                return .blockedUntrusted
+            }
+            if mode == "proxy" {
+                if !UserDefaults.standard.bool(forKey: proxyHistoryKey) { UserDefaults.standard.set(true, forKey: proxyHistoryKey) }
+                return appType == "codex" && stackEnabled
+                    ? .blockedAggregation : .blockedRouting
+            }
+            if hasEntry {
+                guard mode == "direct", !attached else { return .blockedUntrusted }
             }
             let evidence = proxyTakeoverStatus(appType: appType, database: database, includeSyncedEnabled: mode != "direct")
             guard evidence == .inactive else { return .blockedUntrusted }

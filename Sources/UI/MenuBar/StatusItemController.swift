@@ -2585,6 +2585,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var rightClickMonitor: Any?
     private var isRightClickPressActive = false
     private var isLeftClickPressActive = false
+    private var clickStateGeneration = 0
     /// True while a reversed right-click is being delivered as a native
     /// left-click so AppKit can track the status menu. The local monitor
     /// must not treat that rewritten click as the configured left-click action.
@@ -3090,6 +3091,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         settings: MenuBarSettings,
         deferMenuRebuild: Bool = false
     ) {
+        let clickBehaviorChanged = self.settings.rightClickAction != settings.rightClickAction
+            || self.settings.reverseMouseButtons != settings.reverseMouseButtons
         let iconDisplayModeChanged = self.settings.iconDisplayMode != settings.iconDisplayMode
         let iconDisplayDelayChanged = self.settings.iconDisplayDelay != settings.iconDisplayDelay
         let taskIconVisibilityChanged = self.settings.showIcon != settings.showIcon
@@ -3105,6 +3108,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         quotaPaceSnapshotAccount = menuInput.openAIAccount
         quotaPaceSnapshotClient = menuInput.activeClient
         aggregationOverviewDisplays = aggregationGrouping.cards(menuInput.aggregatedProviders)
+        if clickBehaviorChanged {
+            resetStatusItemClickState()
+        }
         self.settings = settings
         if iconSizeChanged {
             loadMenuBarIconAssets(size: settings.iconSize)
@@ -3432,6 +3438,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     func menuDidClose(_ menu: NSMenu) {
         guard menu === statusMenu else { return }
+        resetStatusItemClickState()
         menuDismissalTrace?.record("menu.didClose", view: statusMenu.items.first?.view,
             details: "controller_tracking=\(isStatusMenuTracking); rebuild_pending=\(statusMenuNeedsRebuild)")
         if overviewMenuWasSeen {
@@ -3899,9 +3906,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             NSEvent.removeMonitor(rightClickMonitor)
             self.rightClickMonitor = nil
         }
+        resetStatusItemClickState()
+    }
+
+    private func resetStatusItemClickState() {
+        clickStateGeneration += 1
         isRightClickPressActive = false
         isLeftClickPressActive = false
         isPassingThroughRewrittenMenuClick = false
+        setStatusItemHighlighted(false)
         restoreStatusMenuAfterCustomClick()
     }
 
@@ -3916,8 +3929,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     cancelMenuBarTracking()
                     isRightClickPressActive = true
                     let generation = lifecycleGeneration
+                    let clickGeneration = clickStateGeneration
                     DispatchQueue.main.async { [weak self] in
-                        guard let self, self.lifecycleGeneration == generation else { return }
+                        guard let self,
+                              self.lifecycleGeneration == generation,
+                              self.clickStateGeneration == clickGeneration else { return }
                         self.handleRightClickMouseDown()
                     }
                     return nil
@@ -3929,8 +3945,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             cancelMenuBarTracking()
             isLeftClickPressActive = true
             let generation = lifecycleGeneration
+            let clickGeneration = clickStateGeneration
             DispatchQueue.main.async { [weak self] in
-                guard let self, self.lifecycleGeneration == generation else { return }
+                guard let self,
+                      self.lifecycleGeneration == generation,
+                      self.clickStateGeneration == clickGeneration else { return }
                 self.handleLeftClickMouseDown()
             }
             return nil
@@ -3939,8 +3958,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             if isRightClickPressActive {
                 isRightClickPressActive = false
                 let generation = lifecycleGeneration
+                let clickGeneration = clickStateGeneration
                 DispatchQueue.main.async { [weak self] in
-                    guard let self, self.lifecycleGeneration == generation else { return }
+                    guard let self,
+                          self.lifecycleGeneration == generation,
+                          self.clickStateGeneration == clickGeneration else { return }
                     self.handleRightClickMouseUp()
                 }
                 return nil
@@ -3955,8 +3977,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             }
             isLeftClickPressActive = false
             let generation = lifecycleGeneration
+            let clickGeneration = clickStateGeneration
             DispatchQueue.main.async { [weak self] in
-                guard let self, self.lifecycleGeneration == generation else { return }
+                guard let self,
+                      self.lifecycleGeneration == generation,
+                      self.clickStateGeneration == clickGeneration else { return }
                 self.handleLeftClickMouseUp()
             }
             return nil
@@ -3976,8 +4001,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             }
             isRightClickPressActive = true
             let generation = lifecycleGeneration
+            let clickGeneration = clickStateGeneration
             DispatchQueue.main.async { [weak self] in
-                guard let self, self.lifecycleGeneration == generation else { return }
+                guard let self,
+                      self.lifecycleGeneration == generation,
+                      self.clickStateGeneration == clickGeneration else { return }
                 self.handleRightClickMouseDown()
             }
             return nil
@@ -3989,8 +4017,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             if isRightClickPressActive {
                 isRightClickPressActive = false
                 let generation = lifecycleGeneration
+                let clickGeneration = clickStateGeneration
                 DispatchQueue.main.async { [weak self] in
-                    guard let self, self.lifecycleGeneration == generation else { return }
+                    guard let self,
+                          self.lifecycleGeneration == generation,
+                          self.clickStateGeneration == clickGeneration else { return }
                     self.handleRightClickMouseUp()
                 }
                 return nil
@@ -7723,10 +7754,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     /// Each card is validated against its own account: aggregated Codex
-    /// cards may belong to accounts other than the active one.
+    /// cards may belong to accounts other than the active one. Claude cards
+    /// use the same rule; their contexts are recorded by the refresh
+    /// coordinator from the account-wide Claude quota pipeline.
     private func quotaPaceCycleStart(for window: OfficialQuotaWindow, context: OverviewCardContext) -> Date? {
         let snapshot = context.snapshot
-        guard context.paceClient == .codex, snapshot.kind == .official,
+        guard context.paceClient == .codex || context.paceClient == .claude, snapshot.kind == .official,
               case .available(let email) = context.account?.state,
               snapshot.quotaPredictionAccountKey == email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
               let cycle = QuotaPredictionCycle(window: window) else { return nil }

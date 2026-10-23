@@ -6,7 +6,7 @@ struct DashboardCompositionState {
     let preferences: AppPreferences
     let devBundleIdentifier: String
     let providerPollInterval: TimeInterval
-    let currentProviderName: () -> String
+    let ccSwitchConnectionSummaries: () -> CCSwitchConnectionSummaries
     let currentProviderIsOfficial: () -> Bool
     let providerChoices: () -> [ProviderChoice]
     let snapshot: () -> Snapshot
@@ -28,7 +28,7 @@ struct DashboardCompositionState {
         preferences: AppPreferences,
         devBundleIdentifier: String,
         providerPollInterval: TimeInterval,
-        currentProviderName: @escaping () -> String,
+        ccSwitchConnectionSummaries: @escaping () -> CCSwitchConnectionSummaries = { .unknown },
         currentProviderIsOfficial: @escaping () -> Bool,
         providerChoices: @escaping () -> [ProviderChoice],
         snapshot: @escaping () -> Snapshot,
@@ -49,7 +49,7 @@ struct DashboardCompositionState {
         self.preferences = preferences
         self.devBundleIdentifier = devBundleIdentifier
         self.providerPollInterval = providerPollInterval
-        self.currentProviderName = currentProviderName
+        self.ccSwitchConnectionSummaries = ccSwitchConnectionSummaries
         self.currentProviderIsOfficial = currentProviderIsOfficial
         self.providerChoices = providerChoices
         self.snapshot = snapshot
@@ -152,7 +152,7 @@ private final class DashboardSearchCancellationToken {
 
 private struct DashboardSearchRuntimeIdentity: Equatable {
     var languageKey: String
-    var providerName: String
+    var ccSwitchConnectionSummaries: CCSwitchConnectionSummaries
     var updateState: UpdateCheckState
     var balanceDisplayThreshold: Double
     var statusLinks: [StatusLink]
@@ -671,6 +671,15 @@ final class DashboardCompositionController {
         )
     }
 
+    /// Live CC Switch connection update from the file watcher. Section
+    /// activation reads the same cache, so this only has to cover an
+    /// already-visible General page.
+    func refreshCCSwitchConnectionSummaries() {
+        guard canUpdateSettingsPage(.general) else { return }
+        dashboardPreferencePages.refreshConnectionSummaries(state.ccSwitchConnectionSummaries())
+        invalidateSearchData()
+    }
+
     func refreshLaunchAtLogin() {
         guard canUpdateSettingsPage(.general) else { return }
         dashboardPreferencePages.refreshLaunchAtLogin()
@@ -1157,10 +1166,11 @@ final class DashboardCompositionController {
             timeZone: preferences.effectiveDisplayTimeZone,
             resolving: state.menuBarSnapshot
         )
-        // Provider name is the in-memory cache. This path must not open SQLite.
+        // Connection summaries are an in-memory cache. This path must not
+        // open SQLite.
         let identity = DashboardSearchRuntimeIdentity(
             languageKey: "\(AppLanguage.selected.rawValue)|\(AppLanguage.resolved.rawValue)",
-            providerName: state.currentProviderName(),
+            ccSwitchConnectionSummaries: state.ccSwitchConnectionSummaries(),
             updateState: state.updateState(),
             balanceDisplayThreshold: preferences.balanceDisplayThreshold,
             statusLinks: state.statusLinks(),
@@ -1177,7 +1187,6 @@ final class DashboardCompositionController {
             return cachedSearchRuntimeTexts
         }
         var texts = DashboardSettingsSearchRuntime.textsBySection(
-            currentProviderName: identity.providerName,
             updateState: identity.updateState,
             balanceDisplayThreshold: identity.balanceDisplayThreshold,
             statusLinks: identity.statusLinks,
@@ -1188,6 +1197,7 @@ final class DashboardCompositionController {
             animationFrameRate: identity.animationFrameRate,
             menuBarPreviewPrimary: identity.previewPrimary,
             menuBarPreviewSecondary: identity.previewSecondary,
+            ccSwitchConnectionSummaries: identity.ccSwitchConnectionSummaries,
             timeZoneTitle: identity.timeZoneTitle
         )
         texts[.general, default: []].append(contentsOf: TimeZoneCityCatalog.all.flatMap { city in
@@ -1289,7 +1299,7 @@ final class DashboardCompositionController {
         dashboardPreferencePages.activate(section)
         switch section {
         case .general:
-            dashboardPreferencePages.refreshCurrentProviderName(state.currentProviderName())
+            dashboardPreferencePages.refreshConnectionSummaries(state.ccSwitchConnectionSummaries())
             dashboardPreferencePages.refreshUpdateState(state.updateState())
             dashboardPreferencePages.refreshLaunchAtLogin()
             dashboardPreferencePages.refreshLaunchWithChatGPT()
@@ -1328,7 +1338,7 @@ final class DashboardCompositionController {
     private func makeSectionPage(for section: DashboardSection, forSearch: Bool = false) -> NSView {
         dashboardPreferencePages.makePage(
             for: section,
-            currentProviderName: state.currentProviderName(),
+            connectionSummaries: state.ccSwitchConnectionSummaries(),
             providerPollInterval: state.providerPollInterval,
             snapshot: state.snapshot(),
             menuBarSnapshot: state.menuBarSnapshot,

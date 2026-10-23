@@ -201,6 +201,13 @@
 "dashboard.general.and.refresh.pages.launch_with_chatgpt_operation_failed" = "Не удалось обновить настройку запуска вместе с ChatGPT. Проверьте Системные настройки → Основные → Объекты входа и повторите попытку.";
 "dashboard.general.and.refresh.pages.launch_with_chatgpt_unavailable" = "Не удалось прочитать состояние службы запуска ChatGPT";
 "dashboard.general.and.refresh.pages.current_provider_value" = "Текущий провайдер: %1$@";
+"dashboard.general.and.refresh.pages.connection_mode_line" = "%1$@: %2$@ · %3$@";
+"dashboard.general.and.refresh.pages.connection_mode_line_only" = "%1$@: %2$@";
+"dashboard.general.and.refresh.pages.connection_mode_more" = " и др.";
+"dashboard.general.and.refresh.pages.connection_mode_direct" = "Прямое";
+"dashboard.general.and.refresh.pages.connection_mode_aggregation" = "Агрегация";
+"dashboard.general.and.refresh.pages.connection_mode_proxy" = "Маршрутизация";
+"dashboard.general.and.refresh.pages.connection_mode_unknown" = "Неизвестно";
 "dashboard.general.and.refresh.pages.system" = "Система";
 "dashboard.general.and.refresh.pages.every_1_sec" = "Каждые 1 с";
 "dashboard.general.and.refresh.pages.every_2_sec" = "Каждые 2 с";

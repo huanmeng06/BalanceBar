@@ -295,7 +295,7 @@ final class DashboardAdaptiveControlsStackView: NSStackView, SettingsRowAccessor
 final class DashboardGeneralPage {
     struct Input {
         let preferences: AppPreferences
-        let currentProviderName: String
+        let connectionSummaries: CCSwitchConnectionSummaries
         let relay: DashboardPreferencePageRelay
         let updateState: UpdateCheckState
         let launchAtLoginState: LaunchAtLoginState
@@ -303,14 +303,14 @@ final class DashboardGeneralPage {
 
         init(
             preferences: AppPreferences,
-            currentProviderName: String,
+            connectionSummaries: CCSwitchConnectionSummaries = .unknown,
             relay: DashboardPreferencePageRelay,
             updateState: UpdateCheckState,
             launchAtLoginState: LaunchAtLoginState = LaunchAtLoginState(status: .notRegistered),
             launchWithChatGPTState: LaunchWithChatGPTState = LaunchWithChatGPTState(status: .notRegistered)
         ) {
             self.preferences = preferences
-            self.currentProviderName = currentProviderName
+            self.connectionSummaries = connectionSummaries
             self.relay = relay
             self.updateState = updateState
             self.launchAtLoginState = launchAtLoginState
@@ -326,6 +326,7 @@ final class DashboardGeneralPage {
     private var updateNotesButton: NSButton?
     private var updateBadge: NSView?
     private weak var currentProviderDetailLabel: NSTextField?
+    private var connectionSummaries: CCSwitchConnectionSummaries = .unknown
     private var launchAtLoginSwitch: NSSwitch?
     private var launchAtLoginSubtitleLabel: NSTextField?
     private var launchWithChatGPTSwitch: NSSwitch?
@@ -339,15 +340,14 @@ final class DashboardGeneralPage {
             target: input.relay,
             action: #selector(DashboardPreferencePageRelay.openCCSwitch(_:))
         )
-        let currentProviderText = DashboardSettingsFormattedCopy.currentProviderValue(
-            input.currentProviderName
-        )
+        connectionSummaries = input.connectionSummaries
         let currentProviderRow = SettingsRowView(
             title: tr(.keyDashboardGeneralAndRefreshPagesCcSwitch),
-            detail: currentProviderText,
+            detail: DashboardSettingsFormattedCopy.ccSwitchConnectionPlainText(input.connectionSummaries),
             accessoryView: openButton
         )
         currentProviderDetailLabel = currentProviderRow.detailLabel
+        applyConnectionSummaries()
         let system = SettingsSectionView(
             title: tr(.keyDashboardGeneralAndRefreshPagesSystem),
             contentViews: [currentProviderRow]
@@ -674,11 +674,23 @@ final class DashboardGeneralPage {
         (updateButton.superview as? DashboardAdaptiveControlsStackView)?.invalidateLayoutAfterContentChange()
     }
 
-    func refreshCurrentProviderName(_ name: String) {
+    func refreshConnectionSummaries(_ summaries: CCSwitchConnectionSummaries) {
+        connectionSummaries = summaries
+        applyConnectionSummaries()
+    }
+
+    private func applyConnectionSummaries() {
         guard let currentProviderDetailLabel else { return }
-        currentProviderDetailLabel.stringValue = DashboardSettingsFormattedCopy.currentProviderValue(name)
-        currentProviderDetailLabel.superview?.needsLayout = true
-        currentProviderDetailLabel.superview?.superview?.needsLayout = true
+        currentProviderDetailLabel.attributedStringValue = DashboardSettingsFormattedCopy.ccSwitchConnectionDetail(connectionSummaries)
+        // The three lines can grow from short 未知 text to wrapped provider
+        // lists; re-run the row's wrapping-height machinery so card height
+        // follows instead of clipping.
+        if let row = SettingsRowView.enclosing(currentProviderDetailLabel) {
+            row.invalidateAfterContentChange()
+        } else {
+            currentProviderDetailLabel.superview?.needsLayout = true
+            currentProviderDetailLabel.superview?.superview?.needsLayout = true
+        }
     }
 
     private func launchAtLoginSubtitle(for state: LaunchAtLoginState) -> String {
@@ -1092,6 +1104,71 @@ final class DashboardTimeZoneComboBox: NSPopUpButton, SettingsRowAccessoryLayout
         let selection = AppTimeZoneSelection.region(identifier: identifier)
         guard selection != preferences.displayTimeZoneSelection else { return }
         relay?.onTimeZone?(selection)
+    }
+}
+
+/// Loads the small bundled agent marks for inline text attachments. The same
+/// resources and Grok crop rules as `DashboardRefreshPage.agentIconStrip`.
+enum AgentMark {
+    static func image(named resource: String, pointSize: CGFloat) -> NSImage? {
+        guard let url = Bundle.main.url(forResource: resource, withExtension: "svg") else { return nil }
+        let size = NSSize(width: pointSize, height: pointSize)
+        // GrokIdle.svg is a framed artboard; the menu bar crops it too.
+        let image = resource == "GrokIdle"
+            ? GrokIdleIcon.make(fromSVG: url, outputSize: size)
+            : NSImage(contentsOf: url)
+        guard let image else { return nil }
+        image.size = size
+        image.isTemplate = false
+        return image
+    }
+}
+
+/// Renders one agent mark inside the CC Switch row's detail text. Monochrome
+/// marks are re-tinted at draw time so they follow the label color across
+/// light/dark appearances; Claude keeps its brand colors.
+final class AgentMarkAttachmentCell: NSTextAttachmentCell {
+    private let tintsWithLabel: Bool
+    private let baselineOffset: CGFloat
+
+    init(image: NSImage?, tintsWithLabel: Bool, baselineOffset: CGFloat = 0) {
+        self.tintsWithLabel = tintsWithLabel
+        self.baselineOffset = baselineOffset
+        super.init(imageCell: image)
+    }
+
+    required init(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
+
+    /// NSTextAttachmentCell positions its image on the text baseline by
+    /// default, which sits a 13pt mark visibly above the 12pt text mass. The
+    /// formatter passes a negative offset to optically center the mark.
+    override func cellBaselineOffset() -> CGPoint {
+        CGPoint(x: 0, y: baselineOffset)
+    }
+
+    override func draw(withFrame cellFrame: NSRect, in controlView: NSView?, characterIndex charIndex: Int) {
+        render(in: cellFrame)
+    }
+
+    func draw(withFrame cellFrame: NSRect, in controlView: NSView?, characterRange charRange: NSRange, layoutManager: NSLayoutManager) {
+        render(in: cellFrame)
+    }
+
+    private func render(in cellFrame: NSRect) {
+        guard let image else { return }
+        guard tintsWithLabel else {
+            image.draw(in: cellFrame)
+            return
+        }
+        let tinted = NSImage(size: image.size)
+        tinted.lockFocus()
+        image.draw(in: NSRect(origin: .zero, size: image.size))
+        NSColor.secondaryLabelColor.set()
+        NSRect(origin: .zero, size: image.size).fill(using: .sourceIn)
+        tinted.unlockFocus()
+        tinted.draw(in: cellFrame)
     }
 }
 
