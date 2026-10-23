@@ -1661,7 +1661,6 @@ final class DashboardPreferencePagesTests: XCTestCase {
         AppLanguage.selected = .simplifiedChinese
         let page = DashboardGeneralPage().make(.init(
             preferences: AppPreferences(defaults: defaults),
-            currentProviderName: "OpenAI",
             relay: relay,
             updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6")))
         ))
@@ -1680,53 +1679,43 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertTrue(applied.isEmpty)
     }
 
-    func testGeneralPageRefreshesCurrentProviderNameAfterCachedReentry() throws {
-        let suiteName = "DashboardPreferencePagesTests.CurrentProviderRefresh.\(UUID().uuidString)"
+    func testGeneralPageShowsAndRefreshesCCSwitchConnectionLines() throws {
+        let suiteName = "DashboardPreferencePagesTests.ConnectionLines.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
         defaults.removePersistentDomain(forName: suiteName)
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
+        let mounted = CCSwitchConnectionSummaries(
+            codex: CCSwitchConnectionSummary(mode: .aggregation, providerNames: ["OpenAI Official", "tokenshop", "DeepSeek", "Extra"]),
+            claude: CCSwitchConnectionSummary(mode: .direct, providerNames: ["Claude Official"]),
+            grok: CCSwitchConnectionSummary(mode: .direct, providerNames: ["tokenshop"])
+        )
         let controller = DashboardGeneralPage()
         let page = controller.make(.init(
             preferences: AppPreferences(defaults: defaults),
-            currentProviderName: "Provider A",
+            connectionSummaries: mounted,
             relay: DashboardPreferencePageRelay(),
             updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6")))
         ))
-        let labels = { self.descendants(of: page).compactMap { $0 as? NSTextField }.map(\.stringValue) }
-        XCTAssertTrue(labels().contains(DashboardSettingsFormattedCopy.ccSwitchDetailText(providerName: "Provider A", modes: .unknown)))
+        let detailTexts = { self.descendants(of: page).compactMap { $0 as? NSTextField }.map(\.stringValue) }
+        let mountedPlain = DashboardSettingsFormattedCopy.ccSwitchConnectionPlainText(mounted)
+        XCTAssertTrue(detailTexts().contains(mountedPlain))
+        XCTAssertTrue(mountedPlain.contains(DashboardSettingsFormattedCopy.ccSwitchConnectionModeName(.aggregation)))
+        // Three agent lines, one per app, each led by an icon placeholder.
+        XCTAssertEqual(mountedPlain.components(separatedBy: "\n").count, 3)
+        XCTAssertFalse(mountedPlain.contains("Extra"), "only the first three provider names are shown")
 
-        controller.refreshCurrentProviderName("Provider B")
-        XCTAssertTrue(labels().contains(DashboardSettingsFormattedCopy.ccSwitchDetailText(providerName: "Provider B", modes: .unknown)))
-        XCTAssertFalse(labels().contains { $0.contains(DashboardSettingsFormattedCopy.currentProviderValue("Provider A")) })
-    }
+        let attributed = DashboardSettingsFormattedCopy.ccSwitchConnectionDetail(mounted)
+        XCTAssertEqual(attributed.string, mountedPlain)
 
-    func testGeneralPageShowsAndRefreshesCCSwitchConnectionModes() throws {
-        let suiteName = "DashboardPreferencePagesTests.ConnectionModes.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-
-        let controller = DashboardGeneralPage()
-        let page = controller.make(.init(
-            preferences: AppPreferences(defaults: defaults),
-            currentProviderName: "Provider A",
-            connectionModes: CCSwitchConnectionModes(claude: .direct, codex: .aggregation),
-            relay: DashboardPreferencePageRelay(),
-            updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6")))
-        ))
-        let labels = { self.descendants(of: page).compactMap { $0 as? NSTextField }.map(\.stringValue) }
-        XCTAssertTrue(labels().contains(DashboardSettingsFormattedCopy.ccSwitchDetailText(
-            providerName: "Provider A",
-            modes: CCSwitchConnectionModes(claude: .direct, codex: .aggregation)
-        )))
-
-        controller.refreshConnectionModes(CCSwitchConnectionModes(claude: .proxy, codex: .unknown))
-        XCTAssertTrue(labels().contains(DashboardSettingsFormattedCopy.ccSwitchDetailText(
-            providerName: "Provider A",
-            modes: CCSwitchConnectionModes(claude: .proxy, codex: .unknown)
-        )))
-        XCTAssertFalse(labels().contains { $0.contains(DashboardSettingsFormattedCopy.ccSwitchConnectionModeName(.direct)) })
+        let refreshed = CCSwitchConnectionSummaries(
+            codex: CCSwitchConnectionSummary(mode: .proxy, providerNames: ["tokenshop"]),
+            claude: CCSwitchConnectionSummary(mode: .unknown, providerNames: []),
+            grok: CCSwitchConnectionSummary(mode: .direct, providerNames: ["tokenshop"])
+        )
+        controller.refreshConnectionSummaries(refreshed)
+        XCTAssertTrue(detailTexts().contains(DashboardSettingsFormattedCopy.ccSwitchConnectionPlainText(refreshed)))
+        XCTAssertFalse(detailTexts().contains { $0 == mountedPlain })
     }
 
     func testLaunchAtLoginGeneralRowReflectsStatesAndRoutesToggle() throws {
@@ -1745,7 +1734,6 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let controller = DashboardGeneralPage()
         let page = controller.make(.init(
             preferences: AppPreferences(defaults: defaults),
-            currentProviderName: "OpenAI",
             relay: relay,
             updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6"))),
             launchAtLoginState: LaunchAtLoginState(status: .notRegistered)
@@ -1837,7 +1825,6 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
             let page = DashboardGeneralPage().make(.init(
                 preferences: preferences,
-                currentProviderName: "OpenAI",
                 relay: DashboardPreferencePageRelay(),
                 updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6"))),
                 launchAtLoginState: LaunchAtLoginState(
@@ -1870,7 +1857,6 @@ final class DashboardPreferencePagesTests: XCTestCase {
         relay.onLaunchWithChatGPT = { chatGPTRequests.append($0) }
         let page = DashboardGeneralPage().make(.init(
             preferences: preferences,
-            currentProviderName: "OpenAI",
             relay: relay,
             updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6"))),
             launchAtLoginState: LaunchAtLoginState(status: .enabled),
@@ -1955,7 +1941,6 @@ final class DashboardPreferencePagesTests: XCTestCase {
             let controller = DashboardGeneralPage()
             let page = controller.make(.init(
                 preferences: AppPreferences(defaults: defaults),
-                currentProviderName: "OpenAI",
                 relay: DashboardPreferencePageRelay(),
                 updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6"))),
                 launchAtLoginState: LaunchAtLoginState(status: .notRegistered)
@@ -2045,7 +2030,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             if identifier == "officialUsageRefreshInterval" { preferences.officialUsageRefreshInterval = value }
         }
         let page = DashboardGeneralPage().make(.init(preferences: preferences,
-            currentProviderName: "Claude", relay: relay,
+            relay: relay,
             updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6")))))
         let popups = descendants(of: page).compactMap { $0 as? NSPopUpButton }
         let official = try XCTUnwrap(popups.first { $0.identifier?.rawValue == "officialUsageRefreshInterval" })
@@ -2135,7 +2120,6 @@ final class DashboardPreferencePagesTests: XCTestCase {
             defaults.removePersistentDomain(forName: suiteName)
             let page = DashboardGeneralPage().make(.init(
                 preferences: AppPreferences(defaults: defaults),
-                currentProviderName: "OpenAI",
                 relay: DashboardPreferencePageRelay(),
                 updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6")))
             ))
@@ -2197,7 +2181,6 @@ final class DashboardPreferencePagesTests: XCTestCase {
             let page = DashboardScrollablePageViewController.makePageView(
                 hosting: DashboardGeneralPage().make(.init(
                     preferences: preferences,
-                    currentProviderName: "OpenAI",
                     relay: relay,
                     updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6")))
                 ))
@@ -10172,7 +10155,7 @@ extension DashboardPreferencePagesTests {
         let relay = DashboardPreferencePageRelay()
         relay.onTimeZone = { preferences.displayTimeZoneSelection = $0 }
         let general = DashboardGeneralPage()
-        let page = general.make(.init(preferences: preferences, currentProviderName: "test", relay: relay, updateState: .latest(current: try XCTUnwrap(AppSemanticVersion("1.6.4")))))
+        let page = general.make(.init(preferences: preferences, relay: relay, updateState: .latest(current: try XCTUnwrap(AppSemanticVersion("1.6.4")))))
         let combo = try XCTUnwrap(descendants(of: page).compactMap { $0 as? DashboardTimeZoneComboBox }.first)
         let toggle = try XCTUnwrap(descendants(of: page).compactMap { $0 as? NSSwitch }.first { $0.identifier?.rawValue == AppPreferences.displayTimeZoneKey + ".system" })
         XCTAssertFalse(combo.isEnabled)

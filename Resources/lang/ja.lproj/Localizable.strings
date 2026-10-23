@@ -201,7 +201,9 @@
 "dashboard.general.and.refresh.pages.launch_with_chatgpt_operation_failed" = "ChatGPTと一緒に起動する設定を更新できませんでした。システム設定 → 一般 → ログイン項目を確認して、もう一度お試しください。";
 "dashboard.general.and.refresh.pages.launch_with_chatgpt_unavailable" = "ChatGPT起動サービスの状態を読み取れません";
 "dashboard.general.and.refresh.pages.current_provider_value" = "現在のプロバイダー：%1$@";
-"dashboard.general.and.refresh.pages.connection_mode_value" = "Claude Code：%1$@ ・ Codex：%2$@";
+"dashboard.general.and.refresh.pages.connection_mode_line" = "%1$@：%2$@ ・ %3$@";
+"dashboard.general.and.refresh.pages.connection_mode_line_only" = "%1$@：%2$@";
+"dashboard.general.and.refresh.pages.connection_mode_more" = " など";
 "dashboard.general.and.refresh.pages.connection_mode_direct" = "ダイレクト";
 "dashboard.general.and.refresh.pages.connection_mode_aggregation" = "アグリゲーション";
 "dashboard.general.and.refresh.pages.connection_mode_proxy" = "プロキシ";

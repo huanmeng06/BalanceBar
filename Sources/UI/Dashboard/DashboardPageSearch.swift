@@ -338,7 +338,8 @@ enum DashboardSettingsSearchCatalog {
         "dashboard.refresh.official_every_seconds",
         "dashboard.about.page.version_value",
         "dashboard.general.and.refresh.pages.current_provider_value",
-        "dashboard.general.and.refresh.pages.connection_mode_value",
+        "dashboard.general.and.refresh.pages.connection_mode_line",
+        "dashboard.general.and.refresh.pages.connection_mode_line_only",
         "dashboard.general.and.refresh.pages.downloading_value",
         "dashboard.general.and.refresh.pages.installing_value",
         "dashboard.general.and.refresh.pages.new_version_available_value_value",
@@ -612,21 +613,119 @@ enum DashboardSettingsFormattedCopy {
         }
     }
 
-    static func ccSwitchConnectionModeLine(_ modes: CCSwitchConnectionModes) -> String {
-        tr(
-            .keyDashboardGeneralAndRefreshPagesConnectionModeValue,
-            arguments: [
-                ccSwitchConnectionModeName(modes.claude),
-                ccSwitchConnectionModeName(modes.codex)
-            ]
-        )
+    /// CC Switch's own badge colors for the three modes; `.unknown` keeps the
+    /// label's secondary color.
+    static func ccSwitchConnectionModeColor(_ mode: CCSwitchConnectionMode) -> NSColor? {
+        switch mode {
+        case .direct: return NSColor(srgbRed: 0x16 / 255, green: 0x77 / 255, blue: 0xFF / 255, alpha: 1)
+        case .aggregation: return NSColor(srgbRed: 0x7B / 255, green: 0x5C / 255, blue: 0xF5 / 255, alpha: 1)
+        case .proxy: return NSColor(srgbRed: 0x0D / 255, green: 0x94 / 255, blue: 0x88 / 255, alpha: 1)
+        case .unknown: return nil
+        }
     }
 
-    /// The mounted CC Switch row detail: provider line plus connection-mode
-    /// line. Row builder and search corpus share it so the corpus always
-    /// matches the visible copy.
-    static func ccSwitchDetailText(providerName: String, modes: CCSwitchConnectionModes) -> String {
-        currentProviderValue(providerName) + "\n" + ccSwitchConnectionModeLine(modes)
+    /// Object replacement character: one per inline agent mark, matching what
+    /// NSTextAttachment contributes to an attributed label's `stringValue`.
+    private static let attachmentCharacter = "\u{FFFC}"
+
+    /// One agent line of the CC Switch row detail.
+    private struct CCSwitchAgentLine {
+        let markResource: String
+        let appName: String
+        let summary: CCSwitchConnectionSummary
+    }
+
+    private static func ccSwitchAgentLines(_ summaries: CCSwitchConnectionSummaries) -> [CCSwitchAgentLine] {
+        [
+            CCSwitchAgentLine(markResource: "CodexIcon", appName: AssistantClient.codex.displayName, summary: summaries.codex),
+            CCSwitchAgentLine(markResource: "Claude", appName: AssistantClient.claude.displayName, summary: summaries.claude),
+            CCSwitchAgentLine(markResource: "GrokIdle", appName: AssistantClient.grok.displayName, summary: summaries.grok)
+        ]
+    }
+
+    /// Provider names beside the mode, capped at three plus a localized
+    /// "and more" suffix. Aggregation shows the stack members (default route
+    /// first); other modes show the current provider.
+    static let ccSwitchMaximumProviderNames = 3
+
+    private static func ccSwitchProviderList(_ names: [String]) -> String {
+        guard !names.isEmpty else { return "" }
+        let joiner: String
+        switch AppLanguage.resolved {
+        case .simplifiedChinese, .traditionalChineseTaiwan, .traditionalChineseHongKong, .japanese:
+            joiner = "、"
+        default:
+            joiner = ", "
+        }
+        var list = names.prefix(ccSwitchMaximumProviderNames).joined(separator: joiner)
+        if names.count > ccSwitchMaximumProviderNames {
+            list += tr(.keyDashboardGeneralAndRefreshPagesConnectionModeMore)
+        }
+        return list
+    }
+
+    private static func ccSwitchLineText(appName: String, summary: CCSwitchConnectionSummary) -> String {
+        let modeName = ccSwitchConnectionModeName(summary.mode)
+        let providers = ccSwitchProviderList(summary.providerNames)
+        if providers.isEmpty {
+            return tr(.keyDashboardGeneralAndRefreshPagesConnectionModeLineOnly, arguments: [appName, modeName])
+        }
+        return tr(.keyDashboardGeneralAndRefreshPagesConnectionModeLine, arguments: [appName, modeName, providers])
+    }
+
+    /// Plain text of the mounted CC Switch row detail, one line per agent.
+    /// Each leading mark is an object-replacement character so search and the
+    /// corpus tests see exactly the label's `stringValue`.
+    static func ccSwitchConnectionPlainText(_ summaries: CCSwitchConnectionSummaries) -> String {
+        ccSwitchAgentLines(summaries)
+            .map { attachmentCharacter + " " + ccSwitchLineText(appName: $0.appName, summary: $0.summary) }
+            .joined(separator: "\n")
+    }
+
+    /// The mounted CC Switch row detail: one line per agent, each led by its
+    /// bundled mark, with the mode word bolded in CC Switch's badge color.
+    /// Base runs leave the color to the field's dynamic textColor; only mode
+    /// spans carry explicit colors.
+    static func ccSwitchConnectionDetail(_ summaries: CCSwitchConnectionSummaries) -> NSAttributedString {
+        let font = NSFont.systemFont(ofSize: 12)
+        let result = NSMutableAttributedString()
+        for (index, agent) in ccSwitchAgentLines(summaries).enumerated() {
+            if index > 0 { result.append(NSAttributedString(string: "\n")) }
+            let lineText = ccSwitchLineText(appName: agent.appName, summary: agent.summary)
+            let paragraph = NSMutableParagraphStyle()
+            paragraph.lineBreakMode = DashboardSettingsComponents.settingsSubtitleLineBreakMode(for: lineText)
+            let line = NSMutableAttributedString()
+            if let image = AgentMark.image(named: agent.markResource, pointSize: font.pointSize + 1) {
+                let attachment = NSTextAttachment()
+                attachment.attachmentCell = AgentMarkAttachmentCell(
+                    image: image,
+                    tintsWithLabel: agent.markResource != "Claude"
+                )
+                attachment.bounds = NSRect(
+                    x: 0,
+                    y: (font.capHeight - image.size.height) / 2,
+                    width: image.size.width,
+                    height: image.size.height
+                )
+                line.append(NSAttributedString(attachment: attachment))
+            } else {
+                line.append(NSAttributedString(string: attachmentCharacter))
+            }
+            line.append(NSAttributedString(string: " " + lineText, attributes: [.font: font, .paragraphStyle: paragraph]))
+            let modeName = ccSwitchConnectionModeName(agent.summary.mode)
+            let modeRange = (line.string as NSString).range(of: modeName)
+            var emphasis: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(ofSize: font.pointSize, weight: .bold)
+            ]
+            if let color = ccSwitchConnectionModeColor(agent.summary.mode) {
+                emphasis[.foregroundColor] = color
+            }
+            if modeRange.location != NSNotFound {
+                line.addAttributes(emphasis, range: modeRange)
+            }
+            result.append(line)
+        }
+        return result
     }
 
     static func autoSwitchLunaReserveTitle() -> String {
@@ -744,7 +843,6 @@ enum DashboardSettingsFormattedCopy {
 /// `DashboardSettingsFormattedCopy` puts that copy in the static catalog.
 enum DashboardSettingsSearchRuntime {
     static func textsBySection(
-        currentProviderName: String,
         updateState: UpdateCheckState,
         balanceDisplayThreshold: Double,
         statusLinks: [StatusLink],
@@ -755,17 +853,14 @@ enum DashboardSettingsSearchRuntime {
         animationFrameRate: Int,
         menuBarPreviewPrimary: String,
         menuBarPreviewSecondary: String,
-        ccSwitchConnectionModes: CCSwitchConnectionModes = .unknown,
+        ccSwitchConnectionSummaries: CCSwitchConnectionSummaries = .unknown,
         timeZoneTitle: String = TimeZoneCityCatalog.displayTitle(for: .system)
     ) -> [DashboardSection: [String]] {
         let update = DashboardUpdatePresentation.make(for: updateState)
         let frameRate = MenuBarAnimationTiming.clampedFrameRate(animationFrameRate)
         return [
             .general: nonempty([
-                DashboardSettingsFormattedCopy.ccSwitchDetailText(
-                    providerName: currentProviderName,
-                    modes: ccSwitchConnectionModes
-                ),
+                DashboardSettingsFormattedCopy.ccSwitchConnectionPlainText(ccSwitchConnectionSummaries),
                 update.subtitle,
                 update.buttonTitle,
                 timeZoneTitle

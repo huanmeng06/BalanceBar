@@ -6,8 +6,7 @@ struct DashboardCompositionState {
     let preferences: AppPreferences
     let devBundleIdentifier: String
     let providerPollInterval: TimeInterval
-    let currentProviderName: () -> String
-    let ccSwitchConnectionModes: () -> CCSwitchConnectionModes
+    let ccSwitchConnectionSummaries: () -> CCSwitchConnectionSummaries
     let currentProviderIsOfficial: () -> Bool
     let providerChoices: () -> [ProviderChoice]
     let snapshot: () -> Snapshot
@@ -29,7 +28,7 @@ struct DashboardCompositionState {
         preferences: AppPreferences,
         devBundleIdentifier: String,
         providerPollInterval: TimeInterval,
-        currentProviderName: @escaping () -> String,
+        ccSwitchConnectionSummaries: @escaping () -> CCSwitchConnectionSummaries = { .unknown },
         currentProviderIsOfficial: @escaping () -> Bool,
         providerChoices: @escaping () -> [ProviderChoice],
         snapshot: @escaping () -> Snapshot,
@@ -45,14 +44,12 @@ struct DashboardCompositionState {
         notificationConfiguration: DashboardNotificationPageConfiguration? = nil,
         snapshotProviderID: @escaping () -> String? = { nil },
         aggregationSnapshots: @escaping () -> [String: Snapshot] = { [:] },
-        isAggregationMode: @escaping () -> Bool = { false },
-        ccSwitchConnectionModes: @escaping () -> CCSwitchConnectionModes = { .unknown }
+        isAggregationMode: @escaping () -> Bool = { false }
     ) {
         self.preferences = preferences
         self.devBundleIdentifier = devBundleIdentifier
         self.providerPollInterval = providerPollInterval
-        self.currentProviderName = currentProviderName
-        self.ccSwitchConnectionModes = ccSwitchConnectionModes
+        self.ccSwitchConnectionSummaries = ccSwitchConnectionSummaries
         self.currentProviderIsOfficial = currentProviderIsOfficial
         self.providerChoices = providerChoices
         self.snapshot = snapshot
@@ -155,8 +152,7 @@ private final class DashboardSearchCancellationToken {
 
 private struct DashboardSearchRuntimeIdentity: Equatable {
     var languageKey: String
-    var providerName: String
-    var ccSwitchConnectionModes: CCSwitchConnectionModes
+    var ccSwitchConnectionSummaries: CCSwitchConnectionSummaries
     var updateState: UpdateCheckState
     var balanceDisplayThreshold: Double
     var statusLinks: [StatusLink]
@@ -675,12 +671,12 @@ final class DashboardCompositionController {
         )
     }
 
-    /// Live CC Switch connection-mode update from the file watcher. Section
+    /// Live CC Switch connection update from the file watcher. Section
     /// activation reads the same cache, so this only has to cover an
     /// already-visible General page.
-    func refreshCCSwitchConnectionModes() {
+    func refreshCCSwitchConnectionSummaries() {
         guard canUpdateSettingsPage(.general) else { return }
-        dashboardPreferencePages.refreshConnectionModes(state.ccSwitchConnectionModes())
+        dashboardPreferencePages.refreshConnectionSummaries(state.ccSwitchConnectionSummaries())
         invalidateSearchData()
     }
 
@@ -1170,12 +1166,11 @@ final class DashboardCompositionController {
             timeZone: preferences.effectiveDisplayTimeZone,
             resolving: state.menuBarSnapshot
         )
-        // Provider name and connection modes are in-memory caches. This path
-        // must not open SQLite.
+        // Connection summaries are an in-memory cache. This path must not
+        // open SQLite.
         let identity = DashboardSearchRuntimeIdentity(
             languageKey: "\(AppLanguage.selected.rawValue)|\(AppLanguage.resolved.rawValue)",
-            providerName: state.currentProviderName(),
-            ccSwitchConnectionModes: state.ccSwitchConnectionModes(),
+            ccSwitchConnectionSummaries: state.ccSwitchConnectionSummaries(),
             updateState: state.updateState(),
             balanceDisplayThreshold: preferences.balanceDisplayThreshold,
             statusLinks: state.statusLinks(),
@@ -1192,7 +1187,6 @@ final class DashboardCompositionController {
             return cachedSearchRuntimeTexts
         }
         var texts = DashboardSettingsSearchRuntime.textsBySection(
-            currentProviderName: identity.providerName,
             updateState: identity.updateState,
             balanceDisplayThreshold: identity.balanceDisplayThreshold,
             statusLinks: identity.statusLinks,
@@ -1203,7 +1197,7 @@ final class DashboardCompositionController {
             animationFrameRate: identity.animationFrameRate,
             menuBarPreviewPrimary: identity.previewPrimary,
             menuBarPreviewSecondary: identity.previewSecondary,
-            ccSwitchConnectionModes: identity.ccSwitchConnectionModes,
+            ccSwitchConnectionSummaries: identity.ccSwitchConnectionSummaries,
             timeZoneTitle: identity.timeZoneTitle
         )
         texts[.general, default: []].append(contentsOf: TimeZoneCityCatalog.all.flatMap { city in
@@ -1305,8 +1299,7 @@ final class DashboardCompositionController {
         dashboardPreferencePages.activate(section)
         switch section {
         case .general:
-            dashboardPreferencePages.refreshCurrentProviderName(state.currentProviderName())
-            dashboardPreferencePages.refreshConnectionModes(state.ccSwitchConnectionModes())
+            dashboardPreferencePages.refreshConnectionSummaries(state.ccSwitchConnectionSummaries())
             dashboardPreferencePages.refreshUpdateState(state.updateState())
             dashboardPreferencePages.refreshLaunchAtLogin()
             dashboardPreferencePages.refreshLaunchWithChatGPT()
@@ -1345,8 +1338,7 @@ final class DashboardCompositionController {
     private func makeSectionPage(for section: DashboardSection, forSearch: Bool = false) -> NSView {
         dashboardPreferencePages.makePage(
             for: section,
-            currentProviderName: state.currentProviderName(),
-            connectionModes: state.ccSwitchConnectionModes(),
+            connectionSummaries: state.ccSwitchConnectionSummaries(),
             providerPollInterval: state.providerPollInterval,
             snapshot: state.snapshot(),
             menuBarSnapshot: state.menuBarSnapshot,

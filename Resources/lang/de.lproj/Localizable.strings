@@ -201,7 +201,9 @@
 "dashboard.general.and.refresh.pages.launch_with_chatgpt_operation_failed" = "„Mit ChatGPT starten“ konnte nicht aktualisiert werden. Überprüfe Systemeinstellungen → Allgemein → Anmeldeobjekte und versuche es erneut.";
 "dashboard.general.and.refresh.pages.launch_with_chatgpt_unavailable" = "Der Status des ChatGPT-Startdienstes kann nicht gelesen werden";
 "dashboard.general.and.refresh.pages.current_provider_value" = "Aktueller Anbieter: %1$@";
-"dashboard.general.and.refresh.pages.connection_mode_value" = "Claude Code: %1$@ · Codex: %2$@";
+"dashboard.general.and.refresh.pages.connection_mode_line" = "%1$@: %2$@ · %3$@";
+"dashboard.general.and.refresh.pages.connection_mode_line_only" = "%1$@: %2$@";
+"dashboard.general.and.refresh.pages.connection_mode_more" = ", usw.";
 "dashboard.general.and.refresh.pages.connection_mode_direct" = "Direkt";
 "dashboard.general.and.refresh.pages.connection_mode_aggregation" = "Aggregation";
 "dashboard.general.and.refresh.pages.connection_mode_proxy" = "Proxy";

@@ -295,8 +295,7 @@ final class DashboardAdaptiveControlsStackView: NSStackView, SettingsRowAccessor
 final class DashboardGeneralPage {
     struct Input {
         let preferences: AppPreferences
-        let currentProviderName: String
-        let connectionModes: CCSwitchConnectionModes
+        let connectionSummaries: CCSwitchConnectionSummaries
         let relay: DashboardPreferencePageRelay
         let updateState: UpdateCheckState
         let launchAtLoginState: LaunchAtLoginState
@@ -304,16 +303,14 @@ final class DashboardGeneralPage {
 
         init(
             preferences: AppPreferences,
-            currentProviderName: String,
-            connectionModes: CCSwitchConnectionModes = .unknown,
+            connectionSummaries: CCSwitchConnectionSummaries = .unknown,
             relay: DashboardPreferencePageRelay,
             updateState: UpdateCheckState,
             launchAtLoginState: LaunchAtLoginState = LaunchAtLoginState(status: .notRegistered),
             launchWithChatGPTState: LaunchWithChatGPTState = LaunchWithChatGPTState(status: .notRegistered)
         ) {
             self.preferences = preferences
-            self.currentProviderName = currentProviderName
-            self.connectionModes = connectionModes
+            self.connectionSummaries = connectionSummaries
             self.relay = relay
             self.updateState = updateState
             self.launchAtLoginState = launchAtLoginState
@@ -329,8 +326,7 @@ final class DashboardGeneralPage {
     private var updateNotesButton: NSButton?
     private var updateBadge: NSView?
     private weak var currentProviderDetailLabel: NSTextField?
-    private var currentProviderName = ""
-    private var connectionModes: CCSwitchConnectionModes = .unknown
+    private var connectionSummaries: CCSwitchConnectionSummaries = .unknown
     private var launchAtLoginSwitch: NSSwitch?
     private var launchAtLoginSubtitleLabel: NSTextField?
     private var launchWithChatGPTSwitch: NSSwitch?
@@ -344,17 +340,14 @@ final class DashboardGeneralPage {
             target: input.relay,
             action: #selector(DashboardPreferencePageRelay.openCCSwitch(_:))
         )
-        currentProviderName = input.currentProviderName
-        connectionModes = input.connectionModes
+        connectionSummaries = input.connectionSummaries
         let currentProviderRow = SettingsRowView(
             title: tr(.keyDashboardGeneralAndRefreshPagesCcSwitch),
-            detail: DashboardSettingsFormattedCopy.ccSwitchDetailText(
-                providerName: input.currentProviderName,
-                modes: input.connectionModes
-            ),
+            detail: DashboardSettingsFormattedCopy.ccSwitchConnectionPlainText(input.connectionSummaries),
             accessoryView: openButton
         )
         currentProviderDetailLabel = currentProviderRow.detailLabel
+        applyConnectionSummaries()
         let system = SettingsSectionView(
             title: tr(.keyDashboardGeneralAndRefreshPagesSystem),
             contentViews: [currentProviderRow]
@@ -681,22 +674,14 @@ final class DashboardGeneralPage {
         (updateButton.superview as? DashboardAdaptiveControlsStackView)?.invalidateLayoutAfterContentChange()
     }
 
-    func refreshCurrentProviderName(_ name: String) {
-        currentProviderName = name
-        refreshCCSwitchDetail()
+    func refreshConnectionSummaries(_ summaries: CCSwitchConnectionSummaries) {
+        connectionSummaries = summaries
+        applyConnectionSummaries()
     }
 
-    func refreshConnectionModes(_ modes: CCSwitchConnectionModes) {
-        connectionModes = modes
-        refreshCCSwitchDetail()
-    }
-
-    private func refreshCCSwitchDetail() {
+    private func applyConnectionSummaries() {
         guard let currentProviderDetailLabel else { return }
-        currentProviderDetailLabel.stringValue = DashboardSettingsFormattedCopy.ccSwitchDetailText(
-            providerName: currentProviderName,
-            modes: connectionModes
-        )
+        currentProviderDetailLabel.attributedStringValue = DashboardSettingsFormattedCopy.ccSwitchConnectionDetail(connectionSummaries)
         currentProviderDetailLabel.superview?.needsLayout = true
         currentProviderDetailLabel.superview?.superview?.needsLayout = true
     }
@@ -1112,6 +1097,62 @@ final class DashboardTimeZoneComboBox: NSPopUpButton, SettingsRowAccessoryLayout
         let selection = AppTimeZoneSelection.region(identifier: identifier)
         guard selection != preferences.displayTimeZoneSelection else { return }
         relay?.onTimeZone?(selection)
+    }
+}
+
+/// Loads the small bundled agent marks for inline text attachments. The same
+/// resources and Grok crop rules as `DashboardRefreshPage.agentIconStrip`.
+enum AgentMark {
+    static func image(named resource: String, pointSize: CGFloat) -> NSImage? {
+        guard let url = Bundle.main.url(forResource: resource, withExtension: "svg") else { return nil }
+        let size = NSSize(width: pointSize, height: pointSize)
+        // GrokIdle.svg is a framed artboard; the menu bar crops it too.
+        let image = resource == "GrokIdle"
+            ? GrokIdleIcon.make(fromSVG: url, outputSize: size)
+            : NSImage(contentsOf: url)
+        guard let image else { return nil }
+        image.size = size
+        image.isTemplate = false
+        return image
+    }
+}
+
+/// Renders one agent mark inside the CC Switch row's detail text. Monochrome
+/// marks are re-tinted at draw time so they follow the label color across
+/// light/dark appearances; Claude keeps its brand colors.
+final class AgentMarkAttachmentCell: NSTextAttachmentCell {
+    private let tintsWithLabel: Bool
+
+    init(image: NSImage?, tintsWithLabel: Bool) {
+        self.tintsWithLabel = tintsWithLabel
+        super.init(imageCell: image)
+    }
+
+    required init(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
+
+    override func draw(withFrame cellFrame: NSRect, in controlView: NSView?, characterIndex charIndex: Int) {
+        render(in: cellFrame)
+    }
+
+    func draw(withFrame cellFrame: NSRect, in controlView: NSView?, characterRange charRange: NSRange, layoutManager: NSLayoutManager) {
+        render(in: cellFrame)
+    }
+
+    private func render(in cellFrame: NSRect) {
+        guard let image else { return }
+        guard tintsWithLabel else {
+            image.draw(in: cellFrame)
+            return
+        }
+        let tinted = NSImage(size: image.size)
+        tinted.lockFocus()
+        image.draw(in: NSRect(origin: .zero, size: image.size))
+        NSColor.secondaryLabelColor.set()
+        NSRect(origin: .zero, size: image.size).fill(using: .sourceIn)
+        tinted.unlockFocus()
+        tinted.draw(in: cellFrame)
     }
 }
 

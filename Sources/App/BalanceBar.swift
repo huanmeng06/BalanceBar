@@ -431,7 +431,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             preferences: preferences,
             devBundleIdentifier: devBundleIdentifier,
             providerPollInterval: providerPollInterval,
-            currentProviderName: { [weak self] in self?.currentProviderName() ?? tr(.keyAppNotFound) },
+            ccSwitchConnectionSummaries: { [weak self] in self?.ccSwitchConnectionSummariesCache ?? .unknown },
             currentProviderIsOfficial: { [weak self] in
                 guard let self, self.activeClient == .codex else { return false }
                 return self.currentProviderIsOfficialCache
@@ -462,8 +462,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 guard let self, self.activeClient == .codex else { return [:] }
                 return Dictionary(uniqueKeysWithValues: self.aggregationDisplays.map { ($0.identity.providerID, $0.snapshot) })
             },
-            isAggregationMode: { [weak self] in self?.activeClient == .codex && self?.aggregationDisplays.isEmpty == false },
-            ccSwitchConnectionModes: { [weak self] in self?.ccSwitchConnectionModesCache ?? .unknown }
+            isAggregationMode: { [weak self] in self?.activeClient == .codex && self?.aggregationDisplays.isEmpty == false }
         ),
         actions: DashboardCompositionActions(
             onManualRefresh: { [weak self] in self?.performManualRefresh(source: "dashboard") },
@@ -593,11 +592,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var providerChoicesCache: [ProviderChoice] = []
     private var providerNotesCache: [String: [String: String]] = [:]
     private lazy var providerMetadataReader = ProviderMetadataReader(repository: ccSwitchRepository)
-    private var currentProviderNameCache = ""
-    /// Both apps' CC Switch connection modes, refreshed off the main thread by
-    /// `refreshCCSwitchConnectionModes()`. Search and the General page read
-    /// this cache instead of touching the live-state file.
-    private var ccSwitchConnectionModesCache: CCSwitchConnectionModes = .unknown
+    /// All three apps' CC Switch connection display data, refreshed off the
+    /// main thread by `refreshCCSwitchConnectionSummaries()`. Search and the
+    /// General page read this cache instead of touching the live-state file.
+    private var ccSwitchConnectionSummariesCache: CCSwitchConnectionSummaries = .unknown
     private let connectionModeQueue = DispatchQueue(label: "local.balancebar.connection-mode", qos: .utility)
     private var clientSnapshots: [
         AssistantClient: (providerID: String, configurationRevision: String, snapshot: Snapshot)
@@ -753,7 +751,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             }
         }
         reloadCurrentProviderNameCache()
-        refreshCCSwitchConnectionModes()
+        refreshCCSwitchConnectionSummaries()
         self.updateService.onStateChange = { [weak self] _ in
             guard let self else { return }
             let applyUpdateState = { [weak self] in
@@ -774,7 +772,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                     let appType = self.activeClient.appType
                     // Publish metadata asynchronously; the menu only reads the cache.
                     self.reloadCurrentProviderNameCache(appType: appType)
-                    self.refreshCCSwitchConnectionModes()
+                    self.refreshCCSwitchConnectionSummaries()
                     self.refreshStatusItemMenuInput()
                 }
                 SwitchLog.write("refresh triggered; origin=file-watcher; force=false", level: .debug, category: "refresh")
@@ -1028,10 +1026,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         return false
     }
 
-    private func currentProviderName() -> String {
-        currentProviderNameCache
-    }
-
     /// Always read provider metadata in the background. Menus and search use
     /// published values; the reader discards obsolete completion generations.
     private func reloadCurrentProviderNameCache(appType: String? = nil) {
@@ -1054,7 +1048,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 changed = changed || self.providerNotesCache[resolvedAppType] != notes
                 self.providerNotesCache[resolvedAppType] = notes
             }
-            self.currentProviderNameCache = value.choices.first(where: \.isCurrent)?.name ?? tr(.keyAppNotFound2)
             self.currentProviderIsOfficialCache = value.current?.isOfficial == true
             if officialChanged, let anchor = self.activityRefreshLifecycle(for: self.activeClient).trailingRefreshAnchor {
                 let duration = self.activePostTaskRefreshDuration
@@ -1067,20 +1060,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         }
     }
 
-    /// Reads CC Switch's live-state for both apps off the main thread and
-    /// publishes to the General page when the pair changed.
-    private func refreshCCSwitchConnectionModes() {
+    /// Reads CC Switch's live-state for all three apps off the main thread
+    /// and publishes to the General page when the display data changed.
+    private func refreshCCSwitchConnectionSummaries() {
         guard Thread.isMainThread else {
-            DispatchQueue.main.async { [weak self] in self?.refreshCCSwitchConnectionModes() }
+            DispatchQueue.main.async { [weak self] in self?.refreshCCSwitchConnectionSummaries() }
             return
         }
         let repository = ccSwitchRepository
         connectionModeQueue.async { [weak self] in
-            let modes = repository.connectionModes()
+            let summaries = repository.connectionSummaries()
             DispatchQueue.main.async { [weak self] in
-                guard let self, self.ccSwitchConnectionModesCache != modes else { return }
-                self.ccSwitchConnectionModesCache = modes
-                self.dashboardComposition.refreshCCSwitchConnectionModes()
+                guard let self, self.ccSwitchConnectionSummariesCache != summaries else { return }
+                self.ccSwitchConnectionSummariesCache = summaries
+                self.dashboardComposition.refreshCCSwitchConnectionSummaries()
             }
         }
     }
@@ -1956,6 +1949,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
 
     var dashboardCompositionForTesting: DashboardCompositionController { dashboardComposition }
     var providerChoicesForTesting: [ProviderChoice] { providerChoicesCache }
+    var connectionSummariesForTesting: CCSwitchConnectionSummaries { ccSwitchConnectionSummariesCache }
     var manualRefreshActionForTesting: (() -> Void)?
 
     var backgroundUpdateTimerForTesting: Timer? { updateCheckTimer }

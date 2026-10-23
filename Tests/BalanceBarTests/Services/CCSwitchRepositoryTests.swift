@@ -618,12 +618,12 @@ extension CCSwitchRepositoryTests {
         XCTAssertEqual(repository.connectionMode(appType: "codex"), .proxy)
 
         let bothDirect = #"{"version":1,"apps":{"claude":{"mode":"direct"},"codex":{"mode":"direct"}}}"#
-        XCTAssertEqual(repository.connectionModes(readState: read(bothDirect)),
-                       CCSwitchConnectionModes(claude: .direct, codex: .direct))
-        // Stack aggregation is Codex-only; a Claude proxy takeover stays proxy.
-        let mixed = #"{"version":1,"apps":{"claude":{"mode":"proxy","attached":true,"stack":{"enabled":true}},"codex":{"mode":"proxy","attached":true,"stack":{"enabled":true}}}}"#
-        XCTAssertEqual(repository.connectionModes(readState: read(mixed)),
-                       CCSwitchConnectionModes(claude: .proxy, codex: .aggregation))
+        XCTAssertEqual(repository.connectionMode(appType: "claude", readState: read(bothDirect)), .direct)
+        XCTAssertEqual(repository.connectionMode(appType: "grokbuild", readState: read(#"{"version":1,"apps":{"grokbuild":{"mode":"direct"}}}"#)), .direct)
+        // Stack aggregation is Codex-only; other apps' proxy takeovers stay proxy.
+        XCTAssertEqual(repository.connectionMode(appType: "codex", readState: read(#"{"version":1,"apps":{"codex":{"mode":"proxy","attached":true,"stack":{"enabled":true}}}}"#)), .aggregation)
+        XCTAssertEqual(repository.connectionMode(appType: "claude", readState: read(#"{"version":1,"apps":{"claude":{"mode":"proxy","attached":true,"stack":{"enabled":true}}}}"#)), .proxy)
+        XCTAssertEqual(repository.connectionMode(appType: "grokbuild", readState: read(#"{"version":1,"apps":{"grokbuild":{"mode":"proxy","attached":true}}}"#)), .proxy)
 
         XCTAssertEqual(repository.connectionMode(appType: "codex", readState: read(#"{"version":1,"apps":{"codex":{"mode":"direct","attached":true}}}"#)), .unknown,
                        "direct with proxy residue is not trustworthy")
@@ -633,15 +633,60 @@ extension CCSwitchRepositoryTests {
                        "missing mode key reports unknown")
         XCTAssertEqual(repository.connectionMode(appType: "codex", readState: read(#"{"version":1,"apps":{"codex":{"mode":"tunnel"}}}"#)), .unknown,
                        "unrecognized mode reports unknown")
-        XCTAssertEqual(repository.connectionMode(appType: "grok", readState: read(bothDirect)), .unknown,
-                       "only claude and codex are addressable")
+        XCTAssertEqual(repository.connectionMode(appType: "cursor", readState: read(bothDirect)), .unknown,
+                       "only claude, codex and grokbuild are addressable")
 
         for state in ["broken", #"{"version":99,"apps":{}}"#, #"{"version":true,"apps":{"codex":{"mode":"direct"}}}"#, #"{"apps":{"codex":{"mode":"direct","pending":{}}}}"#, "{}"] {
             XCTAssertEqual(repository.connectionMode(appType: "codex", readState: read(state)), .unknown, state)
             XCTAssertEqual(repository.connectionMode(appType: "claude", readState: read(state)), .unknown, state)
         }
         XCTAssertEqual(repository.connectionMode(appType: "codex", readState: read(nil)), .unknown, "missing CC Switch install reports unknown")
-        XCTAssertEqual(repository.connectionModes(readState: read(nil)), .unknown)
+    }
+
+    func testConnectionSummariesProvideModesAndProviderNames() throws {
+        try withDatabase { db in
+            try execute(db, sql: "INSERT INTO providers VALUES ('grok-primary', 'GrokShop', '{}', '{}', 'custom', NULL, 'grokbuild', 1, 1, 1)")
+        }
+        let state = #"{"version":1,"apps":{"codex":{"mode":"proxy","attached":true,"stack":{"enabled":true,"members":["codex-official","codex-custom"]},"proxy_route":"codex-custom"},"claude":{"mode":"direct"},"grokbuild":{"mode":"direct"}}}"#
+        func summaries(repository: CCSwitchRepository) -> CCSwitchConnectionSummaries {
+            repository.connectionSummaries(readState: { _ in Data(state.utf8) })
+        }
+        let loaded = summaries(repository: repository)
+        XCTAssertEqual(loaded, CCSwitchConnectionSummaries(
+            codex: CCSwitchConnectionSummary(
+                mode: .aggregation,
+                // Default route first, then the remaining member in stack order.
+                providerNames: ["Fixture Custom", "Fixture Official"]
+            ),
+            claude: CCSwitchConnectionSummary(mode: .direct, providerNames: ["Other App"]),
+            grok: CCSwitchConnectionSummary(mode: .direct, providerNames: ["GrokShop"])
+        ))
+
+        // A readable state with an unreadable database keeps the modes but drops the names.
+        let dbMissing = CCSwitchRepository(
+            databaseURL: temporaryDirectoryURL.appendingPathComponent("missing.db"),
+            appSettingsURL: appSettingsURL,
+            homeDirectoryURL: temporaryDirectoryURL
+        )
+        XCTAssertEqual(summaries(repository: dbMissing), CCSwitchConnectionSummaries(
+            codex: CCSwitchConnectionSummary(mode: .aggregation, providerNames: []),
+            claude: CCSwitchConnectionSummary(mode: .direct, providerNames: []),
+            grok: CCSwitchConnectionSummary(mode: .direct, providerNames: [])
+        ))
+
+        // Codex outside aggregation reports only its current provider.
+        let directState = #"{"version":1,"apps":{"codex":{"mode":"direct"},"claude":{"mode":"proxy"},"grokbuild":{"mode":"direct"}}}"#
+        XCTAssertEqual(repository.connectionSummaries(readState: { _ in Data(directState.utf8) }), CCSwitchConnectionSummaries(
+            codex: CCSwitchConnectionSummary(mode: .direct, providerNames: ["Fixture Custom"]),
+            claude: CCSwitchConnectionSummary(mode: .proxy, providerNames: ["Other App"]),
+            grok: CCSwitchConnectionSummary(mode: .direct, providerNames: ["GrokShop"])
+        ))
+
+        // Missing state reports unknown everywhere.
+        XCTAssertEqual(
+            repository.connectionSummaries(readState: { _ in throw CocoaError(.fileReadNoSuchFile) }),
+            .unknown
+        )
     }
 
     func testChangedTargetRevisionBeforeTerminateAbortsAndLocalMarkerIsNotNegated() throws {
