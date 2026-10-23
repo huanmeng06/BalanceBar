@@ -36,6 +36,9 @@ struct ClaudeQuotaState: Equatable {
     let accountEpoch: AccountEpoch
     /// Opaque account identity for notification progress; never credential material.
     let accountScope: String?
+    /// Lowercased account email; scopes quota prediction evidence to this
+    /// account and matches the menu card's account presentation.
+    let predictionAccountKey: String?
     /// Receipt time of the newest displayed official reading.
     let updatedAt: Date?
     let isRefreshing: Bool
@@ -500,6 +503,7 @@ final class ClaudeQuotaPipeline {
             windows: DevelopmentClaudeIdleDemo.windows() ?? Self.cardWindows(from: model, now: date),
             accountEpoch: identity.accountEpoch,
             accountScope: Self.accountScope(for: identity.accountIdentity),
+            predictionAccountKey: Self.predictionAccountKey(for: identity.accountIdentity),
             updatedAt: updatedAt,
             isRefreshing: refreshing,
             failure: failure,
@@ -535,6 +539,14 @@ final class ClaudeQuotaPipeline {
         let email = identity.email?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
         let basis = email.isEmpty ? identity.stableID : email
         return "account:" + SHA256.hash(data: Data(basis.utf8)).map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Prediction account key: the normalized email, using the same rule the
+    /// menu applies to the card's account presentation. Nil without an email.
+    static func predictionAccountKey(for identity: AccountIdentity?) -> String? {
+        guard let identity, let email = identity.email?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+              !email.isEmpty else { return nil }
+        return email
     }
 
     private static func failure(from error: OfficialQuotaClientError?) -> ClaudeQuotaFailure {

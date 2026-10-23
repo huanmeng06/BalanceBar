@@ -1353,8 +1353,21 @@ final class ProviderRefreshCoordinator {
         if !state.windows.isEmpty {
             let representative = state.windows.first(where: { $0.kind == .sevenDay })
                 ?? state.windows.first(where: { $0.kind == .fiveHour }) ?? state.windows[0]
+            // Claude windows share the Codex prediction-cycle journal: identical
+            // qualification, refill/reset invalidation and account scoping. The
+            // journal is account-wide (not per Provider), like the read itself;
+            // the "claude:" account-key prefix keeps it disjoint from any Codex
+            // provider journal that happens to share the email.
+            let predictionAccountKey = state.predictionAccountKey
+            let predictionContexts = predictionAccountKey.map {
+                codexResetObservationStore.updatePredictionContexts(
+                    providerID: "claude-official", accountKey: "claude:" + $0,
+                    windows: state.windows, now: now())
+            } ?? []
             var official = Snapshot.official(target.providerName, representative.remaining, representative.label,
-                representative.reset, state.updatedAt ?? now(), windows: state.windows)
+                representative.reset, state.updatedAt ?? now(), windows: state.windows,
+                quotaPredictionContexts: predictionContexts,
+                quotaPredictionAccountKey: predictionAccountKey)
             official.notificationAccountScope = state.accountScope
             official.quotaStatus = state.status
             // Keep the account's last data visible; the reason rides on the refresh time.

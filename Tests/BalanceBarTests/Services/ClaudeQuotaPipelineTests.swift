@@ -357,6 +357,28 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         XCTAssertFalse((first.accountScope ?? "").contains("a@example.com"), "the scope is an opaque hash")
     }
 
+    /// Issue #584: the state carries the normalized account key that scopes
+    /// quota prediction evidence, and it follows the signed-in account.
+    func testPredictionAccountKeyIsNormalizedAndTracksTheSignedInAccount() throws {
+        XCTAssertNil(ClaudeQuotaPipeline.predictionAccountKey(for: nil))
+        XCTAssertNil(ClaudeQuotaPipeline.predictionAccountKey(
+            for: AccountIdentity(stableID: "id", email: "  ", idSource: .emailFallback)))
+        XCTAssertEqual(ClaudeQuotaPipeline.predictionAccountKey(
+            for: AccountIdentity(stableID: "id", email: " A@Example.COM ", idSource: .accountUUID)), "a@example.com")
+
+        let pipeline = makePipeline()
+        pipeline.requestFetch(reason: .initial)
+        let first = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+        XCTAssertEqual(first.predictionAccountKey, "a@example.com")
+
+        PipelineStubProtocol.set(.init(data: Self.nextCycle))
+        try writeAccount("account-b", email: "B@Example.com")
+        let second = try XCTUnwrap(waitForState(pipeline) {
+            $0.accountEpoch != first.accountEpoch && !$0.windows.isEmpty
+        })
+        XCTAssertEqual(second.predictionAccountKey, "b@example.com", "the key is lowercased and never reused across accounts")
+    }
+
     func testAccountSwitchClearsOldValuesBumpsEpochAndReadsTheNewAccount() throws {
         let pipeline = makePipeline()
         pipeline.requestFetch(reason: .initial)
