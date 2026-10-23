@@ -144,6 +144,11 @@ enum DevelopmentBankedResetDemo {
         providerName: String,
         date: Date = Date()
     ) -> Snapshot {
+        SwitchLog.write(
+            "banked-reset demo snapshot requested; mode=\(mode.rawValue); provider=\(providerName)",
+            level: .debug,
+            category: "configuration"
+        )
         let windows = [
             OfficialQuotaWindow(
                 kind: .fiveHour,
