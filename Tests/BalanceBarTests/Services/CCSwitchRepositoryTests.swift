@@ -693,6 +693,17 @@ extension CCSwitchRepositoryTests {
         )
     }
 
+    func testConnectionSummariesDegradeToUnknownWhenAQueryFailsMidRead() throws {
+        // setUp leaves a readable codex "direct" state; an exclusive lock on
+        // another connection makes the reader's sqlite3_step return BUSY after
+        // its 100 ms wait, which must degrade the whole display to unknown.
+        try withDatabase { db in
+            try execute(db, sql: "BEGIN EXCLUSIVE")
+            defer { sqlite3_exec(db, "ROLLBACK", nil, nil, nil) }
+            XCTAssertEqual(repository.connectionSummaries(), .unknown)
+        }
+    }
+
     func testChangedTargetRevisionBeforeTerminateAbortsAndLocalMarkerIsNotNegated() throws {
         var terminated = false
         let failed = expectation(description: "revision changed before termination")

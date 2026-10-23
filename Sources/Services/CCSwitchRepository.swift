@@ -340,12 +340,17 @@ final class CCSwitchRepository {
         guard sqlite3_prepare_v2(database, currentSQL, -1, &currentStatement, nil) == SQLITE_OK, let currentStatement else {
             return .unknown
         }
-        while sqlite3_step(currentStatement) == SQLITE_ROW {
+        // A read can still fail mid-iteration (BUSY after the 100 ms wait,
+        // IOERR); only SQLITE_DONE counts as a complete result.
+        var currentStep = sqlite3_step(currentStatement)
+        while currentStep == SQLITE_ROW {
             if let appType = text(from: currentStatement, column: 0),
                let name = text(from: currentStatement, column: 1) {
                 currentNames[appType] = name
             }
+            currentStep = sqlite3_step(currentStatement)
         }
+        guard currentStep == SQLITE_DONE else { return .unknown }
         claude = Self.displaySummary(mode: claude.mode, names: currentNames["claude"].map { [$0] } ?? [])
         grok = Self.displaySummary(mode: grok.mode, names: currentNames["grokbuild"].map { [$0] } ?? [])
         if codex.mode == .aggregation,
@@ -381,12 +386,15 @@ final class CCSwitchRepository {
         bind(appType, to: statement, at: 1)
         for (index, id) in ids.enumerated() { bind(id, to: statement, at: Int32(index + 2)) }
         var byID: [String: String] = [:]
-        while sqlite3_step(statement) == SQLITE_ROW {
+        var step = sqlite3_step(statement)
+        while step == SQLITE_ROW {
             if let id = text(from: statement, column: 0),
                let name = text(from: statement, column: 1) {
                 byID[id] = name
             }
+            step = sqlite3_step(statement)
         }
+        guard step == SQLITE_DONE else { return nil }
         return ids.compactMap { byID[$0] }
     }
 
