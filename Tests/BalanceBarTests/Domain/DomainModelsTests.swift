@@ -1500,6 +1500,43 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertNil(snapshot.lunaReserve)
     }
 
+    func testBankedResetCountdownDemoTargetsNextLocalEightPM() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .autoupdatingCurrent
+        let day = calendar.startOfDay(for: Date(timeIntervalSince1970: 1_700_000_000))
+        let afternoon = try XCTUnwrap(
+            calendar.date(bySettingHour: 15, minute: 0, second: 0, of: day)
+        )
+        let snapshot = DevelopmentBankedResetDemo.snapshot(
+            mode: .countdown,
+            providerName: "OpenAI",
+            date: afternoon
+        )
+        let forecast = snapshot.resetForecast
+        let target = try XCTUnwrap(forecast.officialSignal?.targetAt)
+        XCTAssertEqual(calendar.component(.hour, from: target), 20)
+        XCTAssertEqual(calendar.component(.minute, from: target), 0)
+        XCTAssertEqual(
+            calendar.component(.day, from: target),
+            calendar.component(.day, from: afternoon)
+        )
+        XCTAssertTrue(forecast.isOfficialWindowDeadlineCountdown)
+        XCTAssertTrue(forecast.showsOfficialWindowDeadlineProgress)
+        XCTAssertEqual(forecast.remainingCountdownMinutes(now: afternoon), 300)
+        XCTAssertEqual(snapshot.bankedReset?.cards.count, 2)
+
+        let evening = try XCTUnwrap(
+            calendar.date(bySettingHour: 21, minute: 0, second: 0, of: day)
+        )
+        let nextDay = try XCTUnwrap(calendar.date(byAdding: .day, value: 1, to: evening))
+        let nextDayTarget = DevelopmentBankedResetDemo.nextLocalEightPM(after: evening)
+        XCTAssertEqual(calendar.component(.hour, from: nextDayTarget), 20)
+        XCTAssertEqual(
+            calendar.component(.day, from: nextDayTarget),
+            calendar.component(.day, from: nextDay)
+        )
+    }
+
     func testMenuBarQuotaWindowSelectionUsesRealWindowsAndSafeMissingFallbacks() {
         let date = Date(timeIntervalSince1970: 1_700_000_000)
         let exactCalendar = Calendar(identifier: .gregorian)
