@@ -323,7 +323,7 @@ final class ClaudeStatusLineSource: QuotaSource, RealtimeSourceFreshnessProvidin
         for kind in [QuotaWindowKind.fiveHour, .sevenDay] {
             guard let value = windows[kind], let reset = value.reset,
                   let expectedEntry = gradeAResets[kind], let expected = expectedEntry,
-                  reset.timeIntervalSince1970.rounded() == expected.timeIntervalSince1970.rounded() else { return false }
+                  QuotaMergeEngine.sameResetInstant(reset, expected) else { return false }
         }
         return true
     }
@@ -366,9 +366,10 @@ final class ClaudeStatusLineSource: QuotaSource, RealtimeSourceFreshnessProvidin
         guard !gradeAResets.isEmpty else { return }
         let conflict = gradeAResets.contains { window, expected in
             let values = sessions.values.filter { $0.attribution != .rejected }
-                .compactMap { $0.lastValues[window]?.reset?.timeIntervalSince1970.rounded() }
-            guard let expected = expected?.timeIntervalSince1970.rounded(), !values.isEmpty else { return false }
-            return values.contains(expected) && values.contains(where: { $0 != expected })
+                .compactMap { $0.lastValues[window]?.reset }
+            guard let expected, !values.isEmpty else { return false }
+            let matching = values.map { QuotaMergeEngine.sameResetInstant($0, expected) }
+            return matching.contains(true) && matching.contains(false)
         }
         identityConflict = conflict
         tracker.markIdentityConflict(conflict)

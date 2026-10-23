@@ -182,9 +182,10 @@ final class ClaudeStatusLineSourceTests: XCTestCase {
         ])
         deliver(payload(session: "old", five: 12))
         XCTAssertTrue(collector.all.isEmpty, "one mismatching reset is not enough")
+        // Official times carry a fraction (seen live: .048, .483); statusLine has whole seconds.
         source.setGradeAResets([
-            .fiveHour: Date(timeIntervalSince1970: fiveReset),
-            .sevenDay: Date(timeIntervalSince1970: sevenReset)
+            .fiveHour: Date(timeIntervalSince1970: fiveReset + 0.6),
+            .sevenDay: Date(timeIntervalSince1970: sevenReset + 0.483)
         ])
         deliver(payload(session: "old", five: 13))
         XCTAssertEqual(collector.all.count, 2)

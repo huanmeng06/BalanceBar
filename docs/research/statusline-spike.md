@@ -29,6 +29,8 @@ dev 版 BalanceBar 保存的 OAuth 读数（`claude-quota-merge.json`）：
 
 OAuth 返回的时间带 48ms 小数，statusLine 给的是整数秒。`QuotaMergeEngine.sameCycle` 和 `ClaudeStatusLineSource.matchesGradeAFingerprint` 都会先把两边取整到秒再比较，所以 grade B 的同周期判定和“归属不明会话”的指纹匹配在真实数据上都成立。用量：OAuth 为 22（16 分钟前读取），statusLine 为 25，满足“grade B ≥ grade A − 2”。
 
+**后续实测修正（2026-10-23）**：之后的一次 OAuth 读数是 `1792740600.483`，说明小数部分每次都可能不同。原先的“两边取整到秒再比较”在小数 ≥ 0.5 时会多出 1 秒，被判成不同周期，本地数据会被全部拒绝。现已改为 `QuotaMergeEngine.sameResetInstant`：两边相差不到 1 秒就视为同一时刻；合并引擎的 `sameCycle`、指纹匹配和冲突检测三处都使用它。相应测试用 `.6` 构造，去掉修复后会失败。
+
 **风险**：这只是一个账户、一个时间点上的结果。如果服务端以后不再在同一秒对齐（例如 OAuth 改为返回取整前的时间），指纹匹配会失效，原生同步会退化为只用官方查询。代码在这种情况下是安全降级（拒绝数据），不会显示错误额度。
 
 ## 对设计的影响
@@ -47,9 +49,20 @@ OAuth 返回的时间带 48ms 小数，statusLine 给的是整数秒。`QuotaMer
 - 两个会话并行运行：各自上报 20 和 21 条，数值和重置时间完全一致，不会误判为身份冲突，也不会累加（上报的是绝对百分比）。
 - 终端版会话运行期间，`~/.claude/sessions/<pid>.json` 中有 `kind: interactive`、`entrypoint: cli`、`sessionId`（与 payload 的 `sessionID` 一致）和毫秒级的 `startedAt`；会话退出后文件被删除。说明归属判断依赖的会话登记确实可用。
 
+## BalanceBar 端到端（经用户授权，在真实 `~/.claude/settings.json` 上）
+
+1. 先备份真实配置（sha256 `748bb77b…`，876 字节，0600）。停掉 #565 的 dev 构建，启动 #567 的 dev 构建。
+2. 这次会话没有桌面操作和截图权限，没法点设置开关。所以把 #567 的 `ClaudeStatusLineInstaller.swift` 原样编译成命令行工具，依次执行 `installBundledWrapper` 和 `install()`（开关调用的就是这两个方法）；再把偏好设置 `claudeStatusLineEnabled` 设为开启并重启应用，走 `resumeClaudeStatusLineIfInstalled` 的真实路径。
+3. 安装后：只有 `statusLine.command` 改变，权限 0600 不变，嵌入的原命令与备份一致；socket 在 `~/Library/Application Support/BalanceBar/run/sl.sock`（目录 0700）。
+4. 不带 `--settings`、用真实配置跑一个 Claude Code 会话：dev 应用的合并状态中，5h 和 7d 都变成 `claude-statusline`、trust b；5h 从官方的 37 更新为 38，7d 为 82，重置时间与官方一致。
+5. 执行 `uninstall()`：`~/.claude/settings.json` 与备份**逐字节一致**（sha256 相同、876 字节、0600），备份文件和 Helper 已删除。
+6. 不抢回所有权：偏好设置仍为开启时重启应用，应用发现 Bridge 已不在配置里，把偏好设置自动改为关闭，**不修改**配置文件，也不再监听 socket。
+
+**未验证**：菜单界面的视觉显示（“本地同步”标签），因为没有截图权限。标签是由上面已经确认的数据状态推导出来的，这部分有单元测试覆盖，但不等于实际看过。
+
 ## 本轮没有覆盖的
 
-- BalanceBar 应用内的端到端流程：开关安装到真实的 `~/.claude/settings.json`、菜单显示“本地同步”。需要用户授权修改真实配置，并且要先停掉正在运行的另一个 dev 构建（它们共用同一个 bundle id 和状态目录）。
+- 通过设置界面点击开关、菜单里的“本地同步”标签（需要桌面操作或截图权限）。
 - 账户切换（场景 G）：需要第二个账户。
 - 30 分钟运行、CPU/内存与 main 对比、真实 429。
 - 用量跨越重置周期时（5h 窗口到期）的表现。

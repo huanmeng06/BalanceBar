@@ -269,4 +269,16 @@ final class QuotaMergeEngineTests: XCTestCase {
         XCTAssertEqual(model.window(for: .fiveHour)?.usedPercentage, 0)
         XCTAssertEqual(model.window(for: .fiveHour)?.state, .inProgress)
     }
+
+    /// Real data: OAuth reports `…600.483` while statusLine reports `…600`. Rounding both
+    /// would split fractions of .5 and above into different seconds.
+    func testGradeBMatchesFractionalOfficialResetWithinOneSecond() {
+        let engine = makeEngine()
+        engine.merge(obs(37, resetsIn: 3_600.6))
+        engine.merge(obs(38, resetsIn: 3_600, at: 10, trust: .b))
+        XCTAssertEqual(engine.currentState.windows[QuotaWindowKind.fiveHour.rawValue]?.displayed?.usedPercentage, 38)
+        engine.merge(obs(39, resetsIn: 3_601.6, at: 20, trust: .b))
+        XCTAssertEqual(engine.currentState.windows[QuotaWindowKind.fiveHour.rawValue]?.displayed?.usedPercentage, 38,
+                       "more than a second apart is another cycle")
+    }
 }
