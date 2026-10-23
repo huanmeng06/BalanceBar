@@ -12,7 +12,7 @@ public struct SystemSchedulerClock: SchedulerClock {
     public var now: Date { Date() }
 }
 
-/// Defers work for the scheduler's coalescing window; tests inject a manual timer.
+/// Defers one-shot scheduler work; tests inject a manual timer.
 public protocol SchedulerTimer {
     /// Runs `work` once after `delay` seconds on an unspecified queue.
     func schedule(after delay: TimeInterval, _ work: @escaping () -> Void)
@@ -68,17 +68,51 @@ public struct FetchSchedulerPersistentState: Codable, Equatable {
     public var unauthorizedCredentialVersion: CredentialVersion?
     /// Whether a 401 pause is active (also covers a 401 while no version was known).
     public var isUnauthorizedPaused: Bool
+    /// Last time a server request was started.
+    public var lastServerAttemptAt: Date?
+    /// Last successful server read, scoped by `lastSuccessAccountKey`.
+    public var lastServerSuccessAt: Date?
+    /// Stable account key associated with `lastServerSuccessAt`.
+    public var lastSuccessAccountKey: String?
+    /// Consecutive non-429 request failures.
+    public var consecutiveFailures: Int
+
+    private enum CodingKeys: String, CodingKey {
+        case cooldownUntil, consecutiveRateLimitBackoffs, unauthorizedCredentialVersion,
+             isUnauthorizedPaused, lastServerAttemptAt, lastServerSuccessAt,
+             lastSuccessAccountKey, consecutiveFailures
+    }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        cooldownUntil = try values.decodeIfPresent(Date.self, forKey: .cooldownUntil)
+        consecutiveRateLimitBackoffs = try values.decodeIfPresent(Int.self, forKey: .consecutiveRateLimitBackoffs) ?? 0
+        unauthorizedCredentialVersion = try values.decodeIfPresent(CredentialVersion.self, forKey: .unauthorizedCredentialVersion)
+        isUnauthorizedPaused = try values.decodeIfPresent(Bool.self, forKey: .isUnauthorizedPaused) ?? false
+        lastServerAttemptAt = try values.decodeIfPresent(Date.self, forKey: .lastServerAttemptAt)
+        lastServerSuccessAt = try values.decodeIfPresent(Date.self, forKey: .lastServerSuccessAt)
+        lastSuccessAccountKey = try values.decodeIfPresent(String.self, forKey: .lastSuccessAccountKey)
+        consecutiveFailures = try values.decodeIfPresent(Int.self, forKey: .consecutiveFailures) ?? 0
+    }
 
     public init(
         cooldownUntil: Date? = nil,
         consecutiveRateLimitBackoffs: Int = 0,
         unauthorizedCredentialVersion: CredentialVersion? = nil,
-        isUnauthorizedPaused: Bool = false
+        isUnauthorizedPaused: Bool = false,
+        lastServerAttemptAt: Date? = nil,
+        lastServerSuccessAt: Date? = nil,
+        lastSuccessAccountKey: String? = nil,
+        consecutiveFailures: Int = 0
     ) {
         self.cooldownUntil = cooldownUntil
         self.consecutiveRateLimitBackoffs = consecutiveRateLimitBackoffs
         self.unauthorizedCredentialVersion = unauthorizedCredentialVersion
         self.isUnauthorizedPaused = isUnauthorizedPaused
+        self.lastServerAttemptAt = lastServerAttemptAt
+        self.lastServerSuccessAt = lastServerSuccessAt
+        self.lastSuccessAccountKey = lastSuccessAccountKey
+        self.consecutiveFailures = consecutiveFailures
     }
 }
 
@@ -148,11 +182,54 @@ public struct FetchSchedulerConfiguration: Equatable {
     public var manualTokenCost: Int = QuotaConstants.manualRequestTokenCost
     public var manualRefreshWindow: TimeInterval = QuotaConstants.manualRefreshWindow
     public var realtimeSourceFreshness: TimeInterval = QuotaConstants.realtimeSourceFreshness
+    /// Maximum time a trusted real-time source may suppress server calibration.
+    public var realtimeCalibrationCap: TimeInterval?
     /// Requests arriving within this window are merged into one evaluation.
     /// Not yet in `QuotaConstants`; candidate for promotion there.
     public var coalescingWindow: TimeInterval = 1
+    /// Backoff applied to consecutive non-429 failures.
+    public var failureBackoff: [TimeInterval] = []
+    /// While a 401 pause holds, how often the owner may re-read credentials to notice a new
+    /// login. `0` waits for an explicit request instead.
+    public var unauthorizedRecheckInterval: TimeInterval = 0
+    /// Minimum timer delay after a timer check was skipped, so an unmodelled gate cannot spin.
+    public var idleRecheckFloor: TimeInterval = 60
+
+    /// Configuration required by Claude Code quota V1.
+    public static var claudeV1: FetchSchedulerConfiguration {
+        var value = FetchSchedulerConfiguration()
+        value.automaticMinimumInterval = 300
+        value.realtimeSourceFreshness = 120
+        value.realtimeCalibrationCap = 3_600
+        value.tokenRefillInterval = 300
+        value.automaticTokenCost = 1
+        value.manualTokenCost = 1
+        value.manualRefreshWindow = 300
+        value.failureBackoff = [60, 120, 240, 480, 900]
+        value.unauthorizedRecheckInterval = 300
+        return value
+    }
 
     public init() {}
+}
+
+/// Read-only scheduler state for menus and diagnostics.
+public struct FetchSchedulerStatus: Equatable {
+    public var tokens: Int
+    public var tokenCapacity: Int
+    public var tokenRefillInterval: TimeInterval
+    public var nextTokenAt: Date?
+    public var automaticTokenCost: Int
+    public var lastServerAttemptAt: Date?
+    public var automaticMinimumInterval: TimeInterval
+    public var lastSuccessAt: Date?
+    public var lastFailureAt: Date?
+    public var manualTokenCost: Int
+    public var manualRefreshWindow: TimeInterval
+    public var cooldownRemaining: TimeInterval
+    public var isUnauthorizedPaused: Bool
+    public var isBusy: Bool
+    public var at: Date
 }
 
 /// Why a request was skipped instead of sent.
@@ -165,6 +242,7 @@ public enum FetchSkipReason: String, Equatable {
     case realtimeSourceFresh = "realtime_source_fresh"
     case recentResult = "recent_result"
     case freePathSatisfied = "free_path_satisfied"
+    case failureBackoff = "failure_backoff"
 }
 
 /// Structured scheduler log event for diagnostics (consumed by BB-19).

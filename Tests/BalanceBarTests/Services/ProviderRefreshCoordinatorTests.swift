@@ -4612,7 +4612,9 @@ extension ProviderRefreshCoordinatorTests {
         XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 3, "the new account is read without waiting for the old interval")
     }
 
-    func testClaudeSummaryRequestsHonorTheThreeMinuteFloorForEveryCalibrationSetting() throws {
+    /// Summary refreshes only start the pipeline; the scheduler's own timer owns the cadence,
+    /// so neither the Codex refresh setting nor the 3 s poll can send Claude requests.
+    func testClaudeSummaryRefreshesNeverDriveRequestsForAnyRefreshSetting() throws {
         _ = try useClaudeOfficialProvider()
         DelayedBalanceURLProtocol.setHandler { _ in .init(data: Self.claudeUsage, statusCode: 200) }
         for interval: TimeInterval in [60, 150] {
@@ -4628,14 +4630,12 @@ extension ProviderRefreshCoordinatorTests {
             waitForRequestCount(before + 1)
             settle(coordinator, harness)
 
-            clock.advance(by: 179)
-            coordinator.refreshQuickSwitchSummaries(force: false, for: .claude)
-            settleQuietly(coordinator, harness)
-            XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, before + 1, "setting \(Int(interval)) s is only an upper bound")
-            clock.advance(by: 1)
-            coordinator.refreshQuickSwitchSummaries(force: false, for: .claude)
-            waitForRequestCount(before + 2)
-            settle(coordinator, harness)
+            for step: TimeInterval in [interval, 180, 300] {
+                clock.advance(by: step)
+                coordinator.refreshQuickSwitchSummaries(force: false, for: .claude)
+                settleQuietly(coordinator, harness)
+            }
+            XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, before + 1, "setting \(Int(interval)) s does not drive Claude reads")
             coordinator.stop()
             coordinators.removeAll { $0 === coordinator }
         }

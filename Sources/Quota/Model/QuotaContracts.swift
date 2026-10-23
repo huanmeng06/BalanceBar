@@ -59,6 +59,9 @@ public enum FetchRequestReason: String, Codable, Equatable, Hashable {
     /// Initial loading of the active account.
     case initial
 
+    /// Refresh requested after the active account changed.
+    case accountChanged = "account_changed"
+
     /// A regular automatic refresh.
     case scheduled
 
@@ -103,6 +106,13 @@ public protocol AccountIdentityProviding {
 
     /// Current account generation used to reject stale asynchronous results.
     var accountEpoch: AccountEpoch { get }
+
+    /// Stable key used to restore successful server reads after an app restart.
+    var accountKey: String? { get }
+}
+
+public extension AccountIdentityProviding {
+    var accountKey: String? { accountIdentity?.stableID }
 }
 
 /// The single request boundary used by estimators, sources, and reset confirmation.
