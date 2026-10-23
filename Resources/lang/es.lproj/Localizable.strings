@@ -553,11 +553,10 @@
 "quick_switch.state_untrusted" = "Modo sin verificar: gestionar en CC Switch";
 "quick_switch.manage_in_cc_switch" = "Gestionar en CC Switch";
 
-"dashboard.refresh.official_quota_frequency" = "Frecuencia de actualización de la cuota oficial de Codex";
+"dashboard.refresh.official_quota_frequency" = "Frecuencia de actualización de la cuota de suscripción";
 "dashboard.refresh.official_every_seconds" = "Cada %1$@ s";
-"dashboard.refresh.official_scope" = "Cuentas oficiales de Codex";
+"dashboard.refresh.official_scope" = "Cuentas oficiales de Codex y Grok";
 "dashboard.refresh.api_scope" = "Relés de terceros / claves API";
-"dashboard.refresh.minimum_interval_hint" = "La actualización manual de Claude también respeta el intervalo de ~5 min";
 
 "quota.status.refreshing" = "Cargando…";
 "quota.status.realtime" = "En vivo";
@@ -576,7 +575,11 @@
 "status.item.controller.refresh_now_rate_limited" = "Límite de peticiones, disponible en %1$@";
 "status.item.controller.refresh_now_just_refreshed" = "Recién actualizado";
 "claude.status_line.enabled" = "Sincronización nativa de Claude Code";
-"claude.status_line.description" = "Obtiene antes la nueva cuota desde la línea de estado de Claude Code y conserva tu línea de estado actual. Al activarlo, Claude Code puede ocultar algunas pistas del pie.";
+"claude.status_line.description" = "Usa la interfaz interna de Claude Code para obtener antes la hora de reinicio, la cuota restante y el estado tras cada respuesta de Claude.";
 "claude.status_line.calibration" = "Calibración de la cuota oficial de Claude";
-"claude.status_line.calibration_value" = "Cada ~5 min";
-"claude.status_line.calibration_detail" = "Intervalo fijo para evitar límites; con la sincronización nativa la nueva cuota aparece antes";
+"claude.refresh.every_minutes" = "Cada %1$@ min";
+"claude.status_line.calibration_detail" = "Los intervalos más largos evitan límites de uso; la sincronización nativa puede mostrar la cuota nueva antes";
+"claude.status_line.disable_confirm_title" = "¿Desactivar la sincronización nativa de Claude Code?";
+"claude.status_line.disable_confirm_message" = "La cuota de Claude solo se actualizará en el intervalo fijo y no justo después de cada respuesta.";
+"claude.status_line.disable_confirm_action" = "Desactivar";
+"claude.status_line.disable_confirm_cancel" = "Cancelar";

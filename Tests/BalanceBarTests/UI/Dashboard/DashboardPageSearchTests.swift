@@ -2680,11 +2680,11 @@ final class DashboardPageSearchTests: XCTestCase {
         let firstTitle = tr(.keyDashboardOfficialQuotaRefreshFrequency, language: .english)
         let secondTitle = tr(.keyDashboardGeneralAndRefreshPagesBalanceUpdatesDuringTasks, language: .english)
         let section = try XCTUnwrap(firstSection(titled: refreshHeading, in: page) as? SettingsSectionView)
-        // Claude calibration, Claude Code native sync, Codex official, API providers.
+        // Codex/Grok official, Claude calibration, Claude Code native sync, API providers.
         XCTAssertEqual(section.contentViews.count, 4)
         XCTAssertEqual(section.separators.count, 3)
         XCTAssertTrue(section.separators.allSatisfy { !$0.isHidden })
-        let codexIndex = 2
+        let codexIndex = 0
 
         let filter = DashboardPageSearchFilter()
         XCTAssertTrue(filter.apply(query: firstTitle, to: page, pageTitle: "General", mode: .titles))
@@ -2704,7 +2704,7 @@ final class DashboardPageSearchTests: XCTestCase {
         }
         assertVisualSeparatorsMatchVisibleRows(section)
         XCTAssertTrue(section.contentViews[codexIndex] === settingsRow(titled: firstTitle, in: section))
-        XCTAssertTrue(section.contentViews[codexIndex + 1] === settingsRow(titled: secondTitle, in: section))
+        XCTAssertTrue(section.contentViews[3] === settingsRow(titled: secondTitle, in: section))
     }
 
     func testGeneralSearchCatalogCoversUnifiedRefreshSettings() {
@@ -2718,10 +2718,8 @@ final class DashboardPageSearchTests: XCTestCase {
                 .keyDashboardGeneralAndRefreshPagesBalanceUpdatesDuringTasks,
                 .keyDashboardRefreshOfficialScope,
                 .keyDashboardRefreshAPIScope,
-                .keyDashboardRefreshMinimumIntervalHint,
                 .keyDashboardGeneralAndRefreshPagesRefreshNow,
                 .keyClaudeStatusLineCalibration,
-                .keyClaudeStatusLineCalibrationValue,
                 .keyClaudeStatusLineEnabled
             ] {
                 XCTAssertTrue(titles.contains(tr(key)), "\(language) search catalog lacks \(key.rawValue)")
@@ -2732,7 +2730,7 @@ final class DashboardPageSearchTests: XCTestCase {
         }
     }
 
-    func testSearchingRefreshFootnoteKeepsTheRefreshRows() throws {
+    func testSearchingRefreshScopeKeepsTheMatchingRow() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
         for language in [AppLanguage.english, .simplifiedChinese] {
@@ -2757,11 +2755,11 @@ final class DashboardPageSearchTests: XCTestCase {
             let heading = tr(.keyDashboardGeneralAndRefreshPagesRefresh)
             let section = try XCTUnwrap(firstSection(titled: heading, in: page) as? SettingsSectionView)
             let filter = DashboardPageSearchFilter()
-            XCTAssertTrue(filter.apply(query: tr(.keyDashboardRefreshMinimumIntervalHint), to: page,
-                pageTitle: "General", mode: .titles), "\(language) footnote query finds the section")
+            XCTAssertTrue(filter.apply(query: tr(.keyDashboardRefreshOfficialScope), to: page,
+                pageTitle: "General", mode: .titles), "\(language) scope query finds the section")
             window.layoutIfNeeded()
             XCTAssertFalse(isCollapsedForSearch(section.contentViews[0]))
-            XCTAssertFalse(isCollapsedForSearch(section.contentViews[1]))
+            XCTAssertTrue(isCollapsedForSearch(section.contentViews[1]))
         }
     }
 

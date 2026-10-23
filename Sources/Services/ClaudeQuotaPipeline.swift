@@ -159,6 +159,7 @@ final class ClaudeQuotaPipeline {
         identityQueue: DispatchQueue,
         stateDirectory: URL,
         calibrationIntervalCap: @escaping () -> TimeInterval? = { nil },
+        automaticInterval: @escaping () -> TimeInterval? = { nil },
         schedulerClock: SchedulerClock = SystemSchedulerClock(),
         schedulerTimer: SchedulerTimer = DispatchSchedulerTimer(),
         schedulerConfiguration: FetchSchedulerConfiguration = FetchSchedulerConfiguration(),
@@ -191,6 +192,7 @@ final class ClaudeQuotaPipeline {
             freePathChecker: statusLineSource,
             realtimeFreshness: realtimeTracker,
             calibrationIntervalCap: calibrationIntervalCap,
+            automaticIntervalOverride: automaticInterval,
             configuration: schedulerConfiguration,
             logSink: { [weak self] event in self?.schedulerEvent(event) })
         scheduler.addResultHandler { [weak self] delivery in
@@ -264,6 +266,11 @@ final class ClaudeQuotaPipeline {
 
     func schedulerStatus() -> FetchSchedulerStatus {
         scheduler.statusSnapshot()
+    }
+
+    /// Recomputes the pending automatic check after the calibration interval setting changed.
+    func calibrationIntervalChanged() {
+        scheduler.rearm()
     }
 
     func setStatusLineEnabled(_ enabled: Bool) {
@@ -594,7 +601,8 @@ extension ClaudeQuotaPipeline {
     /// Nothing is read or watched until the first Claude read is requested.
     static func makeProduction(
         client: OfficialQuotaClient,
-        calibrationIntervalCap: @escaping () -> TimeInterval?
+        calibrationIntervalCap: @escaping () -> TimeInterval?,
+        automaticInterval: @escaping () -> TimeInterval? = { nil }
     ) -> ClaudeQuotaPipeline {
         let identityQueue = DispatchQueue(label: "BalanceBar.AccountIdentity", qos: .utility)
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
@@ -611,6 +619,7 @@ extension ClaudeQuotaPipeline {
             identityQueue: identityQueue,
             stateDirectory: directory,
             calibrationIntervalCap: calibrationIntervalCap,
+            automaticInterval: automaticInterval,
             schedulerConfiguration: .claudeV1,
             realtimeTracker: tracker,
             statusLineSource: source)

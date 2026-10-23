@@ -553,11 +553,10 @@
 "quick_switch.state_untrusted" = "Modo não confirmado: gerenciar no CC Switch";
 "quick_switch.manage_in_cc_switch" = "Gerenciar no CC Switch";
 
-"dashboard.refresh.official_quota_frequency" = "Frequência de atualização da cota oficial do Codex";
+"dashboard.refresh.official_quota_frequency" = "Frequência de atualização da cota da assinatura";
 "dashboard.refresh.official_every_seconds" = "A cada %1$@ s";
-"dashboard.refresh.official_scope" = "Contas oficiais do Codex";
+"dashboard.refresh.official_scope" = "Contas oficiais do Codex e do Grok";
 "dashboard.refresh.api_scope" = "Relays de terceiros / chaves de API";
-"dashboard.refresh.minimum_interval_hint" = "A atualização manual do Claude também respeita o intervalo de ~5 min";
 
 "quota.status.refreshing" = "Lendo…";
 "quota.status.realtime" = "Ao vivo";
@@ -576,7 +575,11 @@
 "status.item.controller.refresh_now_rate_limited" = "Limite de requisições, disponível em %1$@";
 "status.item.controller.refresh_now_just_refreshed" = "Acabou de atualizar";
 "claude.status_line.enabled" = "Sincronização nativa do Claude Code";
-"claude.status_line.description" = "Obtém a nova cota mais cedo pela linha de status do Claude Code e mantém sua linha de status atual. Quando ativado, o Claude Code pode ocultar algumas dicas do rodapé.";
+"claude.status_line.description" = "Usa a interface interna do Claude Code para obter mais cedo o horário de redefinição, a cota restante e o status após cada resposta do Claude.";
 "claude.status_line.calibration" = "Calibração da cota oficial do Claude";
-"claude.status_line.calibration_value" = "A cada ~5 min";
-"claude.status_line.calibration_detail" = "Intervalo fixo para evitar limites; com a sincronização nativa a nova cota aparece antes";
+"claude.refresh.every_minutes" = "A cada %1$@ min";
+"claude.status_line.calibration_detail" = "Intervalos maiores evitam limites de taxa; a sincronização nativa pode mostrar a nova cota mais cedo";
+"claude.status_line.disable_confirm_title" = "Desativar a sincronização nativa do Claude Code?";
+"claude.status_line.disable_confirm_message" = "A cota do Claude será atualizada apenas no intervalo fixo, e não logo após cada resposta.";
+"claude.status_line.disable_confirm_action" = "Desativar";
+"claude.status_line.disable_confirm_cancel" = "Cancelar";

@@ -478,7 +478,9 @@ final class AppPreferences {
     }
     var animateCodexActivity: Bool { get { bool("animateCodexActivity", default: true) } set { defaults.set(newValue, forKey: "animateCodexActivity") } }
     var activityPollInterval: TimeInterval { get { positiveDouble("activityPollInterval", default: 0.25) } set { defaults.set(newValue, forKey: "activityPollInterval") } }
-    static let officialUsageRefreshIntervals: [TimeInterval] = [60, 90, 120, 150, 180]
+    /// Selectable automatic refresh intervals, shared by the official-quota and API-balance selectors.
+    static let refreshIntervalOptions: [TimeInterval] = [3, 5, 10, 15, 30, 60]
+    static let officialUsageRefreshIntervals = refreshIntervalOptions
     var officialUsageRefreshInterval: TimeInterval {
         get {
             let value = defaults.double(forKey: "officialUsageRefreshInterval")
@@ -486,9 +488,23 @@ final class AppPreferences {
         }
         set { defaults.set(Self.officialUsageRefreshIntervals.contains(newValue) ? newValue : 60, forKey: "officialUsageRefreshInterval") }
     }
+    /// Claude official-quota calibration choices in seconds (5-15 min); the source never goes below 5 min.
+    static let claudeCalibrationIntervals: [TimeInterval] = [300, 360, 480, 600, 720, 900]
+    static let claudeCalibrationIntervalKey = "claudeCalibrationInterval"
+    var claudeCalibrationInterval: TimeInterval {
+        get {
+            let value = defaults.double(forKey: Self.claudeCalibrationIntervalKey)
+            return Self.claudeCalibrationIntervals.contains(value) ? value : 300
+        }
+        set {
+            defaults.set(Self.claudeCalibrationIntervals.contains(newValue) ? newValue : 300, forKey: Self.claudeCalibrationIntervalKey)
+        }
+    }
     var codexUsageRefreshInterval: TimeInterval { get { positiveDouble("codexUsageRefreshInterval", default: 3) } set { defaults.set(newValue, forKey: "codexUsageRefreshInterval") } }
     /// Enables the native Claude Code statusLine bridge.
-    var claudeStatusLineEnabled: Bool { get { bool("claudeStatusLineEnabled", default: false) } set { defaults.set(newValue, forKey: "claudeStatusLineEnabled") } }
+    /// On by default; `claudeStatusLineEnabledIsConfigured` tells a first launch apart from a saved choice.
+    var claudeStatusLineEnabledIsConfigured: Bool { defaults.object(forKey: "claudeStatusLineEnabled") != nil }
+    var claudeStatusLineEnabled: Bool { get { bool("claudeStatusLineEnabled", default: true) } set { defaults.set(newValue, forKey: "claudeStatusLineEnabled") } }
     var showQuickSwitchMenu: Bool { get { bool("showQuickSwitchMenu", default: true) } set { defaults.set(newValue, forKey: "showQuickSwitchMenu") } }
     var showOpenCCSwitchMenu: Bool { get { bool("showOpenCCSwitchMenu", default: true) } set { defaults.set(newValue, forKey: "showOpenCCSwitchMenu") } }
     var showOpenChatGPTMenu: Bool { get { bool("showOpenChatGPTMenu", default: true) } set { defaults.set(newValue, forKey: "showOpenChatGPTMenu") } }

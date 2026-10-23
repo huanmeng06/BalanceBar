@@ -487,7 +487,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         let preferences = AppPreferences(defaults: defaults)
-        preferences.officialUsageRefreshInterval = 180
+        preferences.officialUsageRefreshInterval = 60
         let clock = TestClock(date: Date(timeIntervalSince1970: 1_700_000_000))
         let ready = DispatchSemaphore(value: 0)
         DelayedBalanceURLProtocol.setHandler { _ in .init(data: Data("{}".utf8), statusCode: 200) }
@@ -3139,7 +3139,7 @@ extension ProviderRefreshCoordinatorTests {
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         let preferences = AppPreferences(defaults: defaults)
-        preferences.officialUsageRefreshInterval = 180
+        preferences.officialUsageRefreshInterval = 60
         let clock = TestClock(date: Date(timeIntervalSince1970: 1_700_000_000))
         let counter = IncrementingCounter()
         DelayedBalanceURLProtocol.setHandler { request in
@@ -4145,7 +4145,7 @@ extension ProviderRefreshCoordinatorTests {
                 credentialReader: FixtureCredentialReader(codexToken: "fixture"),
                 parser: IncrementingOfficialQuotaParser(counter: IncrementingCounter())),
             balanceAPIClient: BalanceAPIClient(session: session),
-            actions: makeActions(), refreshPreferences: preferences(interval: 180), now: { clock.now })
+            actions: makeActions(), refreshPreferences: preferences(interval: 60), now: { clock.now })
         func manualRefresh(expectedTransport: Int) {
             coordinator.refreshQuickSwitchSummaries(force: true, for: .codex)
             waitForCoordinator(coordinator)
@@ -4160,13 +4160,13 @@ extension ProviderRefreshCoordinatorTests {
         manualRefresh(expectedTransport: 2)
         clock.advance(by: 10)
         manualRefresh(expectedTransport: 3)
-        clock.advance(by: 169)                      // t = 179
+        clock.advance(by: 49)                       // t = 59
         manualRefresh(expectedTransport: 4)
         lock.lock()
         XCTAssertEqual(officialRequests, 1, "repeated manual refresh must not bypass the official interval")
         XCTAssertEqual(balanceRequests, 3, "manual refresh still refreshes API balances immediately")
         lock.unlock()
-        clock.advance(by: 1)                        // t = 180
+        clock.advance(by: 1)                        // t = 60
         manualRefresh(expectedTransport: 6)
         lock.lock(); XCTAssertEqual(officialRequests, 2); lock.unlock()
     }
@@ -4617,7 +4617,7 @@ extension ProviderRefreshCoordinatorTests {
     func testClaudeSummaryRefreshesNeverDriveRequestsForAnyRefreshSetting() throws {
         _ = try useClaudeOfficialProvider()
         DelayedBalanceURLProtocol.setHandler { _ in .init(data: Self.claudeUsage, statusCode: 200) }
-        for interval: TimeInterval in [60, 150] {
+        for interval: TimeInterval in [30, 60] {
             let clock = TestClock(date: Date(timeIntervalSince1970: 1_700_000_000))
             let official = OfficialQuotaClient(session: session,
                 credentialReader: FixtureCredentialReader(codexToken: nil, claudeToken: "summary-\(Int(interval))"), now: { clock.now })

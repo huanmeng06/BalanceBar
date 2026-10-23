@@ -394,6 +394,9 @@ enum DashboardSettingsSearchCatalog {
             values.append(contentsOf: AppPreferences.officialUsageRefreshIntervals.map {
                 tr(.keyDashboardOfficialEverySeconds, arguments: [String(Int($0))])
             })
+            values.append(contentsOf: AppPreferences.claudeCalibrationIntervals.map {
+                tr(.keyClaudeRefreshEveryMinutes, arguments: [String(Int($0 / 60))])
+            })
         }
         return values
     }
@@ -477,14 +480,12 @@ enum DashboardSettingsSearchCatalog {
                 .keyDashboardGeneralAndRefreshPagesStartup,
                 .keyDashboardGeneralAndRefreshPagesRefresh,
                 .keyClaudeStatusLineCalibration,
-                .keyClaudeStatusLineCalibrationValue,
                 .keyClaudeStatusLineCalibrationDetail,
                 .keyClaudeStatusLineEnabled,
                 .keyClaudeStatusLineDescription,
                 .keyDashboardOfficialQuotaRefreshFrequency,
                 .keyDashboardRefreshOfficialScope,
                 .keyDashboardRefreshAPIScope,
-                .keyDashboardRefreshMinimumIntervalHint,
                 .keyDashboardGeneralAndRefreshPagesBalanceUpdatesDuringTasks,
                 .keyDashboardGeneralAndRefreshPagesRefreshNow,
                 .keyDashboardGeneralAndRefreshPagesBalanceData,

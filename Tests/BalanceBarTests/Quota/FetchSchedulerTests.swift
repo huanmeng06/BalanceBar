@@ -71,11 +71,13 @@ final class FetchSchedulerTests: XCTestCase {
         freePath: ManualRefreshFreePathChecking? = nil,
         realtime: RealtimeSourceFreshnessProviding? = nil,
         cap: TimeInterval? = nil,
+        automaticInterval: TimeInterval? = nil,
         configuration: FetchSchedulerConfiguration = FetchSchedulerConfiguration()
     ) -> FetchScheduler {
         let scheduler = FetchScheduler(
             transport: transport, identity: identity, stateStore: store, clock: clock, timer: timer,
             freePathChecker: freePath, realtimeFreshness: realtime, calibrationIntervalCap: { cap },
+            automaticIntervalOverride: { automaticInterval },
             configuration: configuration,
             logSink: { [unowned self] in logs.append($0) })
         scheduler.addResultHandler { [unowned self] in deliveries.append($0) }
@@ -139,6 +141,20 @@ final class FetchSchedulerTests: XCTestCase {
         XCTAssertEqual(configuration.automaticTokenCost, 1)
         XCTAssertEqual(configuration.manualTokenCost, 1)
         XCTAssertEqual(configuration.failureBackoff, [60, 120, 240, 480, 900])
+    }
+
+    func testSelectedAutomaticIntervalReplacesConfiguredMinimum() {
+        let scheduler = makeScheduler(automaticInterval: 600, configuration: .claudeV1)
+        scheduler.setDemand(true)
+        request(scheduler, .initial)
+        complete(scheduler, .success(Data()))
+        clock.advance(300)
+        request(scheduler, .scheduled)
+        XCTAssertEqual(lastSkip, .minimumInterval, "5 min is no longer enough once 10 min is selected")
+        XCTAssertEqual(scheduler.statusSnapshot().automaticMinimumInterval, 600)
+        clock.advance(300)
+        request(scheduler, .scheduled)
+        XCTAssertEqual(transport.completions.count, 1)
     }
 
     func testClaudeFailureBackoffStartsAtLastAttempt() {
