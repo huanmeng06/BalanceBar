@@ -190,8 +190,11 @@ enum DevelopmentBankedResetDemo {
                 episodeKey: "demo-countdown"
             )
         }
+        let displayedProviderName = mode == .countdown
+            ? "\(providerName) · DEMO 20:00"
+            : providerName
         return .official(
-            providerName,
+            displayedProviderName,
             windows[1].remaining,
             windows[1].label,
             windows[1].reset,
@@ -1515,7 +1518,10 @@ final class ProviderRefreshCoordinator {
             if isValid(), isCurrentRequest() { officialSampleUnavailable(client: client, providerID: providerID) }
             publish(.providerError(providerName, reason: reason, cachedBalance: nil), providerID: providerID, client: client, isCurrentRequest: isCurrentRequest)
         }
-        if client == .codex, source == nil, let demoSnapshot = DevelopmentLunaReserveDemo.snapshot(providerName: providerName)
+        // Demo bundles bypass real transport for both the direct provider and
+        // aggregated provider rows, so the fixture stays visible regardless of
+        // the user's aggregation setting.
+        if client == .codex, let demoSnapshot = DevelopmentLunaReserveDemo.snapshot(providerName: providerName)
             ?? DevelopmentBankedResetDemo.snapshot(providerName: providerName) {
             publish(
                 demoSnapshot,

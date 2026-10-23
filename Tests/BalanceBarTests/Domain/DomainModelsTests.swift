@@ -1523,6 +1523,7 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertTrue(forecast.isOfficialWindowDeadlineCountdown)
         XCTAssertTrue(forecast.showsOfficialWindowDeadlineProgress)
         XCTAssertEqual(forecast.remainingCountdownMinutes(now: afternoon), 300)
+        XCTAssertTrue(snapshot.overviewProvider.contains("DEMO 20:00"))
         XCTAssertEqual(snapshot.bankedReset?.cards.count, 2)
 
         let evening = try XCTUnwrap(
