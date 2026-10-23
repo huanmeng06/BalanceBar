@@ -603,6 +603,107 @@ extension CCSwitchRepositoryTests {
         XCTAssertEqual(repository.quickSwitchSafety(), .blockedUntrusted)
     }
 
+    func testConnectionModeMapsDeviceStateCombinations() throws {
+        func read(_ state: String?) -> (URL) throws -> Data {
+            { _ in
+                guard let state else { throw CocoaError(.fileReadNoSuchFile) }
+                return Data(state.utf8)
+            }
+        }
+        // The fixture writes codex "direct" in setUp.
+        XCTAssertEqual(repository.connectionMode(appType: "codex"), .direct)
+        try writeDeviceMode("proxy", stack: true)
+        XCTAssertEqual(repository.connectionMode(appType: "codex"), .aggregation)
+        try writeDeviceMode("proxy")
+        XCTAssertEqual(repository.connectionMode(appType: "codex"), .proxy)
+
+        let bothDirect = #"{"version":1,"apps":{"claude":{"mode":"direct"},"codex":{"mode":"direct"}}}"#
+        XCTAssertEqual(repository.connectionMode(appType: "claude", readState: read(bothDirect)), .direct)
+        XCTAssertEqual(repository.connectionMode(appType: "grokbuild", readState: read(#"{"version":1,"apps":{"grokbuild":{"mode":"direct"}}}"#)), .direct)
+        // Stack aggregation is Codex-only; other apps' proxy takeovers stay proxy.
+        XCTAssertEqual(repository.connectionMode(appType: "codex", readState: read(#"{"version":1,"apps":{"codex":{"mode":"proxy","attached":true,"stack":{"enabled":true}}}}"#)), .aggregation)
+        XCTAssertEqual(repository.connectionMode(appType: "claude", readState: read(#"{"version":1,"apps":{"claude":{"mode":"proxy","attached":true,"stack":{"enabled":true}}}}"#)), .proxy)
+        XCTAssertEqual(repository.connectionMode(appType: "grokbuild", readState: read(#"{"version":1,"apps":{"grokbuild":{"mode":"proxy","attached":true}}}"#)), .proxy)
+
+        XCTAssertEqual(repository.connectionMode(appType: "codex", readState: read(#"{"version":1,"apps":{"codex":{"mode":"direct","attached":true}}}"#)), .unknown,
+                       "direct with proxy residue is not trustworthy")
+        XCTAssertEqual(repository.connectionMode(appType: "claude", readState: read(#"{"version":1,"apps":{"codex":{"mode":"direct"}}}"#)), .unknown,
+                       "missing app entry reports unknown")
+        XCTAssertEqual(repository.connectionMode(appType: "codex", readState: read(#"{"version":1,"apps":{"codex":{}}}"#)), .unknown,
+                       "missing mode key reports unknown")
+        XCTAssertEqual(repository.connectionMode(appType: "codex", readState: read(#"{"version":1,"apps":{"codex":{"mode":"tunnel"}}}"#)), .unknown,
+                       "unrecognized mode reports unknown")
+        XCTAssertEqual(repository.connectionMode(appType: "cursor", readState: read(bothDirect)), .unknown,
+                       "only claude, codex and grokbuild are addressable")
+
+        for state in ["broken", #"{"version":99,"apps":{}}"#, #"{"version":true,"apps":{"codex":{"mode":"direct"}}}"#, #"{"apps":{"codex":{"mode":"direct","pending":{}}}}"#, "{}"] {
+            XCTAssertEqual(repository.connectionMode(appType: "codex", readState: read(state)), .unknown, state)
+            XCTAssertEqual(repository.connectionMode(appType: "claude", readState: read(state)), .unknown, state)
+        }
+        XCTAssertEqual(repository.connectionMode(appType: "codex", readState: read(nil)), .unknown, "missing CC Switch install reports unknown")
+    }
+
+    func testConnectionSummariesProvideModesAndProviderNames() throws {
+        try withDatabase { db in
+            try execute(db, sql: "INSERT INTO providers VALUES ('grok-primary', 'GrokShop', '{}', '{}', 'custom', NULL, 'grokbuild', 1, 1, 1)")
+        }
+        let state = #"{"version":1,"apps":{"codex":{"mode":"proxy","attached":true,"stack":{"enabled":true,"members":["codex-official","codex-custom"]},"proxy_route":"codex-custom"},"claude":{"mode":"direct"},"grokbuild":{"mode":"direct"}}}"#
+        func summaries(repository: CCSwitchRepository) -> CCSwitchConnectionSummaries {
+            repository.connectionSummaries(readState: { _ in Data(state.utf8) })
+        }
+        let loaded = summaries(repository: repository)
+        XCTAssertEqual(loaded, CCSwitchConnectionSummaries(
+            codex: CCSwitchConnectionSummary(
+                mode: .aggregation,
+                // Default route first, then the remaining member in stack order.
+                providerNames: ["Fixture Custom", "Fixture Official"]
+            ),
+            claude: CCSwitchConnectionSummary(mode: .direct, providerNames: ["Other App"]),
+            grok: CCSwitchConnectionSummary(mode: .direct, providerNames: ["GrokShop"])
+        ))
+
+        // An unreadable or schema-broken database degrades everything to unknown.
+        let dbMissing = CCSwitchRepository(
+            databaseURL: temporaryDirectoryURL.appendingPathComponent("missing.db"),
+            appSettingsURL: appSettingsURL,
+            homeDirectoryURL: temporaryDirectoryURL
+        )
+        XCTAssertEqual(summaries(repository: dbMissing), .unknown)
+        let emptyDatabaseURL = temporaryDirectoryURL.appendingPathComponent("empty.db")
+        try Data().write(to: emptyDatabaseURL)
+        let schemaBroken = CCSwitchRepository(
+            databaseURL: emptyDatabaseURL,
+            appSettingsURL: appSettingsURL,
+            homeDirectoryURL: temporaryDirectoryURL
+        )
+        XCTAssertEqual(summaries(repository: schemaBroken), .unknown)
+
+        // Codex outside aggregation reports only its current provider.
+        let directState = #"{"version":1,"apps":{"codex":{"mode":"direct"},"claude":{"mode":"proxy"},"grokbuild":{"mode":"direct"}}}"#
+        XCTAssertEqual(repository.connectionSummaries(readState: { _ in Data(directState.utf8) }), CCSwitchConnectionSummaries(
+            codex: CCSwitchConnectionSummary(mode: .direct, providerNames: ["Fixture Custom"]),
+            claude: CCSwitchConnectionSummary(mode: .proxy, providerNames: ["Other App"]),
+            grok: CCSwitchConnectionSummary(mode: .direct, providerNames: ["GrokShop"])
+        ))
+
+        // Missing state reports unknown everywhere.
+        XCTAssertEqual(
+            repository.connectionSummaries(readState: { _ in throw CocoaError(.fileReadNoSuchFile) }),
+            .unknown
+        )
+    }
+
+    func testConnectionSummariesDegradeToUnknownWhenAQueryFailsMidRead() throws {
+        // setUp leaves a readable codex "direct" state; an exclusive lock on
+        // another connection makes the reader's sqlite3_step return BUSY after
+        // its 100 ms wait, which must degrade the whole display to unknown.
+        try withDatabase { db in
+            try execute(db, sql: "BEGIN EXCLUSIVE")
+            defer { sqlite3_exec(db, "ROLLBACK", nil, nil, nil) }
+            XCTAssertEqual(repository.connectionSummaries(), .unknown)
+        }
+    }
+
     func testChangedTargetRevisionBeforeTerminateAbortsAndLocalMarkerIsNotNegated() throws {
         var terminated = false
         let failed = expectation(description: "revision changed before termination")

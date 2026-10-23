@@ -1179,7 +1179,6 @@ final class DashboardPageSearchTests: XCTestCase {
         let current = try XCTUnwrap(AppSemanticVersion("1.0.0"))
         let latest = try XCTUnwrap(AppSemanticVersion("9.8.7"))
         let texts = DashboardSettingsSearchRuntime.textsBySection(
-            currentProviderName: provider,
             updateState: .available(current: current, latest: latest),
             balanceDisplayThreshold: 37.42,
             statusLinks: [
@@ -1191,7 +1190,12 @@ final class DashboardPageSearchTests: XCTestCase {
             animationMode: .efficient,
             animationFrameRate: 24,
             menuBarPreviewPrimary: "PreviewSentinelXYZ",
-            menuBarPreviewSecondary: ""
+            menuBarPreviewSecondary: "",
+            ccSwitchConnectionSummaries: CCSwitchConnectionSummaries(
+                codex: CCSwitchConnectionSummary(mode: .direct, providerNames: [provider]),
+                claude: .unknown,
+                grok: .unknown
+            )
         )
         let cases: [(String, DashboardSection)] = [
             (provider, .general),
@@ -1246,12 +1250,23 @@ final class DashboardPageSearchTests: XCTestCase {
             name: "MyPrivateProviderXYZ",
             appType: AssistantClient.codex.appType
         )
+        // The General page shows provider names beside the connection mode, so
+        // the fixture also needs a trustworthy live-state for the name to be
+        // published and searchable.
+        try FileManager.default.createDirectory(
+            at: directory.appendingPathComponent(".cc-switch"),
+            withIntermediateDirectories: true
+        )
+        try Data(#"{"version":1,"apps":{"codex":{"mode":"direct"}}}"#.utf8)
+            .write(to: directory.appendingPathComponent(".cc-switch/live-state.json"))
         let repository = CCSwitchRepository(databaseURL: databaseURL)
 
         func rows(startingAt section: DashboardSection, query: String) throws -> [String] {
             let appDelegate = AppDelegate(repository: repository)
             let metadata = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
                 appDelegate.providerChoicesForTesting.contains { $0.name == "MyPrivateProviderXYZ" }
+                    && appDelegate.connectionSummariesForTesting.codex.providerNames
+                        .contains("MyPrivateProviderXYZ")
             }, object: nil)
             // Provider metadata is published by ProviderMetadataReader's background
             // read; the wait ends at publication, the timeout only bounds failure.
@@ -2657,7 +2672,6 @@ final class DashboardPageSearchTests: XCTestCase {
 
         let page = DashboardGeneralPage().make(.init(
             preferences: AppPreferences(defaults: defaults),
-            currentProviderName: "OpenAI",
             relay: DashboardPreferencePageRelay(),
             updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6")))
         ))
@@ -2740,7 +2754,6 @@ final class DashboardPageSearchTests: XCTestCase {
             defer { defaults.removePersistentDomain(forName: suiteName) }
             let page = DashboardGeneralPage().make(.init(
                 preferences: AppPreferences(defaults: defaults),
-                currentProviderName: "OpenAI",
                 relay: DashboardPreferencePageRelay(),
                 updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6")))
             ))
