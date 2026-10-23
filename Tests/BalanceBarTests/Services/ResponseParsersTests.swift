@@ -966,6 +966,70 @@ final class ResponseParsersTests: XCTestCase {
         )
     }
 
+    func testCodexResetForecastParserUsesLiveTargetAtAndKeepsExpiredDeadline() throws {
+        // Regression for the Oct 23 public /api/forecast schema. The live API
+        // uses window.target_at/end_at, not the historical at/deadline/target.
+        let deadline = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-10-23T17:00:00Z"))
+        let observedAt = deadline.addingTimeInterval(-25 * 60)
+        let payload = Data(#"""
+        {
+          "mode":"announced",
+          "updated_at":"2026-10-23T16:13:52.692Z",
+          "probabilities":{"rounded_24h":32,"rounded_48h":53,"signal_percent":93},
+          "official_signal":{
+            "tweet_id":"2113492502355562875",
+            "at":"2026-10-23T04:47:34.000Z",
+            "window":{
+              "label":"by 10 AM PT on Oct 23",
+              "start_at":"2026-10-23T04:47:34.000Z",
+              "end_at":"2026-10-23T17:00:00.000Z",
+              "target_kind":"deadline",
+              "target_at":"2026-10-23T17:00:00.000Z"
+            }
+          }
+        }
+        """#.utf8)
+        let forecast = CodexResetForecastParser.parse(data: payload, now: observedAt)
+        XCTAssertEqual(forecast.officialSignal?.episodeKey, "tweet_id:2113492502355562875")
+        XCTAssertEqual(forecast.officialSignal?.targetAt, deadline)
+        XCTAssertEqual(forecast.remainingCountdownSeconds(now: observedAt), 25 * 60)
+        XCTAssertEqual(forecast.menuPrimaryDisplayText(language: .english, now: observedAt), "25m")
+        XCTAssertEqual(forecast.officialSignal?.probability, .percent(93))
+        XCTAssertNotNil(forecast.officialCountdownProgressSpan())
+
+        let afterDeadline = deadline.addingTimeInterval(120)
+        let expired = CodexResetForecastParser.parse(data: payload, now: afterDeadline)
+        XCTAssertEqual(expired.officialSignal?.targetAt, deadline)
+        XCTAssertEqual(expired.remainingCountdownSeconds(now: afterDeadline), 0)
+        XCTAssertEqual(expired.menuPrimaryDisplayText(language: .english, now: afterDeadline), "0m")
+        XCTAssertFalse(expired.isOfficialResetConfirmed)
+    }
+
+    func testCodexResetForecastParserAcceptsRangeEndWhenTargetAtMissing() throws {
+        let deadline = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-10-23T17:00:00Z"))
+        let now = deadline.addingTimeInterval(-15 * 60)
+        let forecast = CodexResetForecastParser.parse(
+            data: Data(#"""
+            {"official_signal":{"tweet_id":"range","window":{
+              "start_at":"2026-10-23T04:47:34.000Z",
+              "end_at":"2026-10-23T17:00:00.000Z"
+            }},"probabilities":{"rounded_24h":32}}
+            """#.utf8),
+            now: now
+        )
+        XCTAssertEqual(forecast.officialSignal?.targetAt, deadline)
+        XCTAssertEqual(forecast.menuPrimaryDisplayText(language: .english, now: now), "15m")
+
+        let noDeadline = CodexResetForecastParser.parse(
+            data: Data(#"""
+            {"official_signal":{"window":{"start_at":"2026-10-23T04:47:34.000Z",
+              "label":"later today"}},"probabilities":{"rounded_24h":32}}
+            """#.utf8),
+            now: now
+        )
+        XCTAssertNil(noDeadline.officialSignal?.targetAt)
+    }
+
     func testCodexResetForecastParserReadsOfficialSignalWindowAsFutureInstant() throws {
         let future = now.addingTimeInterval(3_665)
         let past = now.addingTimeInterval(-120)
