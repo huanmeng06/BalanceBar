@@ -4235,7 +4235,7 @@ extension ProviderRefreshCoordinatorTests {
         let identity = ClaudeAccountIdentityProvider(
             configurationURL: directory.appendingPathComponent("claude.json"),
             workQueue: identityQueue, coalescingInterval: 0.02, now: { clock.now })
-        var configuration = FetchSchedulerConfiguration()
+        var configuration = FetchSchedulerConfiguration.claudeV1
         configuration.coalescingWindow = 0.02
         let pipeline = ClaudeQuotaPipeline(
             client: official, identity: identity, identityQueue: identityQueue,
@@ -4305,15 +4305,15 @@ extension ProviderRefreshCoordinatorTests {
                 XCTAssertNotNil(snapshot.notificationAccountScope)
                 // The slot shows "refreshing" while a read is in flight and the read time afterwards.
                 if snapshot.quotaStatus == .official(at: start) { rendered[0].fulfill() }
-                if snapshot.quotaStatus == .official(at: start.addingTimeInterval(180)) { rendered[1].fulfill() }
+                if snapshot.quotaStatus == .official(at: start.addingTimeInterval(300)) { rendered[1].fulfill() }
             }, claudeQuota: harness.pipeline, now: { clock.now })
         coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: false, switched: false)
         wait(for: [rendered[0]], timeout: 3)
 
-        clock.advance(by: 179)
+        clock.advance(by: 299)
         coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: false, switched: false)
         settleQuietly(coordinator, harness)
-        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 1, "the calibration interval is at least three minutes")
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 1, "the calibration interval is five minutes")
         clock.advance(by: 1)
         coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: false, switched: false)
         wait(for: [rendered[1]], timeout: 3)
@@ -4530,7 +4530,7 @@ extension ProviderRefreshCoordinatorTests {
 
         rateLimited.set()
         awaitStale = true
-        clock.advance(by: 180)
+        clock.advance(by: 300)
         next = expectation(description: "rate-limited, data kept")
         coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: false, switched: false)
         wait(for: [next!], timeout: 3)
@@ -4587,9 +4587,9 @@ extension ProviderRefreshCoordinatorTests {
         wait(for: [next!], timeout: 3)
 
         reader.set("token-2")
-        clock.advance(by: 180)
+        clock.advance(by: 300)
         next = expectation(description: "rotated token, same account")
-        coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: false, switched: false)
+        coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: true, switched: false, userInitiated: true)
         wait(for: [next!], timeout: 3)
         settle(coordinator, harness)
         lock.lock()

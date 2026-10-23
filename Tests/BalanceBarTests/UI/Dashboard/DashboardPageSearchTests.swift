@@ -2680,28 +2680,31 @@ final class DashboardPageSearchTests: XCTestCase {
         let firstTitle = tr(.keyDashboardOfficialQuotaRefreshFrequency, language: .english)
         let secondTitle = tr(.keyDashboardGeneralAndRefreshPagesBalanceUpdatesDuringTasks, language: .english)
         let section = try XCTUnwrap(firstSection(titled: refreshHeading, in: page) as? SettingsSectionView)
-        XCTAssertEqual(section.contentViews.count, 2)
-        XCTAssertEqual(section.separators.count, 1)
-        let separator = try XCTUnwrap(section.separators.first)
-        XCTAssertFalse(separator.isHidden)
+        // Claude calibration, Claude Code native sync, Codex official, API providers.
+        XCTAssertEqual(section.contentViews.count, 4)
+        XCTAssertEqual(section.separators.count, 3)
+        XCTAssertTrue(section.separators.allSatisfy { !$0.isHidden })
+        let codexIndex = 2
 
         let filter = DashboardPageSearchFilter()
         XCTAssertTrue(filter.apply(query: firstTitle, to: page, pageTitle: "General", mode: .titles))
         window.layoutIfNeeded()
-        XCTAssertFalse(isCollapsedForSearch(section.contentViews[0]))
-        XCTAssertTrue(isCollapsedForSearch(section.contentViews[1]))
-        XCTAssertTrue(separator.isHidden)
+        for (index, row) in section.contentViews.enumerated() {
+            XCTAssertEqual(isCollapsedForSearch(row), index != codexIndex, "row \(index)")
+        }
+        XCTAssertTrue(section.separators.allSatisfy(\.isHidden))
 
         XCTAssertTrue(filter.apply(query: refreshHeading, to: page, pageTitle: "General", mode: .titles))
         window.layoutIfNeeded()
-        XCTAssertFalse(isCollapsedForSearch(section.contentViews[0]))
-        XCTAssertFalse(isCollapsedForSearch(section.contentViews[1]))
-        XCTAssertFalse(separator.isHidden)
-        XCTAssertFalse(DashboardSearchVisibility.isSearchHidden(separator))
-        XCTAssertNotEqual(section.cardView.visibilityPriority(for: separator), .notVisible)
+        XCTAssertTrue(section.contentViews.allSatisfy { !isCollapsedForSearch($0) })
+        for separator in section.separators {
+            XCTAssertFalse(separator.isHidden)
+            XCTAssertFalse(DashboardSearchVisibility.isSearchHidden(separator))
+            XCTAssertNotEqual(section.cardView.visibilityPriority(for: separator), .notVisible)
+        }
         assertVisualSeparatorsMatchVisibleRows(section)
-        XCTAssertTrue(section.contentViews[0] === settingsRow(titled: firstTitle, in: section))
-        XCTAssertTrue(section.contentViews[1] === settingsRow(titled: secondTitle, in: section))
+        XCTAssertTrue(section.contentViews[codexIndex] === settingsRow(titled: firstTitle, in: section))
+        XCTAssertTrue(section.contentViews[codexIndex + 1] === settingsRow(titled: secondTitle, in: section))
     }
 
     func testGeneralSearchCatalogCoversUnifiedRefreshSettings() {
@@ -2716,11 +2719,16 @@ final class DashboardPageSearchTests: XCTestCase {
                 .keyDashboardRefreshOfficialScope,
                 .keyDashboardRefreshAPIScope,
                 .keyDashboardRefreshMinimumIntervalHint,
-                .keyDashboardGeneralAndRefreshPagesRefreshNow
+                .keyDashboardGeneralAndRefreshPagesRefreshNow,
+                .keyClaudeStatusLineCalibration,
+                .keyClaudeStatusLineCalibrationValue,
+                .keyClaudeStatusLineEnabled
             ] {
                 XCTAssertTrue(titles.contains(tr(key)), "\(language) search catalog lacks \(key.rawValue)")
             }
-            XCTAssertFalse(titles.contains { $0.contains("Claude official") || $0.contains("Claude 官方") })
+            // The shared official selector is Codex-only now; Claude has no adjustable interval.
+            XCTAssertFalse(tr(.keyDashboardOfficialQuotaRefreshFrequency).contains("Claude"))
+            XCTAssertFalse(tr(.keyDashboardRefreshOfficialScope).contains("Claude"))
         }
     }
 

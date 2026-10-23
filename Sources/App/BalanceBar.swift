@@ -401,7 +401,7 @@ private enum DevelopmentReleaseFixture {
 
 struct PreferencesMigrationPlan {
     static let quotaProgressKeys = ["quotaProgressEnabledColors", "quotaProgressRedUpperBound", "quotaProgressOrangeUpperBound", "quotaProgressYellowUpperBound"]
-    static let keys = [AppPreferences.displayTimeZoneKey, AppPreferences.lastManualDisplayTimeZoneKey, AppPreferences.updateChannelKey, AppPreferences.silentLaunchKey, "appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "officialUsageRefreshInterval", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", AppPreferences.balanceDisplayThresholdKey, AppPreferences.showQuotaProgressBarKey, AppPreferences.showQuotaPaceIndicatorKey, AppPreferences.menuLunaReserveDisplayModeKey, AppPreferences.menuLunaReserveHideExhaustedQuotaKey, AppPreferences.menuBankedResetDisplayModeKey, AppPreferences.showBankedResetKey, "sortProvidersAlphabetically", "menuBarHorizontalPadding", AppPreferences.menuBarIconDisplayModeKey, AppPreferences.menuBarIconDisplayDelayKey, AppPreferences.menuBarRightClickActionKey, AppPreferences.menuBarReverseMouseButtonsKey, AppPreferences.menuBarAnimationModeKey, AppPreferences.menuBarAnimationFrameRateKey, AppPreferences.menuBarQuotaWindowPreferenceKey, AppPreferences.menuBarQuotaResetDisplayModeKey, AppPreferences.menuBarAutoSwitchLunaReserveKey, AppPreferences.menuBarLunaReserveResetTimeModeKey, AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey, AppPreferences.menuBarFontSizePresetKey, AppPreferences.menuBarFontSizeKey, AppPreferences.menuBarPrimaryFontSizeKey, AppPreferences.menuBarSecondaryFontSizeKey, AppPreferences.menuBarIconSizePresetKey, AppPreferences.notificationSettingsKey]
+    static let keys = [AppPreferences.displayTimeZoneKey, AppPreferences.lastManualDisplayTimeZoneKey, AppPreferences.updateChannelKey, AppPreferences.silentLaunchKey, "appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "officialUsageRefreshInterval", "claudeStatusLineEnabled", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", AppPreferences.balanceDisplayThresholdKey, AppPreferences.showQuotaProgressBarKey, AppPreferences.showQuotaPaceIndicatorKey, AppPreferences.menuLunaReserveDisplayModeKey, AppPreferences.menuLunaReserveHideExhaustedQuotaKey, AppPreferences.menuBankedResetDisplayModeKey, AppPreferences.showBankedResetKey, "sortProvidersAlphabetically", "menuBarHorizontalPadding", AppPreferences.menuBarIconDisplayModeKey, AppPreferences.menuBarIconDisplayDelayKey, AppPreferences.menuBarRightClickActionKey, AppPreferences.menuBarReverseMouseButtonsKey, AppPreferences.menuBarAnimationModeKey, AppPreferences.menuBarAnimationFrameRateKey, AppPreferences.menuBarQuotaWindowPreferenceKey, AppPreferences.menuBarQuotaResetDisplayModeKey, AppPreferences.menuBarAutoSwitchLunaReserveKey, AppPreferences.menuBarLunaReserveResetTimeModeKey, AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey, AppPreferences.menuBarFontSizePresetKey, AppPreferences.menuBarFontSizeKey, AppPreferences.menuBarPrimaryFontSizeKey, AppPreferences.menuBarSecondaryFontSizeKey, AppPreferences.menuBarIconSizePresetKey, AppPreferences.notificationSettingsKey]
 
     static func selectedValues(target: [String: Any], production: [String: Any], local: [String: Any]) -> [String: Any] {
         var selected: [String: Any] = [:]
@@ -1136,7 +1136,62 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         }
     }
 
+    /// Settings IO for the statusLine bridge runs off the main thread; the preference only
+    /// turns on once the wrapper is actually installed.
+    private func setClaudeStatusLineEnabled(_ enabled: Bool) {
+        let claudeQuota = claudeQuota
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let installer = ClaudeStatusLineInstaller()
+            let outcome: String
+            let active: Bool
+            if enabled {
+                do {
+                    try installer.installBundledWrapper()
+                    _ = try installer.install()
+                    outcome = "installed"
+                    active = true
+                } catch {
+                    outcome = "install_failed:\(error)"
+                    active = false
+                }
+            } else {
+                do {
+                    _ = try installer.uninstall()
+                    installer.removeInstalledWrapper()
+                    outcome = "restored"
+                } catch ClaudeStatusLineInstallerError.notOwned {
+                    // Another tool changed statusLine since; leave its configuration alone.
+                    outcome = "not_owned_left_unchanged"
+                } catch {
+                    outcome = "restore_failed:\(error)"
+                }
+                active = false
+            }
+            claudeQuota.setStatusLineEnabled(active)
+            SwitchLog.write("Claude statusLine bridge \(outcome)", level: active || !enabled ? .info : .warning, category: "configuration")
+            DispatchQueue.main.async { self?.preferences.claudeStatusLineEnabled = active }
+        }
+    }
+
+    /// At launch the bridge is only resumed, never re-installed: if something else replaced the
+    /// statusLine command, BalanceBar does not take it back.
+    private func resumeClaudeStatusLineIfInstalled() {
+        guard preferences.claudeStatusLineEnabled else { return }
+        let claudeQuota = claudeQuota
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let installer = ClaudeStatusLineInstaller()
+            let installed = installer.isInstalled()
+            if installed { try? installer.installBundledWrapper() }
+            claudeQuota.setStatusLineEnabled(installed)
+            if !installed {
+                SwitchLog.write("Claude statusLine bridge no longer configured; staying off", level: .info, category: "configuration")
+                DispatchQueue.main.async { self?.preferences.claudeStatusLineEnabled = false }
+            }
+        }
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        resumeClaudeStatusLineIfInstalled()
         guard lifecycle.beginStart() else { return }
         if AggregationOverviewScrollView.diagnosticsEnabled {
             let sha = Bundle.main.object(forInfoDictionaryKey: "BalanceBarBuildSHA") as? String ?? "unknown"
@@ -1502,6 +1557,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             }
         case "keepMenuOpenAfterRefresh":
             keepMenuOpenAfterRefresh = enabled
+        case "claudeStatusLineEnabled":
+            setClaudeStatusLineEnabled(enabled)
         case AppPreferences.silentLaunchKey:
             preferences.silentLaunch = enabled
         case AppPreferences.menuBarReverseMouseButtonsKey:

@@ -127,7 +127,8 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
     }
 
     private func makePipeline(
-        reader configurationReader: AccountConfigurationReading = DefaultAccountConfigurationReader()
+        reader configurationReader: AccountConfigurationReading = DefaultAccountConfigurationReader(),
+        realtimeTracker: ClaudeRealtimeTracker? = nil
     ) -> ClaudeQuotaPipeline {
         let identityQueue = DispatchQueue(label: "test.pipeline.identity")
         let identity = ClaudeAccountIdentityProvider(
@@ -138,7 +139,9 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         let pipeline = ClaudeQuotaPipeline(
             client: official, identity: identity, identityQueue: identityQueue,
             stateDirectory: directory.appendingPathComponent("state", isDirectory: true),
-            schedulerClock: clock, schedulerConfiguration: configuration, now: { [clock] in clock!.now },
+            schedulerClock: clock, schedulerConfiguration: configuration,
+            realtimeTracker: realtimeTracker,
+            now: { [clock] in clock!.now },
             diagnostics: { [diagnosticLines] message, _ in diagnosticLines.append(message) })
         pipelines.append(pipeline)
         return pipeline
@@ -331,6 +334,14 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         XCTAssertNil(pipeline.manualRefreshNotice())
         pipeline.requestFetch(reason: .manual)
         waitForRequests(2)
+    }
+
+    func testManualRefreshNoticeReportsLocalFreshWhenNativeWindowsAreFresh() {
+        let tracker = ClaudeRealtimeTracker(now: { [clock] in clock!.now })
+        let pipeline = makePipeline(realtimeTracker: tracker)
+        tracker.recordTrustedObservation(window: .fiveHour, receivedAt: Self.start, epoch: .initial)
+        tracker.recordTrustedObservation(window: .sevenDay, receivedAt: Self.start, epoch: .initial)
+        XCTAssertEqual(pipeline.manualRefreshNotice(), .localFresh)
     }
 
     func testSameAccountCredentialRefreshKeepsEpochAndScope() throws {

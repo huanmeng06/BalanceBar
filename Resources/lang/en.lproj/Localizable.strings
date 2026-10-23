@@ -553,11 +553,11 @@
 "quick_switch.state_untrusted" = "State could not be verified — manage in CC Switch";
 "quick_switch.manage_in_cc_switch" = "Manage in CC Switch";
 
-"dashboard.refresh.official_quota_frequency" = "Official quota refresh frequency";
+"dashboard.refresh.official_quota_frequency" = "Codex official quota refresh frequency";
 "dashboard.refresh.official_every_seconds" = "Every %1$@ s";
-"dashboard.refresh.official_scope" = "Official accounts such as Claude and Codex";
+"dashboard.refresh.official_scope" = "Codex official accounts";
 "dashboard.refresh.api_scope" = "Third-party relays / API keys";
-"dashboard.refresh.minimum_interval_hint" = "Some sources have a minimum interval";
+"dashboard.refresh.minimum_interval_hint" = "Manual refresh for Claude also follows the ~5-minute interval";
 
 "quota.status.refreshing" = "Updating…";
 "quota.status.realtime" = "Live";
@@ -575,3 +575,8 @@
 "status.item.controller.refresh_now_login_expired" = "Refresh Now (Claude sign-in expired, run claude first)";
 "status.item.controller.refresh_now_rate_limited" = "Refresh Now (rate limited, available in %1$@)";
 "status.item.controller.refresh_now_just_refreshed" = "Refresh Now (just refreshed)";
+"claude.status_line.enabled" = "Claude Code native sync";
+"claude.status_line.description" = "Picks up new quota early from the Claude Code status line and keeps your existing status line. Claude Code may hide some footer hints while it's on.";
+"claude.status_line.calibration" = "Claude official quota calibration";
+"claude.status_line.calibration_value" = "About every 5 min";
+"claude.status_line.calibration_detail" = "Fixed to avoid rate limits; native sync can show new quota sooner";

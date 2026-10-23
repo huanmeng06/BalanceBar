@@ -7,6 +7,15 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		D53000000000000000000011 /* ClaudeRealtimeTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = D53000000000000000000001 /* ClaudeRealtimeTracker.swift */; };
+		D53100000000000000000011 /* ClaudeStatusLineSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = D53100000000000000000001 /* ClaudeStatusLineSource.swift */; };
+		D53200000000000000000011 /* ClaudeStatusLineInstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = D53200000000000000000001 /* ClaudeStatusLineInstaller.swift */; };
+		D54000000000000000000011 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = D54000000000000000000001 /* main.swift */; };
+		D54000000000000000000012 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A10000000000000000000018 /* Foundation.framework */; };
+		D53300000000000000000012 /* ClaudeRealtimeTrackerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D53300000000000000000002 /* ClaudeRealtimeTrackerTests.swift */; };
+		D53300000000000000000013 /* ClaudeStatusLineInstallerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D53300000000000000000003 /* ClaudeStatusLineInstallerTests.swift */; };
+		D53300000000000000000014 /* ClaudeStatusLineSourceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D53300000000000000000004 /* ClaudeStatusLineSourceTests.swift */; };
+		D53300000000000000000015 /* StatusLineBridgeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D53300000000000000000005 /* StatusLineBridgeTests.swift */; };
 		B52300000000000000000011 /* ClaudeHUDSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = B52300000000000000000001 /* ClaudeHUDSource.swift */; };
 		B52300000000000000000012 /* ClaudeHUDSourceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B52300000000000000000002 /* ClaudeHUDSourceTests.swift */; };
 		B51B00000000000000000011 /* CodexRolloutSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51B00000000000000000001 /* CodexRolloutSource.swift */; };
@@ -226,6 +235,15 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		D53000000000000000000001 /* ClaudeRealtimeTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeRealtimeTracker.swift; sourceTree = "<group>"; };
+		D53100000000000000000001 /* ClaudeStatusLineSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeStatusLineSource.swift; sourceTree = "<group>"; };
+		D53200000000000000000001 /* ClaudeStatusLineInstaller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeStatusLineInstaller.swift; sourceTree = "<group>"; };
+		D54000000000000000000001 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = main.swift; path = Sources/StatusLineBridge/main.swift; sourceTree = SOURCE_ROOT; };
+		D54000000000000000000002 /* balancebar-statusline */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; path = balancebar-statusline; sourceTree = BUILT_PRODUCTS_DIR; };
+		D53300000000000000000002 /* ClaudeRealtimeTrackerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeRealtimeTrackerTests.swift; sourceTree = "<group>"; };
+		D53300000000000000000003 /* ClaudeStatusLineInstallerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeStatusLineInstallerTests.swift; sourceTree = "<group>"; };
+		D53300000000000000000004 /* ClaudeStatusLineSourceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeStatusLineSourceTests.swift; sourceTree = "<group>"; };
+		D53300000000000000000005 /* StatusLineBridgeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusLineBridgeTests.swift; sourceTree = "<group>"; };
 		B52300000000000000000001 /* ClaudeHUDSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeHUDSource.swift; sourceTree = "<group>"; };
 		B52300000000000000000002 /* ClaudeHUDSourceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeHUDSourceTests.swift; sourceTree = "<group>"; };
 		B51B00000000000000000001 /* CodexRolloutSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexRolloutSource.swift; sourceTree = "<group>"; };
@@ -472,6 +490,7 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		D54000000000000000000032 /* Frameworks */ = { isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = ( D54000000000000000000012 /* Foundation.framework in Frameworks */, ); runOnlyForDeploymentPostprocessing = 0; };
 		A10000000000000000000004 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -668,6 +687,7 @@
 				A10000000000000000000016 /* BalanceBar.app */,
 				A1000000000000000000002D /* BalanceBarTests.xctest */,
 				A10000000000000200000017 /* BalanceBarChatGPTLaunchAgent */,
+				D54000000000000000000002 /* balancebar-statusline */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -747,6 +767,10 @@
 				B51400000000000000000003 /* Account */,
 				B51B00000000000000000030 /* Sources */,
 				B51500000000000000000020 /* FetchSchedulerTests.swift */,
+				D53300000000000000000002 /* ClaudeRealtimeTrackerTests.swift */,
+				D53300000000000000000003 /* ClaudeStatusLineInstallerTests.swift */,
+				D53300000000000000000004 /* ClaudeStatusLineSourceTests.swift */,
+				D53300000000000000000005 /* StatusLineBridgeTests.swift */,
 				B52200000000000000000102 /* Inbox */,
 				D19000000000000000000021 /* Diagnostics */,
 			);
@@ -876,6 +900,7 @@
 				B51B00000000000000000021 /* Codex */,
 				B52300000000000000000021 /* HUD */,
 				B52200000000000000000101 /* Inbox */,
+				D53100000000000000000020 /* StatusLine */,
 			);
 			path = Sources;
 			sourceTree = "<group>";
@@ -886,6 +911,15 @@
 				B52300000000000000000001 /* ClaudeHUDSource.swift */,
 			);
 			path = HUD;
+			sourceTree = "<group>";
+		};
+		D53100000000000000000020 /* StatusLine */ = {
+			isa = PBXGroup;
+			children = (
+				D53100000000000000000001 /* ClaudeStatusLineSource.swift */,
+				D53200000000000000000001 /* ClaudeStatusLineInstaller.swift */,
+			);
+			path = StatusLine;
 			sourceTree = "<group>";
 		};
 		B51B00000000000000000021 /* Codex */ = {
@@ -988,6 +1022,7 @@
 				A10000000000000000000065 /* BalanceAPIClient.swift */,
 				A10000000000000000000071 /* OfficialQuotaClient.swift */,
 				D521845FA0C39C8B1422E093 /* ClaudeQuotaPipeline.swift */,
+				D53000000000000000000001 /* ClaudeRealtimeTracker.swift */,
 				A100000000000000000000E8 /* UpdateService.swift */,
 				A10000000000000000000105 /* ReleaseNotes.swift */,
 				A10000000000000000000121 /* LaunchAtLoginService.swift */,
@@ -1205,6 +1240,17 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		D54000000000000000000030 /* balancebar-statusline */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D54000000000000000000033 /* Build configuration list for balancebar-statusline */;
+			buildPhases = ( D54000000000000000000031 /* Sources */, D54000000000000000000032 /* Frameworks */ );
+			buildRules = ( );
+			dependencies = ( );
+			name = balancebar-statusline;
+			productName = balancebar-statusline;
+			productReference = D54000000000000000000002 /* balancebar-statusline */;
+			productType = "com.apple.product-type.tool";
+		};
 		A10000000000000000000002 /* BalanceBar */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = A10000000000000000000007 /* Build configuration list for PBXNativeTarget "BalanceBar" */;
@@ -1213,11 +1259,13 @@
 				A10000000000000000000004 /* Frameworks */,
 				A10000000000000000000005 /* Resources */,
 				A10000000000000200000038 /* Embed ChatGPT launch agent */,
+				D54000000000000000000042 /* Embed statusLine bridge */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 				A10000000000000200000037 /* BalanceBarChatGPTLaunchAgent */,
+				D54000000000000000000041 /* balancebar-statusline */,
 			);
 			name = BalanceBar;
 			packageProductDependencies = (
@@ -1313,6 +1361,7 @@
 				A10000000000000000000002 /* BalanceBar */,
 				A10000000000000200000030 /* BalanceBarChatGPTLaunchAgent */,
 				A10000000000000000000032 /* BalanceBarTests */,
+				D54000000000000000000030 /* balancebar-statusline */,
 			);
 		};
 /* End PBXProject section */
@@ -1430,6 +1479,22 @@
 			shellPath = /bin/sh;
 			shellScript = "set -e\nlaunch_agents_dir=\"$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Library/LaunchAgents\"\nmkdir -p \"$launch_agents_dir\"\ncp \"$BUILT_PRODUCTS_DIR/BalanceBarChatGPTLaunchAgent\" \"$launch_agents_dir/BalanceBarChatGPTLaunchAgent\"\ncp \"$SRCROOT/Sources/LaunchAgent/balancebar-chatgpt-launch-agent.plist\" \"$launch_agents_dir/balancebar-chatgpt-launch-agent.plist\"\n/usr/bin/plutil -replace Label -string \"${PRODUCT_BUNDLE_IDENTIFIER}.chatgpt-launch-agent\" \"$launch_agents_dir/balancebar-chatgpt-launch-agent.plist\"\nchmod +x \"$launch_agents_dir/BalanceBarChatGPTLaunchAgent\"\n";
 		};
+		D54000000000000000000042 /* Embed statusLine bridge */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"$(BUILT_PRODUCTS_DIR)/balancebar-statusline",
+			);
+			name = "Embed statusLine bridge";
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/balancebar-statusline",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -e\nhelpers_dir=\"$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers\"\nmkdir -p \"$helpers_dir\"\ncp \"$BUILT_PRODUCTS_DIR/balancebar-statusline\" \"$helpers_dir/balancebar-statusline\"\nchmod +x \"$helpers_dir/balancebar-statusline\"\n";
+		};
 		A10000000000000300000040 /* Patch XCTest host activation */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
@@ -1449,6 +1514,7 @@
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		D54000000000000000000031 /* Sources */ = { isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = ( D54000000000000000000011 /* main.swift in Sources */, ); runOnlyForDeploymentPostprocessing = 0; };
 		A10000000000000000000003 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -1504,6 +1570,9 @@
 				A10000000000000000000064 /* BalanceAPIClient.swift in Sources */,
 				A10000000000000000000070 /* OfficialQuotaClient.swift in Sources */,
 				D5211E1DA26287DFE63263F9 /* ClaudeQuotaPipeline.swift in Sources */,
+				D53000000000000000000011 /* ClaudeRealtimeTracker.swift in Sources */,
+				D53100000000000000000011 /* ClaudeStatusLineSource.swift in Sources */,
+				D53200000000000000000011 /* ClaudeStatusLineInstaller.swift in Sources */,
 				A10000000000000000000074 /* CodexActivityMonitor.swift in Sources */,
 				A1000000000000000000007B /* ClaudeCodeActivityMonitor.swift in Sources */,
 				A31800000000000000000002 /* GrokActivityMonitor.swift in Sources */,
@@ -1654,12 +1723,18 @@
 				A4700000000000000000000C /* BalanceNotificationCoordinatorTests.swift in Sources */,
 				A100000000000000000000E9 /* UpdateTests.swift in Sources */,
 				A10000000000000000000124 /* LaunchAtLoginServiceTests.swift in Sources */,
+				D53300000000000000000012 /* ClaudeRealtimeTrackerTests.swift in Sources */,
+				D53300000000000000000013 /* ClaudeStatusLineInstallerTests.swift in Sources */,
+				D53300000000000000000014 /* ClaudeStatusLineSourceTests.swift in Sources */,
+				D53300000000000000000015 /* StatusLineBridgeTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
+		D54000000000000000000034 /* Debug */ = { isa = XCBuildConfiguration; buildSettings = { CODE_SIGNING_ALLOWED = NO; MACOSX_DEPLOYMENT_TARGET = 14.0; PRODUCT_NAME = balancebar-statusline; SWIFT_VERSION = 5.0; }; name = Debug; };
+		D54000000000000000000035 /* Release */ = { isa = XCBuildConfiguration; buildSettings = { CODE_SIGNING_ALLOWED = NO; MACOSX_DEPLOYMENT_TARGET = 14.0; PRODUCT_NAME = balancebar-statusline; SWIFT_VERSION = 5.0; }; name = Release; };
 		A10000000000000000000008 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -1775,6 +1850,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		D54000000000000000000033 /* Build configuration list for balancebar-statusline */ = { isa = XCConfigurationList; buildConfigurations = ( D54000000000000000000034 /* Debug */, D54000000000000000000035 /* Release */ ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
 		A10000000000000000000006 /* Build configuration list for PBXProject "BalanceBar" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -1828,6 +1904,13 @@
 			remoteGlobalIDString = A10000000000000200000030;
 			remoteInfo = BalanceBarChatGPTLaunchAgent;
 		};
+		D54000000000000000000040 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A10000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = D54000000000000000000030;
+			remoteInfo = "balancebar-statusline";
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXTargetDependency section */
@@ -1840,6 +1923,11 @@
 			isa = PBXTargetDependency;
 			target = A10000000000000200000030 /* BalanceBarChatGPTLaunchAgent */;
 			targetProxy = A10000000000000200000036 /* PBXContainerItemProxy */;
+		};
+		D54000000000000000000041 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = D54000000000000000000030 /* balancebar-statusline */;
+			targetProxy = D54000000000000000000040 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 	};

@@ -553,11 +553,11 @@
 "quick_switch.state_untrusted" = "Режим не подтверждён: настройте в CC Switch";
 "quick_switch.manage_in_cc_switch" = "Настроить в CC Switch";
 
-"dashboard.refresh.official_quota_frequency" = "Частота обновления официальной квоты";
+"dashboard.refresh.official_quota_frequency" = "Частота обновления официальной квоты Codex";
 "dashboard.refresh.official_every_seconds" = "Каждые %1$@ с";
-"dashboard.refresh.official_scope" = "Официальные аккаунты, например Claude и Codex";
+"dashboard.refresh.official_scope" = "Официальные аккаунты Codex";
 "dashboard.refresh.api_scope" = "Сторонние релеи / API-ключи";
-"dashboard.refresh.minimum_interval_hint" = "Для некоторых источников задан минимальный интервал";
+"dashboard.refresh.minimum_interval_hint" = "Ручное обновление Claude тоже соблюдает интервал около 5 мин";
 
 "quota.status.refreshing" = "Чтение…";
 "quota.status.realtime" = "Онлайн";
@@ -575,3 +575,8 @@
 "status.item.controller.refresh_now_login_expired" = "Обновить сейчас (вход в Claude истёк, сначала запустите claude)";
 "status.item.controller.refresh_now_rate_limited" = "Обновить сейчас (лимит запросов, доступно через %1$@)";
 "status.item.controller.refresh_now_just_refreshed" = "Обновить сейчас (только что обновлено)";
+"claude.status_line.enabled" = "Нативная синхронизация Claude Code";
+"claude.status_line.description" = "Получает новую квоту раньше из строки состояния Claude Code; ваша текущая строка состояния сохраняется. При включении Claude Code может скрыть часть подсказок внизу.";
+"claude.status_line.calibration" = "Сверка официальной квоты Claude";
+"claude.status_line.calibration_value" = "Примерно раз в 5 мин";
+"claude.status_line.calibration_detail" = "Фиксированный интервал, чтобы не упираться в лимиты; с нативной синхронизацией новая квота видна раньше";

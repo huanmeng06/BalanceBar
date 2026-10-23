@@ -553,11 +553,11 @@
 "quick_switch.state_untrusted" = "モードを確認できません：CC Switch で管理";
 "quick_switch.manage_in_cc_switch" = "CC Switch で管理";
 
-"dashboard.refresh.official_quota_frequency" = "公式クォータの更新頻度";
+"dashboard.refresh.official_quota_frequency" = "Codex 公式クォータの更新頻度";
 "dashboard.refresh.official_every_seconds" = "%1$@ 秒ごと";
-"dashboard.refresh.official_scope" = "Claude、Codex などの公式アカウント";
+"dashboard.refresh.official_scope" = "Codex 公式アカウント";
 "dashboard.refresh.api_scope" = "サードパーティ中継 / API キー";
-"dashboard.refresh.minimum_interval_hint" = "一部のソースには最短間隔の制限があります";
+"dashboard.refresh.minimum_interval_hint" = "Claude の手動更新も約 5 分の間隔に従います";
 
 "quota.status.refreshing" = "更新中…";
 "quota.status.realtime" = "ライブ";
@@ -575,3 +575,8 @@
 "status.item.controller.refresh_now_login_expired" = "今すぐ更新（Claude のサインインが期限切れ。先に claude を実行）";
 "status.item.controller.refresh_now_rate_limited" = "今すぐ更新（レート制限中、%1$@後に利用可能）";
 "status.item.controller.refresh_now_just_refreshed" = "今すぐ更新（直前に更新済み）";
+"claude.status_line.enabled" = "Claude Code ネイティブ同期";
+"claude.status_line.description" = "Claude Code のステータスラインから新しいクォータを早めに取得し、既存のステータスラインは維持します。オンにすると Claude Code の下部ヒントの一部が非表示になる場合があります。";
+"claude.status_line.calibration" = "Claude 公式クォータの校正";
+"claude.status_line.calibration_value" = "約 5 分ごと";
+"claude.status_line.calibration_detail" = "制限を避けるため固定間隔です。ネイティブ同期をオンにすると新しいクォータを早めに表示できます";

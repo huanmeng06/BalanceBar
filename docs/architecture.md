@@ -194,3 +194,19 @@ source that is actually present.
 - Do not make a service depend on a view to report progress or errors.
 - Add or extend an XCTest seam for new domain, parsing, service, coordinator, or
   controller behavior before relying on GUI-only confirmation.
+
+## Claude Code quota synchronization
+
+Claude quota requests pass through `FetchScheduler`. The Claude V1 configuration
+uses a five-minute server calibration interval, one-token automatic and manual
+requests, persisted account-scoped success state, and failure backoff. The
+Coordinator only declares whether Claude is being monitored; the scheduler owns
+the next one-shot timer and does not depend on the three-second UI refresh loop.
+
+When enabled, Claude Code's `statusLine` command can be wrapped by the bundled
+`balancebar-statusline` helper. The helper forwards the original command's
+stdin/stdout/stderr and sends a small, non-secret payload to the app's per-user
+Unix socket. `ClaudeStatusLineSource` validates session, epoch, reset-time and
+monotonicity rules before submitting grade-B observations to the existing merge
+engine. `ClaudeRealtimeTracker` extends scheduler suppression only after both
+standard windows were actually displayed.
