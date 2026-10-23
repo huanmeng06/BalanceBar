@@ -583,3 +583,6 @@
 "claude.status_line.disable_confirm_message" = "Das Claude-Kontingent wird dann nur im festen Intervall aktualisiert und nicht direkt nach jeder Antwort.";
 "claude.status_line.disable_confirm_action" = "Ausschalten";
 "claude.status_line.disable_confirm_cancel" = "Abbrechen";
+"claude.status_line.disable_failed_title" = "Native Claude-Code-Synchronisierung konnte nicht ausgeschaltet werden";
+"claude.status_line.disable_failed_message" = "Du hast der statusLine von Claude Code eigene Felder hinzugefügt. BalanceBar kann seinen Befehl nicht entfernen, ohne sie zu verlieren, daher bleibt die Synchronisierung an. Bearbeite statusLine in ~/.claude/settings.json selbst oder entferne die Felder und versuche es erneut.";
+"claude.status_line.disable_failed_ok" = "OK";

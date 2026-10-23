@@ -583,3 +583,6 @@
 "claude.status_line.disable_confirm_message" = "Claude quota will only refresh at the fixed interval and won't update right after each reply.";
 "claude.status_line.disable_confirm_action" = "Turn Off";
 "claude.status_line.disable_confirm_cancel" = "Cancel";
+"claude.status_line.disable_failed_title" = "Couldn't turn off Claude Code native sync";
+"claude.status_line.disable_failed_message" = "You added custom fields to the Claude Code statusLine, and BalanceBar can't remove its own command without losing them, so sync stays on. Edit statusLine in ~/.claude/settings.json yourself, or remove those fields and try again.";
+"claude.status_line.disable_failed_ok" = "OK";

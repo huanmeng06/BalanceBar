@@ -583,3 +583,6 @@
 "claude.status_line.disable_confirm_message" = "끄면 Claude 한도가 정해진 간격으로만 갱신되며, 답변이 끝날 때마다 바로 반영되지 않습니다.";
 "claude.status_line.disable_confirm_action" = "끄기";
 "claude.status_line.disable_confirm_cancel" = "취소";
+"claude.status_line.disable_failed_title" = "Claude Code 네이티브 동기화를 끌 수 없습니다";
+"claude.status_line.disable_failed_message" = "Claude Code statusLine에 사용자 지정 필드가 추가되어 있어, BalanceBar가 이를 잃지 않고 자체 명령을 제거할 수 없으므로 동기화는 켜진 상태로 유지됩니다. ~/.claude/settings.json의 statusLine을 직접 편집하거나 해당 필드를 제거한 뒤 다시 시도하세요.";
+"claude.status_line.disable_failed_ok" = "확인";

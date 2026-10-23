@@ -583,3 +583,6 @@
 "claude.status_line.disable_confirm_message" = "Лимит Claude будет обновляться только с фиксированным интервалом, а не сразу после каждого ответа.";
 "claude.status_line.disable_confirm_action" = "Отключить";
 "claude.status_line.disable_confirm_cancel" = "Отмена";
+"claude.status_line.disable_failed_title" = "Не удалось отключить нативную синхронизацию Claude Code";
+"claude.status_line.disable_failed_message" = "В statusLine Claude Code добавлены ваши собственные поля, и BalanceBar не может убрать свою команду, не потеряв их, поэтому синхронизация остаётся включённой. Отредактируйте statusLine в ~/.claude/settings.json вручную или удалите эти поля и повторите попытку.";
+"claude.status_line.disable_failed_ok" = "OK";

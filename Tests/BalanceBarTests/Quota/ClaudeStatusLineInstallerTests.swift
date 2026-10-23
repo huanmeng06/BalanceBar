@@ -71,6 +71,58 @@ final class ClaudeStatusLineInstallerTests: XCTestCase {
         XCTAssertEqual(try settingsText(), original)
     }
 
+    func testUninstallKeepsFieldsTheUserChangedAfterInstall() throws {
+        try writeSettings(#"{"statusLine":{"type":"command","command":"~/bin/line.sh","padding":0},"env":{"X":"1"}}"#)
+        let installer = makeInstaller()
+        _ = try installer.install()
+        try writeSettings(try settingsText().replacingOccurrences(of: "\"padding\":0", with: "\"padding\":4"))
+
+        XCTAssertTrue(try installer.uninstall())
+        let status = try XCTUnwrap(try statusLine())
+        XCTAssertEqual(status["command"] as? String, "~/bin/line.sh")
+        XCTAssertEqual(status["padding"] as? Int, 4, "the padding edit made after install is kept")
+        XCTAssertEqual(status["type"] as? String, "command")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: backupURL.path))
+    }
+
+    func testUninstallKeepsFieldsAddedAfterInstallToAnExistingStatusLine() throws {
+        try writeSettings(#"{"statusLine":{"type":"command","command":"~/bin/line.sh"}}"#)
+        let installer = makeInstaller()
+        _ = try installer.install()
+        try writeSettings(try settingsText().replacingOccurrences(of: "\"type\":\"command\"", with: "\"type\":\"command\",\"padding\":3"))
+
+        XCTAssertTrue(try installer.uninstall())
+        let status = try XCTUnwrap(try statusLine())
+        XCTAssertEqual(status["command"] as? String, "~/bin/line.sh")
+        XCTAssertEqual(status["padding"] as? Int, 3)
+    }
+
+    func testUninstallKeepsUserEditsWhenTheOriginalCommandWasEmpty() throws {
+        try writeSettings(#"{"statusLine":{"type":"command","command":"","padding":0}}"#)
+        let installer = makeInstaller()
+        _ = try installer.install()
+        try writeSettings(try settingsText().replacingOccurrences(of: "\"padding\":0", with: "\"padding\":4"))
+
+        XCTAssertTrue(try installer.uninstall())
+        let status = try XCTUnwrap(try statusLine())
+        XCTAssertEqual(status["command"] as? String, "")
+        XCTAssertEqual(status["padding"] as? Int, 4)
+    }
+
+    func testUninstallReportsFailureForAnExtendedBalanceBarCreatedStatusLine() throws {
+        try writeSettings(#"{"model":"opus"}"#)
+        let installer = makeInstaller()
+        _ = try installer.install()
+        try writeSettings(try settingsText().replacingOccurrences(of: "\"type\":\"command\"", with: "\"type\":\"command\",\"padding\":3"))
+        let before = try settingsText()
+
+        XCTAssertThrowsError(try installer.uninstall()) {
+            XCTAssertEqual($0 as? ClaudeStatusLineInstallerError, .modifiedSinceInstall)
+        }
+        XCTAssertEqual(try settingsText(), before, "nothing is written when the user extended our object")
+        XCTAssertTrue(installer.isInstalled(), "the wrapper is still configured, so the caller keeps the bridge on")
+    }
+
     func testCommandWithQuotesPipesAndUnicodeRoundTrips() throws {
         let command = #"jq -r '"[\(.model.display_name)] ✓"' | sed "s/a/b/" && printf '%s\n' "$HOME" # 注释"#
         let object: [String: Any] = ["statusLine": ["type": "command", "command": command]]

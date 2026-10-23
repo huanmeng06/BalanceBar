@@ -309,6 +309,44 @@ final class FetchSchedulerTests: XCTestCase {
         XCTAssertEqual(transport.completions.count, 1)
     }
 
+    func testManualRefreshSatisfiedByLocalDataRearmsAutomaticTimer() {
+        let freePath = FakeFreePath()
+        let scheduler = makeScheduler(freePath: freePath, configuration: .claudeV1)
+        scheduler.setDemand(true)
+        request(scheduler, .initial)
+        complete(scheduler, .success(Data()))
+        clock.advance(400) // past the manual refresh window, so the free-path check runs
+        freePath.satisfied = true
+        scheduler.requestFetch(reason: .manual)
+        scheduler.waitUntilIdle()
+        timer.delays.removeAll()
+        timer.fireAll() // ends the coalescing window, which runs the evaluation
+        scheduler.waitUntilIdle()
+        scheduler.waitUntilIdle()
+        XCTAssertEqual(lastSkip, .freePathSatisfied)
+        XCTAssertFalse(timer.delays.isEmpty, "the automatic timer is armed again once the check ends")
+    }
+
+    func testManualRefreshWithoutTokensAfterFreePathCheckRearmsAutomaticTimer() {
+        let freePath = FakeFreePath()
+        var configuration = FetchSchedulerConfiguration.claudeV1
+        configuration.tokenCapacity = 1
+        configuration.tokenRefillInterval = 100_000
+        let scheduler = makeScheduler(freePath: freePath, configuration: configuration)
+        scheduler.setDemand(true)
+        request(scheduler, .initial)
+        complete(scheduler, .success(Data())) // spends the only token
+        clock.advance(400)
+        scheduler.requestFetch(reason: .manual)
+        scheduler.waitUntilIdle()
+        timer.delays.removeAll()
+        timer.fireAll()
+        scheduler.waitUntilIdle()
+        scheduler.waitUntilIdle()
+        XCTAssertEqual(lastSkip, .insufficientTokens)
+        XCTAssertFalse(timer.delays.isEmpty)
+    }
+
     func testFreshRealtimeSourceSuppressesAutomaticUntilCalibrationCap() {
         let realtime = FakeRealtime()
         let scheduler = makeScheduler(realtime: realtime, cap: 600)

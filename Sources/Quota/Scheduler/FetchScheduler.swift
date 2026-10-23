@@ -211,6 +211,9 @@ public final class FetchScheduler: FetchScheduling {
         freePathChecker.checkFreePath(within: window) { [self] satisfied in
             queue.async {
                 isBusy = false
+                // The check suspended the automatic timer while busy; a branch that ends without a
+                // request never reaches `complete`, so re-arm here (a dispatch re-arms in `complete`).
+                defer { rearmOnQueue() }
                 if satisfied {
                     return log(.skipped, reasons: reasons, skip: .freePathSatisfied)
                 }

@@ -583,3 +583,6 @@
 "claude.status_line.disable_confirm_message" = "A cota do Claude será atualizada apenas no intervalo fixo, e não logo após cada resposta.";
 "claude.status_line.disable_confirm_action" = "Desativar";
 "claude.status_line.disable_confirm_cancel" = "Cancelar";
+"claude.status_line.disable_failed_title" = "Não foi possível desativar a sincronização nativa do Claude Code";
+"claude.status_line.disable_failed_message" = "Você adicionou campos próprios à statusLine do Claude Code e o BalanceBar não consegue remover o próprio comando sem perdê-los, então a sincronização continua ativa. Edite statusLine em ~/.claude/settings.json ou remova esses campos e tente de novo.";
+"claude.status_line.disable_failed_ok" = "OK";
