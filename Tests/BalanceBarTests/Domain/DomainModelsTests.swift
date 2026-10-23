@@ -267,6 +267,24 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertEqual(weeklyPace.status, .slow)
     }
 
+    func testIdleWindowProjectsRollingResetFromNow() throws {
+        func idle(_ remaining: Double, resetAt: Date? = nil) -> OfficialQuotaWindow {
+            OfficialQuotaWindow(kind: .fiveHour, remaining: remaining, label: "5h", daysText: "5h",
+                reset: "5h0m", durationSeconds: 18_000, resetAt: resetAt)
+        }
+        let t1 = Date(timeIntervalSince1970: 1_800_000_000)
+        let first = idle(100).projectingIdleReset(now: t1)
+        XCTAssertEqual(first.resetAt, t1.addingTimeInterval(18_000))
+        XCTAssertEqual(OfficialQuotaUsagePace.make(for: first, now: t1)?.status, .unused)
+        let t2 = t1.addingTimeInterval(300)
+        XCTAssertEqual(idle(100).projectingIdleReset(now: t2).resetAt, t2.addingTimeInterval(18_000), "the reset rolls with now")
+
+        XCTAssertNil(idle(99).projectingIdleReset(now: t1).resetAt, "a used window without a server reset stays unknown")
+        let server = t1.addingTimeInterval(600)
+        XCTAssertEqual(idle(100, resetAt: server).projectingIdleReset(now: t1).resetAt, server, "a server reset is never overridden")
+    }
+
+
     func testOfficialQuotaUsagePaceClassifiesUnusedAndRoundedBoundaries() throws {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
         func window(remaining: Double) -> OfficialQuotaWindow {

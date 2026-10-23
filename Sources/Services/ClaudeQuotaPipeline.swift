@@ -490,7 +490,7 @@ final class ClaudeQuotaPipeline {
                 source: nativeDisplayed ? .realtime : .official, updatedAt: updatedAt))
         let next = ClaudeQuotaState(
             display: model,
-            windows: Self.cardWindows(from: model, now: date),
+            windows: DevelopmentClaudeIdleDemo.windows() ?? Self.cardWindows(from: model, now: date),
             accountEpoch: identity.accountEpoch,
             accountScope: Self.accountScope(for: identity.accountIdentity),
             updatedAt: updatedAt,
@@ -614,5 +614,22 @@ extension ClaudeQuotaPipeline {
             schedulerConfiguration: .claudeV1,
             realtimeTracker: tracker,
             statusLineSource: source)
+    }
+}
+
+/// Supplies an untouched (100%, no server reset) Claude quota only to the
+/// explicitly named demo bundle. Normal bundles return nil.
+enum DevelopmentClaudeIdleDemo {
+    private static let infoPlistKey = "BalanceBarClaudeIdleDemo"
+
+    static func windows() -> [OfficialQuotaWindow]? {
+        guard Bundle.main.bundleIdentifier?.contains(".demo.") == true,
+              Bundle.main.object(forInfoDictionaryKey: infoPlistKey) as? String == "claude-idle" else { return nil }
+        return [
+            OfficialQuotaWindow(kind: .fiveHour, remaining: 100, label: tr(.keyResponseParsers5HourQuota),
+                daysText: tr(.keyResponseParsers5Hours), reset: "5h0m", durationSeconds: 5 * 3_600),
+            OfficialQuotaWindow(kind: .sevenDay, remaining: 100, label: tr(.keyResponseParsers7DayQuota),
+                daysText: tr(.keyResponseParsers7Days), reset: "7d0h", durationSeconds: 7 * 86_400)
+        ]
     }
 }

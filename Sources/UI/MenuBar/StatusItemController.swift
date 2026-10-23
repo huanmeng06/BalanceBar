@@ -6082,10 +6082,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     /// The refresh item explains a skipped refresh up front, since the menu closes on click.
-    func manualRefreshMenuTitle(now: Date = Date()) -> String {
+    /// The action title stays fixed; the state goes in the secondary subtitle.
+    func manualRefreshMenuSubtitle(now: Date = Date()) -> String? {
         switch actions.manualRefreshNotice() {
         case nil:
-            return tr(.keyStatusItemControllerRefreshNow)
+            return nil
         case .loginExpired?:
             return tr(.keyStatusItemControllerRefreshNowLoginExpired)
         case let .rateLimited(until)?:
@@ -6100,7 +6101,28 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         case .localFresh?, .recentResult?, .inFlight?:
             return tr(.keyStatusItemControllerRefreshNowJustRefreshed)
         case .networkUnavailable?, .succeeded?:
-            return tr(.keyStatusItemControllerRefreshNow)
+            return nil
+        }
+    }
+
+    private func applyManualRefreshContent(to item: NSMenuItem) {
+        let title = tr(.keyStatusItemControllerRefreshNow)
+        let subtitle = manualRefreshMenuSubtitle()
+        item.title = title
+        if #available(macOS 14.4, *) {
+            item.attributedTitle = nil
+            item.subtitle = subtitle
+        } else if let subtitle {
+            // NSMenuItem.subtitle is unavailable before 14.4; draw the same two lines.
+            let text = NSMutableAttributedString(
+                string: title, attributes: [.font: NSFont.menuFont(ofSize: 0)])
+            text.append(NSAttributedString(string: "\n" + subtitle, attributes: [
+                .font: NSFont.menuFont(ofSize: NSFont.smallSystemFontSize),
+                .foregroundColor: NSColor.secondaryLabelColor
+            ]))
+            item.attributedTitle = text
+        } else {
+            item.attributedTitle = nil
         }
     }
 
@@ -6216,11 +6238,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         if menuInput.showQuickSwitchMenu {
             menu.addItem(makeQuickSwitchMenuItem())
         }
-        menu.addItem(
-            withTitle: manualRefreshMenuTitle(),
+        let refreshItem = menu.addItem(
+            withTitle: tr(.keyStatusItemControllerRefreshNow),
             action: #selector(manualRefresh),
             keyEquivalent: "r"
-        ).target = self
+        )
+        refreshItem.target = self
+        applyManualRefreshContent(to: refreshItem)
         menu.addItem(.separator())
         menu.addItem(makeOpenDashboardMenuItem())
         if menuInput.showOpenChatGPTMenu {
@@ -7101,8 +7125,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         if (!officialQuotaWindows.isEmpty && !layout.quotaRows.isEmpty)
             || layout.lunaReserveRow != nil
             || layout.bankedResetSummaryRow != nil || layout.bankedResetProbabilityRow != nil {
-            for (index, window) in officialQuotaWindows.enumerated() {
-                let id = OpenCodexOverviewSectionID.quota(window, index: index)
+            for (index, rawWindow) in officialQuotaWindows.enumerated() {
+                let id = OpenCodexOverviewSectionID.quota(rawWindow, index: index)
+                let window = context.paceClient == .claude ? rawWindow.projectingIdleReset(now: quotaPaceNow) : rawWindow
                 guard let section = layout.sectionLayouts.first(where: { $0.id == id }),
                       let row = section.row, let sectionView = sectionViews[id] as? OpenCodexMetricSectionView else { continue }
                 let sample = OverviewNumericSample(
@@ -7720,7 +7745,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             for view in host.paceViews {
                 if identityMatches, let window = windows.first(where: {
                     OverviewNumericPresentation.identity(for: $0, provider: context.identity) == view.numericIdentity
-                }) {
+                }).map({ context.paceClient == .claude ? $0.projectingIdleReset(now: now) : $0 }) {
                     view.update(window: window, now: now, cycleStart: quotaPaceCycleStart(for: window, context: context),
                         timeZone: settings.displayTimeZone)
                 } else {
@@ -8629,7 +8654,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 extension StatusItemController: NSMenuItemValidation {
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         guard menuItem.action == #selector(manualRefresh) else { return true }
-        menuItem.title = manualRefreshMenuTitle()
+        applyManualRefreshContent(to: menuItem)
         return isManualRefreshAvailable
     }
 }

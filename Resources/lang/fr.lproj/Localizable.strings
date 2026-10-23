@@ -572,9 +572,9 @@
 "quota.failure.open_usage_page" = "Ouvrir la page d’utilisation officielle";
 "quota.status.accessibility" = "État du quota : %1$@";
 "claude.refresh.login_expired" = "La connexion à Claude Code a expiré. Exécutez claude une fois dans un terminal pour la rétablir ; BalanceBar ne renouvelle jamais la connexion lui-même.";
-"status.item.controller.refresh_now_login_expired" = "Actualiser maintenant (connexion Claude expirée, exécutez d'abord claude)";
-"status.item.controller.refresh_now_rate_limited" = "Actualiser maintenant (limite de requêtes, disponible dans %1$@)";
-"status.item.controller.refresh_now_just_refreshed" = "Actualiser maintenant (vient d'être actualisé)";
+"status.item.controller.refresh_now_login_expired" = "Connexion Claude expirée, exécutez d'abord claude";
+"status.item.controller.refresh_now_rate_limited" = "Limite de requêtes, disponible dans %1$@";
+"status.item.controller.refresh_now_just_refreshed" = "Vient d'être actualisé";
 "claude.status_line.enabled" = "Synchronisation native Claude Code";
 "claude.status_line.description" = "Récupère plus tôt le nouveau quota depuis la ligne d’état de Claude Code et conserve votre ligne d’état actuelle. Une fois activé, Claude Code peut masquer certaines indications en bas.";
 "claude.status_line.calibration" = "Recalage du quota officiel Claude";

@@ -572,9 +572,9 @@
 "quota.failure.open_usage_page" = "Open official usage page";
 "quota.status.accessibility" = "Quota status: %1$@";
 "claude.refresh.login_expired" = "Claude Code sign-in has expired. Run claude once in a terminal to restore it; BalanceBar never renews the login itself.";
-"status.item.controller.refresh_now_login_expired" = "Refresh Now (Claude sign-in expired, run claude first)";
-"status.item.controller.refresh_now_rate_limited" = "Refresh Now (rate limited, available in %1$@)";
-"status.item.controller.refresh_now_just_refreshed" = "Refresh Now (just refreshed)";
+"status.item.controller.refresh_now_login_expired" = "Claude sign-in expired, run claude first";
+"status.item.controller.refresh_now_rate_limited" = "Rate limited, available in %1$@";
+"status.item.controller.refresh_now_just_refreshed" = "Just refreshed";
 "claude.status_line.enabled" = "Claude Code native sync";
 "claude.status_line.description" = "Picks up new quota early from the Claude Code status line and keeps your existing status line. Claude Code may hide some footer hints while it's on.";
 "claude.status_line.calibration" = "Claude official quota calibration";

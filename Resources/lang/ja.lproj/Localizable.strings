@@ -572,9 +572,9 @@
 "quota.failure.open_usage_page" = "公式の使用状況ページを開く";
 "quota.status.accessibility" = "クォータの状態：%1$@";
 "claude.refresh.login_expired" = "Claude Code のサインインが期限切れです。ターミナルで claude を一度実行すると復旧します。BalanceBar がサインインを自動更新することはありません。";
-"status.item.controller.refresh_now_login_expired" = "今すぐ更新（Claude のサインインが期限切れ。先に claude を実行）";
-"status.item.controller.refresh_now_rate_limited" = "今すぐ更新（レート制限中、%1$@後に利用可能）";
-"status.item.controller.refresh_now_just_refreshed" = "今すぐ更新（直前に更新済み）";
+"status.item.controller.refresh_now_login_expired" = "Claude のサインインが期限切れ。先に claude を実行";
+"status.item.controller.refresh_now_rate_limited" = "レート制限中、%1$@後に利用可能";
+"status.item.controller.refresh_now_just_refreshed" = "直前に更新済み";
 "claude.status_line.enabled" = "Claude Code ネイティブ同期";
 "claude.status_line.description" = "Claude Code のステータスラインから新しいクォータを早めに取得し、既存のステータスラインは維持します。オンにすると Claude Code の下部ヒントの一部が非表示になる場合があります。";
 "claude.status_line.calibration" = "Claude 公式クォータの校正";

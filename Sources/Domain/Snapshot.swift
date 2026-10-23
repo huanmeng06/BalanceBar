@@ -198,6 +198,21 @@ struct OfficialQuotaWindow: Equatable {
         self.resetAt = resetAt
     }
 
+    /// An untouched window (100%) has no server reset yet: its clock starts at
+    /// the first use. Project a rolling reset of `now + duration` for display
+    /// only, so the card shows the earliest possible reset and the pace marker.
+    func projectingIdleReset(now: Date) -> OfficialQuotaWindow {
+        guard resetAt == nil, remaining >= 100 - 0.0001,
+              kind == .fiveHour || kind == .sevenDay,
+              let durationSeconds, durationSeconds.isFinite, durationSeconds > 0,
+              now.timeIntervalSince1970.isFinite else { return self }
+        let projected = now.addingTimeInterval(durationSeconds)
+        return OfficialQuotaWindow(
+            kind: kind, remaining: remaining, label: label, daysText: daysText,
+            reset: ResponseParsingSupport.resetDescription(projected.timeIntervalSince1970, now: now) ?? reset,
+            durationSeconds: durationSeconds, resetAt: projected)
+    }
+
     /// Keep unrecognized/legacy windows on the existing relative-only path.
     /// Only the two Codex windows identified by Issue #202 may expose a
     /// precise timestamp in the quota card.

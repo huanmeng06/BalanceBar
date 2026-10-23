@@ -572,9 +572,9 @@
 "quota.failure.open_usage_page" = "Abrir la página oficial de uso";
 "quota.status.accessibility" = "Estado de la cuota: %1$@";
 "claude.refresh.login_expired" = "El inicio de sesión de Claude Code ha caducado. Ejecuta claude una vez en una terminal para restaurarlo; BalanceBar nunca renueva el inicio de sesión por sí mismo.";
-"status.item.controller.refresh_now_login_expired" = "Actualizar ahora (sesión de Claude caducada, ejecuta claude primero)";
-"status.item.controller.refresh_now_rate_limited" = "Actualizar ahora (límite de peticiones, disponible en %1$@)";
-"status.item.controller.refresh_now_just_refreshed" = "Actualizar ahora (recién actualizado)";
+"status.item.controller.refresh_now_login_expired" = "Sesión de Claude caducada, ejecuta claude primero";
+"status.item.controller.refresh_now_rate_limited" = "Límite de peticiones, disponible en %1$@";
+"status.item.controller.refresh_now_just_refreshed" = "Recién actualizado";
 "claude.status_line.enabled" = "Sincronización nativa de Claude Code";
 "claude.status_line.description" = "Obtiene antes la nueva cuota desde la línea de estado de Claude Code y conserva tu línea de estado actual. Al activarlo, Claude Code puede ocultar algunas pistas del pie.";
 "claude.status_line.calibration" = "Calibración de la cuota oficial de Claude";
