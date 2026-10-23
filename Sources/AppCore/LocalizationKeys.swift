@@ -518,6 +518,7 @@
     case keyCodexBankedResetRemainingDaysHours = "codex.banked_reset.remaining_days_hours"
     case keyCodexBankedResetRemainingMinutes = "codex.banked_reset.remaining_minutes"
     case keyCodexBankedResetProbabilityPrefix = "codex.banked_reset.probability_prefix"
+    case keyCodexBankedResetWindowDeadlineCountdown = "codex.banked_reset.window_deadline_countdown"
     case keyCodexBankedResetProbabilitySource = "codex.banked_reset.probability_source"
     case keyCodexBankedResetProbabilityHint = "codex.banked_reset.probability_hint"
     case keyCodexBankedResetTooltipTitle = "codex.banked_reset.tooltip.title"

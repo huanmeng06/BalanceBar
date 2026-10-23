@@ -625,11 +625,14 @@ enum OpenCodexCardLayout {
 
     /// The probability section is one two-line band: the primary value spans
     /// the title and subtitle, while the reset frame carries the forecast
-    /// subtitle or official hint.
+    /// subtitle or official hint. The deadline-countdown variant adds the
+    /// standard quota progress row, which puts an independent full-width bar
+    /// under the text band instead of sharing the subtitle slot with it.
     static func bankedResetProbabilityBlockHeight(
-        includesForecastMetrics: Bool = true
+        includesForecastMetrics: Bool = true,
+        includesCountdownProgress: Bool = false
     ) -> CGFloat {
-        bankedResetTextBandAmountHeight
+        includesCountdownProgress ? quotaProgressRowHeight : bankedResetTextBandAmountHeight
     }
 
     /// Large primary label for the strong-signal fallback. Shrinks just
@@ -708,6 +711,7 @@ enum OpenCodexCardLayout {
         includesBankedResetNearestExpiry: Bool = false,
         includesBankedResetForecastMetrics: Bool = true,
         includesResetProbability: Bool? = nil,
+        includesBankedResetCountdownProgress: Bool = false,
         bankedResetTicketMetrics: [OpenCodexTicketTextMetrics] = []
     ) -> OpenCodexCardFrames {
         let showsProbability = includesResetProbability ?? includesBankedReset
@@ -729,6 +733,7 @@ enum OpenCodexCardLayout {
                 includesBankedResetNearestExpiry: includesBankedResetNearestExpiry,
                 includesBankedResetForecastMetrics: includesBankedResetForecastMetrics,
                 includesResetProbability: showsProbability,
+                includesBankedResetCountdownProgress: includesBankedResetCountdownProgress,
                 bankedResetTicketMetrics: bankedResetTicketMetrics
             )
         }
@@ -855,6 +860,7 @@ enum OpenCodexCardLayout {
         includesBankedResetNearestExpiry: Bool,
         includesBankedResetForecastMetrics: Bool,
         includesResetProbability: Bool,
+        includesBankedResetCountdownProgress: Bool,
         bankedResetTicketMetrics: [OpenCodexTicketTextMetrics]
     ) -> OpenCodexCardFrames {
         let windowCount = windows.count
@@ -881,7 +887,8 @@ enum OpenCodexCardLayout {
         let forecastLineHeight = bankedResetForecastLineHeight()
         let probabilityBlockHeight = includesResetProbability
             ? bankedResetProbabilityBlockHeight(
-                includesForecastMetrics: includesBankedResetForecastMetrics
+                includesForecastMetrics: includesBankedResetForecastMetrics,
+                includesCountdownProgress: includesBankedResetCountdownProgress
             )
             : 0
         let cardSummaryHeight = includesBankedReset
@@ -975,7 +982,22 @@ enum OpenCodexCardLayout {
                 .withResetVisible(showsReset)
         }
         if includesResetProbability {
-            body.append((.resetProbability, probabilityBlockHeight, bandRow(y: 0, showsReset: true)))
+            let probabilityRow: OpenCodexQuotaRowFrames
+            if includesBankedResetCountdownProgress {
+                // Same text band and 5pt bar slots as an official quota row.
+                // The bar owns the row's bottom edge, so it can never be
+                // shortened by the amount's rendered width.
+                probabilityRow = metricRow(
+                    detailOffset: quotaProgressDetailOffset,
+                    resetOffset: quotaProgressResetOffset,
+                    amountOffset: quotaProgressResetOffset,
+                    amountHeight: bankedResetTextBandAmountHeight,
+                    progress: true
+                )
+            } else {
+                probabilityRow = bandRow(y: 0, showsReset: true)
+            }
+            body.append((.resetProbability, probabilityBlockHeight, probabilityRow))
         }
         if includesBankedReset {
             body.append((.bankedReset, cardSummaryHeight + bankedDetailBlockHeight,

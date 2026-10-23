@@ -315,6 +315,14 @@ final class LocalizationTests: XCTestCase {
             "Reset probability"
         )
         XCTAssertEqual(
+            tr(.keyCodexBankedResetWindowDeadlineCountdown, language: .simplifiedChinese),
+            "窗口截止倒计时"
+        )
+        XCTAssertEqual(
+            tr(.keyCodexBankedResetWindowDeadlineCountdown, language: .english),
+            "Window deadline countdown"
+        )
+        XCTAssertEqual(
             tr(.keyCodexBankedResetProbabilitySource, language: .simplifiedChinese),
             "数据来源"
         )

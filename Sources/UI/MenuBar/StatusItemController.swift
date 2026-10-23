@@ -7039,6 +7039,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             includesBankedResetNearestExpiry: nearestExpiryText != nil,
             includesResetProbability: settings.showBankedReset && snapshot.kind == .official
                 && (bankedReset != nil || presentation.resetForecast.hasAnyValue),
+            includesBankedResetCountdownProgress: settings.showBankedReset
+                && snapshot.kind == .official
+                && presentation.resetForecast.showsOfficialWindowDeadlineProgress,
             bankedResetTicketMetrics: bankedResetTicketMetrics
         )
     }
@@ -8022,7 +8025,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         }
         // The title, not the amount, hosts the source bubble and website link.
-        let titleText = tr(.keyCodexBankedResetProbabilityPrefix)
+        let titleText = contentKey.primary == .countdown
+            ? tr(.keyCodexBankedResetWindowDeadlineCountdown)
+            : tr(.keyCodexBankedResetProbabilityPrefix)
         let titleLink = contentKey.primary == .confirmed ? nil : HoverLinkTextField(text: titleText)
         let probabilityTitle = AccountMarqueeView(
             text: titleText,
@@ -8049,9 +8054,31 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             configureBankedResetSourceLink(titleLink, forecast: forecast)
             eventHost.track(titleLink)
         }
-        // Reuse the source subtitle slot and stop at the primary amount's
-        // visible leading edge. Long localized copy uses the marquee viewport.
-        if !row.reset.isEmpty {
+        // The countdown variant reserves a dedicated subtitle line for the
+        // absolute deadline and a separate bottom row for the progress bar.
+        // Other presentations keep the shared forecast/hint subtitle slot.
+        if contentKey.primary == .countdown {
+            let deadlineFrame = overviewMarqueeFrame(
+                row.reset, avoidingAmountFrame: amount.frame,
+                amountText: marqueeAmountText, amountFont: reservationFont,
+                minimumAmountGap: 12
+            )
+            if let deadline = forecast.officialWindowDeadlineText(timeZone: settings.displayTimeZone) {
+                addBankedResetOfficialCountdownDeadline(
+                    to: view,
+                    frame: deadlineFrame,
+                    text: deadline,
+                    leadingInkAnchor: leadingInkAnchor
+                )
+            }
+            if let remaining = forecast.officialCountdownRemainingFraction(now: bankedResetCountdownNow()) {
+                addBankedResetOfficialCountdownProgress(
+                    to: view,
+                    frame: row.progress,
+                    remainingFraction: remaining
+                )
+            }
+        } else if !row.reset.isEmpty {
             let subtitleFrame = row.reset
             let metricsFrame = overviewMarqueeFrame(
                 subtitleFrame, avoidingAmountFrame: amount.frame,
@@ -8074,24 +8101,38 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
     }
 
+    private func addBankedResetOfficialCountdownDeadline(
+        to view: NSView,
+        frame: NSRect,
+        text: String,
+        leadingInkAnchor: CGFloat
+    ) {
+        let label = makeMarqueeOverviewLabel(
+            text,
+            font: OpenCodexCardLayout.bankedResetForecastSubtitleFont,
+            textColor: .secondaryLabelColor,
+            frame: frame,
+            leadingInkAnchor: leadingInkAnchor
+        )
+        label.identifier = NSUserInterfaceItemIdentifier(
+            "codex.bankedReset.officialCountdownDeadline"
+        )
+        label.accountLabel.identifier = label.identifier
+        view.addSubview(label)
+    }
+
     private func addBankedResetOfficialCountdownProgress(
         to view: NSView,
         frame: NSRect,
         remainingFraction: Double
     ) {
-        let height = OpenCodexCardLayout.quotaProgressHeight
-        let barFrame = NSRect(
-            x: frame.minX,
-            y: frame.midY - height / 2,
-            width: frame.width,
-            height: height
-        )
+        guard frame.width > 0, frame.height > 0 else { return }
         let progress = QuotaProgressView(
             percentage: remainingFraction * 100,
             colorConfiguration: settings.quotaProgressColorConfiguration,
             fillOrigin: .leading
         )
-        progress.frame = barFrame
+        progress.frame = frame
         progress.identifier = NSUserInterfaceItemIdentifier(
             "codex.bankedReset.officialCountdownProgress"
         )
@@ -8453,7 +8494,17 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             section.updateText(title: reserve.menuTitleText, subtitle: reserve.menuSubtitle(timeZone: settings.displayTimeZone))
         }
         if let section = sections.first(where: { $0.sectionID == .resetProbability }) {
-            (section.titleView as? AccountMarqueeView)?.updateText(tr(.keyCodexBankedResetProbabilityPrefix), preserveScrollPosition: true)
+            let titleText = presentation.resetForecast.isOfficialWindowDeadlineCountdown
+                ? tr(.keyCodexBankedResetWindowDeadlineCountdown)
+                : tr(.keyCodexBankedResetProbabilityPrefix)
+            (section.titleView as? AccountMarqueeView)?.updateText(titleText, preserveScrollPosition: true)
+            if let deadline = presentation.resetForecast.officialWindowDeadlineText(
+                timeZone: settings.displayTimeZone
+            ) {
+                descendantViews(of: section, as: AccountMarqueeView.self).first {
+                    $0.identifier?.rawValue == "codex.bankedReset.officialCountdownDeadline"
+                }?.updateText(deadline, preserveScrollPosition: true)
+            }
         }
         if let banked = presentation.bankedReset,
            let section = sections.first(where: { $0.sectionID == .bankedReset }) {
