@@ -180,6 +180,11 @@ final class ClaudeQuotaPipeline {
         scheduler.addResultHandler { [weak self] delivery in
             self?.queue.async { self?.handle(delivery) }
         }
+        // The scheduler's own timer goes through the same credential read as every other
+        // request, so a new login is noticed even while a 401 pause holds.
+        scheduler.setAutomaticTrigger { [weak self] in
+            self?.queue.async { self?.prepareAndRequest(.scheduled) }
+        }
     }
 
     deinit {

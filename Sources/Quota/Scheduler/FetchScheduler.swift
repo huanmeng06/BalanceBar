@@ -31,6 +31,14 @@ public final class FetchScheduler: FetchScheduling {
     private var lastFailureAt: Date?
     private var demandEnabled = false
     private var timerGeneration = 0
+    /// Non-routine reasons that arrived while a request was in flight; replayed once it ends
+    /// so an account switch during a stale request still gets its own read.
+    private var deferredReasons: Set<FetchRequestReason> = []
+    /// Called when the scheduler's own timer decides an automatic check is due. Lets the
+    /// owner refresh credentials first; defaults to `requestFetch(.scheduled)`.
+    private var automaticTrigger: (() -> Void)?
+    /// Timer-only `.scheduled` evaluations skipped in a row; any dispatch resets it.
+    private var idleTimerSkips = 0
     private var resultHandlers: [(FetchSchedulerDelivery) -> Void] = []
 
     /// - Parameter calibrationIntervalCap: Reads the existing refresh-interval setting, used as an
@@ -68,10 +76,6 @@ public final class FetchScheduler: FetchScheduling {
                 persistent = loaded
                 lastServerAttemptAt = loaded.lastServerAttemptAt
                 consecutiveFailures = loaded.consecutiveFailures
-                if loaded.lastSuccessAccountKey == identity.accountKey,
-                   let at = loaded.lastServerSuccessAt {
-                    lastSuccess = (at, identity.accountEpoch)
-                }
             }
         }
     }
@@ -82,19 +86,7 @@ public final class FetchScheduler: FetchScheduling {
     }
 
     public func requestFetch(reason: FetchRequestReason) {
-        queue.async { [self] in
-            log(.requested, reasons: [reason])
-            if isBusy {
-                log(.skipped, reasons: [reason], skip: .coalescedIntoInFlight)
-                return
-            }
-            pendingReasons.insert(reason)
-            guard !isCoalescing else { return }
-            isCoalescing = true
-            timer.schedule(after: configuration.coalescingWindow) { [self] in
-                queue.async { flushPending() }
-            }
-        }
+        queue.async { [self] in enqueue(reason) }
     }
 
     /// Enables or disables scheduler-owned automatic checks.
@@ -103,6 +95,11 @@ public final class FetchScheduler: FetchScheduling {
             demandEnabled = enabled
             rearmOnQueue()
         }
+    }
+
+    /// Replaces what runs when the scheduler's timer finds an automatic check due.
+    public func setAutomaticTrigger(_ trigger: (() -> Void)?) {
+        queue.async { [self] in automaticTrigger = trigger }
     }
 
     /// Recomputes the single pending automatic check without replaying history.
@@ -141,6 +138,25 @@ public final class FetchScheduler: FetchScheduling {
     }
 
     // MARK: - Evaluation (scheduler queue only)
+
+    private func enqueue(_ reason: FetchRequestReason) {
+        log(.requested, reasons: [reason])
+        if isBusy {
+            if reason != .scheduled { deferredReasons.insert(reason) }
+            log(.skipped, reasons: [reason], skip: .coalescedIntoInFlight)
+            return
+        }
+        pendingReasons.insert(reason)
+        startCoalescing()
+    }
+
+    private func startCoalescing() {
+        guard !isCoalescing else { return }
+        isCoalescing = true
+        timer.schedule(after: configuration.coalescingWindow) { [self] in
+            queue.async { flushPending() }
+        }
+    }
 
     private func flushPending() {
         isCoalescing = false
@@ -213,13 +229,19 @@ public final class FetchScheduler: FetchScheduling {
            !calibrationCapExceeded(now: now) {
             return log(.skipped, reasons: reasons, skip: .realtimeSourceFresh)
         }
-        spendAndDispatch(reasons, cost: configuration.automaticTokenCost)
+        // A first read for a new or newly loaded account is user-visible, so it is charged like
+        // a manual request instead of waiting for the routine budget.
+        spendAndDispatch(reasons, cost: bypassMinimum ? configuration.manualTokenCost : configuration.automaticTokenCost)
     }
 
     /// Last success time for the current account epoch; another account's success never counts.
+    /// A success persisted before a restart counts once the identity reports the same account;
+    /// the identity loads asynchronously, so this is resolved on read instead of at init.
     private var currentEpochLastSuccessAt: Date? {
-        guard let lastSuccess, lastSuccess.epoch == identity.accountEpoch else { return nil }
-        return lastSuccess.at
+        if let lastSuccess, lastSuccess.epoch == identity.accountEpoch { return lastSuccess.at }
+        guard let key = identity.accountKey, key == persistent.lastSuccessAccountKey,
+              let at = persistent.lastServerSuccessAt, lastSuccess == nil else { return nil }
+        return at
     }
 
     private func calibrationCapExceeded(now: Date) -> Bool {
@@ -256,11 +278,16 @@ public final class FetchScheduler: FetchScheduling {
     ) {
         isBusy = false
         let now = clock.now
+        let stale = identity.accountEpoch != epoch
+        defer {
+            replayDeferred(staleEpoch: stale)
+            rearmOnQueue()
+        }
         // A 429 is honored even for a stale epoch so an account switch cannot bypass the cooldown.
         if case let .rateLimited(retryAfter) = result {
             applyRateLimit(retryAfter: retryAfter, now: now)
         }
-        guard identity.accountEpoch == epoch else {
+        guard !stale else {
             return log(.discardedStaleEpoch, reasons: reasons, outcome: Self.label(result))
         }
         switch result {
@@ -293,7 +320,17 @@ public final class FetchScheduler: FetchScheduling {
         log(.completed, reasons: reasons, outcome: Self.label(result))
         let delivery = FetchSchedulerDelivery(result: result, reasons: reasons, epoch: epoch, receivedAt: now)
         resultHandlers.forEach { $0(delivery) }
-        rearmOnQueue()
+    }
+
+    /// A same-account result already answers a manual request made during the flight; a stale
+    /// result answers nothing, so every deferred reason is evaluated again.
+    private func replayDeferred(staleEpoch: Bool) {
+        var replay = deferredReasons
+        deferredReasons.removeAll()
+        if !staleEpoch { replay.remove(.manual) }
+        guard !replay.isEmpty else { return }
+        pendingReasons.formUnion(replay)
+        startCoalescing()
     }
 
     private func applyRateLimit(retryAfter: String?, now: Date) {
@@ -332,28 +369,63 @@ public final class FetchScheduler: FetchScheduling {
         return configuration.failureBackoff[index]
     }
 
+    /// Arms one timer for the earliest moment an automatic request could actually be sent, so
+    /// a blocked state (401, empty budget, cooldown, backoff) never turns into periodic wakeups.
     private func rearmOnQueue() {
         timerGeneration += 1
         guard demandEnabled, !isBusy else { return }
         let generation = timerGeneration
         let now = clock.now
+        let delay: TimeInterval
+        if persistent.isUnauthorizedPaused, identity.credentialVersion == persistent.unauthorizedCredentialVersion {
+            // Only a credential change lifts the pause; check for one rarely instead of polling.
+            guard configuration.unauthorizedRecheckInterval > 0 else { return }
+            delay = configuration.unauthorizedRecheckInterval
+        } else {
+            let next = nextAutomaticEligibleAt(now: now)
+            var wait = next.timeIntervalSince(now)
+            // A timer check that was skipped for a reason not modelled above must not spin.
+            if idleTimerSkips > 0 { wait = max(wait, configuration.idleRecheckFloor) }
+            delay = max(configuration.coalescingWindow, wait)
+        }
+        timer.schedule(after: delay) { [weak self] in
+            guard let self else { return }
+            queue.async {
+                guard self.demandEnabled, self.timerGeneration == generation else { return }
+                if let trigger = self.automaticTrigger {
+                    trigger()
+                } else {
+                    self.enqueue(.scheduled)
+                }
+            }
+        }
+    }
+
+    /// Earliest time a `.scheduled` request passes every automatic gate.
+    private func nextAutomaticEligibleAt(now: Date) -> Date {
         var next = currentEpochLastSuccessAt?.addingTimeInterval(configuration.automaticMinimumInterval) ?? now
         if let lastServerAttemptAt, consecutiveFailures > 0 {
             next = max(next, lastServerAttemptAt.addingTimeInterval(failureBackoffInterval))
         }
         if let cooldownUntil = persistent.cooldownUntil { next = max(next, cooldownUntil) }
+        if tokens < configuration.automaticTokenCost, configuration.tokenRefillInterval > 0 {
+            let missing = Double(configuration.automaticTokenCost - tokens)
+            next = max(next, tokenRefillAnchor.addingTimeInterval(missing * configuration.tokenRefillInterval))
+        }
         if let realtimeAt = realtimeFreshness?.lastTrustedRealtimeObservationAt,
            !calibrationCapExceeded(now: now) {
-            next = max(next, realtimeAt.addingTimeInterval(configuration.realtimeSourceFreshness))
-        }
-        let delay = max(configuration.coalescingWindow, next.timeIntervalSince(now))
-        timer.schedule(after: delay) { [weak self] in
-            guard let self else { return }
-            queue.async {
-                guard self.demandEnabled, self.timerGeneration == generation else { return }
-                self.requestFetch(reason: .scheduled)
+            let freshUntil = realtimeAt.addingTimeInterval(configuration.realtimeSourceFreshness)
+            if freshUntil > next {
+                // Wake when local data goes stale, or at the calibration cap, whichever is first.
+                var wake = freshUntil
+                if let cap = calibrationIntervalCap() ?? configuration.realtimeCalibrationCap, cap > 0,
+                   let successAt = currentEpochLastSuccessAt {
+                    wake = min(wake, successAt.addingTimeInterval(cap))
+                }
+                next = max(next, wake)
             }
         }
+        return next
     }
 
     private func log(
@@ -363,6 +435,11 @@ public final class FetchScheduler: FetchScheduling {
         outcome: String? = nil
     ) {
         let now = clock.now
+        if kind == .dispatched {
+            idleTimerSkips = 0
+        } else if kind == .skipped, reasons == [.scheduled], skip != .coalescedIntoInFlight {
+            idleTimerSkips += 1
+        }
         logSink(FetchSchedulerLogEvent(
             kind: kind, reasons: reasons, skipReason: skip, tokens: tokens,
             cooldownRemaining: cooldownRemaining(now: now), outcome: outcome, timestamp: now))

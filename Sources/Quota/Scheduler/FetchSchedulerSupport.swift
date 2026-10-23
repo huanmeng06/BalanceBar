@@ -189,6 +189,11 @@ public struct FetchSchedulerConfiguration: Equatable {
     public var coalescingWindow: TimeInterval = 1
     /// Backoff applied to consecutive non-429 failures.
     public var failureBackoff: [TimeInterval] = []
+    /// While a 401 pause holds, how often the owner may re-read credentials to notice a new
+    /// login. `0` waits for an explicit request instead.
+    public var unauthorizedRecheckInterval: TimeInterval = 0
+    /// Minimum timer delay after a timer check was skipped, so an unmodelled gate cannot spin.
+    public var idleRecheckFloor: TimeInterval = 60
 
     /// Configuration required by Claude Code quota V1.
     public static var claudeV1: FetchSchedulerConfiguration {
@@ -201,6 +206,7 @@ public struct FetchSchedulerConfiguration: Equatable {
         value.manualTokenCost = 1
         value.manualRefreshWindow = 300
         value.failureBackoff = [60, 120, 240, 480, 900]
+        value.unauthorizedRecheckInterval = 300
         return value
     }
 

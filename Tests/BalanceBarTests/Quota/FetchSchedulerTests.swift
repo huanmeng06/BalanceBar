@@ -9,7 +9,11 @@ final class FetchSchedulerTests: XCTestCase {
 
     private final class ManualTimer: SchedulerTimer {
         var works: [() -> Void] = []
-        func schedule(after delay: TimeInterval, _ work: @escaping () -> Void) { works.append(work) }
+        var delays: [TimeInterval] = []
+        func schedule(after delay: TimeInterval, _ work: @escaping () -> Void) {
+            delays.append(delay)
+            works.append(work)
+        }
         func fireAll() { let pending = works; works = []; pending.forEach { $0() } }
     }
 
@@ -335,5 +339,162 @@ final class FetchSchedulerTests: XCTestCase {
         XCTAssertNotEqual(store.state?.isUnauthorizedPaused, true)
         request(scheduler, .manual)
         XCTAssertEqual(transport.completions.count, 1)
+    }
+
+    // MARK: - Scheduler-owned timer
+
+    /// Starts demand and returns the delay of the automatic timer the scheduler armed.
+    private func armedDelay(after action: () -> Void) -> TimeInterval? {
+        timer.delays.removeAll()
+        action()
+        return timer.delays.last
+    }
+
+    func testTimerTargetsFiveMinutesAfterSuccessAndDispatchesWhenDue() {
+        let scheduler = makeScheduler(configuration: .claudeV1)
+        scheduler.setDemand(true)
+        request(scheduler, .initial)
+        let delay = armedDelay { complete(scheduler, .success(Data())) }
+        XCTAssertEqual(delay, 300)
+        clock.advance(300)
+        timer.fireAll()
+        scheduler.waitUntilIdle()
+        timer.fireAll() // coalescing window of the timer's `.scheduled` request
+        scheduler.waitUntilIdle()
+        XCTAssertEqual(transport.completions.count, 1)
+        XCTAssertEqual(logs.last { $0.kind == .dispatched }?.reasons, [.scheduled])
+    }
+
+    func testTimerUsesAutomaticTriggerWhenSet() {
+        let scheduler = makeScheduler(configuration: .claudeV1)
+        var triggered = 0
+        scheduler.setAutomaticTrigger { triggered += 1 }
+        scheduler.setDemand(true)
+        scheduler.waitUntilIdle()
+        timer.fireAll()
+        scheduler.waitUntilIdle()
+        XCTAssertEqual(triggered, 1)
+        XCTAssertTrue(transport.completions.isEmpty)
+    }
+
+    func testUnauthorizedPauseArmsSlowRecheckInsteadOfSpinning() {
+        let scheduler = makeScheduler(configuration: .claudeV1)
+        scheduler.setDemand(true)
+        request(scheduler, .initial)
+        XCTAssertEqual(armedDelay { complete(scheduler, .unauthorized) }, 300)
+        for _ in 0..<3 {
+            clock.advance(300)
+            let delays = { () -> [TimeInterval] in
+                timer.delays.removeAll()
+                timer.fireAll()
+                scheduler.waitUntilIdle()
+                timer.fireAll()
+                scheduler.waitUntilIdle()
+                return timer.delays
+            }()
+            XCTAssertEqual(lastSkip, .unauthorizedPaused)
+            XCTAssertFalse(delays.contains { $0 > 1 && $0 < 300 }, "no sub-recheck wakeups: \(delays)")
+        }
+        XCTAssertEqual(transport.completions.count, 0)
+    }
+
+    func testEmptyTokenBudgetArmsAtRefillTime() {
+        var configuration = FetchSchedulerConfiguration.claudeV1
+        configuration.tokenCapacity = 1
+        configuration.automaticMinimumInterval = 10
+        let scheduler = makeScheduler(configuration: configuration)
+        scheduler.setDemand(true)
+        request(scheduler, .initial)
+        XCTAssertEqual(armedDelay { complete(scheduler, .success(Data())) }, 300)
+    }
+
+    func testCooldownArmsAtCooldownEnd() {
+        let scheduler = makeScheduler(configuration: .claudeV1)
+        scheduler.setDemand(true)
+        request(scheduler, .initial)
+        XCTAssertEqual(armedDelay { complete(scheduler, .rateLimited(retryAfter: "1800")) }, 1_800)
+    }
+
+    func testFreshLocalDataDefersTimerWithoutSpinning() {
+        let realtime = FakeRealtime()
+        let scheduler = makeScheduler(realtime: realtime, configuration: .claudeV1)
+        scheduler.setDemand(true)
+        request(scheduler, .initial)
+        complete(scheduler, .success(Data()))
+        clock.advance(300)
+        // Local data keeps arriving exactly as the timer fires, so each check is skipped.
+        for _ in 0..<3 {
+            realtime.lastTrustedRealtimeObservationAt = clock.now
+            timer.delays.removeAll()
+            timer.fireAll()
+            scheduler.waitUntilIdle()
+            timer.fireAll()
+            scheduler.waitUntilIdle()
+            XCTAssertEqual(lastSkip, .realtimeSourceFresh)
+            XCTAssertTrue(timer.delays.allSatisfy { $0 <= 1 || $0 >= 60 }, "\(timer.delays)")
+            clock.advance(120)
+        }
+        XCTAssertEqual(transport.completions.count, 0)
+    }
+
+    func testDemandOffCancelsAutomaticChecks() {
+        let scheduler = makeScheduler(configuration: .claudeV1)
+        scheduler.setDemand(true)
+        scheduler.setDemand(false)
+        scheduler.waitUntilIdle()
+        timer.fireAll()
+        scheduler.waitUntilIdle()
+        timer.fireAll()
+        scheduler.waitUntilIdle()
+        XCTAssertTrue(transport.completions.isEmpty)
+    }
+
+    // MARK: - Account switch during a flight
+
+    func testAccountSwitchDuringFlightIsReplayedAfterStaleResult() {
+        let scheduler = makeScheduler(configuration: .claudeV1)
+        request(scheduler, .initial)
+        identity.accountIdentity = AccountIdentity(stableID: "other", idSource: .accountUUID)
+        identity.accountEpoch = identity.accountEpoch.next
+        request(scheduler, .accountChanged)
+        XCTAssertEqual(lastSkip, .coalescedIntoInFlight)
+        complete(scheduler, .success(Data()))
+        XCTAssertTrue(deliveries.isEmpty, "old account's result is discarded")
+        timer.fireAll()
+        scheduler.waitUntilIdle()
+        XCTAssertEqual(transport.completions.count, 1, "new account gets its own read")
+        XCTAssertEqual(logs.last { $0.kind == .dispatched }?.reasons, [.accountChanged])
+    }
+
+    func testManualDuringSameAccountFlightIsAnsweredByThatFlight() {
+        let scheduler = makeScheduler(configuration: .claudeV1)
+        request(scheduler, .initial)
+        request(scheduler, .manual)
+        complete(scheduler, .success(Data()))
+        timer.fireAll()
+        scheduler.waitUntilIdle()
+        XCTAssertTrue(transport.completions.isEmpty)
+    }
+
+    func testPersistedSuccessIsMatchedOnceIdentityLoads() {
+        store.state = FetchSchedulerPersistentState(
+            lastServerAttemptAt: clock.now, lastServerSuccessAt: clock.now, lastSuccessAccountKey: "acct")
+        identity.accountIdentity = nil
+        let scheduler = makeScheduler(configuration: .claudeV1)
+        identity.accountIdentity = AccountIdentity(stableID: "acct", idSource: .accountUUID)
+        clock.advance(60)
+        request(scheduler, .scheduled)
+        XCTAssertEqual(lastSkip, .minimumInterval)
+        XCTAssertTrue(transport.completions.isEmpty)
+    }
+
+    func testParseFailureCountsAsFailureNotSuccess() {
+        let scheduler = makeScheduler(configuration: .claudeV1)
+        request(scheduler, .initial)
+        complete(scheduler, .failure("invalid_response"))
+        XCTAssertNil(store.state?.lastServerSuccessAt)
+        XCTAssertEqual(store.state?.consecutiveFailures, 1)
+        request(scheduler, .manual)
+        XCTAssertEqual(lastSkip, .failureBackoff)
     }
 }
