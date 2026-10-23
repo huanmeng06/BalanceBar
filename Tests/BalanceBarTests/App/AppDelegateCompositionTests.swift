@@ -140,6 +140,22 @@ final class AppDelegateCompositionTests: XCTestCase {
         )
     }
 
+    func testQuotaPaceIndicatorTogglePersistsAndRefreshesMenuSettings() throws {
+        let source = try balanceBarSource()
+        let toggleStart = try XCTUnwrap(source.range(of: "case AppPreferences.showQuotaPaceIndicatorKey:"))
+        let toggleEnd = try XCTUnwrap(
+            source.range(
+                of: "case AppPreferences.showBankedResetKey:",
+                range: toggleStart.upperBound..<source.endIndex
+            )
+        )
+        let togglePath = String(source[toggleStart.lowerBound..<toggleEnd.lowerBound])
+
+        XCTAssertTrue(togglePath.contains("preferences.showQuotaPaceIndicator = enabled"))
+        XCTAssertTrue(togglePath.contains("updateStatusItem(for: snapshot, refreshDashboard: false)"))
+        XCTAssertTrue(togglePath.contains("dashboardComposition.refreshMenuPage()"))
+    }
+
     func testAutomaticUpdateStateRefreshDoesNotPresentReleaseNotes() throws {
         let source = try balanceBarSource()
         let handlerStart = try XCTUnwrap(source.range(of: "self.updateService.onStateChange"))
