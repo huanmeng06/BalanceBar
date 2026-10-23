@@ -346,7 +346,7 @@ final class ClaudeStatusLineInstaller {
     }
 
     private static func jsonString(_ value: String) throws -> Data {
-        let data = try JSONSerialization.data(withJSONObject: [value], options: [])
+        let data = try JSONSerialization.data(withJSONObject: [value], options: [.withoutEscapingSlashes])
         return data.subdata(in: 1..<(data.count - 1))
     }
 

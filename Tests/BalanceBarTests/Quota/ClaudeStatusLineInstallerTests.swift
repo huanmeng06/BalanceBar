@@ -65,6 +65,7 @@ final class ClaudeStatusLineInstallerTests: XCTestCase {
         XCTAssertEqual(status["hideVimModeIndicator"] as? Bool, true)
         XCTAssertNotNil(status["futureKey"])
         XCTAssertTrue((status["command"] as? String)?.contains(ClaudeStatusLineInstaller.ownershipMarker) == true)
+        XCTAssertFalse(try settingsText().contains("\\/"), "paths are written without escaped slashes")
 
         XCTAssertTrue(try installer.uninstall())
         XCTAssertEqual(try settingsText(), original)
