@@ -1170,6 +1170,8 @@ final class AgentIconStripView: NSView {
             }
             x += iconSize.width + Self.spacing
         }
+    }
+}
 
 /// The switch was turned off but settings.json still runs the wrapper: put the switch back on and tell the user.
 enum ClaudeStatusLineDisableFailurePresenter {
