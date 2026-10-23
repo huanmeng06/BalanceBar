@@ -580,3 +580,6 @@
 "claude.status_line.calibration" = "Claude 官方額度校準";
 "claude.status_line.calibration_value" = "約每 5 分鐘";
 "claude.status_line.calibration_detail" = "固定間隔以避免限流；開啟原生同步後，新額度可更早顯示";
+"claude.status_line.disable_failed_title" = "無法關閉 Claude Code 原生同步";
+"claude.status_line.disable_failed_message" = "你在 Claude Code 的 statusLine 設定中加入了自訂欄位，BalanceBar 無法在不遺失它們的情況下移除自己的指令，因此保持開啟。請手動編輯 ~/.claude/settings.json 的 statusLine，或先移除這些欄位後再關閉。";
+"claude.status_line.disable_failed_ok" = "好";

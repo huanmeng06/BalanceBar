@@ -1159,18 +1159,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                     _ = try installer.uninstall()
                     installer.removeInstalledWrapper()
                     outcome = "restored"
+                    active = false
                 } catch ClaudeStatusLineInstallerError.notOwned {
                     // Another tool changed statusLine since; leave its configuration alone.
                     outcome = "not_owned_left_unchanged"
+                    active = false
                 } catch {
+                    // Our wrapper is still configured, so the bridge is still on: say so instead of
+                    // showing it as off while Claude Code keeps running the wrapper.
                     outcome = "restore_failed:\(error)"
+                    active = installer.isInstalled()
                 }
-                active = false
             }
             claudeQuota.setStatusLineEnabled(active)
-            SwitchLog.write("Claude statusLine bridge \(outcome)", level: active || !enabled ? .info : .warning, category: "configuration")
-            DispatchQueue.main.async { self?.preferences.claudeStatusLineEnabled = active }
+            let failedToDisable = !enabled && active
+            SwitchLog.write(
+                "Claude statusLine bridge \(outcome)",
+                level: (enabled && !active) || failedToDisable ? .warning : .info,
+                category: "configuration"
+            )
+            DispatchQueue.main.async {
+                self?.preferences.claudeStatusLineEnabled = active
+                if failedToDisable { Self.reportClaudeStatusLineDisableFailure() }
+            }
         }
+    }
+
+    /// The switch was turned off but settings.json still runs the wrapper: put the switch back on and tell the user.
+    private static func reportClaudeStatusLineDisableFailure() {
+        func switches(in view: NSView) -> [NSSwitch] {
+            (view as? NSSwitch).map { [$0] } ?? view.subviews.flatMap(switches(in:))
+        }
+        for window in NSApp.windows {
+            guard let content = window.contentView else { continue }
+            for sync in switches(in: content) where sync.identifier?.rawValue == "claudeStatusLineEnabled" {
+                sync.state = .on
+            }
+        }
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = tr(.keyClaudeStatusLineDisableFailedTitle)
+        alert.informativeText = tr(.keyClaudeStatusLineDisableFailedMessage)
+        alert.addButton(withTitle: tr(.keyClaudeStatusLineDisableFailedOK))
+        alert.runModal()
     }
 
     /// At launch the bridge is only resumed, never re-installed: if something else replaced the

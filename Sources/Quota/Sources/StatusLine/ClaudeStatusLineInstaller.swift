@@ -16,6 +16,9 @@ enum ClaudeStatusLineInstallerError: Error, Equatable {
     case helperMissing
     /// The write landed but reading it back did not show the expected configuration.
     case verificationFailed
+    /// The user changed the statusLine object after install in a way that cannot be undone without
+    /// losing their edits or leaving an invalid object; nothing is written.
+    case modifiedSinceInstall
 }
 
 struct ClaudeStatusLineInstallResult: Equatable {
@@ -157,21 +160,29 @@ final class ClaudeStatusLineInstaller {
         }
         let updated: Data
         if let backup = readBackup() {
-            if backup.hadStatusLine,
-               let originalCommand = backup.originalCommand, !originalCommand.isEmpty,
-               let originalJSON = backup.statusLineJSON,
-               let originalObject = try? JSONSerialization.jsonObject(with: originalJSON) as? [String: Any],
-               !Self.statusLine(statusLine, matchesOriginal: originalObject, command: originalCommand) {
-                // The user changed other statusLine fields after installing; only the command is ours
-                // to give back, so their edits survive.
-                updated = try replaceCommand(in: current, command: originalCommand)
-            } else if !backup.hadStatusLine, Set(statusLine.keys) != ["type", "command"] {
-                // The object was ours, but the user has extended it since; removing it would drop
-                // their fields and keeping our command would leave the wrapper running.
-                throw ClaudeStatusLineInstallerError.notOwned
+            if backup.hadStatusLine {
+                guard let originalJSON = backup.statusLineJSON,
+                      let originalObject = try? JSONSerialization.jsonObject(with: originalJSON) as? [String: Any] else {
+                    throw ClaudeStatusLineInstallerError.backupMissing
+                }
+                if Self.statusLine(statusLine, matchesOriginal: originalObject) {
+                    updated = try Self.restoreStatusLine(
+                        in: current, hadStatusLine: true, originalJSON: originalJSON)
+                } else if let originalCommand = originalObject["command"] as? String {
+                    // The user changed other statusLine fields after installing; only the command is
+                    // ours to give back (even when it was empty), so their edits survive.
+                    updated = try replaceCommand(in: current, command: originalCommand)
+                } else {
+                    // A command-less original cannot be installed over, so this only follows a hand-edited backup.
+                    throw ClaudeStatusLineInstallerError.modifiedSinceInstall
+                }
+            } else if Set(statusLine.keys) != ["type", "command"] {
+                // The object was ours, but the user has extended it since. Removing it would drop
+                // their fields; keeping only their fields would leave an object without a command.
+                // Report it instead of pretending the bridge is off.
+                throw ClaudeStatusLineInstallerError.modifiedSinceInstall
             } else {
-                updated = try Self.restoreStatusLine(
-                    in: current, hadStatusLine: backup.hadStatusLine, originalJSON: backup.statusLineJSON)
+                updated = try Self.restoreStatusLine(in: current, hadStatusLine: false, originalJSON: nil)
             }
         } else if let original = Self.embeddedOriginalCommand(in: currentCommand) {
             // Without a backup, the command itself still carries the original; only `command`
@@ -194,11 +205,11 @@ final class ClaudeStatusLineInstaller {
         return true
     }
 
-    /// Whether the installed statusLine equals the backed-up one once our command is swapped back,
+    /// Whether the installed statusLine equals the backed-up one apart from our command,
     /// i.e. nothing besides `command` changed since install.
-    private static func statusLine(_ current: [String: Any], matchesOriginal original: [String: Any], command: String) -> Bool {
+    private static func statusLine(_ current: [String: Any], matchesOriginal original: [String: Any]) -> Bool {
         var restored = current
-        restored["command"] = command
+        if let originalCommand = original["command"] { restored["command"] = originalCommand } else { restored["command"] = nil }
         return NSDictionary(dictionary: restored).isEqual(to: original)
     }
 

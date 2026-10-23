@@ -97,7 +97,19 @@ final class ClaudeStatusLineInstallerTests: XCTestCase {
         XCTAssertEqual(status["padding"] as? Int, 3)
     }
 
-    func testUninstallLeavesAnExtendedBalanceBarCreatedStatusLineUntouched() throws {
+    func testUninstallKeepsUserEditsWhenTheOriginalCommandWasEmpty() throws {
+        try writeSettings(#"{"statusLine":{"type":"command","command":"","padding":0}}"#)
+        let installer = makeInstaller()
+        _ = try installer.install()
+        try writeSettings(try settingsText().replacingOccurrences(of: "\"padding\":0", with: "\"padding\":4"))
+
+        XCTAssertTrue(try installer.uninstall())
+        let status = try XCTUnwrap(try statusLine())
+        XCTAssertEqual(status["command"] as? String, "")
+        XCTAssertEqual(status["padding"] as? Int, 4)
+    }
+
+    func testUninstallReportsFailureForAnExtendedBalanceBarCreatedStatusLine() throws {
         try writeSettings(#"{"model":"opus"}"#)
         let installer = makeInstaller()
         _ = try installer.install()
@@ -105,9 +117,10 @@ final class ClaudeStatusLineInstallerTests: XCTestCase {
         let before = try settingsText()
 
         XCTAssertThrowsError(try installer.uninstall()) {
-            XCTAssertEqual($0 as? ClaudeStatusLineInstallerError, .notOwned)
+            XCTAssertEqual($0 as? ClaudeStatusLineInstallerError, .modifiedSinceInstall)
         }
-        XCTAssertEqual(try settingsText(), before, "nothing is removed when the user extended our object")
+        XCTAssertEqual(try settingsText(), before, "nothing is written when the user extended our object")
+        XCTAssertTrue(installer.isInstalled(), "the wrapper is still configured, so the caller keeps the bridge on")
     }
 
     func testCommandWithQuotesPipesAndUnicodeRoundTrips() throws {

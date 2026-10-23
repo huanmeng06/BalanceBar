@@ -580,3 +580,6 @@
 "claude.status_line.calibration" = "Claude 공식 할당량 보정";
 "claude.status_line.calibration_value" = "약 5분마다";
 "claude.status_line.calibration_detail" = "제한을 피하기 위한 고정 간격입니다. 네이티브 동기화를 켜면 새 할당량을 더 빨리 표시합니다";
+"claude.status_line.disable_failed_title" = "Claude Code 네이티브 동기화를 끌 수 없습니다";
+"claude.status_line.disable_failed_message" = "Claude Code statusLine에 사용자 지정 필드가 추가되어 있어, BalanceBar가 이를 잃지 않고 자체 명령을 제거할 수 없으므로 동기화는 켜진 상태로 유지됩니다. ~/.claude/settings.json의 statusLine을 직접 편집하거나 해당 필드를 제거한 뒤 다시 시도하세요.";
+"claude.status_line.disable_failed_ok" = "확인";

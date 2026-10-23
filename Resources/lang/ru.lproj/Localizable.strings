@@ -580,3 +580,6 @@
 "claude.status_line.calibration" = "Сверка официальной квоты Claude";
 "claude.status_line.calibration_value" = "Примерно раз в 5 мин";
 "claude.status_line.calibration_detail" = "Фиксированный интервал, чтобы не упираться в лимиты; с нативной синхронизацией новая квота видна раньше";
+"claude.status_line.disable_failed_title" = "Не удалось отключить нативную синхронизацию Claude Code";
+"claude.status_line.disable_failed_message" = "В statusLine Claude Code добавлены ваши собственные поля, и BalanceBar не может убрать свою команду, не потеряв их, поэтому синхронизация остаётся включённой. Отредактируйте statusLine в ~/.claude/settings.json вручную или удалите эти поля и повторите попытку.";
+"claude.status_line.disable_failed_ok" = "OK";

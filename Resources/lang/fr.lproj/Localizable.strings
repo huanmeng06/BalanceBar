@@ -580,3 +580,6 @@
 "claude.status_line.calibration" = "Recalage du quota officiel Claude";
 "claude.status_line.calibration_value" = "Environ toutes les 5 min";
 "claude.status_line.calibration_detail" = "Intervalle fixe pour éviter les limites ; la synchronisation native affiche plus tôt le nouveau quota";
+"claude.status_line.disable_failed_title" = "Impossible de désactiver la synchronisation native de Claude Code";
+"claude.status_line.disable_failed_message" = "Vous avez ajouté des champs personnalisés à la statusLine de Claude Code ; BalanceBar ne peut pas retirer sa commande sans les perdre, la synchronisation reste donc activée. Modifiez statusLine dans ~/.claude/settings.json ou supprimez ces champs, puis réessayez.";
+"claude.status_line.disable_failed_ok" = "OK";
