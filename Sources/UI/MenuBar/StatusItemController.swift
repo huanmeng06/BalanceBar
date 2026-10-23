@@ -3090,6 +3090,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         settings: MenuBarSettings,
         deferMenuRebuild: Bool = false
     ) {
+        let clickBehaviorChanged = self.settings.rightClickAction != settings.rightClickAction
+            || self.settings.reverseMouseButtons != settings.reverseMouseButtons
         let iconDisplayModeChanged = self.settings.iconDisplayMode != settings.iconDisplayMode
         let iconDisplayDelayChanged = self.settings.iconDisplayDelay != settings.iconDisplayDelay
         let taskIconVisibilityChanged = self.settings.showIcon != settings.showIcon
@@ -3105,6 +3107,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         quotaPaceSnapshotAccount = menuInput.openAIAccount
         quotaPaceSnapshotClient = menuInput.activeClient
         aggregationOverviewDisplays = aggregationGrouping.cards(menuInput.aggregatedProviders)
+        if clickBehaviorChanged {
+            resetStatusItemClickState()
+        }
         self.settings = settings
         if iconSizeChanged {
             loadMenuBarIconAssets(size: settings.iconSize)
@@ -3432,6 +3437,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     func menuDidClose(_ menu: NSMenu) {
         guard menu === statusMenu else { return }
+        resetStatusItemClickState()
         menuDismissalTrace?.record("menu.didClose", view: statusMenu.items.first?.view,
             details: "controller_tracking=\(isStatusMenuTracking); rebuild_pending=\(statusMenuNeedsRebuild)")
         if overviewMenuWasSeen {
@@ -3899,9 +3905,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             NSEvent.removeMonitor(rightClickMonitor)
             self.rightClickMonitor = nil
         }
+        resetStatusItemClickState()
+    }
+
+    private func resetStatusItemClickState() {
         isRightClickPressActive = false
         isLeftClickPressActive = false
         isPassingThroughRewrittenMenuClick = false
+        setStatusItemHighlighted(false)
         restoreStatusMenuAfterCustomClick()
     }
 
