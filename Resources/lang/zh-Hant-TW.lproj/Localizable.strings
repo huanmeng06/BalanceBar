@@ -577,6 +577,8 @@
 "status.item.controller.refresh_now_just_refreshed" = "剛剛已刷新";
 "status.item.controller.refresh_now_recent_result" = "剛剛已刷新 · %1$@ 秒後可再試";
 "status.item.controller.refresh_now_awaiting_confirmation" = "等待官方確認重置，點擊立即向官方確認";
+"status.item.controller.refresh_now_failure_backoff" = "請求失敗，%1$@ 秒後自動重試";
+"status.item.controller.refresh_now_out_of_tokens" = "請求額度用盡，%1$@ 秒後恢復";
 "claude.status_line.enabled" = "Claude Code 原生同步";
 "claude.status_line.description" = "透過 Claude Code 內部介面，在 Claude 每次回答結束後，更即時地取得刷新時間、剩餘額度和狀態。";
 "claude.status_line.calibration" = "Claude 官方額度校準";

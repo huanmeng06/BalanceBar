@@ -3362,6 +3362,14 @@ extension StatusItemControllerTests {
         _ = controller.validateMenuItem(refresh)
         assertRefresh(subtitle: tr(.keyStatusItemControllerRefreshNowAwaitingConfirmation),
                       "a pending reset explains itself instead of silently skipping")
+        notice = .failureBackoff(until: Date().addingTimeInterval(-10))
+        _ = controller.validateMenuItem(refresh)
+        assertRefresh(subtitle: tr(.keyStatusItemControllerRefreshNowFailureBackoff, arguments: ["0"]),
+                      "a failure backoff counts down to the automatic retry")
+        notice = .outOfTokens(until: Date().addingTimeInterval(-10))
+        _ = controller.validateMenuItem(refresh)
+        assertRefresh(subtitle: tr(.keyStatusItemControllerRefreshNowOutOfTokens, arguments: ["0"]),
+                      "an exhausted budget counts down to the next token")
         notice = nil
         _ = controller.validateMenuItem(refresh)
         assertRefresh(subtitle: nil, "the subtitle clears with the notice")

@@ -213,6 +213,18 @@ final class FetchSchedulerTests: XCTestCase {
         XCTAssertEqual(transport.completions.count, 1)
     }
 
+    /// Issue #580 review: menus need the real failure-backoff deadline to explain
+    /// why a click would not reach the server.
+    func testStatusSnapshotReportsFailureBackoffUntil() {
+        let scheduler = makeScheduler(configuration: .claudeV1)
+        request(scheduler, .scheduled)
+        complete(scheduler, .failure("network"))
+        XCTAssertEqual(scheduler.statusSnapshot().failureBackoffUntil, clock.now.addingTimeInterval(60))
+        clock.advance(61)
+        XCTAssertNil(scheduler.statusSnapshot().failureBackoffUntil, "the backoff has ended")
+        XCTAssertNil(scheduler.statusSnapshot().manualTokensReadyAt, "remaining tokens still cover a manual read")
+    }
+
     func testClaudeSuccessTimeRestoresOnlyForSameAccount() {
         let scheduler = makeScheduler(configuration: .claudeV1)
         request(scheduler, .initial)

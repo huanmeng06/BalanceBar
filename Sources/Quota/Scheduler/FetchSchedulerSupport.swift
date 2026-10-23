@@ -234,6 +234,10 @@ public struct FetchSchedulerStatus: Equatable {
     public var manualTokenCost: Int
     public var manualRefreshWindow: TimeInterval
     public var cooldownRemaining: TimeInterval
+    /// End of the current failure backoff, when one holds requests back.
+    public var failureBackoffUntil: Date?
+    /// When the token bucket will hold `manualTokenCost` tokens again; `nil` when it already does.
+    public var manualTokensReadyAt: Date?
     public var isUnauthorizedPaused: Bool
     public var isBusy: Bool
     public var at: Date

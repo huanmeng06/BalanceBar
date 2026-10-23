@@ -136,19 +136,24 @@ final class ResponseParsersTests: XCTestCase {
         XCTAssertEqual(output.remaining, 59, "legacy scalar accessors still prefer weekly quota")
     }
 
-    /// Issue #580: a null window / null utilization means the window has not started and
-    /// must still produce a 0% reading, or a pending reset can never be confirmed. A
-    /// malformed non-null utilization stays unknown instead of inventing a fresh cycle.
-    func testClaudeQuotaTreatsNullWindowsAsNotStarted() throws {
+    /// Issue #580: an explicit null window / null utilization means the window has not
+    /// started and must still produce a 0% reading, or a pending reset can never be
+    /// confirmed. A window that merely lacks the utilization key stays unknown, so a
+    /// malformed payload cannot invent a fresh cycle and wrongly confirm a reset.
+    func testClaudeQuotaTreatsExplicitNullWindowsAsNotStarted() throws {
         let output = try OfficialQuotaResponseParser.parse(data: fixture(#"{"five_hour":{"utilization":"25"},"seven_day":null,"seven_day_sonnet":{"utilization":"invalid"}}"#), client: .claude, now: now)
         XCTAssertEqual(output.windows.map(\.kind), [.fiveHour, .sevenDay])
         XCTAssertEqual(output.windows.map(\.remaining), [75, 100], "a null window has not started")
         XCTAssertNil(output.windows.last?.resetAt)
         XCTAssertNil(output.windows.first?.resetAt)
 
-        let notStarted = try OfficialQuotaResponseParser.parse(data: fixture(#"{"five_hour":null,"seven_day":{}}"#), client: .claude, now: now)
-        XCTAssertEqual(notStarted.windows.map(\.kind), [.fiveHour, .sevenDay])
-        XCTAssertEqual(notStarted.windows.map(\.remaining), [100, 100])
+        let missingKey = try OfficialQuotaResponseParser.claudeReadings(
+            object: ["five_hour": [String: Any](), "seven_day": ["utilization": 41, "resets_at": "2023-11-21T00:13:20Z"]], now: now)
+        XCTAssertEqual(missingKey.map(\.key), ["seven_day"], "a window without the utilization key stays unknown")
+
+        let nullWindow = try OfficialQuotaResponseParser.parse(data: fixture(#"{"five_hour":null,"seven_day":{"utilization":41}}"#), client: .claude, now: now)
+        XCTAssertEqual(nullWindow.windows.map(\.kind), [.fiveHour, .sevenDay])
+        XCTAssertEqual(nullWindow.windows.map(\.remaining), [100, 59], "only the explicit null window reads as not started")
 
         let nullUtilization = try OfficialQuotaResponseParser.claudeReadings(
             object: ["seven_day": ["utilization": NSNull()]], now: now)

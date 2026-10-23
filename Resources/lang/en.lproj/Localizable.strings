@@ -577,6 +577,8 @@
 "status.item.controller.refresh_now_just_refreshed" = "Just refreshed";
 "status.item.controller.refresh_now_recent_result" = "Just refreshed · retry in %1$@ s";
 "status.item.controller.refresh_now_awaiting_confirmation" = "Awaiting official reset confirmation; click to confirm now";
+"status.item.controller.refresh_now_failure_backoff" = "Last request failed; retrying automatically in %1$@ s";
+"status.item.controller.refresh_now_out_of_tokens" = "Request budget exhausted, recovers in %1$@ s";
 "claude.status_line.enabled" = "Claude Code native sync";
 "claude.status_line.description" = "Uses Claude Code's internal interface to pick up the reset time, remaining quota and status sooner after each Claude reply.";
 "claude.status_line.calibration" = "Claude official quota calibration";

@@ -117,6 +117,20 @@ public final class FetchScheduler: FetchScheduling {
         queue.sync {
             let now = clock.now
             refillTokens(now: now)
+            let failureBackoffUntil: Date?
+            if let lastServerAttemptAt, consecutiveFailures > 0 {
+                let until = lastServerAttemptAt.addingTimeInterval(failureBackoffInterval)
+                failureBackoffUntil = until > now ? until : nil
+            } else {
+                failureBackoffUntil = nil
+            }
+            let manualTokensReadyAt: Date?
+            if tokens < configuration.manualTokenCost, configuration.tokenRefillInterval > 0 {
+                let missing = Double(configuration.manualTokenCost - tokens)
+                manualTokensReadyAt = tokenRefillAnchor.addingTimeInterval(missing * configuration.tokenRefillInterval)
+            } else {
+                manualTokensReadyAt = nil
+            }
             return FetchSchedulerStatus(
                 tokens: tokens,
                 tokenCapacity: configuration.tokenCapacity,
@@ -131,6 +145,8 @@ public final class FetchScheduler: FetchScheduling {
                 manualTokenCost: configuration.manualTokenCost,
                 manualRefreshWindow: configuration.manualRefreshWindow,
                 cooldownRemaining: cooldownRemaining(now: now),
+                failureBackoffUntil: failureBackoffUntil,
+                manualTokensReadyAt: manualTokensReadyAt,
                 isUnauthorizedPaused: persistent.isUnauthorizedPaused,
                 isBusy: isBusy,
                 at: now)

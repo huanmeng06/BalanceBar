@@ -577,6 +577,8 @@
 "status.item.controller.refresh_now_just_refreshed" = "Appena aggiornato";
 "status.item.controller.refresh_now_recent_result" = "Appena aggiornato · riprova tra %1$@ s";
 "status.item.controller.refresh_now_awaiting_confirmation" = "In attesa della conferma del ripristino; clicca per confermare ora";
+"status.item.controller.refresh_now_failure_backoff" = "Richiesta non riuscita; nuovo tentativo automatico tra %1$@ s";
+"status.item.controller.refresh_now_out_of_tokens" = "Budget delle richieste esaurito, si recupera tra %1$@ s";
 "claude.status_line.enabled" = "Sincronizzazione nativa Claude Code";
 "claude.status_line.description" = "Usa l’interfaccia interna di Claude Code per ottenere prima orario di reset, quota residua e stato dopo ogni risposta di Claude.";
 "claude.status_line.calibration" = "Calibrazione della quota ufficiale Claude";

@@ -508,11 +508,11 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         waitForRequests(2)
         quiet(pipeline)
         XCTAssertEqual(pipeline.latestState?.display.state, .resetPendingConfirmation)
-        XCTAssertEqual(pipeline.manualRefreshNotice(), .awaitingResetConfirmation,
-                       "the menu explains the wait instead of staying silent")
 
         // 121 s clears the failure backoff while staying inside Claude V1's 5-minute manual window.
         clock.advance(by: 121)
+        XCTAssertEqual(pipeline.manualRefreshNotice(), .awaitingResetConfirmation,
+                       "past the backoff, the menu explains the pending confirmation")
         PipelineStubProtocol.set(.init(data: Self.nextCycle))
         pipeline.requestFetch(reason: .manual)
         waitForRequests(3)
@@ -543,6 +543,60 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         let confirmed = try XCTUnwrap(waitForState(pipeline) { $0.windows.first?.remaining == 98 })
         XCTAssertEqual(confirmed.status, .official(at: clock.now))
         XCTAssertEqual(retryTimer.delays, [60, 120], "the cadence backs off while confirmation is pending")
+    }
+
+    /// Issue #580 review: while the pending confirmation's request failed and the backoff
+    /// holds clicks back, the menu must say so instead of promising an immediate read.
+    func testManualRefreshNoticeExplainsFailureBackoffWhilePending() throws {
+        PipelineStubProtocol.set(.init(data: Self.nearReset))
+        let tracker = ClaudeRealtimeTracker(now: { [clock] in clock!.now })
+        let pipeline = makePipeline(realtimeTracker: tracker, configuration: claudeV1TestConfiguration)
+        pipeline.requestFetch(reason: .initial)
+        _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+
+        clock.advance(by: 120)
+        PipelineStubProtocol.set(.init(data: Data("not json".utf8)))
+        pipeline.tick()
+        waitForRequests(2)
+        quiet(pipeline)
+        XCTAssertEqual(pipeline.latestState?.display.state, .resetPendingConfirmation)
+        guard case let .failureBackoff(until)? = pipeline.manualRefreshNotice() else {
+            return XCTFail("expected a failure-backoff notice, got \(String(describing: pipeline.manualRefreshNotice()))")
+        }
+        XCTAssertEqual(until.timeIntervalSince(clock.now), 60, accuracy: 1,
+                       "the subtitle counts down to the real retry moment")
+    }
+
+    /// Issue #580 review: an exhausted request budget must be explained too, not offered
+    /// as an immediate confirmation.
+    func testManualRefreshNoticeExplainsExhaustedTokens() throws {
+        var configuration = FetchSchedulerConfiguration()
+        configuration.coalescingWindow = 0.02
+        configuration.manualRefreshWindow = 10
+        configuration.tokenRefillInterval = 600
+        let pipeline = makePipeline(configuration: configuration)
+        pipeline.requestFetch(reason: .initial) // first read: manual cost, tokens 3 → 2
+        _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+
+        clock.advance(by: 11)
+        pipeline.requestFetch(reason: .manual) // tokens 2 → 1
+        waitForRequests(2)
+        quiet(pipeline) // the stub completes asynchronously; drain before advancing the fake clock
+        clock.advance(by: 11)
+        pipeline.requestFetch(reason: .manual) // tokens 1 → 0
+        waitForRequests(3)
+        quiet(pipeline)
+
+        clock.advance(by: 11)
+        pipeline.requestFetch(reason: .manual) // suppressed by insufficient tokens
+        quiet(pipeline)
+        XCTAssertEqual(PipelineStubProtocol.requestCount, 3)
+        XCTAssertTrue(diagnosticLines.all.contains { $0.contains("skip=insufficientTokens") })
+        guard case let .outOfTokens(until)? = pipeline.manualRefreshNotice() else {
+            return XCTFail("expected an out-of-tokens notice, got \(String(describing: pipeline.manualRefreshNotice()))")
+        }
+        XCTAssertEqual(until.timeIntervalSince(Self.start), 600, accuracy: 1,
+                       "one token refills ten minutes after the epoch anchor")
     }
     /// Issue #580: a window past its reset keeps no future reset time; the card row explains
     /// the wait instead of showing an unknown countdown.

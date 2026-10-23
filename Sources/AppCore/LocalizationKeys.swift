@@ -573,6 +573,8 @@
     case keyStatusItemControllerRefreshNowJustRefreshed = "status.item.controller.refresh_now_just_refreshed"
     case keyStatusItemControllerRefreshNowRecentResult = "status.item.controller.refresh_now_recent_result"
     case keyStatusItemControllerRefreshNowAwaitingConfirmation = "status.item.controller.refresh_now_awaiting_confirmation"
+    case keyStatusItemControllerRefreshNowFailureBackoff = "status.item.controller.refresh_now_failure_backoff"
+    case keyStatusItemControllerRefreshNowOutOfTokens = "status.item.controller.refresh_now_out_of_tokens"
 
     var rawKey: String { rawValue }
 }

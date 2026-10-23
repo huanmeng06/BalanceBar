@@ -347,20 +347,28 @@ enum OfficialQuotaResponseParser {
     static func claudeReadings(object: [String: Any], now: Date = Date()) -> [ClaudeReading] {
         claudeTiers().compactMap { tier -> ClaudeReading? in
             guard let payload = object[tier.key] else { return nil }
-            let window = payload as? [String: Any]
-            // A null window / null utilization means the window has not started and reads
-            // as 0% used without a reset time; a non-null value that is not a usable
-            // number stays unknown instead of inventing a fresh cycle.
+            // An explicit null window / null utilization means the window has not started
+            // and reads as 0% used without a reset time. A window that merely lacks the
+            // key, or carries a value that is not a usable number, stays unknown instead
+            // of inventing a fresh cycle that could wrongly confirm a pending reset.
             let used: Double
-            switch window?["utilization"] {
-            case nil, is NSNull:
-                guard payload is NSNull || window != nil else { return nil }
+            let raw: Any?
+            if payload is NSNull {
                 used = 0
-            case let value?:
-                guard let number = ResponseParsingSupport.numberValue(value), number.isFinite else { return nil }
-                used = number
+                raw = nil
+            } else if let window = payload as? [String: Any] {
+                guard let utilizationValue = window["utilization"] else { return nil }
+                if utilizationValue is NSNull {
+                    used = 0
+                } else {
+                    guard let number = ResponseParsingSupport.numberValue(utilizationValue),
+                          number.isFinite else { return nil }
+                    used = number
+                }
+                raw = window["resets_at"]
+            } else {
+                return nil
             }
-            let raw = window?["resets_at"]
             return ClaudeReading(
                 key: tier.key,
                 usedPercentage: max(0, min(100, used)),

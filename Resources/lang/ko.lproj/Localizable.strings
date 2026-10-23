@@ -577,6 +577,8 @@
 "status.item.controller.refresh_now_just_refreshed" = "방금 업데이트됨";
 "status.item.controller.refresh_now_recent_result" = "방금 업데이트됨 · %1$@초 후 재시도 가능";
 "status.item.controller.refresh_now_awaiting_confirmation" = "공식 초기화 확인 대기 중, 클릭하면 즉시 확인합니다";
+"status.item.controller.refresh_now_failure_backoff" = "요청 실패, %1$@초 후 자동 재시도";
+"status.item.controller.refresh_now_out_of_tokens" = "요청 한도 소진, %1$@초 후 복구";
 "claude.status_line.enabled" = "Claude Code 네이티브 동기화";
 "claude.status_line.description" = "Claude Code 내부 인터페이스를 사용해 Claude 답변이 끝날 때마다 초기화 시간, 남은 한도, 상태를 더 빨리 가져옵니다.";
 "claude.status_line.calibration" = "Claude 공식 할당량 보정";

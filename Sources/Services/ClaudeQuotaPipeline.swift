@@ -25,6 +25,10 @@ enum ClaudeManualRefreshNotice: Equatable {
     /// A reset passed and is awaiting official confirmation; a manual refresh asks the
     /// Usage API directly instead of being suppressed by the recent-result window.
     case awaitingResetConfirmation
+    /// The last request failed and the failure backoff holds requests until the given date.
+    case failureBackoff(until: Date)
+    /// The request budget is exhausted; the next token arrives at the given date.
+    case outOfTokens(until: Date)
     case inFlight
     case networkUnavailable
     case succeeded
@@ -240,9 +244,10 @@ final class ClaudeQuotaPipeline {
         return until
     }
 
-    /// Why a manual refresh would be skipped right now, in the scheduler's own precedence.
-    /// Reads the scheduler's queue-protected snapshot so the menu never disagrees with the
-    /// actual decision (e.g. a success persisted before a restart still suppresses).
+    /// Why a manual refresh would be skipped right now, in the scheduler's own precedence
+    /// (401 pause, cooldown, in-flight, failure backoff, recent result, budget). Reads the
+    /// scheduler's queue-protected snapshot so the menu never disagrees with the actual
+    /// decision (e.g. a success persisted before a restart still suppresses).
     func manualRefreshNotice() -> ClaudeManualRefreshNotice? {
         let status = scheduler.statusSnapshot()
         if status.isUnauthorizedPaused { return .loginExpired }
@@ -250,12 +255,14 @@ final class ClaudeQuotaPipeline {
             return .rateLimited(until: status.at.addingTimeInterval(status.cooldownRemaining))
         }
         if status.isBusy { return .inFlight }
+        if let until = status.failureBackoffUntil, until > status.at { return .failureBackoff(until: until) }
         let pending = earliestPendingReset()
         if let lastSuccessAt = status.lastSuccessAt,
            now().timeIntervalSince(lastSuccessAt) < manualRefreshWindow,
            pending.map({ lastSuccessAt <= $0 }) != true {
             return .recentResult(until: lastSuccessAt.addingTimeInterval(manualRefreshWindow))
         }
+        if let readyAt = status.manualTokensReadyAt, readyAt > status.at { return .outOfTokens(until: readyAt) }
         if pending != nil { return .awaitingResetConfirmation }
         if realtimeTracker?.lastTrustedRealtimeObservationAt != nil { return .localFresh }
         return nil

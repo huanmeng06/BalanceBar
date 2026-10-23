@@ -577,6 +577,8 @@
 "status.item.controller.refresh_now_just_refreshed" = "Только что обновлено";
 "status.item.controller.refresh_now_recent_result" = "Только что обновлено · повтор через %1$@ с";
 "status.item.controller.refresh_now_awaiting_confirmation" = "Ожидание подтверждения сброса; нажмите, чтобы подтвердить сейчас";
+"status.item.controller.refresh_now_failure_backoff" = "Запрос не удался; автоматический повтор через %1$@ с";
+"status.item.controller.refresh_now_out_of_tokens" = "Лимит запросов исчерпан, восстановление через %1$@ с";
 "claude.status_line.enabled" = "Нативная синхронизация Claude Code";
 "claude.status_line.description" = "Использует внутренний интерфейс Claude Code, чтобы после каждого ответа Claude быстрее получать время сброса, остаток лимита и статус.";
 "claude.status_line.calibration" = "Сверка официальной квоты Claude";

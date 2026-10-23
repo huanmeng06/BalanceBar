@@ -577,6 +577,8 @@
 "status.item.controller.refresh_now_just_refreshed" = "直前に更新済み";
 "status.item.controller.refresh_now_recent_result" = "直前に更新済み · %1$@秒後に再試行できます";
 "status.item.controller.refresh_now_awaiting_confirmation" = "公式のリセット確認を待っています。クリックで今すぐ確認します";
+"status.item.controller.refresh_now_failure_backoff" = "リクエスト失敗、%1$@秒後に自動再試行します";
+"status.item.controller.refresh_now_out_of_tokens" = "リクエスト枠を使い切り、%1$@秒後に回復します";
 "claude.status_line.enabled" = "Claude Code ネイティブ同期";
 "claude.status_line.description" = "Claude Code の内部インターフェースを使い、Claude の回答が終わるたびにリセット時刻・残り枠・状態をより早く取得します。";
 "claude.status_line.calibration" = "Claude 公式クォータの校正";
