@@ -580,3 +580,6 @@
 "claude.status_line.calibration" = "Calibración de la cuota oficial de Claude";
 "claude.status_line.calibration_value" = "Cada ~5 min";
 "claude.status_line.calibration_detail" = "Intervalo fijo para evitar límites; con la sincronización nativa la nueva cuota aparece antes";
+"claude.status_line.disable_failed_title" = "No se pudo desactivar la sincronización nativa de Claude Code";
+"claude.status_line.disable_failed_message" = "Añadiste campos propios a la statusLine de Claude Code y BalanceBar no puede quitar su comando sin perderlos, así que la sincronización sigue activa. Edita statusLine en ~/.claude/settings.json o elimina esos campos e inténtalo de nuevo.";
+"claude.status_line.disable_failed_ok" = "Aceptar";

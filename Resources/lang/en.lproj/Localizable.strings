@@ -580,3 +580,6 @@
 "claude.status_line.calibration" = "Claude official quota calibration";
 "claude.status_line.calibration_value" = "About every 5 min";
 "claude.status_line.calibration_detail" = "Fixed to avoid rate limits; native sync can show new quota sooner";
+"claude.status_line.disable_failed_title" = "Couldn't turn off Claude Code native sync";
+"claude.status_line.disable_failed_message" = "You added custom fields to the Claude Code statusLine, and BalanceBar can't remove its own command without losing them, so sync stays on. Edit statusLine in ~/.claude/settings.json yourself, or remove those fields and try again.";
+"claude.status_line.disable_failed_ok" = "OK";

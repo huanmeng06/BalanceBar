@@ -1159,17 +1159,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                     _ = try installer.uninstall()
                     installer.removeInstalledWrapper()
                     outcome = "restored"
+                    active = false
                 } catch ClaudeStatusLineInstallerError.notOwned {
                     // Another tool changed statusLine since; leave its configuration alone.
                     outcome = "not_owned_left_unchanged"
+                    active = false
                 } catch {
+                    // Our wrapper is still configured, so the bridge is still on: say so instead of
+                    // showing it as off while Claude Code keeps running the wrapper.
                     outcome = "restore_failed:\(error)"
+                    active = installer.isInstalled()
                 }
-                active = false
             }
             claudeQuota.setStatusLineEnabled(active)
-            SwitchLog.write("Claude statusLine bridge \(outcome)", level: active || !enabled ? .info : .warning, category: "configuration")
-            DispatchQueue.main.async { self?.preferences.claudeStatusLineEnabled = active }
+            let failedToDisable = !enabled && active
+            SwitchLog.write(
+                "Claude statusLine bridge \(outcome)",
+                level: (enabled && !active) || failedToDisable ? .warning : .info,
+                category: "configuration"
+            )
+            DispatchQueue.main.async {
+                self?.preferences.claudeStatusLineEnabled = active
+                if failedToDisable { ClaudeStatusLineDisableFailurePresenter.present() }
+            }
         }
     }
 

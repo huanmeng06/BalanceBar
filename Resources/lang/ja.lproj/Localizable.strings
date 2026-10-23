@@ -580,3 +580,6 @@
 "claude.status_line.calibration" = "Claude 公式クォータの校正";
 "claude.status_line.calibration_value" = "約 5 分ごと";
 "claude.status_line.calibration_detail" = "制限を避けるため固定間隔です。ネイティブ同期をオンにすると新しいクォータを早めに表示できます";
+"claude.status_line.disable_failed_title" = "Claude Code ネイティブ同期をオフにできませんでした";
+"claude.status_line.disable_failed_message" = "Claude Code の statusLine に独自のフィールドが追加されており、BalanceBar はそれらを失わずに自分のコマンドを削除できないため、同期はオンのままです。~/.claude/settings.json の statusLine を手動で編集するか、それらのフィールドを削除してからやり直してください。";
+"claude.status_line.disable_failed_ok" = "OK";
