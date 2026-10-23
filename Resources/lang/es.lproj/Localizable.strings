@@ -553,11 +553,11 @@
 "quick_switch.state_untrusted" = "Modo sin verificar: gestionar en CC Switch";
 "quick_switch.manage_in_cc_switch" = "Gestionar en CC Switch";
 
-"dashboard.refresh.official_quota_frequency" = "Frecuencia de actualización de cuota oficial";
+"dashboard.refresh.official_quota_frequency" = "Frecuencia de actualización de la cuota oficial de Codex";
 "dashboard.refresh.official_every_seconds" = "Cada %1$@ s";
-"dashboard.refresh.official_scope" = "Cuentas oficiales como Claude y Codex";
+"dashboard.refresh.official_scope" = "Cuentas oficiales de Codex";
 "dashboard.refresh.api_scope" = "Relés de terceros / claves API";
-"dashboard.refresh.minimum_interval_hint" = "Algunas fuentes tienen un intervalo mínimo";
+"dashboard.refresh.minimum_interval_hint" = "La actualización manual de Claude también respeta el intervalo de ~5 min";
 
 "quota.status.refreshing" = "Cargando…";
 "quota.status.realtime" = "En vivo";
@@ -575,6 +575,8 @@
 "status.item.controller.refresh_now_login_expired" = "Actualizar ahora (sesión de Claude caducada, ejecuta claude primero)";
 "status.item.controller.refresh_now_rate_limited" = "Actualizar ahora (límite de peticiones, disponible en %1$@)";
 "status.item.controller.refresh_now_just_refreshed" = "Actualizar ahora (recién actualizado)";
-"claude.status_line.enabled" = "Claude Code native sync";
-"claude.status_line.description" = "Use Claude Code statusLine data for fast local quota updates. Claude Code may hide some footer shortcuts after statusLine is configured.";
-"claude.status_line.calibration" = "Claude quota calibration: about every 5 minutes";
+"claude.status_line.enabled" = "Sincronización nativa de Claude Code";
+"claude.status_line.description" = "Obtiene antes la nueva cuota desde la línea de estado de Claude Code y conserva tu línea de estado actual. Al activarlo, Claude Code puede ocultar algunas pistas del pie.";
+"claude.status_line.calibration" = "Calibración de la cuota oficial de Claude";
+"claude.status_line.calibration_value" = "Cada ~5 min";
+"claude.status_line.calibration_detail" = "Intervalo fijo para evitar límites; con la sincronización nativa la nueva cuota aparece antes";

@@ -2028,7 +2028,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(api.numberOfItems, 5)
         let officialRow = try XCTUnwrap(SettingsRowView.enclosing(official))
         let apiRow = try XCTUnwrap(SettingsRowView.enclosing(api))
-        // Both rows share one structure and explain their source scope, not a vendor.
+        // The selector rows share one structure; the official selector now covers Codex only.
         XCTAssertEqual(officialRow.titleLabel.stringValue, tr(.keyDashboardOfficialQuotaRefreshFrequency))
         XCTAssertEqual(officialRow.detailLabel.stringValue, tr(.keyDashboardRefreshOfficialScope))
         XCTAssertEqual(apiRow.titleLabel.stringValue, tr(.keyDashboardGeneralAndRefreshPagesBalanceUpdatesDuringTasks))
@@ -2041,9 +2041,20 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let section = try XCTUnwrap(SettingsSectionView.enclosing(officialRow))
         // The hint covers both rows, so it appears once as the section footnote.
         XCTAssertEqual(section.footnoteLabel?.stringValue, tr(.keyDashboardRefreshMinimumIntervalHint))
-        XCTAssertEqual(section.contentViews.count, 2)
-        XCTAssertTrue(section.contentViews[0] === officialRow)
-        XCTAssertTrue(section.contentViews[1] === apiRow)
+        // Grouped by provider: Claude's fixed calibration, Claude Code native sync, Codex, API.
+        XCTAssertEqual(section.contentViews.count, 4)
+        let calibrationRow = try XCTUnwrap(section.contentViews[0] as? SettingsRowView)
+        XCTAssertEqual(calibrationRow.titleLabel.stringValue, tr(.keyClaudeStatusLineCalibration))
+        XCTAssertEqual(calibrationRow.detailLabel.stringValue, tr(.keyClaudeStatusLineCalibrationDetail))
+        let calibrationValue = try XCTUnwrap(descendants(of: calibrationRow).compactMap { $0 as? NSTextField }
+            .first { $0.accessibilityIdentifier() == "claudeCalibrationValue" })
+        XCTAssertEqual(calibrationValue.stringValue, tr(.keyClaudeStatusLineCalibrationValue))
+        XCTAssertFalse(descendants(of: calibrationRow).contains { $0 is NSPopUpButton }, "Claude's interval is not adjustable")
+        let nativeRow = try XCTUnwrap(section.contentViews[1] as? SettingsRowView)
+        XCTAssertEqual(nativeRow.titleLabel.stringValue, tr(.keyClaudeStatusLineEnabled))
+        XCTAssertNotNil(descendants(of: nativeRow).first { ($0 as? NSControl)?.identifier?.rawValue == "claudeStatusLineEnabled" })
+        XCTAssertTrue(section.contentViews[2] === officialRow)
+        XCTAssertTrue(section.contentViews[3] === apiRow)
         let refreshNowButton = try XCTUnwrap(descendants(of: page).compactMap { $0 as? NSButton }
             .first { $0.title == tr(.keyDashboardGeneralAndRefreshPagesRefreshNow) })
         let refreshNowRow = try XCTUnwrap(SettingsRowView.enclosing(refreshNowButton))

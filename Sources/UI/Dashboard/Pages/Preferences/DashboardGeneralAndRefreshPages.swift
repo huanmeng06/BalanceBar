@@ -468,20 +468,27 @@ final class DashboardGeneralPage {
             target: input.relay,
             action: #selector(DashboardPreferencePageRelay.toggle(_:))
         )
-        let claudeStatusLineRow = SettingsRowView(
-            title: tr(.keyClaudeStatusLineEnabled),
-            detail: tr(.keyClaudeStatusLineDescription),
-            accessoryView: claudeStatusLineSwitch
-        )
-        let claudeCalibrationRow = SettingsRowView(
-            title: tr(.keyClaudeStatusLineCalibration),
-            detail: tr(.keyDashboardRefreshOfficialScope)
-        )
+        // Claude's calibration is fixed by the scheduler, so its row shows the value where the
+        // other rows have a selector, right-aligned to the same column.
+        let claudeCalibrationValue = NSTextField(labelWithString: tr(.keyClaudeStatusLineCalibrationValue))
+        claudeCalibrationValue.textColor = .secondaryLabelColor
+        claudeCalibrationValue.alignment = .right
+        claudeCalibrationValue.setAccessibilityIdentifier("claudeCalibrationValue")
+        // Rows are grouped by provider: Claude (fixed calibration, then native sync),
+        // Codex, then API providers. Each row's accessory is its current value or control.
         let refreshing = SettingsSectionView(
             title: tr(.keyDashboardGeneralAndRefreshPagesRefresh),
             contentViews: [
-                claudeStatusLineRow,
-                claudeCalibrationRow,
+                SettingsRowView(
+                    title: tr(.keyClaudeStatusLineCalibration),
+                    detail: tr(.keyClaudeStatusLineCalibrationDetail),
+                    accessoryView: claudeCalibrationValue
+                ),
+                SettingsRowView(
+                    title: tr(.keyClaudeStatusLineEnabled),
+                    detail: tr(.keyClaudeStatusLineDescription),
+                    accessoryView: claudeStatusLineSwitch
+                ),
                 SettingsRowView(title: tr(.keyDashboardOfficialQuotaRefreshFrequency),
                     detail: tr(.keyDashboardRefreshOfficialScope),
                     accessoryView: refreshControls(officialActivePopup)),

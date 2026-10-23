@@ -553,11 +553,11 @@
 "quick_switch.state_untrusted" = "Modalità non verificata: gestisci in CC Switch";
 "quick_switch.manage_in_cc_switch" = "Gestisci in CC Switch";
 
-"dashboard.refresh.official_quota_frequency" = "Frequenza aggiornamento quota ufficiale";
+"dashboard.refresh.official_quota_frequency" = "Frequenza aggiornamento quota ufficiale Codex";
 "dashboard.refresh.official_every_seconds" = "Ogni %1$@ s";
-"dashboard.refresh.official_scope" = "Account ufficiali come Claude e Codex";
+"dashboard.refresh.official_scope" = "Account ufficiali Codex";
 "dashboard.refresh.api_scope" = "Relay di terze parti / chiavi API";
-"dashboard.refresh.minimum_interval_hint" = "Alcune fonti hanno un intervallo minimo";
+"dashboard.refresh.minimum_interval_hint" = "Anche l’aggiornamento manuale di Claude rispetta l’intervallo di circa 5 min";
 
 "quota.status.refreshing" = "Carico…";
 "quota.status.realtime" = "Live";
@@ -575,6 +575,8 @@
 "status.item.controller.refresh_now_login_expired" = "Aggiorna ora (accesso a Claude scaduto, esegui prima claude)";
 "status.item.controller.refresh_now_rate_limited" = "Aggiorna ora (limite di richieste, disponibile tra %1$@)";
 "status.item.controller.refresh_now_just_refreshed" = "Aggiorna ora (appena aggiornato)";
-"claude.status_line.enabled" = "Sincronizzazione nativa di Claude Code";
-"claude.status_line.description" = "Usa i dati statusLine di Claude Code per aggiornare rapidamente le quote locali. Dopo la configurazione di statusLine, Claude Code può nascondere alcuni suggerimenti in fondo.";
-"claude.status_line.calibration" = "Calibrazione quota Claude: circa ogni 5 minuti";
+"claude.status_line.enabled" = "Sincronizzazione nativa Claude Code";
+"claude.status_line.description" = "Recupera prima la nuova quota dalla riga di stato di Claude Code; la riga di stato esistente viene mantenuta. Se attivo, Claude Code può nascondere alcuni suggerimenti in basso.";
+"claude.status_line.calibration" = "Calibrazione della quota ufficiale Claude";
+"claude.status_line.calibration_value" = "Circa ogni 5 min";
+"claude.status_line.calibration_detail" = "Intervallo fisso per evitare i limiti; con la sincronizzazione nativa la nuova quota appare prima";

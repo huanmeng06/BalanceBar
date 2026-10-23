@@ -553,11 +553,11 @@
 "quick_switch.state_untrusted" = "Modus nicht bestätigt – in CC Switch verwalten";
 "quick_switch.manage_in_cc_switch" = "In CC Switch verwalten";
 
-"dashboard.refresh.official_quota_frequency" = "Aktualisierung des offiziellen Kontingents";
+"dashboard.refresh.official_quota_frequency" = "Aktualisierung des offiziellen Codex-Kontingents";
 "dashboard.refresh.official_every_seconds" = "Alle %1$@ s";
-"dashboard.refresh.official_scope" = "Offizielle Konten wie Claude und Codex";
+"dashboard.refresh.official_scope" = "Offizielle Codex-Konten";
 "dashboard.refresh.api_scope" = "Drittanbieter-Relays / API-Schlüssel";
-"dashboard.refresh.minimum_interval_hint" = "Einige Quellen haben ein Mindestintervall";
+"dashboard.refresh.minimum_interval_hint" = "Auch die manuelle Aktualisierung für Claude hält das Intervall von etwa 5 Min. ein";
 
 "quota.status.refreshing" = "Lädt…";
 "quota.status.realtime" = "Live";
@@ -575,6 +575,8 @@
 "status.item.controller.refresh_now_login_expired" = "Jetzt aktualisieren (Claude-Anmeldung abgelaufen, zuerst claude ausführen)";
 "status.item.controller.refresh_now_rate_limited" = "Jetzt aktualisieren (Ratenlimit, verfügbar in %1$@)";
 "status.item.controller.refresh_now_just_refreshed" = "Jetzt aktualisieren (gerade aktualisiert)";
-"claude.status_line.enabled" = "Claude Code native sync";
-"claude.status_line.description" = "Use Claude Code statusLine data for fast local quota updates. Claude Code may hide some footer shortcuts after statusLine is configured.";
-"claude.status_line.calibration" = "Claude quota calibration: about every 5 minutes";
+"claude.status_line.enabled" = "Native Synchronisierung mit Claude Code";
+"claude.status_line.description" = "Übernimmt neue Kontingentwerte früher aus der Claude-Code-Statuszeile; deine bisherige Statuszeile bleibt erhalten. Solange aktiv, blendet Claude Code eventuell einige Fußzeilenhinweise aus.";
+"claude.status_line.calibration" = "Abgleich des offiziellen Claude-Kontingents";
+"claude.status_line.calibration_value" = "Etwa alle 5 Min.";
+"claude.status_line.calibration_detail" = "Festes Intervall gegen Ratenlimits; mit nativer Synchronisierung erscheint neues Kontingent früher";

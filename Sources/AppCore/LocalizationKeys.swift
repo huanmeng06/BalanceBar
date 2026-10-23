@@ -247,6 +247,8 @@
     case keyClaudeStatusLineEnabled = "claude.status_line.enabled"
     case keyClaudeStatusLineDescription = "claude.status_line.description"
     case keyClaudeStatusLineCalibration = "claude.status_line.calibration"
+    case keyClaudeStatusLineCalibrationValue = "claude.status_line.calibration_value"
+    case keyClaudeStatusLineCalibrationDetail = "claude.status_line.calibration_detail"
     case keyDashboardOfficialQuotaRefreshFrequency = "dashboard.refresh.official_quota_frequency"
     case keyDashboardRefreshOfficialScope = "dashboard.refresh.official_scope"
     case keyDashboardRefreshAPIScope = "dashboard.refresh.api_scope"
