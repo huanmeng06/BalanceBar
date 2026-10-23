@@ -39,6 +39,11 @@ struct ClaudeQuotaState: Equatable {
     /// Lowercased account email; scopes quota prediction evidence to this
     /// account and matches the menu card's account presentation.
     let predictionAccountKey: String?
+    /// Journal identity for that evidence: the stable account ID (account +
+    /// organization UUID), so same-email Claude accounts stay isolated. Nil
+    /// whenever the email key is nil; evidence is only kept when the menu
+    /// can later match it.
+    let predictionEvidenceKey: String?
     /// Receipt time of the newest displayed official reading.
     let updatedAt: Date?
     let isRefreshing: Bool
@@ -504,6 +509,7 @@ final class ClaudeQuotaPipeline {
             accountEpoch: identity.accountEpoch,
             accountScope: Self.accountScope(for: identity.accountIdentity),
             predictionAccountKey: Self.predictionAccountKey(for: identity.accountIdentity),
+            predictionEvidenceKey: Self.predictionEvidenceKey(for: identity.accountIdentity),
             updatedAt: updatedAt,
             isRefreshing: refreshing,
             failure: failure,
@@ -547,6 +553,15 @@ final class ClaudeQuotaPipeline {
         guard let identity, let email = identity.email?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
               !email.isEmpty else { return nil }
         return email
+    }
+
+    /// Journal identity for prediction evidence: the stable account ID, which
+    /// distinguishes same-email Claude accounts (account + organization UUID).
+    /// Its "claude:" namespace also never collides with a Codex email journal.
+    /// Emitted only when the email-based menu match exists.
+    static func predictionEvidenceKey(for identity: AccountIdentity?) -> String? {
+        guard let identity, predictionAccountKey(for: identity) != nil else { return nil }
+        return identity.stableID
     }
 
     private static func failure(from error: OfficialQuotaClientError?) -> ClaudeQuotaFailure {

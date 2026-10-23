@@ -366,10 +366,23 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         XCTAssertEqual(ClaudeQuotaPipeline.predictionAccountKey(
             for: AccountIdentity(stableID: "id", email: " A@Example.COM ", idSource: .accountUUID)), "a@example.com")
 
+        // The evidence journal is keyed by the stable account ID, not the
+        // email: same-email Claude accounts must stay isolated (PR #587 review).
+        XCTAssertNil(ClaudeQuotaPipeline.predictionEvidenceKey(for: nil))
+        XCTAssertNil(ClaudeQuotaPipeline.predictionEvidenceKey(
+            for: AccountIdentity(stableID: "claude:acc-1:org", email: " ", idSource: .accountUUID)))
+        let sameEmailA = AccountIdentity(stableID: "claude:acc-1:org", email: "a@example.com", idSource: .accountUUID)
+        let sameEmailB = AccountIdentity(stableID: "claude:acc-2:org", email: "a@example.com", idSource: .accountUUID)
+        XCTAssertEqual(ClaudeQuotaPipeline.predictionEvidenceKey(for: sameEmailA), "claude:acc-1:org")
+        XCTAssertEqual(ClaudeQuotaPipeline.predictionEvidenceKey(for: sameEmailB), "claude:acc-2:org")
+        XCTAssertEqual(ClaudeQuotaPipeline.predictionAccountKey(for: sameEmailA),
+                       ClaudeQuotaPipeline.predictionAccountKey(for: sameEmailB), "the menu key stays email-based")
+
         let pipeline = makePipeline()
         pipeline.requestFetch(reason: .initial)
         let first = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
         XCTAssertEqual(first.predictionAccountKey, "a@example.com")
+        XCTAssertEqual(first.predictionEvidenceKey, "claude:account-a:org")
 
         PipelineStubProtocol.set(.init(data: Self.nextCycle))
         try writeAccount("account-b", email: "B@Example.com")
@@ -377,6 +390,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
             $0.accountEpoch != first.accountEpoch && !$0.windows.isEmpty
         })
         XCTAssertEqual(second.predictionAccountKey, "b@example.com", "the key is lowercased and never reused across accounts")
+        XCTAssertEqual(second.predictionEvidenceKey, "claude:account-b:org")
     }
 
     func testAccountSwitchClearsOldValuesBumpsEpochAndReadsTheNewAccount() throws {

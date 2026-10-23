@@ -4366,7 +4366,8 @@ extension ProviderRefreshCoordinatorTests {
                         nextCyclePublication.fulfill()
                     }
                 default:
-                    if snapshot.quotaPredictionAccountKey == "b@example.com" {
+                    if snapshot.quotaPredictionAccountKey == "a@example.com",
+                       fiveHourRemaining == 95 {
                         switchedAccountPublication.fulfill()
                     }
                 }
@@ -4418,18 +4419,26 @@ extension ProviderRefreshCoordinatorTests {
         }
         XCTAssertEqual(advancedSeconds, 9_000, accuracy: 0.001)
 
+        // PR #587 review: two Claude accounts sharing one email but not an
+        // account UUID are different accounts. Same reset cycle, higher
+        // remaining — an email-keyed journal would misread this as a refill.
         let epochBeforeSwitch = harness.identity.accountEpoch
         reply = try usage(fiveUtilization: 5, fiveReset: base.addingTimeInterval(27_000),
             sevenUtilization: 35, sevenReset: base.addingTimeInterval(302_400))
         clock.advance(by: 180) // one request token refills
-        try harness.writeAccount("account-b", email: "b@example.com")
+        try harness.writeAccount("account-b", email: "a@example.com")
         harness.waitForEpoch(after: epochBeforeSwitch)
         wait(for: [switchedAccountPublication], timeout: 3)
         settle(coordinator, harness)
-        let switched = try XCTUnwrap(snapshots.last { $0.quotaPredictionAccountKey == "b@example.com" })
+        let switched = try XCTUnwrap(snapshots.last {
+            $0.quotaPredictionAccountKey == "a@example.com"
+                && $0.officialQuotaWindows.first { $0.kind == .fiveHour }?.remaining == 95
+        })
+        XCTAssertEqual(switched.quotaPredictionAccountKey, "a@example.com",
+            "the menu key stays email-based across the same-email switch")
         let switchedFiveHour = try XCTUnwrap(switched.quotaPredictionContexts.first { $0.cycle.kind == .fiveHour })
         XCTAssertEqual(switchedFiveHour.inferredCycleStart, base.addingTimeInterval(9_000),
-            "the new account's journal starts fresh; the old account's refill record never applies")
+            "same-email accounts keep separate journals; the prior account's 90% baseline never suppresses this 95% reading as a refill")
     }
 
     func testClaudeStandardSummaryAndActivityBurstShareOneScheduledRequest() throws {
