@@ -568,12 +568,15 @@
 "quota.status.hover.external_activity" = "Atividade detectada em outro cliente; atualizando com mais frequência";
 "quota.status.reset_pending" = "Provável redefinição; aguardando confirmação";
 "quota.status.reset_pending_short" = "Pendente";
+"quota.card.reset_awaiting_confirmation" = "Hora de reinicialização passada, aguardando confirmação";
 "quota.failure.open_usage_page" = "Abrir a página oficial de uso";
 "quota.status.accessibility" = "Estado da cota: %1$@";
 "claude.refresh.login_expired" = "O login do Claude Code expirou. Execute claude uma vez no terminal para restaurá-lo; o BalanceBar nunca renova o login por conta própria.";
 "status.item.controller.refresh_now_login_expired" = "Login do Claude expirado, execute claude primeiro";
 "status.item.controller.refresh_now_rate_limited" = "Limite de requisições, disponível em %1$@";
 "status.item.controller.refresh_now_just_refreshed" = "Acabou de atualizar";
+"status.item.controller.refresh_now_recent_result" = "Acabou de atualizar · nova tentativa em %1$@ s";
+"status.item.controller.refresh_now_awaiting_confirmation" = "Aguardando confirmação da reinicialização; clique para confirmar agora";
 "claude.status_line.enabled" = "Sincronização nativa do Claude Code";
 "claude.status_line.description" = "Usa a interface interna do Claude Code para obter mais cedo o horário de redefinição, a cota restante e o status após cada resposta do Claude.";
 "claude.status_line.calibration" = "Calibração da cota oficial do Claude";

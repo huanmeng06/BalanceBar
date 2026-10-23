@@ -346,15 +346,26 @@ enum OfficialQuotaResponseParser {
     /// Parses the Claude usage payload into per-window readings.
     static func claudeReadings(object: [String: Any], now: Date = Date()) -> [ClaudeReading] {
         claudeTiers().compactMap { tier -> ClaudeReading? in
-            guard let window = object[tier.key] as? [String: Any],
-                  let utilization = ResponseParsingSupport.numberValue(window["utilization"]),
-                  utilization.isFinite else { return nil }
-            let raw = window["resets_at"]
+            guard let payload = object[tier.key] else { return nil }
+            let window = payload as? [String: Any]
+            // A null window / null utilization means the window has not started and reads
+            // as 0% used without a reset time; a non-null value that is not a usable
+            // number stays unknown instead of inventing a fresh cycle.
+            let used: Double
+            switch window?["utilization"] {
+            case nil, is NSNull:
+                guard payload is NSNull || window != nil else { return nil }
+                used = 0
+            case let value?:
+                guard let number = ResponseParsingSupport.numberValue(value), number.isFinite else { return nil }
+                used = number
+            }
+            let raw = window?["resets_at"]
             return ClaudeReading(
                 key: tier.key,
-                usedPercentage: max(0, min(100, utilization)),
+                usedPercentage: max(0, min(100, used)),
                 resetsAt: ResponseParsingSupport.timestampDate(raw),
-                window: claudeWindow(tier, usedPercentage: utilization, resetRaw: raw,
+                window: claudeWindow(tier, usedPercentage: used, resetRaw: raw,
                     resetAt: ResponseParsingSupport.resetDate(raw, now: now), now: now))
         }
     }

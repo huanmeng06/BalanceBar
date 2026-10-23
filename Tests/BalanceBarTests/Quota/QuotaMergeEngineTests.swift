@@ -153,6 +153,32 @@ final class QuotaMergeEngineTests: XCTestCase {
         XCTAssertEqual(sink.events, [.resetConfirmed(window: .fiveHour)])
     }
 
+    /// Issue #580: while a reset awaits official confirmation, a grade-B reading of the
+    /// next cycle updates the display immediately and provisionally; only grade-A confirms.
+    func testPendingResetShowsGradeBNextCycleProvisionally() {
+        let engine = makeEngine()
+        engine.merge(obs(80, resetsIn: 3_600))
+        clock = t0.addingTimeInterval(3_601)
+        _ = engine.refresh()
+        XCTAssertEqual(scheduler.reasons, [.resetConfirmation])
+
+        var model = engine.merge(obs(5, resetsIn: 3_600 + 18_000, at: 3_602, trust: .b))
+        XCTAssertEqual(model.window(for: .fiveHour)?.usedPercentage, 5, "the next cycle is shown immediately")
+        XCTAssertEqual(model.window(for: .fiveHour)?.state, .resetPendingConfirmation,
+                       "the window stays marked as awaiting official confirmation")
+        XCTAssertTrue(sink.events.isEmpty, "grade-B never confirms a reset")
+
+        // A stale grade-B reading of the same cycle does not regress the display.
+        model = engine.merge(obs(4, resetsIn: 3_600 + 18_000, at: 3_601, trust: .b))
+        XCTAssertEqual(model.window(for: .fiveHour)?.usedPercentage, 5)
+
+        // Grade-A of the next cycle confirms and replaces the provisional value.
+        model = engine.merge(obs(6, resetsIn: 3_600 + 18_000, at: 3_605))
+        XCTAssertEqual(model.window(for: .fiveHour)?.usedPercentage, 6)
+        XCTAssertEqual(model.window(for: .fiveHour)?.state, .inProgress)
+        XCTAssertEqual(sink.events, [.resetConfirmed(window: .fiveHour)])
+    }
+
     // MARK: - Account switching
 
     func testEpochChangeClearsOldAccountAndGradeB() {

@@ -19,8 +19,13 @@ final class ClaudeRealtimeTrackerTests: XCTestCase {
         now = now.addingTimeInterval(60)
         tracker.recordTrustedObservation(window: .fiveHour, receivedAt: now, epoch: .initial)
         XCTAssertEqual(tracker.bothWindowsFreshUntil, Date(timeIntervalSince1970: 1_800_000_120))
-        tracker.markPendingReset(true)
+        let pendingResetOf = Date(timeIntervalSince1970: 1_800_000_090)
+        tracker.markPendingReset(pendingResetOf)
         XCTAssertNil(tracker.bothWindowsFreshUntil)
+        XCTAssertEqual(tracker.pendingResetOf, pendingResetOf)
+        tracker.markPendingReset(nil)
+        XCTAssertNil(tracker.pendingResetOf)
+        XCTAssertEqual(tracker.bothWindowsFreshUntil, Date(timeIntervalSince1970: 1_800_000_120))
     }
 
     func testAccountResetDropsPreviousFreshness() {

@@ -136,12 +136,24 @@ final class ResponseParsersTests: XCTestCase {
         XCTAssertEqual(output.remaining, 59, "legacy scalar accessors still prefer weekly quota")
     }
 
-    func testClaudeQuotaSkipsMissingOrMalformedWindowsWithoutInventingValues() throws {
+    /// Issue #580: a null window / null utilization means the window has not started and
+    /// must still produce a 0% reading, or a pending reset can never be confirmed. A
+    /// malformed non-null utilization stays unknown instead of inventing a fresh cycle.
+    func testClaudeQuotaTreatsNullWindowsAsNotStarted() throws {
         let output = try OfficialQuotaResponseParser.parse(data: fixture(#"{"five_hour":{"utilization":"25"},"seven_day":null,"seven_day_sonnet":{"utilization":"invalid"}}"#), client: .claude, now: now)
-        XCTAssertEqual(output.windows.map(\.kind), [.fiveHour])
-        XCTAssertEqual(output.remaining, 75)
+        XCTAssertEqual(output.windows.map(\.kind), [.fiveHour, .sevenDay])
+        XCTAssertEqual(output.windows.map(\.remaining), [75, 100], "a null window has not started")
+        XCTAssertNil(output.windows.last?.resetAt)
         XCTAssertNil(output.windows.first?.resetAt)
-        XCTAssertThrowsError(try OfficialQuotaResponseParser.parse(data: fixture(#"{"five_hour":null,"seven_day":{}}"#), client: .claude, now: now))
+
+        let notStarted = try OfficialQuotaResponseParser.parse(data: fixture(#"{"five_hour":null,"seven_day":{}}"#), client: .claude, now: now)
+        XCTAssertEqual(notStarted.windows.map(\.kind), [.fiveHour, .sevenDay])
+        XCTAssertEqual(notStarted.windows.map(\.remaining), [100, 100])
+
+        let nullUtilization = try OfficialQuotaResponseParser.claudeReadings(
+            object: ["seven_day": ["utilization": NSNull()]], now: now)
+        XCTAssertEqual(nullUtilization.map(\.usedPercentage), [0])
+        XCTAssertNil(nullUtilization.first?.resetsAt, "a not-started window has no reset time")
     }
 
     func testOfficialQuotaFixturesCoverClaudeAndCodexWindows() throws {

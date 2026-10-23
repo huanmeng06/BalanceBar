@@ -3354,6 +3354,14 @@ extension StatusItemControllerTests {
         notice = .justRefreshed
         _ = controller.validateMenuItem(refresh)
         assertRefresh(subtitle: tr(.keyStatusItemControllerRefreshNowJustRefreshed), "just refreshed")
+        notice = .recentResult(until: Date().addingTimeInterval(-10))
+        _ = controller.validateMenuItem(refresh)
+        assertRefresh(subtitle: tr(.keyStatusItemControllerRefreshNowRecentResult, arguments: ["0"]),
+                      "a recent result counts down to the next useful retry")
+        notice = .awaitingResetConfirmation
+        _ = controller.validateMenuItem(refresh)
+        assertRefresh(subtitle: tr(.keyStatusItemControllerRefreshNowAwaitingConfirmation),
+                      "a pending reset explains itself instead of silently skipping")
         notice = nil
         _ = controller.validateMenuItem(refresh)
         assertRefresh(subtitle: nil, "the subtitle clears with the notice")

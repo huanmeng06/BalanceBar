@@ -56,6 +56,13 @@ public protocol ManualRefreshFreePathChecking {
 public protocol RealtimeSourceFreshnessProviding {
     /// Receipt time of the latest trusted real-time observation, or `nil`.
     var lastTrustedRealtimeObservationAt: Date? { get }
+
+    /// Earliest reset deadline that passed and still awaits official confirmation, or `nil`.
+    var pendingResetOf: Date? { get }
+}
+
+public extension RealtimeSourceFreshnessProviding {
+    var pendingResetOf: Date? { nil }
 }
 
 /// Scheduler state that must survive app restarts.

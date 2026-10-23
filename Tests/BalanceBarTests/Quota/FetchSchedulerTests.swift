@@ -46,6 +46,7 @@ final class FetchSchedulerTests: XCTestCase {
 
     private final class FakeRealtime: RealtimeSourceFreshnessProviding {
         var lastTrustedRealtimeObservationAt: Date?
+        var pendingResetOf: Date?
     }
 
     private var clock: FakeClock!
@@ -132,6 +133,49 @@ final class FetchSchedulerTests: XCTestCase {
         clock.advance(1)
         request(scheduler, .scheduled)
         XCTAssertEqual(transport.completions.count, 1)
+    }
+
+    /// Issue #580: the reset deadline already passed, so its confirmation must not wait
+    /// out the automatic minimum interval; only cooldown, 401 and backoff may hold it.
+    func testResetConfirmationBypassesMinimumInterval() {
+        let scheduler = makeScheduler(configuration: .claudeV1)
+        request(scheduler, .scheduled)
+        complete(scheduler, .success(Data()))
+        clock.advance(299) // inside Claude V1's five-minute minimum interval
+        request(scheduler, .resetConfirmation)
+        XCTAssertEqual(transport.completions.count, 1, "the confirmation must dispatch immediately")
+    }
+
+    func testResetConfirmationStillHonorsCooldown() {
+        let scheduler = makeScheduler()
+        request(scheduler, .scheduled)
+        complete(scheduler, .rateLimited(retryAfter: "1800"))
+        request(scheduler, .resetConfirmation)
+        XCTAssertEqual(lastSkip, .cooldown)
+    }
+
+    /// Issue #580: a success from before the pending deadline describes the previous
+    /// cycle and cannot confirm the reset, so it must not suppress a manual refresh.
+    func testManualRefreshDuringPendingResetIsNotSuppressedByRecentResult() {
+        let realtime = FakeRealtime()
+        let scheduler = makeScheduler(realtime: realtime)
+        request(scheduler, .scheduled)
+        complete(scheduler, .success(Data()))
+        realtime.pendingResetOf = clock.now.addingTimeInterval(60)
+        request(scheduler, .manual)
+        XCTAssertEqual(transport.completions.count, 1, "the manual refresh must reach the server")
+    }
+
+    /// A success newer than the pending deadline already answered the confirmation,
+    /// so the normal recent-result window keeps suppressing manual refreshes.
+    func testManualRefreshAfterPendingResetSuccessIsStillSuppressed() {
+        let realtime = FakeRealtime()
+        let scheduler = makeScheduler(realtime: realtime)
+        request(scheduler, .scheduled)
+        complete(scheduler, .success(Data()))
+        realtime.pendingResetOf = clock.now.addingTimeInterval(-60)
+        request(scheduler, .manual)
+        XCTAssertEqual(lastSkip, .recentResult)
     }
 
     func testClaudeV1UsesFiveMinuteCadenceAndOneTokenPerRequest() {

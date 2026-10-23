@@ -568,12 +568,15 @@
 "quota.status.hover.external_activity" = "Attività rilevata su un altro client; aggiornamento più frequente";
 "quota.status.reset_pending" = "Probabile ripristino; in attesa di conferma";
 "quota.status.reset_pending_short" = "In attesa";
+"quota.card.reset_awaiting_confirmation" = "Ora di ripristino superata, in attesa di conferma";
 "quota.failure.open_usage_page" = "Apri la pagina di utilizzo ufficiale";
 "quota.status.accessibility" = "Stato della quota: %1$@";
 "claude.refresh.login_expired" = "L'accesso a Claude Code è scaduto. Esegui claude una volta nel terminale per ripristinarlo; BalanceBar non rinnova mai l'accesso da solo.";
 "status.item.controller.refresh_now_login_expired" = "Accesso a Claude scaduto, esegui prima claude";
 "status.item.controller.refresh_now_rate_limited" = "Limite di richieste, disponibile tra %1$@";
 "status.item.controller.refresh_now_just_refreshed" = "Appena aggiornato";
+"status.item.controller.refresh_now_recent_result" = "Appena aggiornato · riprova tra %1$@ s";
+"status.item.controller.refresh_now_awaiting_confirmation" = "In attesa della conferma del ripristino; clicca per confermare ora";
 "claude.status_line.enabled" = "Sincronizzazione nativa Claude Code";
 "claude.status_line.description" = "Usa l’interfaccia interna di Claude Code per ottenere prima orario di reset, quota residua e stato dopo ogni risposta di Claude.";
 "claude.status_line.calibration" = "Calibrazione della quota ufficiale Claude";
