@@ -157,8 +157,22 @@ final class ClaudeStatusLineInstaller {
         }
         let updated: Data
         if let backup = readBackup() {
-            updated = try Self.restoreStatusLine(
-                in: current, hadStatusLine: backup.hadStatusLine, originalJSON: backup.statusLineJSON)
+            if backup.hadStatusLine,
+               let originalCommand = backup.originalCommand, !originalCommand.isEmpty,
+               let originalJSON = backup.statusLineJSON,
+               let originalObject = try? JSONSerialization.jsonObject(with: originalJSON) as? [String: Any],
+               !Self.statusLine(statusLine, matchesOriginal: originalObject, command: originalCommand) {
+                // The user changed other statusLine fields after installing; only the command is ours
+                // to give back, so their edits survive.
+                updated = try replaceCommand(in: current, command: originalCommand)
+            } else if !backup.hadStatusLine, Set(statusLine.keys) != ["type", "command"] {
+                // The object was ours, but the user has extended it since; removing it would drop
+                // their fields and keeping our command would leave the wrapper running.
+                throw ClaudeStatusLineInstallerError.notOwned
+            } else {
+                updated = try Self.restoreStatusLine(
+                    in: current, hadStatusLine: backup.hadStatusLine, originalJSON: backup.statusLineJSON)
+            }
         } else if let original = Self.embeddedOriginalCommand(in: currentCommand) {
             // Without a backup, the command itself still carries the original; only `command`
             // was ever changed, so restoring it is exact. An empty original means BalanceBar
@@ -178,6 +192,14 @@ final class ClaudeStatusLineInstaller {
         try atomicWrite(updated, createIfMissing: false)
         try? fileManager.removeItem(at: backupURL)
         return true
+    }
+
+    /// Whether the installed statusLine equals the backed-up one once our command is swapped back,
+    /// i.e. nothing besides `command` changed since install.
+    private static func statusLine(_ current: [String: Any], matchesOriginal original: [String: Any], command: String) -> Bool {
+        var restored = current
+        restored["command"] = command
+        return NSDictionary(dictionary: restored).isEqual(to: original)
     }
 
     /// Whether the settings still run this wrapper; never changes anything.
