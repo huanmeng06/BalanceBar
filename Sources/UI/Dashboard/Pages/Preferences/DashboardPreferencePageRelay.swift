@@ -90,8 +90,25 @@ final class DashboardPreferencePageRelay: NSObject {
     var onOffsetValueEnded: ((String, Double) -> Void)?
     var onOffsetReset: ((String) -> Void)?
 
+    /// Asks before a setting is switched off; returning `false` keeps it on.
+    var confirmDisable: ((String) -> Bool)? = { identifier in
+        guard identifier == "claudeStatusLineEnabled" else { return true }
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = tr(.keyClaudeStatusLineDisableConfirmTitle)
+        alert.informativeText = tr(.keyClaudeStatusLineDisableConfirmMessage)
+        // Cancel is the default button, so Return keeps the bridge on.
+        alert.addButton(withTitle: tr(.keyClaudeStatusLineDisableConfirmCancel))
+        alert.addButton(withTitle: tr(.keyClaudeStatusLineDisableConfirmAction))
+        return alert.runModal() == .alertSecondButtonReturn
+    }
+
     @objc func toggle(_ sender: NSSwitch) {
         guard let identifier = sender.identifier?.rawValue else { return }
+        if sender.state == .off, let confirmDisable, !confirmDisable(identifier) {
+            sender.state = .on
+            return
+        }
         onToggle?(identifier, sender.state == .on)
     }
 

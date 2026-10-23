@@ -2024,8 +2024,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let api = try XCTUnwrap(popups.first { $0.identifier?.rawValue == "codexUsageRefreshInterval" })
         XCTAssertNil(popups.first { $0.identifier?.rawValue == "postCodexRefreshDuration" })
         XCTAssertNil(popups.first { $0.identifier?.rawValue == "officialPostTaskRefreshDuration" })
-        XCTAssertEqual(official.numberOfItems, 5)
-        XCTAssertEqual(api.numberOfItems, 5)
+        XCTAssertEqual(official.numberOfItems, 6)
+        XCTAssertEqual(api.numberOfItems, 6)
         let officialRow = try XCTUnwrap(SettingsRowView.enclosing(official))
         let apiRow = try XCTUnwrap(SettingsRowView.enclosing(api))
         // The selector rows share one structure; the official selector now covers Codex only.
@@ -2033,27 +2033,21 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(officialRow.detailLabel.stringValue, tr(.keyDashboardRefreshOfficialScope))
         XCTAssertEqual(apiRow.titleLabel.stringValue, tr(.keyDashboardGeneralAndRefreshPagesBalanceUpdatesDuringTasks))
         XCTAssertEqual(apiRow.detailLabel.stringValue, tr(.keyDashboardRefreshAPIScope))
-        for row in [officialRow, apiRow] {
-            let hints = descendants(of: row).compactMap { ($0 as? NSTextField)?.stringValue }
-                .filter { $0 == tr(.keyDashboardRefreshMinimumIntervalHint) }
-            XCTAssertTrue(hints.isEmpty)
-        }
         let section = try XCTUnwrap(SettingsSectionView.enclosing(officialRow))
-        // The hint covers both rows, so it appears once as the section footnote.
-        XCTAssertEqual(section.footnoteLabel?.stringValue, tr(.keyDashboardRefreshMinimumIntervalHint))
-        // Grouped by provider: Claude's fixed calibration, Claude Code native sync, Codex, API.
+        XCTAssertNil(section.footnoteLabel)
+        // Order: Codex/Grok, Claude's fixed calibration, Claude Code native sync, API.
         XCTAssertEqual(section.contentViews.count, 4)
-        let calibrationRow = try XCTUnwrap(section.contentViews[0] as? SettingsRowView)
+        let calibrationRow = try XCTUnwrap(section.contentViews[1] as? SettingsRowView)
         XCTAssertEqual(calibrationRow.titleLabel.stringValue, tr(.keyClaudeStatusLineCalibration))
         XCTAssertEqual(calibrationRow.detailLabel.stringValue, tr(.keyClaudeStatusLineCalibrationDetail))
-        let calibrationValue = try XCTUnwrap(descendants(of: calibrationRow).compactMap { $0 as? NSTextField }
-            .first { $0.accessibilityIdentifier() == "claudeCalibrationValue" })
-        XCTAssertEqual(calibrationValue.stringValue, tr(.keyClaudeStatusLineCalibrationValue))
-        XCTAssertFalse(descendants(of: calibrationRow).contains { $0 is NSPopUpButton }, "Claude's interval is not adjustable")
-        let nativeRow = try XCTUnwrap(section.contentViews[1] as? SettingsRowView)
+        let calibrationPopup = try XCTUnwrap(descendants(of: calibrationRow).compactMap { $0 as? NSPopUpButton }
+            .first { $0.identifier?.rawValue == AppPreferences.claudeCalibrationIntervalKey })
+        XCTAssertEqual(calibrationPopup.itemTitles.count, AppPreferences.claudeCalibrationIntervals.count)
+        XCTAssertEqual(calibrationPopup.titleOfSelectedItem, tr(.keyClaudeRefreshEveryMinutes, arguments: ["5"]))
+        let nativeRow = try XCTUnwrap(section.contentViews[2] as? SettingsRowView)
         XCTAssertEqual(nativeRow.titleLabel.stringValue, tr(.keyClaudeStatusLineEnabled))
         XCTAssertNotNil(descendants(of: nativeRow).first { ($0 as? NSControl)?.identifier?.rawValue == "claudeStatusLineEnabled" })
-        XCTAssertTrue(section.contentViews[2] === officialRow)
+        XCTAssertTrue(section.contentViews[0] === officialRow)
         XCTAssertTrue(section.contentViews[3] === apiRow)
         let refreshNowButton = try XCTUnwrap(descendants(of: page).compactMap { $0 as? NSButton }
             .first { $0.title == tr(.keyDashboardGeneralAndRefreshPagesRefreshNow) })
@@ -2061,8 +2055,34 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertFalse(SettingsSectionView.enclosing(refreshNowRow) === section)
         official.selectItem(at: 3)
         _ = official.sendAction(official.action!, to: official.target)
-        XCTAssertEqual(preferences.officialUsageRefreshInterval, 150)
+        XCTAssertEqual(preferences.officialUsageRefreshInterval, 15)
         XCTAssertEqual(preferences.codexUsageRefreshInterval, 3)
+    }
+
+    func testDecliningTheDisableConfirmationKeepsClaudeNativeSyncOn() {
+        let relay = DashboardPreferencePageRelay()
+        var toggles: [(String, Bool)] = []
+        relay.onToggle = { toggles.append(($0, $1)) }
+        var asked: [String] = []
+        relay.confirmDisable = { asked.append($0); return false }
+        let sync = NSSwitch()
+        sync.identifier = NSUserInterfaceItemIdentifier("claudeStatusLineEnabled")
+        sync.state = .off
+        relay.toggle(sync)
+        XCTAssertEqual(sync.state, .on, "declining leaves the switch on")
+        XCTAssertEqual(asked, ["claudeStatusLineEnabled"])
+        XCTAssertTrue(toggles.isEmpty)
+
+        relay.confirmDisable = { _ in true }
+        sync.state = .off
+        relay.toggle(sync)
+        XCTAssertEqual(sync.state, .off)
+        XCTAssertEqual(toggles.count, 1)
+        XCTAssertEqual(toggles.first?.1, false)
+
+        sync.state = .on
+        relay.toggle(sync)
+        XCTAssertEqual(toggles.count, 2, "turning on never asks")
     }
 
     func testRefreshIntervalPopupsExpandForLongSpanishAndFrenchTitles() throws {
@@ -2072,11 +2092,11 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let cases: [(AppLanguage, [String])] = [
             (
                 .spanish,
-                ["Cada 1 s", "Cada 2 s", "Cada 3 s", "Cada 5 s", "Cada 10 s"]
+                ["Cada 3 s", "Cada 5 s", "Cada 10 s", "Cada 15 s", "Cada 30 s", "Cada 60 s"]
             ),
             (
                 .french,
-                ["Toutes les 1 s", "Toutes les 2 s", "Toutes les 3 s", "Toutes les 5 s", "Toutes les 10 s"]
+                ["Toutes les 3 s", "Toutes les 5 s", "Toutes les 10 s", "Toutes les 15 s", "Toutes les 30 s", "Toutes les 60 s"]
             )
         ]
 
@@ -2193,8 +2213,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
             api.selectItem(at: 4)
             relay.interval(api)
-            XCTAssertEqual(preferences.codexUsageRefreshInterval, 10)
-            XCTAssertEqual(defaults.double(forKey: "codexUsageRefreshInterval"), 10)
+            XCTAssertEqual(preferences.codexUsageRefreshInterval, 30)
+            XCTAssertEqual(defaults.double(forKey: "codexUsageRefreshInterval"), 30)
         }
     }
 

@@ -553,11 +553,10 @@
 "quick_switch.state_untrusted" = "State could not be verified — manage in CC Switch";
 "quick_switch.manage_in_cc_switch" = "Manage in CC Switch";
 
-"dashboard.refresh.official_quota_frequency" = "Codex official quota refresh frequency";
+"dashboard.refresh.official_quota_frequency" = "Subscription quota refresh frequency";
 "dashboard.refresh.official_every_seconds" = "Every %1$@ s";
-"dashboard.refresh.official_scope" = "Codex official accounts";
+"dashboard.refresh.official_scope" = "Codex and Grok official accounts";
 "dashboard.refresh.api_scope" = "Third-party relays / API keys";
-"dashboard.refresh.minimum_interval_hint" = "Manual refresh for Claude also follows the ~5-minute interval";
 
 "quota.status.refreshing" = "Updating…";
 "quota.status.realtime" = "Live";
@@ -576,10 +575,14 @@
 "status.item.controller.refresh_now_rate_limited" = "Rate limited, available in %1$@";
 "status.item.controller.refresh_now_just_refreshed" = "Just refreshed";
 "claude.status_line.enabled" = "Claude Code native sync";
-"claude.status_line.description" = "Picks up new quota early from the Claude Code status line and keeps your existing status line. Claude Code may hide some footer hints while it's on.";
+"claude.status_line.description" = "Uses Claude Code's internal interface to pick up the reset time, remaining quota and status sooner after each Claude reply.";
 "claude.status_line.calibration" = "Claude official quota calibration";
-"claude.status_line.calibration_value" = "About every 5 min";
-"claude.status_line.calibration_detail" = "Fixed to avoid rate limits; native sync can show new quota sooner";
+"claude.refresh.every_minutes" = "Every %1$@ min";
+"claude.status_line.calibration_detail" = "Longer intervals avoid rate limits; native sync can show new quota sooner";
+"claude.status_line.disable_confirm_title" = "Turn off Claude Code native sync?";
+"claude.status_line.disable_confirm_message" = "Claude quota will only refresh at the fixed interval and won't update right after each reply.";
+"claude.status_line.disable_confirm_action" = "Turn Off";
+"claude.status_line.disable_confirm_cancel" = "Cancel";
 "claude.status_line.disable_failed_title" = "Couldn't turn off Claude Code native sync";
 "claude.status_line.disable_failed_message" = "You added custom fields to the Claude Code statusLine, and BalanceBar can't remove its own command without losing them, so sync stays on. Edit statusLine in ~/.claude/settings.json yourself, or remove those fields and try again.";
 "claude.status_line.disable_failed_ok" = "OK";

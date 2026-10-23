@@ -15,6 +15,7 @@ public final class FetchScheduler: FetchScheduling {
     private let freePathChecker: ManualRefreshFreePathChecking?
     private let realtimeFreshness: RealtimeSourceFreshnessProviding?
     private let calibrationIntervalCap: () -> TimeInterval?
+    private let automaticIntervalOverride: () -> TimeInterval?
     private let configuration: FetchSchedulerConfiguration
     private let logSink: (FetchSchedulerLogEvent) -> Void
     private let queue: DispatchQueue
@@ -41,6 +42,8 @@ public final class FetchScheduler: FetchScheduling {
     private var idleTimerSkips = 0
     private var resultHandlers: [(FetchSchedulerDelivery) -> Void] = []
 
+    /// - Parameter automaticIntervalOverride: Reads a user-selected automatic-request interval that
+    ///   replaces `automaticMinimumInterval`; `nil` keeps the configured value.
     /// - Parameter calibrationIntervalCap: Reads the existing refresh-interval setting, used as an
     ///   upper bound: when a fresh real-time source suppresses automatic requests, a request is still
     ///   allowed once the last successful fetch is older than this cap. `nil` disables the override.
@@ -53,6 +56,7 @@ public final class FetchScheduler: FetchScheduling {
         freePathChecker: ManualRefreshFreePathChecking? = nil,
         realtimeFreshness: RealtimeSourceFreshnessProviding? = nil,
         calibrationIntervalCap: @escaping () -> TimeInterval? = { nil },
+        automaticIntervalOverride: @escaping () -> TimeInterval? = { nil },
         configuration: FetchSchedulerConfiguration = FetchSchedulerConfiguration(),
         queue: DispatchQueue = DispatchQueue(label: "BalanceBar.FetchScheduler", qos: .utility),
         logSink: @escaping (FetchSchedulerLogEvent) -> Void = { _ in }
@@ -65,6 +69,7 @@ public final class FetchScheduler: FetchScheduling {
         self.freePathChecker = freePathChecker
         self.realtimeFreshness = realtimeFreshness
         self.calibrationIntervalCap = calibrationIntervalCap
+        self.automaticIntervalOverride = automaticIntervalOverride
         self.configuration = configuration
         self.queue = queue
         self.logSink = logSink
@@ -120,7 +125,7 @@ public final class FetchScheduler: FetchScheduling {
                     ? tokenRefillAnchor.addingTimeInterval(configuration.tokenRefillInterval) : nil,
                 automaticTokenCost: configuration.automaticTokenCost,
                 lastServerAttemptAt: lastServerAttemptAt,
-                automaticMinimumInterval: configuration.automaticMinimumInterval,
+                automaticMinimumInterval: automaticMinimumInterval,
                 lastSuccessAt: currentEpochLastSuccessAt,
                 lastFailureAt: lastFailureAt,
                 manualTokenCost: configuration.manualTokenCost,
@@ -223,7 +228,7 @@ public final class FetchScheduler: FetchScheduling {
             && currentEpochLastSuccessAt == nil
         if !bypassMinimum,
            let lastSuccessAt = currentEpochLastSuccessAt,
-           now.timeIntervalSince(lastSuccessAt) < configuration.automaticMinimumInterval {
+           now.timeIntervalSince(lastSuccessAt) < automaticMinimumInterval {
             return log(.skipped, reasons: reasons, skip: .minimumInterval)
         }
         if !reasons.contains(.resetConfirmation),
@@ -245,6 +250,10 @@ public final class FetchScheduler: FetchScheduling {
         guard let key = identity.accountKey, key == persistent.lastSuccessAccountKey,
               let at = persistent.lastServerSuccessAt, lastSuccess == nil else { return nil }
         return at
+    }
+
+    private var automaticMinimumInterval: TimeInterval {
+        automaticIntervalOverride() ?? configuration.automaticMinimumInterval
     }
 
     private func calibrationCapExceeded(now: Date) -> Bool {
@@ -406,7 +415,7 @@ public final class FetchScheduler: FetchScheduling {
 
     /// Earliest time a `.scheduled` request passes every automatic gate.
     private func nextAutomaticEligibleAt(now: Date) -> Date {
-        var next = currentEpochLastSuccessAt?.addingTimeInterval(configuration.automaticMinimumInterval) ?? now
+        var next = currentEpochLastSuccessAt?.addingTimeInterval(automaticMinimumInterval) ?? now
         if let lastServerAttemptAt, consecutiveFailures > 0 {
             next = max(next, lastServerAttemptAt.addingTimeInterval(failureBackoffInterval))
         }

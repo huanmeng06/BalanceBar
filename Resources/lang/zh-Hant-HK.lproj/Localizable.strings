@@ -553,11 +553,10 @@
 "quick_switch.state_untrusted" = "無法確認模式，請在 CC Switch 中管理";
 "quick_switch.manage_in_cc_switch" = "在 CC Switch 中管理";
 
-"dashboard.refresh.official_quota_frequency" = "Codex 官方額度刷新頻率";
+"dashboard.refresh.official_quota_frequency" = "訂閱額度刷新頻率";
 "dashboard.refresh.official_every_seconds" = "每 %1$@ 秒";
-"dashboard.refresh.official_scope" = "Codex 官方帳戶";
+"dashboard.refresh.official_scope" = "Codex、Grok 官方帳號";
 "dashboard.refresh.api_scope" = "第三方中轉 / API Key";
-"dashboard.refresh.minimum_interval_hint" = "Claude 的手動刷新同樣遵守約 5 分鐘間隔";
 
 "quota.status.refreshing" = "更新中…";
 "quota.status.realtime" = "即時";
@@ -576,10 +575,14 @@
 "status.item.controller.refresh_now_rate_limited" = "被限流，%1$@後可用";
 "status.item.controller.refresh_now_just_refreshed" = "剛剛已刷新";
 "claude.status_line.enabled" = "Claude Code 原生同步";
-"claude.status_line.description" = "從 Claude Code 狀態列提前同步新額度，並保留現有狀態列。開啟後 Claude Code 可能隱藏部分底部提示。";
+"claude.status_line.description" = "透過 Claude Code 內部介面，在 Claude 每次回答結束後，更即時地取得刷新時間、剩餘額度和狀態。";
 "claude.status_line.calibration" = "Claude 官方額度校準";
-"claude.status_line.calibration_value" = "約每 5 分鐘";
-"claude.status_line.calibration_detail" = "固定間隔以避免限流；開啟原生同步後，新額度可更早顯示";
+"claude.refresh.every_minutes" = "每 %1$@ 分鐘";
+"claude.status_line.calibration_detail" = "較長的間隔可避免限流；開啟原生同步後，新額度可更早顯示";
+"claude.status_line.disable_confirm_title" = "關閉 Claude Code 原生同步？";
+"claude.status_line.disable_confirm_message" = "關閉後，Claude 額度只會按固定間隔刷新，無法在每次回答結束後即時更新。";
+"claude.status_line.disable_confirm_action" = "關閉";
+"claude.status_line.disable_confirm_cancel" = "取消";
 "claude.status_line.disable_failed_title" = "無法關閉 Claude Code 原生同步";
 "claude.status_line.disable_failed_message" = "你在 Claude Code 的 statusLine 設定中加入了自訂欄位，BalanceBar 無法在不遺失它們的情況下移除自己的指令，因此保持開啟。請手動編輯 ~/.claude/settings.json 的 statusLine，或先移除這些欄位後再關閉。";
 "claude.status_line.disable_failed_ok" = "好";

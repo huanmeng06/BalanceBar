@@ -445,12 +445,45 @@ final class AppPreferencesTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         XCTAssertEqual(preferences.officialUsageRefreshInterval, 60)
         preferences.codexUsageRefreshInterval = 5
-        preferences.officialUsageRefreshInterval = 150
+        preferences.officialUsageRefreshInterval = 30
         let reloaded = AppPreferences(defaults: defaults)
-        XCTAssertEqual(reloaded.officialUsageRefreshInterval, 150)
+        XCTAssertEqual(reloaded.officialUsageRefreshInterval, 30)
         XCTAssertEqual(reloaded.codexUsageRefreshInterval, 5)
-        defaults.set(3, forKey: "officialUsageRefreshInterval")
+        defaults.set(150, forKey: "officialUsageRefreshInterval")
         XCTAssertEqual(reloaded.officialUsageRefreshInterval, 60)
+    }
+
+    func testClaudeCalibrationIntervalDefaultsToFiveMinutesAndRejectsOtherValues() {
+        let (preferences, defaults, suite) = makePreferences()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        XCTAssertEqual(preferences.claudeCalibrationInterval, 300)
+        preferences.claudeCalibrationInterval = 600
+        XCTAssertEqual(AppPreferences(defaults: defaults).claudeCalibrationInterval, 600)
+        defaults.set(60, forKey: AppPreferences.claudeCalibrationIntervalKey)
+        XCTAssertEqual(preferences.claudeCalibrationInterval, 300, "below the 5 min source floor falls back")
+        preferences.claudeCalibrationInterval = 1_000
+        XCTAssertEqual(preferences.claudeCalibrationInterval, 300)
+    }
+
+    func testLegacyShortAPIRefreshIntervalsReadAsThreeSeconds() {
+        let (preferences, defaults, suite) = makePreferences()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        for legacy in [1.0, 2.0] {
+            defaults.set(legacy, forKey: "codexUsageRefreshInterval")
+            XCTAssertEqual(preferences.codexUsageRefreshInterval, 3, "legacy \(legacy) s")
+        }
+        defaults.set(10, forKey: "codexUsageRefreshInterval")
+        XCTAssertEqual(preferences.codexUsageRefreshInterval, 10)
+    }
+
+    func testClaudeStatusLineBridgeDefaultsOnUntilAChoiceIsSaved() {
+        let (preferences, defaults, suite) = makePreferences()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        XCTAssertTrue(preferences.claudeStatusLineEnabled)
+        XCTAssertFalse(preferences.claudeStatusLineEnabledIsConfigured)
+        preferences.claudeStatusLineEnabled = false
+        XCTAssertFalse(AppPreferences(defaults: defaults).claudeStatusLineEnabled)
+        XCTAssertTrue(AppPreferences(defaults: defaults).claudeStatusLineEnabledIsConfigured)
     }
 
     func testLegacyTrailingRefreshValuesAreIgnored() {

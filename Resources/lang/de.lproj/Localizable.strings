@@ -553,11 +553,10 @@
 "quick_switch.state_untrusted" = "Modus nicht bestätigt – in CC Switch verwalten";
 "quick_switch.manage_in_cc_switch" = "In CC Switch verwalten";
 
-"dashboard.refresh.official_quota_frequency" = "Aktualisierung des offiziellen Codex-Kontingents";
+"dashboard.refresh.official_quota_frequency" = "Aktualisierung des Abo-Kontingents";
 "dashboard.refresh.official_every_seconds" = "Alle %1$@ s";
-"dashboard.refresh.official_scope" = "Offizielle Codex-Konten";
+"dashboard.refresh.official_scope" = "Offizielle Konten für Codex und Grok";
 "dashboard.refresh.api_scope" = "Drittanbieter-Relays / API-Schlüssel";
-"dashboard.refresh.minimum_interval_hint" = "Auch die manuelle Aktualisierung für Claude hält das Intervall von etwa 5 Min. ein";
 
 "quota.status.refreshing" = "Lädt…";
 "quota.status.realtime" = "Live";
@@ -576,10 +575,14 @@
 "status.item.controller.refresh_now_rate_limited" = "Ratenlimit, verfügbar in %1$@";
 "status.item.controller.refresh_now_just_refreshed" = "Gerade aktualisiert";
 "claude.status_line.enabled" = "Native Synchronisierung mit Claude Code";
-"claude.status_line.description" = "Übernimmt neue Kontingentwerte früher aus der Claude-Code-Statuszeile; deine bisherige Statuszeile bleibt erhalten. Solange aktiv, blendet Claude Code eventuell einige Fußzeilenhinweise aus.";
+"claude.status_line.description" = "Nutzt die interne Schnittstelle von Claude Code, um Reset-Zeit, verbleibendes Kontingent und Status nach jeder Claude-Antwort früher zu erhalten.";
 "claude.status_line.calibration" = "Abgleich des offiziellen Claude-Kontingents";
-"claude.status_line.calibration_value" = "Etwa alle 5 Min.";
-"claude.status_line.calibration_detail" = "Festes Intervall gegen Ratenlimits; mit nativer Synchronisierung erscheint neues Kontingent früher";
+"claude.refresh.every_minutes" = "Alle %1$@ Min.";
+"claude.status_line.calibration_detail" = "Längere Intervalle vermeiden Ratenbegrenzungen; die native Synchronisierung zeigt neues Kontingent früher an";
+"claude.status_line.disable_confirm_title" = "Native Claude-Code-Synchronisierung ausschalten?";
+"claude.status_line.disable_confirm_message" = "Das Claude-Kontingent wird dann nur im festen Intervall aktualisiert und nicht direkt nach jeder Antwort.";
+"claude.status_line.disable_confirm_action" = "Ausschalten";
+"claude.status_line.disable_confirm_cancel" = "Abbrechen";
 "claude.status_line.disable_failed_title" = "Native Claude-Code-Synchronisierung konnte nicht ausgeschaltet werden";
 "claude.status_line.disable_failed_message" = "Du hast der statusLine von Claude Code eigene Felder hinzugefügt. BalanceBar kann seinen Befehl nicht entfernen, ohne sie zu verlieren, daher bleibt die Synchronisierung an. Bearbeite statusLine in ~/.claude/settings.json selbst oder entferne die Felder und versuche es erneut.";
 "claude.status_line.disable_failed_ok" = "OK";

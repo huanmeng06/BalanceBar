@@ -553,11 +553,10 @@
 "quick_switch.state_untrusted" = "Mode non confirmé : gérer dans CC Switch";
 "quick_switch.manage_in_cc_switch" = "Gérer dans CC Switch";
 
-"dashboard.refresh.official_quota_frequency" = "Fréquence d’actualisation du quota officiel Codex";
+"dashboard.refresh.official_quota_frequency" = "Fréquence d’actualisation du quota d’abonnement";
 "dashboard.refresh.official_every_seconds" = "Toutes les %1$@ s";
-"dashboard.refresh.official_scope" = "Comptes officiels Codex";
+"dashboard.refresh.official_scope" = "Comptes officiels Codex et Grok";
 "dashboard.refresh.api_scope" = "Relais tiers / clés API";
-"dashboard.refresh.minimum_interval_hint" = "L’actualisation manuelle de Claude respecte aussi l’intervalle d’environ 5 min";
 
 "quota.status.refreshing" = "En cours…";
 "quota.status.realtime" = "En direct";
@@ -576,10 +575,14 @@
 "status.item.controller.refresh_now_rate_limited" = "Limite de requêtes, disponible dans %1$@";
 "status.item.controller.refresh_now_just_refreshed" = "Vient d'être actualisé";
 "claude.status_line.enabled" = "Synchronisation native Claude Code";
-"claude.status_line.description" = "Récupère plus tôt le nouveau quota depuis la ligne d’état de Claude Code et conserve votre ligne d’état actuelle. Une fois activé, Claude Code peut masquer certaines indications en bas.";
+"claude.status_line.description" = "Utilise l’interface interne de Claude Code pour obtenir plus tôt l’heure de réinitialisation, le quota restant et l’état après chaque réponse de Claude.";
 "claude.status_line.calibration" = "Recalage du quota officiel Claude";
-"claude.status_line.calibration_value" = "Environ toutes les 5 min";
-"claude.status_line.calibration_detail" = "Intervalle fixe pour éviter les limites ; la synchronisation native affiche plus tôt le nouveau quota";
+"claude.refresh.every_minutes" = "Toutes les %1$@ min";
+"claude.status_line.calibration_detail" = "Des intervalles plus longs évitent les limitations ; la synchronisation native peut afficher le nouveau quota plus tôt";
+"claude.status_line.disable_confirm_title" = "Désactiver la synchronisation native de Claude Code ?";
+"claude.status_line.disable_confirm_message" = "Le quota Claude ne sera actualisé qu’à l’intervalle fixe, et non juste après chaque réponse.";
+"claude.status_line.disable_confirm_action" = "Désactiver";
+"claude.status_line.disable_confirm_cancel" = "Annuler";
 "claude.status_line.disable_failed_title" = "Impossible de désactiver la synchronisation native de Claude Code";
 "claude.status_line.disable_failed_message" = "Vous avez ajouté des champs personnalisés à la statusLine de Claude Code ; BalanceBar ne peut pas retirer sa commande sans les perdre, la synchronisation reste donc activée. Modifiez statusLine dans ~/.claude/settings.json ou supprimez ces champs, puis réessayez.";
 "claude.status_line.disable_failed_ok" = "OK";

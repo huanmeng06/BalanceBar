@@ -418,29 +418,37 @@ final class DashboardGeneralPage {
             contentViews: [launchAtLoginRow, silentLaunchRow, launchWithChatGPTRow]
         )
 
+        let intervalTitle = { (seconds: TimeInterval) in
+            tr(.keyDashboardOfficialEverySeconds, arguments: [String(Int(seconds))])
+        }
+        // Values saved before the shared option list (1 s, 2 s) show the nearest available choice.
+        let savedAPIInterval = input.preferences.codexUsageRefreshInterval
+        let selectedAPIInterval = AppPreferences.refreshIntervalOptions
+            .min { abs($0 - savedAPIInterval) < abs($1 - savedAPIInterval) } ?? savedAPIInterval
         let activeRefreshPopup = DashboardSettingsComponents.makeIntervalPopUpButton(
-            values: [
-                (1, tr(.keyDashboardGeneralAndRefreshPagesEvery1Sec)),
-                (2, tr(.keyDashboardGeneralAndRefreshPagesEvery2Sec)),
-                (3, tr(.keyDashboardGeneralAndRefreshPagesEvery3Sec)),
-                (5, tr(.keyDashboardGeneralAndRefreshPagesEvery5Sec)),
-                (10, tr(.keyDashboardGeneralAndRefreshPagesEvery10Sec))
-            ],
-            selected: input.preferences.codexUsageRefreshInterval,
+            values: AppPreferences.refreshIntervalOptions.map { ($0, intervalTitle($0)) },
+            selected: selectedAPIInterval,
             identifier: "codexUsageRefreshInterval",
             target: input.relay,
             action: #selector(DashboardPreferencePageRelay.interval(_:))
         )
         let officialActivePopup = DashboardSettingsComponents.makeIntervalPopUpButton(
-            values: AppPreferences.officialUsageRefreshIntervals.map {
-                ($0, tr(.keyDashboardOfficialEverySeconds, arguments: [String(Int($0))]))
-            }, selected: input.preferences.officialUsageRefreshInterval, identifier: "officialUsageRefreshInterval",
+            values: AppPreferences.officialUsageRefreshIntervals.map { ($0, intervalTitle($0)) },
+            selected: input.preferences.officialUsageRefreshInterval, identifier: "officialUsageRefreshInterval",
             target: input.relay, action: #selector(DashboardPreferencePageRelay.interval(_:)))
-        // Both rows share one structure: a right-aligned selector of identical
-        // width. The minimum-interval hint applies to the whole section, so it
-        // sits once under the card instead of repeating under each selector.
+        let claudeCalibrationPopup = DashboardSettingsComponents.makeIntervalPopUpButton(
+            values: AppPreferences.claudeCalibrationIntervals.map {
+                ($0, tr(.keyClaudeRefreshEveryMinutes, arguments: [String(Int($0 / 60))]))
+            },
+            selected: input.preferences.claudeCalibrationInterval,
+            identifier: AppPreferences.claudeCalibrationIntervalKey,
+            target: input.relay,
+            action: #selector(DashboardPreferencePageRelay.interval(_:))
+        )
+        // Both selector rows share one structure: a right-aligned selector of identical width.
         let refreshPopupWidth = ceil(max(
-            108, activeRefreshPopup.fittingSize.width, officialActivePopup.fittingSize.width
+            108, activeRefreshPopup.fittingSize.width, officialActivePopup.fittingSize.width,
+            claudeCalibrationPopup.fittingSize.width
         ))
         func refreshControls(_ popup: NSPopUpButton) -> NSStackView {
             popup.translatesAutoresizingMaskIntoConstraints = false
@@ -468,37 +476,36 @@ final class DashboardGeneralPage {
             target: input.relay,
             action: #selector(DashboardPreferencePageRelay.toggle(_:))
         )
-        // Claude's calibration is fixed by the scheduler, so its row shows the value where the
-        // other rows have a selector, right-aligned to the same column.
-        let claudeCalibrationValue = NSTextField(labelWithString: tr(.keyClaudeStatusLineCalibrationValue))
-        claudeCalibrationValue.textColor = .secondaryLabelColor
-        claudeCalibrationValue.alignment = .right
-        claudeCalibrationValue.setAccessibilityIdentifier("claudeCalibrationValue")
-        // Rows are grouped by provider: Claude (fixed calibration, then native sync),
-        // Codex, then API providers. Each row's accessory is its current value or control.
+        // Rows follow the order Codex/Grok, Claude calibration, Claude native sync, API providers.
+        // Each row's accessory is its current value or control, and agent rows carry their icons.
         let refreshing = SettingsSectionView(
             title: tr(.keyDashboardGeneralAndRefreshPagesRefresh),
             contentViews: [
                 SettingsRowView(
+                    title: tr(.keyDashboardOfficialQuotaRefreshFrequency),
+                    detail: tr(.keyDashboardRefreshOfficialScope),
+                    titleAccessory: DashboardRefreshPage.agentIconStrip(["CodexIcon", "GrokIdle"]),
+                    accessoryView: refreshControls(officialActivePopup)
+                ),
+                SettingsRowView(
                     title: tr(.keyClaudeStatusLineCalibration),
                     detail: tr(.keyClaudeStatusLineCalibrationDetail),
-                    accessoryView: claudeCalibrationValue
+                    titleAccessory: DashboardRefreshPage.agentIconStrip(["Claude"]),
+                    accessoryView: refreshControls(claudeCalibrationPopup)
                 ),
                 SettingsRowView(
                     title: tr(.keyClaudeStatusLineEnabled),
                     detail: tr(.keyClaudeStatusLineDescription),
+                    titleAccessory: DashboardRefreshPage.agentIconStrip(["Claude"]),
                     accessoryView: claudeStatusLineSwitch
                 ),
-                SettingsRowView(title: tr(.keyDashboardOfficialQuotaRefreshFrequency),
-                    detail: tr(.keyDashboardRefreshOfficialScope),
-                    accessoryView: refreshControls(officialActivePopup)),
                 SettingsRowView(
                     title: tr(.keyDashboardGeneralAndRefreshPagesBalanceUpdatesDuringTasks),
                     detail: tr(.keyDashboardRefreshAPIScope),
+                    titleAccessory: DashboardRefreshPage.agentIconStrip(["symbol:key"], pointSize: 18),
                     accessoryView: refreshControls(activeRefreshPopup)
                 )
-            ],
-            footnote: tr(.keyDashboardRefreshMinimumIntervalHint)
+            ]
         )
         let refreshNow = SettingsSectionView(
             title: tr(.keyDashboardGeneralAndRefreshPagesRefreshNow),
@@ -775,11 +782,43 @@ final class DashboardGeneralPage {
     }
 }
 
+private extension String {
+    func removingPrefix(_ prefix: String) -> String? {
+        hasPrefix(prefix) ? String(dropFirst(prefix.count)) : nil
+    }
+}
+
 enum DashboardRefreshPage {
     struct Input {
         let preferences: AppPreferences
         let providerPollInterval: TimeInterval
         let relay: DashboardPreferencePageRelay
+    }
+
+    /// Reuses the menu bar's bundled agent SVGs as small marks after a row title.
+    /// A `symbol:` prefix selects an SF Symbol instead of a bundled SVG.
+    /// Claude keeps its brand orange; the monochrome marks follow the secondary label color.
+    static func agentIconStrip(_ resourceNames: [String], pointSize: CGFloat = 14) -> NSView {
+        let iconSize = NSSize(width: pointSize, height: pointSize)
+        let icons: [AgentIconStripView.Icon] = resourceNames.compactMap { name in
+            if let symbol = name.removingPrefix("symbol:") {
+                guard let image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
+                    .withSymbolConfiguration(.init(pointSize: pointSize - 2, weight: .regular)) else { return nil }
+                // SF Symbols draw the key horizontally with the head on the left; tilt it so the
+                // head sits upper right and the tip points lower left. Keep the symbol's own aspect.
+                return AgentIconStripView.Icon(image: image, isTinted: true, rotationDegrees: -45)
+            }
+            guard let url = Bundle.main.url(forResource: name, withExtension: "svg") else { return nil }
+            // GrokIdle.svg is a framed artboard; the menu bar crops it through GrokIdleIcon.
+            guard let image = name == "GrokIdle"
+                ? GrokIdleIcon.make(fromSVG: url, outputSize: iconSize)
+                : NSImage(contentsOf: url) else { return nil }
+            image.size = iconSize
+            let tinted = name != "Claude"
+            image.isTemplate = tinted
+            return AgentIconStripView.Icon(image: image, isTinted: tinted)
+        }
+        return AgentIconStripView(icons: icons, iconSize: iconSize)
     }
 
     static func make(_ input: Input) -> NSView {
@@ -1053,6 +1092,84 @@ final class DashboardTimeZoneComboBox: NSPopUpButton, SettingsRowAccessoryLayout
         let selection = AppTimeZoneSelection.region(identifier: identifier)
         guard selection != preferences.displayTimeZoneSelection else { return }
         relay?.onTimeZone?(selection)
+    }
+}
+
+/// Fixed-size row of small agent marks. Like the update badge it reports an exact intrinsic
+/// size, so the settings row measures its title and detail text as if it were a plain label.
+final class AgentIconStripView: NSView {
+    struct Icon {
+        let image: NSImage
+        let isTinted: Bool
+        var rotationDegrees: CGFloat = 0
+    }
+
+    private static let spacing: CGFloat = 4
+    private let icons: [Icon]
+    private let iconSize: NSSize
+
+    init(icons: [Icon], iconSize: NSSize) {
+        self.icons = icons
+        self.iconSize = iconSize
+        super.init(frame: .zero)
+        setContentHuggingPriority(.required, for: .horizontal)
+        setContentHuggingPriority(.required, for: .vertical)
+        setContentCompressionResistancePriority(.required, for: .horizontal)
+        setContentCompressionResistancePriority(.required, for: .vertical)
+        setAccessibilityElement(false)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
+
+    override var intrinsicContentSize: NSSize {
+        let count = CGFloat(icons.count)
+        let width = count * iconSize.width + max(0, count - 1) * Self.spacing
+        return NSSize(width: width, height: iconSize.height)
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        var x: CGFloat = 0
+        let y = (bounds.height - iconSize.height) / 2
+        for icon in icons {
+            let natural = icon.image.size
+            let fit = min(iconSize.width / max(natural.width, 1), iconSize.height / max(natural.height, 1))
+            let drawSize = icon.rotationDegrees == 0
+                ? iconSize
+                : NSSize(width: natural.width * min(fit, 1), height: natural.height * min(fit, 1))
+            let rect = NSRect(
+                x: x + (iconSize.width - drawSize.width) / 2,
+                // The tilted key's mass sits above its frame's center; nudge it down to the title's optical center.
+                y: y + (iconSize.height - drawSize.height) / 2 - (icon.rotationDegrees == 0 ? 0 : 2),
+                width: drawSize.width,
+                height: drawSize.height
+            )
+            var drawable = icon.image
+            if icon.isTinted {
+                let tinted = icon.image.copy() as? NSImage ?? icon.image
+                tinted.lockFocus()
+                NSColor.secondaryLabelColor.set()
+                NSRect(origin: .zero, size: tinted.size).fill(using: .sourceIn)
+                tinted.unlockFocus()
+                tinted.isTemplate = false
+                drawable = tinted
+            }
+            if icon.rotationDegrees != 0, let context = NSGraphicsContext.current {
+                context.saveGraphicsState()
+                let transform = NSAffineTransform()
+                transform.translateX(by: rect.midX, yBy: rect.midY)
+                transform.rotate(byDegrees: icon.rotationDegrees)
+                transform.translateX(by: -rect.midX, yBy: -rect.midY)
+                transform.concat()
+                drawable.draw(in: rect)
+                context.restoreGraphicsState()
+            } else {
+                drawable.draw(in: rect)
+            }
+            x += iconSize.width + Self.spacing
+        }
     }
 }
 
