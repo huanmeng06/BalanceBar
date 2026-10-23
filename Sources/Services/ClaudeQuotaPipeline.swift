@@ -22,6 +22,13 @@ enum ClaudeManualRefreshNotice: Equatable {
     case justRefreshed
     case localFresh
     case recentResult(until: Date)
+    /// A reset passed and is awaiting official confirmation; a manual refresh asks the
+    /// Usage API directly instead of being suppressed by the recent-result window.
+    case awaitingResetConfirmation
+    /// The last request failed and the failure backoff holds requests until the given date.
+    case failureBackoff(until: Date)
+    /// The request budget is exhausted; the next token arrives at the given date.
+    case outOfTokens(until: Date)
     case inFlight
     case networkUnavailable
     case succeeded
@@ -131,6 +138,7 @@ final class ClaudeQuotaPipeline {
     private let notificationRouter = ClaudeNotificationRouter()
     private let realtimeTracker: ClaudeRealtimeTracker?
     private let statusLineSource: ClaudeStatusLineSource?
+    private let confirmationTimer: SchedulerTimer
     fileprivate let now: () -> Date
     private let manualRefreshWindow: TimeInterval
     private let diagnostics: (String, SwitchLog.Level) -> Void
@@ -150,6 +158,14 @@ final class ClaudeQuotaPipeline {
     private var lastClientError: OfficialQuotaClientError?
     private var lastSuccessAt: Date?
     private var state: ClaudeQuotaState?
+    /// Whether any window is awaiting official reset confirmation (pipeline queue).
+    private var awaitingResetConfirmation = false
+    /// Confirmation requests already repeated by the retry timer in the current pending period.
+    private var resetConfirmationAttempts = 0
+    private var resetConfirmationTimerGeneration = 0
+
+    /// Retry cadence for official reset confirmation: 1 → 2 → 5 minutes, then every 5 minutes.
+    private static let resetConfirmationRetryDelays: [TimeInterval] = [60, 120, 300]
 
     /// Called on the pipeline queue whenever the published state changes.
     var onUpdate: ((ClaudeQuotaState) -> Void)? {
@@ -170,6 +186,7 @@ final class ClaudeQuotaPipeline {
         automaticInterval: @escaping () -> TimeInterval? = { nil },
         schedulerClock: SchedulerClock = SystemSchedulerClock(),
         schedulerTimer: SchedulerTimer = DispatchSchedulerTimer(),
+        confirmationTimer: SchedulerTimer = DispatchSchedulerTimer(),
         schedulerConfiguration: FetchSchedulerConfiguration = FetchSchedulerConfiguration(),
         realtimeTracker: ClaudeRealtimeTracker? = nil,
         statusLineSource: ClaudeStatusLineSource? = nil,
@@ -187,6 +204,7 @@ final class ClaudeQuotaPipeline {
         self.now = now
         self.realtimeTracker = realtimeTracker
         self.statusLineSource = statusLineSource
+        self.confirmationTimer = confirmationTimer
         self.statusLineEnabled = statusLineEnabled
         stateStore = ObservedFetchSchedulerStateStore(
             base: FileFetchSchedulerStateStore(fileURL: stateDirectory.appendingPathComponent("claude-fetch-scheduler.json")))
@@ -234,19 +252,33 @@ final class ClaudeQuotaPipeline {
         return until
     }
 
-    /// Why a manual refresh would be skipped right now, in the scheduler's own precedence.
-    /// Reads memory only, so the menu can ask while it validates its items.
+    /// Why a manual refresh would be skipped right now, in the scheduler's own precedence
+    /// (401 pause, cooldown, in-flight, failure backoff, recent result, budget). Reads the
+    /// scheduler's queue-protected snapshot so the menu never disagrees with the actual
+    /// decision (e.g. a success persisted before a restart still suppresses).
     func manualRefreshNotice() -> ClaudeManualRefreshNotice? {
-        if stateStore.snapshot.isUnauthorizedPaused { return .loginExpired }
-        if let until = manualRefreshBlockedUntil() { return .rateLimited(until: until) }
-        // Native data can make a server read unnecessary before the OAuth success window ends.
-        if realtimeTracker?.lastTrustedRealtimeObservationAt != nil {
-            return .localFresh
+        let status = scheduler.statusSnapshot()
+        if status.isUnauthorizedPaused { return .loginExpired }
+        if status.cooldownRemaining > 0 {
+            return .rateLimited(until: status.at.addingTimeInterval(status.cooldownRemaining))
         }
-        if let at = lock.withLock({ lastSuccessAt }), now().timeIntervalSince(at) < manualRefreshWindow {
-            return .justRefreshed
+        if status.isBusy { return .inFlight }
+        if let until = status.failureBackoffUntil, until > status.at { return .failureBackoff(until: until) }
+        let pending = earliestPendingReset()
+        if let lastSuccessAt = status.lastSuccessAt,
+           now().timeIntervalSince(lastSuccessAt) < manualRefreshWindow,
+           pending.map({ lastSuccessAt <= $0 }) != true {
+            return .recentResult(until: lastSuccessAt.addingTimeInterval(manualRefreshWindow))
         }
+        if let readyAt = status.manualTokensReadyAt, readyAt > status.at { return .outOfTokens(until: readyAt) }
+        if pending != nil { return .awaitingResetConfirmation }
+        if realtimeTracker?.lastTrustedRealtimeObservationAt != nil { return .localFresh }
         return nil
+    }
+
+    /// Earliest reset deadline that passed and still awaits official confirmation.
+    private func earliestPendingReset() -> Date? {
+        engine?.currentState.windows.values.compactMap { $0.pendingResetOf }.min()
     }
 
     /// Starts account monitoring and builds the merge engine off the caller's thread.
@@ -384,7 +416,6 @@ final class ClaudeQuotaPipeline {
             realtimeTracker?.recordTrustedObservation(
                 window: observation.window, receivedAt: observation.receivedAt, epoch: observation.epoch)
         }
-        realtimeTracker?.markPendingReset(engine.currentState.windows.values.contains { $0.pendingResetOf != nil })
         publish()
     }
 
@@ -436,9 +467,48 @@ final class ClaudeQuotaPipeline {
         statusLineSource?.setGradeAResets(Dictionary(uniqueKeysWithValues: readings.map {
             ($0.quotaKind, $0.resetsAt)
         }))
-        realtimeTracker?.markPendingReset(engine.currentState.windows.values.contains { $0.pendingResetOf != nil })
         adapter?.update(engine.displayModel, accountScope: Self.accountScope(for: account))
         return nil
+    }
+
+    /// Keeps the tracker's pending-reset view in sync and drives official confirmation
+    /// retries while any window awaits one. Called from `publish` on the pipeline queue.
+    private func syncResetConfirmation() {
+        let pending = earliestPendingReset()
+        realtimeTracker?.markPendingReset(pending)
+        guard pending != nil else {
+            if awaitingResetConfirmation {
+                awaitingResetConfirmation = false
+                resetConfirmationTimerGeneration += 1
+            }
+            return
+        }
+        guard !awaitingResetConfirmation else { return }
+        awaitingResetConfirmation = true
+        resetConfirmationAttempts = 0
+        // The engine already asked when its clock crossed the deadline; this request also
+        // covers a pending state restored from disk after a restart, where nothing else fires.
+        // The scheduler coalesces both into one read.
+        prepareAndRequest(.resetConfirmation)
+        armResetConfirmationRetry()
+    }
+
+    private func armResetConfirmationRetry() {
+        resetConfirmationTimerGeneration += 1
+        let generation = resetConfirmationTimerGeneration
+        let delays = Self.resetConfirmationRetryDelays
+        let delay = delays[min(resetConfirmationAttempts, delays.count - 1)]
+        confirmationTimer.schedule(after: delay) { [weak self] in
+            guard let self else { return }
+            self.queue.async { self.resetConfirmationRetryFired(generation: generation) }
+        }
+    }
+
+    private func resetConfirmationRetryFired(generation: Int) {
+        guard generation == resetConfirmationTimerGeneration, awaitingResetConfirmation else { return }
+        resetConfirmationAttempts += 1
+        prepareAndRequest(.resetConfirmation)
+        armResetConfirmationRetry()
     }
 
     private func schedulerEvent(_ event: FetchSchedulerLogEvent) {
@@ -519,6 +589,7 @@ final class ClaudeQuotaPipeline {
             state = next
             return true
         }
+        syncResetConfirmation()
         if changed { handler?(next) }
     }
 
@@ -533,7 +604,14 @@ final class ClaudeQuotaPipeline {
                       let window = OfficialQuotaResponseParser.claudeWindow(
                         for: display.kind, usedPercentage: used, resetsAt: display.resetsAt, now: now),
                       let order = windowOrder.firstIndex(of: display.kind.rawValue) else { return nil }
-                return (order, window)
+                // A window past its reset keeps no future reset time; explain the wait
+                // instead of showing an unknown countdown.
+                let card = display.state == .resetPendingConfirmation && window.reset == nil
+                    ? OfficialQuotaWindow(kind: window.kind, remaining: window.remaining, label: window.label,
+                        daysText: window.daysText, reset: tr(.keyQuotaCardResetAwaitingConfirmation),
+                        durationSeconds: window.durationSeconds, resetAt: window.resetAt)
+                    : window
+                return (order, card)
             }
             .sorted { $0.0 < $1.0 }
             .map(\.1)

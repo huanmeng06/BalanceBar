@@ -269,15 +269,23 @@ public final class QuotaMergeEngine: QuotaMerging {
         let reading = QuotaMergedReading(observation)
 
         if let pending = window.pendingResetOf {
-            // Only a fresh grade-A reading of the next cycle confirms the reset.
-            guard observation.trust == .a,
-                  reading.effectiveTime > pending,
+            guard reading.effectiveTime > pending,
                   reading.effectiveTime >= window.displayed?.effectiveTime ?? .distantPast,
                   isNextCycle(reading, after: pending) else { return false }
-            window = QuotaMergedWindow(displayed: reading, latestGradeA: reading, pendingResetOf: nil)
+            if observation.trust == .a {
+                // Only a fresh grade-A reading of the next cycle confirms the reset.
+                window = QuotaMergedWindow(displayed: reading, latestGradeA: reading, pendingResetOf: nil)
+                state.windows[key] = window
+                events.append(.resetConfirmed(window: observation.window))
+                drift.didAccept(observation, previous: nil)
+                return true
+            }
+            // A grade-B reading of the next cycle is shown provisionally; the window stays
+            // pending until grade-A data confirms it, and `latestGradeA` is not overwritten.
+            let previous = window.displayed
+            window.displayed = reading
             state.windows[key] = window
-            events.append(.resetConfirmed(window: observation.window))
-            drift.didAccept(observation, previous: nil)
+            drift.didAccept(observation, previous: previous)
             return true
         }
 

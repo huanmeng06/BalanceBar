@@ -6129,7 +6129,18 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             return tr(.keyStatusItemControllerRefreshNowRateLimited, arguments: [text])
         case .justRefreshed?:
             return tr(.keyStatusItemControllerRefreshNowJustRefreshed)
-        case .localFresh?, .recentResult?, .inFlight?:
+        case let .recentResult(until)?:
+            let seconds = Int(max(0, until.timeIntervalSince(now).rounded(.up)))
+            return tr(.keyStatusItemControllerRefreshNowRecentResult, arguments: ["\(seconds)"])
+        case let .failureBackoff(until)?:
+            let seconds = Int(max(0, until.timeIntervalSince(now).rounded(.up)))
+            return tr(.keyStatusItemControllerRefreshNowFailureBackoff, arguments: ["\(seconds)"])
+        case let .outOfTokens(until)?:
+            let seconds = Int(max(0, until.timeIntervalSince(now).rounded(.up)))
+            return tr(.keyStatusItemControllerRefreshNowOutOfTokens, arguments: ["\(seconds)"])
+        case .awaitingResetConfirmation?:
+            return tr(.keyStatusItemControllerRefreshNowAwaitingConfirmation)
+        case .localFresh?, .inFlight?:
             return tr(.keyStatusItemControllerRefreshNowJustRefreshed)
         case .networkUnavailable?, .succeeded?:
             return nil

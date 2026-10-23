@@ -571,12 +571,17 @@
     case keyQuotaStatusHoverExternalActivity = "quota.status.hover.external_activity"
     case keyQuotaStatusResetPending = "quota.status.reset_pending"
     case keyQuotaStatusResetPendingShort = "quota.status.reset_pending_short"
+    case keyQuotaCardResetAwaitingConfirmation = "quota.card.reset_awaiting_confirmation"
     case keyQuotaFailureOpenUsagePage = "quota.failure.open_usage_page"
     case keyQuotaStatusAccessibility = "quota.status.accessibility"
     case keyClaudeRefreshLoginExpired = "claude.refresh.login_expired"
     case keyStatusItemControllerRefreshNowLoginExpired = "status.item.controller.refresh_now_login_expired"
     case keyStatusItemControllerRefreshNowRateLimited = "status.item.controller.refresh_now_rate_limited"
     case keyStatusItemControllerRefreshNowJustRefreshed = "status.item.controller.refresh_now_just_refreshed"
+    case keyStatusItemControllerRefreshNowRecentResult = "status.item.controller.refresh_now_recent_result"
+    case keyStatusItemControllerRefreshNowAwaitingConfirmation = "status.item.controller.refresh_now_awaiting_confirmation"
+    case keyStatusItemControllerRefreshNowFailureBackoff = "status.item.controller.refresh_now_failure_backoff"
+    case keyStatusItemControllerRefreshNowOutOfTokens = "status.item.controller.refresh_now_out_of_tokens"
 
     var rawKey: String { rawValue }
 }
