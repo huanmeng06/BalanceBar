@@ -465,6 +465,17 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertEqual(preferences.claudeCalibrationInterval, 300)
     }
 
+    func testLegacyShortAPIRefreshIntervalsReadAsThreeSeconds() {
+        let (preferences, defaults, suite) = makePreferences()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        for legacy in [1.0, 2.0] {
+            defaults.set(legacy, forKey: "codexUsageRefreshInterval")
+            XCTAssertEqual(preferences.codexUsageRefreshInterval, 3, "legacy \(legacy) s")
+        }
+        defaults.set(10, forKey: "codexUsageRefreshInterval")
+        XCTAssertEqual(preferences.codexUsageRefreshInterval, 10)
+    }
+
     func testClaudeStatusLineBridgeDefaultsOnUntilAChoiceIsSaved() {
         let (preferences, defaults, suite) = makePreferences()
         defer { defaults.removePersistentDomain(forName: suite) }

@@ -500,7 +500,8 @@ final class AppPreferences {
             defaults.set(Self.claudeCalibrationIntervals.contains(newValue) ? newValue : 300, forKey: Self.claudeCalibrationIntervalKey)
         }
     }
-    var codexUsageRefreshInterval: TimeInterval { get { positiveDouble("codexUsageRefreshInterval", default: 3) } set { defaults.set(newValue, forKey: "codexUsageRefreshInterval") } }
+    /// Saved values below the shortest option (legacy 1 s / 2 s) read as 3 s, so scheduling matches the selector.
+    var codexUsageRefreshInterval: TimeInterval { get { max(Self.refreshIntervalOptions[0], positiveDouble("codexUsageRefreshInterval", default: 3)) } set { defaults.set(newValue, forKey: "codexUsageRefreshInterval") } }
     /// Enables the native Claude Code statusLine bridge.
     /// On by default; `claudeStatusLineEnabledIsConfigured` tells a first launch apart from a saved choice.
     var claudeStatusLineEnabledIsConfigured: Bool { defaults.object(forKey: "claudeStatusLineEnabled") != nil }
