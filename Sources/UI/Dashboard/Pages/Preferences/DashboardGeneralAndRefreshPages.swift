@@ -1141,7 +1141,8 @@ final class AgentIconStripView: NSView {
                 : NSSize(width: natural.width * min(fit, 1), height: natural.height * min(fit, 1))
             let rect = NSRect(
                 x: x + (iconSize.width - drawSize.width) / 2,
-                y: y + (iconSize.height - drawSize.height) / 2,
+                // The tilted key's mass sits above its frame's center; nudge it down to the title's optical center.
+                y: y + (iconSize.height - drawSize.height) / 2 - (icon.rotationDegrees == 0 ? 0 : 2),
                 width: drawSize.width,
                 height: drawSize.height
             )
