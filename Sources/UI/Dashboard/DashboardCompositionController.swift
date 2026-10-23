@@ -7,6 +7,7 @@ struct DashboardCompositionState {
     let devBundleIdentifier: String
     let providerPollInterval: TimeInterval
     let currentProviderName: () -> String
+    let ccSwitchConnectionModes: () -> CCSwitchConnectionModes
     let currentProviderIsOfficial: () -> Bool
     let providerChoices: () -> [ProviderChoice]
     let snapshot: () -> Snapshot
@@ -44,12 +45,14 @@ struct DashboardCompositionState {
         notificationConfiguration: DashboardNotificationPageConfiguration? = nil,
         snapshotProviderID: @escaping () -> String? = { nil },
         aggregationSnapshots: @escaping () -> [String: Snapshot] = { [:] },
-        isAggregationMode: @escaping () -> Bool = { false }
+        isAggregationMode: @escaping () -> Bool = { false },
+        ccSwitchConnectionModes: @escaping () -> CCSwitchConnectionModes = { .unknown }
     ) {
         self.preferences = preferences
         self.devBundleIdentifier = devBundleIdentifier
         self.providerPollInterval = providerPollInterval
         self.currentProviderName = currentProviderName
+        self.ccSwitchConnectionModes = ccSwitchConnectionModes
         self.currentProviderIsOfficial = currentProviderIsOfficial
         self.providerChoices = providerChoices
         self.snapshot = snapshot
@@ -153,6 +156,7 @@ private final class DashboardSearchCancellationToken {
 private struct DashboardSearchRuntimeIdentity: Equatable {
     var languageKey: String
     var providerName: String
+    var ccSwitchConnectionModes: CCSwitchConnectionModes
     var updateState: UpdateCheckState
     var balanceDisplayThreshold: Double
     var statusLinks: [StatusLink]
@@ -671,6 +675,15 @@ final class DashboardCompositionController {
         )
     }
 
+    /// Live CC Switch connection-mode update from the file watcher. Section
+    /// activation reads the same cache, so this only has to cover an
+    /// already-visible General page.
+    func refreshCCSwitchConnectionModes() {
+        guard canUpdateSettingsPage(.general) else { return }
+        dashboardPreferencePages.refreshConnectionModes(state.ccSwitchConnectionModes())
+        invalidateSearchData()
+    }
+
     func refreshLaunchAtLogin() {
         guard canUpdateSettingsPage(.general) else { return }
         dashboardPreferencePages.refreshLaunchAtLogin()
@@ -1157,10 +1170,12 @@ final class DashboardCompositionController {
             timeZone: preferences.effectiveDisplayTimeZone,
             resolving: state.menuBarSnapshot
         )
-        // Provider name is the in-memory cache. This path must not open SQLite.
+        // Provider name and connection modes are in-memory caches. This path
+        // must not open SQLite.
         let identity = DashboardSearchRuntimeIdentity(
             languageKey: "\(AppLanguage.selected.rawValue)|\(AppLanguage.resolved.rawValue)",
             providerName: state.currentProviderName(),
+            ccSwitchConnectionModes: state.ccSwitchConnectionModes(),
             updateState: state.updateState(),
             balanceDisplayThreshold: preferences.balanceDisplayThreshold,
             statusLinks: state.statusLinks(),
@@ -1188,6 +1203,7 @@ final class DashboardCompositionController {
             animationFrameRate: identity.animationFrameRate,
             menuBarPreviewPrimary: identity.previewPrimary,
             menuBarPreviewSecondary: identity.previewSecondary,
+            ccSwitchConnectionModes: identity.ccSwitchConnectionModes,
             timeZoneTitle: identity.timeZoneTitle
         )
         texts[.general, default: []].append(contentsOf: TimeZoneCityCatalog.all.flatMap { city in
@@ -1290,6 +1306,7 @@ final class DashboardCompositionController {
         switch section {
         case .general:
             dashboardPreferencePages.refreshCurrentProviderName(state.currentProviderName())
+            dashboardPreferencePages.refreshConnectionModes(state.ccSwitchConnectionModes())
             dashboardPreferencePages.refreshUpdateState(state.updateState())
             dashboardPreferencePages.refreshLaunchAtLogin()
             dashboardPreferencePages.refreshLaunchWithChatGPT()
@@ -1329,6 +1346,7 @@ final class DashboardCompositionController {
         dashboardPreferencePages.makePage(
             for: section,
             currentProviderName: state.currentProviderName(),
+            connectionModes: state.ccSwitchConnectionModes(),
             providerPollInterval: state.providerPollInterval,
             snapshot: state.snapshot(),
             menuBarSnapshot: state.menuBarSnapshot,

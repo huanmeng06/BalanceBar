@@ -338,6 +338,7 @@ enum DashboardSettingsSearchCatalog {
         "dashboard.refresh.official_every_seconds",
         "dashboard.about.page.version_value",
         "dashboard.general.and.refresh.pages.current_provider_value",
+        "dashboard.general.and.refresh.pages.connection_mode_value",
         "dashboard.general.and.refresh.pages.downloading_value",
         "dashboard.general.and.refresh.pages.installing_value",
         "dashboard.general.and.refresh.pages.new_version_available_value_value",
@@ -602,6 +603,32 @@ enum DashboardSettingsFormattedCopy {
         )
     }
 
+    static func ccSwitchConnectionModeName(_ mode: CCSwitchConnectionMode) -> String {
+        switch mode {
+        case .direct: return tr(.keyDashboardGeneralAndRefreshPagesConnectionModeDirect)
+        case .aggregation: return tr(.keyDashboardGeneralAndRefreshPagesConnectionModeAggregation)
+        case .proxy: return tr(.keyDashboardGeneralAndRefreshPagesConnectionModeProxy)
+        case .unknown: return tr(.keyDashboardGeneralAndRefreshPagesConnectionModeUnknown)
+        }
+    }
+
+    static func ccSwitchConnectionModeLine(_ modes: CCSwitchConnectionModes) -> String {
+        tr(
+            .keyDashboardGeneralAndRefreshPagesConnectionModeValue,
+            arguments: [
+                ccSwitchConnectionModeName(modes.claude),
+                ccSwitchConnectionModeName(modes.codex)
+            ]
+        )
+    }
+
+    /// The mounted CC Switch row detail: provider line plus connection-mode
+    /// line. Row builder and search corpus share it so the corpus always
+    /// matches the visible copy.
+    static func ccSwitchDetailText(providerName: String, modes: CCSwitchConnectionModes) -> String {
+        currentProviderValue(providerName) + "\n" + ccSwitchConnectionModeLine(modes)
+    }
+
     static func autoSwitchLunaReserveTitle() -> String {
         tr(
             .keyDashboardMenuBarPageAutoSwitchLunaReserve,
@@ -728,13 +755,17 @@ enum DashboardSettingsSearchRuntime {
         animationFrameRate: Int,
         menuBarPreviewPrimary: String,
         menuBarPreviewSecondary: String,
+        ccSwitchConnectionModes: CCSwitchConnectionModes = .unknown,
         timeZoneTitle: String = TimeZoneCityCatalog.displayTitle(for: .system)
     ) -> [DashboardSection: [String]] {
         let update = DashboardUpdatePresentation.make(for: updateState)
         let frameRate = MenuBarAnimationTiming.clampedFrameRate(animationFrameRate)
         return [
             .general: nonempty([
-                DashboardSettingsFormattedCopy.currentProviderValue(currentProviderName),
+                DashboardSettingsFormattedCopy.ccSwitchDetailText(
+                    providerName: currentProviderName,
+                    modes: ccSwitchConnectionModes
+                ),
                 update.subtitle,
                 update.buttonTitle,
                 timeZoneTitle

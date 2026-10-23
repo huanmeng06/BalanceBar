@@ -296,6 +296,7 @@ final class DashboardGeneralPage {
     struct Input {
         let preferences: AppPreferences
         let currentProviderName: String
+        let connectionModes: CCSwitchConnectionModes
         let relay: DashboardPreferencePageRelay
         let updateState: UpdateCheckState
         let launchAtLoginState: LaunchAtLoginState
@@ -304,6 +305,7 @@ final class DashboardGeneralPage {
         init(
             preferences: AppPreferences,
             currentProviderName: String,
+            connectionModes: CCSwitchConnectionModes = .unknown,
             relay: DashboardPreferencePageRelay,
             updateState: UpdateCheckState,
             launchAtLoginState: LaunchAtLoginState = LaunchAtLoginState(status: .notRegistered),
@@ -311,6 +313,7 @@ final class DashboardGeneralPage {
         ) {
             self.preferences = preferences
             self.currentProviderName = currentProviderName
+            self.connectionModes = connectionModes
             self.relay = relay
             self.updateState = updateState
             self.launchAtLoginState = launchAtLoginState
@@ -326,6 +329,8 @@ final class DashboardGeneralPage {
     private var updateNotesButton: NSButton?
     private var updateBadge: NSView?
     private weak var currentProviderDetailLabel: NSTextField?
+    private var currentProviderName = ""
+    private var connectionModes: CCSwitchConnectionModes = .unknown
     private var launchAtLoginSwitch: NSSwitch?
     private var launchAtLoginSubtitleLabel: NSTextField?
     private var launchWithChatGPTSwitch: NSSwitch?
@@ -339,12 +344,14 @@ final class DashboardGeneralPage {
             target: input.relay,
             action: #selector(DashboardPreferencePageRelay.openCCSwitch(_:))
         )
-        let currentProviderText = DashboardSettingsFormattedCopy.currentProviderValue(
-            input.currentProviderName
-        )
+        currentProviderName = input.currentProviderName
+        connectionModes = input.connectionModes
         let currentProviderRow = SettingsRowView(
             title: tr(.keyDashboardGeneralAndRefreshPagesCcSwitch),
-            detail: currentProviderText,
+            detail: DashboardSettingsFormattedCopy.ccSwitchDetailText(
+                providerName: input.currentProviderName,
+                modes: input.connectionModes
+            ),
             accessoryView: openButton
         )
         currentProviderDetailLabel = currentProviderRow.detailLabel
@@ -675,8 +682,21 @@ final class DashboardGeneralPage {
     }
 
     func refreshCurrentProviderName(_ name: String) {
+        currentProviderName = name
+        refreshCCSwitchDetail()
+    }
+
+    func refreshConnectionModes(_ modes: CCSwitchConnectionModes) {
+        connectionModes = modes
+        refreshCCSwitchDetail()
+    }
+
+    private func refreshCCSwitchDetail() {
         guard let currentProviderDetailLabel else { return }
-        currentProviderDetailLabel.stringValue = DashboardSettingsFormattedCopy.currentProviderValue(name)
+        currentProviderDetailLabel.stringValue = DashboardSettingsFormattedCopy.ccSwitchDetailText(
+            providerName: currentProviderName,
+            modes: connectionModes
+        )
         currentProviderDetailLabel.superview?.needsLayout = true
         currentProviderDetailLabel.superview?.superview?.needsLayout = true
     }

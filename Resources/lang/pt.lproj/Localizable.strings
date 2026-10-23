@@ -201,6 +201,11 @@
 "dashboard.general.and.refresh.pages.launch_with_chatgpt_operation_failed" = "Não foi possível atualizar “Iniciar com o ChatGPT”. Verifique Definições do Sistema → Geral → Itens de início de sessão e tente novamente.";
 "dashboard.general.and.refresh.pages.launch_with_chatgpt_unavailable" = "Não foi possível ler o estado do serviço de início com o ChatGPT";
 "dashboard.general.and.refresh.pages.current_provider_value" = "Provedor atual: %1$@";
+"dashboard.general.and.refresh.pages.connection_mode_value" = "Claude Code: %1$@ · Codex: %2$@";
+"dashboard.general.and.refresh.pages.connection_mode_direct" = "Direto";
+"dashboard.general.and.refresh.pages.connection_mode_aggregation" = "Agregação";
+"dashboard.general.and.refresh.pages.connection_mode_proxy" = "Proxy";
+"dashboard.general.and.refresh.pages.connection_mode_unknown" = "Desconhecido";
 "dashboard.general.and.refresh.pages.system" = "Sistema";
 "dashboard.general.and.refresh.pages.every_1_sec" = "A cada 1 s";
 "dashboard.general.and.refresh.pages.every_2_sec" = "A cada 2 s";

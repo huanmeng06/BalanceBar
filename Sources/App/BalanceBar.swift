@@ -462,7 +462,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 guard let self, self.activeClient == .codex else { return [:] }
                 return Dictionary(uniqueKeysWithValues: self.aggregationDisplays.map { ($0.identity.providerID, $0.snapshot) })
             },
-            isAggregationMode: { [weak self] in self?.activeClient == .codex && self?.aggregationDisplays.isEmpty == false }
+            isAggregationMode: { [weak self] in self?.activeClient == .codex && self?.aggregationDisplays.isEmpty == false },
+            ccSwitchConnectionModes: { [weak self] in self?.ccSwitchConnectionModesCache ?? .unknown }
         ),
         actions: DashboardCompositionActions(
             onManualRefresh: { [weak self] in self?.performManualRefresh(source: "dashboard") },
@@ -593,6 +594,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var providerNotesCache: [String: [String: String]] = [:]
     private lazy var providerMetadataReader = ProviderMetadataReader(repository: ccSwitchRepository)
     private var currentProviderNameCache = ""
+    /// Both apps' CC Switch connection modes, refreshed off the main thread by
+    /// `refreshCCSwitchConnectionModes()`. Search and the General page read
+    /// this cache instead of touching the live-state file.
+    private var ccSwitchConnectionModesCache: CCSwitchConnectionModes = .unknown
+    private let connectionModeQueue = DispatchQueue(label: "local.balancebar.connection-mode", qos: .utility)
     private var clientSnapshots: [
         AssistantClient: (providerID: String, configurationRevision: String, snapshot: Snapshot)
     ] = [:]
@@ -747,6 +753,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             }
         }
         reloadCurrentProviderNameCache()
+        refreshCCSwitchConnectionModes()
         self.updateService.onStateChange = { [weak self] _ in
             guard let self else { return }
             let applyUpdateState = { [weak self] in
@@ -767,6 +774,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                     let appType = self.activeClient.appType
                     // Publish metadata asynchronously; the menu only reads the cache.
                     self.reloadCurrentProviderNameCache(appType: appType)
+                    self.refreshCCSwitchConnectionModes()
                     self.refreshStatusItemMenuInput()
                 }
                 SwitchLog.write("refresh triggered; origin=file-watcher; force=false", level: .debug, category: "refresh")
@@ -1056,6 +1064,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 ? self.officialQuotaClient.codexAccountProfile() : nil
             self.refreshStatusItemMenuInput()
             if changed { self.updateDashboard(for: self.snapshot, refreshDate: self.refreshDate(for: self.snapshot)) }
+        }
+    }
+
+    /// Reads CC Switch's live-state for both apps off the main thread and
+    /// publishes to the General page when the pair changed.
+    private func refreshCCSwitchConnectionModes() {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { [weak self] in self?.refreshCCSwitchConnectionModes() }
+            return
+        }
+        let repository = ccSwitchRepository
+        connectionModeQueue.async { [weak self] in
+            let modes = repository.connectionModes()
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.ccSwitchConnectionModesCache != modes else { return }
+                self.ccSwitchConnectionModesCache = modes
+                self.dashboardComposition.refreshCCSwitchConnectionModes()
+            }
         }
     }
 

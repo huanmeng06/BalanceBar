@@ -114,6 +114,7 @@ final class DashboardPreferencePages {
     func makePage(
         for section: DashboardSection,
         currentProviderName: String,
+        connectionModes: CCSwitchConnectionModes = .unknown,
         providerPollInterval: TimeInterval,
         snapshot: Snapshot,
         menuBarSnapshot: @escaping (Snapshot) -> Snapshot,
@@ -136,6 +137,7 @@ final class DashboardPreferencePages {
             return generalPage.make(.init(
                 preferences: preferences,
                 currentProviderName: currentProviderName,
+                connectionModes: connectionModes,
                 relay: relay,
                 updateState: updateState,
                 launchAtLoginState: launchAtLoginController.currentState(),
@@ -386,6 +388,13 @@ final class DashboardPreferencePages {
         generalPage.refreshCurrentProviderName(name)
         if isSearchProjectionActive {
             searchGeneralPage.refreshCurrentProviderName(name)
+        }
+    }
+
+    func refreshConnectionModes(_ modes: CCSwitchConnectionModes) {
+        generalPage.refreshConnectionModes(modes)
+        if isSearchProjectionActive {
+            searchGeneralPage.refreshConnectionModes(modes)
         }
     }
 

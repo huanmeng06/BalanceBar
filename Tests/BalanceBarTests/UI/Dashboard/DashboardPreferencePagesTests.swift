@@ -1694,11 +1694,39 @@ final class DashboardPreferencePagesTests: XCTestCase {
             updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6")))
         ))
         let labels = { self.descendants(of: page).compactMap { $0 as? NSTextField }.map(\.stringValue) }
-        XCTAssertTrue(labels().contains(DashboardSettingsFormattedCopy.currentProviderValue("Provider A")))
+        XCTAssertTrue(labels().contains(DashboardSettingsFormattedCopy.ccSwitchDetailText(providerName: "Provider A", modes: .unknown)))
 
         controller.refreshCurrentProviderName("Provider B")
-        XCTAssertTrue(labels().contains(DashboardSettingsFormattedCopy.currentProviderValue("Provider B")))
-        XCTAssertFalse(labels().contains(DashboardSettingsFormattedCopy.currentProviderValue("Provider A")))
+        XCTAssertTrue(labels().contains(DashboardSettingsFormattedCopy.ccSwitchDetailText(providerName: "Provider B", modes: .unknown)))
+        XCTAssertFalse(labels().contains { $0.contains(DashboardSettingsFormattedCopy.currentProviderValue("Provider A")) })
+    }
+
+    func testGeneralPageShowsAndRefreshesCCSwitchConnectionModes() throws {
+        let suiteName = "DashboardPreferencePagesTests.ConnectionModes.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let controller = DashboardGeneralPage()
+        let page = controller.make(.init(
+            preferences: AppPreferences(defaults: defaults),
+            currentProviderName: "Provider A",
+            connectionModes: CCSwitchConnectionModes(claude: .direct, codex: .aggregation),
+            relay: DashboardPreferencePageRelay(),
+            updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6")))
+        ))
+        let labels = { self.descendants(of: page).compactMap { $0 as? NSTextField }.map(\.stringValue) }
+        XCTAssertTrue(labels().contains(DashboardSettingsFormattedCopy.ccSwitchDetailText(
+            providerName: "Provider A",
+            modes: CCSwitchConnectionModes(claude: .direct, codex: .aggregation)
+        )))
+
+        controller.refreshConnectionModes(CCSwitchConnectionModes(claude: .proxy, codex: .unknown))
+        XCTAssertTrue(labels().contains(DashboardSettingsFormattedCopy.ccSwitchDetailText(
+            providerName: "Provider A",
+            modes: CCSwitchConnectionModes(claude: .proxy, codex: .unknown)
+        )))
+        XCTAssertFalse(labels().contains { $0.contains(DashboardSettingsFormattedCopy.ccSwitchConnectionModeName(.direct)) })
     }
 
     func testLaunchAtLoginGeneralRowReflectsStatesAndRoutesToggle() throws {

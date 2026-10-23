@@ -46,6 +46,18 @@ enum CCSwitchQuickSwitchSafety: Equatable {
     }
 }
 
+enum CCSwitchConnectionMode: Equatable, Sendable {
+    case direct, aggregation, proxy, unknown
+}
+
+/// Both apps' connection modes from one live-state read.
+struct CCSwitchConnectionModes: Equatable, Sendable {
+    let claude: CCSwitchConnectionMode
+    let codex: CCSwitchConnectionMode
+
+    static let unknown = CCSwitchConnectionModes(claude: .unknown, codex: .unknown)
+}
+
 enum CCSwitchReadError: Error {
     case sqlite(Int32)
     var sqliteCode: Int32 { switch self { case .sqlite(let code): return code } }
@@ -241,6 +253,68 @@ final class CCSwitchRepository {
 
     var deviceStateURL: URL { homeDirectoryURL.appendingPathComponent(".cc-switch/live-state.json") }
 
+    /// One app's view of CC Switch's live-state.json, shared by quick-switch
+    /// safety and connection-mode reads so the two cannot diverge. A missing
+    /// file or missing app entry keeps `mode == nil` (legacy direct); a
+    /// present-but-untrusted payload reports `.untrusted`.
+    private enum DeviceAppState: Equatable {
+        case trusted(mode: String?, hasEntry: Bool, stackEnabled: Bool, attached: Bool)
+        case untrusted
+    }
+
+    private static func parseDeviceAppState(_ data: Data?, appType: String) -> DeviceAppState {
+        let absent = DeviceAppState.trusted(mode: nil, hasEntry: false, stackEnabled: false, attached: false)
+        guard let data else { return absent }
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              object["version"] == nil || ((object["version"] as? NSNumber).map { CFGetTypeID($0) != CFBooleanGetTypeID() && $0.intValue == 1 && $0.doubleValue == 1 } == true),
+              let apps = object["apps"] as? [String: Any] else { return .untrusted }
+        guard let raw = apps[appType] else { return absent }
+        guard let entry = raw as? [String: Any],
+              entry["pending"] == nil || entry["pending"] is NSNull else { return .untrusted }
+        return .trusted(
+            mode: entry["mode"] as? String,
+            hasEntry: true,
+            stackEnabled: (entry["stack"] as? [String: Any])?["enabled"] as? Bool == true,
+            attached: entry["attached"] as? Bool == true
+        )
+    }
+
+    /// Read-only connection mode for the General page. Unreadable or untrusted
+    /// state — including a missing CC Switch install — reports `.unknown`
+    /// instead of guessing.
+    func connectionMode(appType: String, stateURL: URL? = nil, readState: (URL) throws -> Data = { try Data(contentsOf: $0) }) -> CCSwitchConnectionMode {
+        guard appType == "codex" || appType == "claude" else { return .unknown }
+        let data = try? readState(stateURL ?? deviceStateURL)
+        return Self.connectionMode(appType: appType, stateData: data)
+    }
+
+    /// Both apps' modes from a single state read, so the pair cannot straddle
+    /// a concurrent CC Switch write.
+    func connectionModes(stateURL: URL? = nil, readState: (URL) throws -> Data = { try Data(contentsOf: $0) }) -> CCSwitchConnectionModes {
+        let data = try? readState(stateURL ?? deviceStateURL)
+        return CCSwitchConnectionModes(
+            claude: Self.connectionMode(appType: "claude", stateData: data),
+            codex: Self.connectionMode(appType: "codex", stateData: data)
+        )
+    }
+
+    private static func connectionMode(appType: String, stateData: Data?) -> CCSwitchConnectionMode {
+        guard case let .trusted(mode, hasEntry, stackEnabled, attached) = parseDeviceAppState(stateData, appType: appType),
+              hasEntry, let mode else { return .unknown }
+        switch mode {
+        case "direct":
+            // `attached` marks proxy-managed residue; a "direct" claim with it
+            // is not trustworthy, exactly like quick-switch safety.
+            return attached ? .unknown : .direct
+        case "proxy":
+            // CC Switch's stack aggregation is Codex-only; Claude proxy
+            // takeovers stay `.proxy`, mirroring quick-switch safety.
+            return appType == "codex" && stackEnabled ? .aggregation : .proxy
+        default:
+            return .unknown
+        }
+    }
+
     /// Reads only the proxy settings used for Claude's official HTTPS quota
     /// request. Invalid or non-string values fail closed to direct transport.
     func claudeProxyConfiguration(
@@ -281,9 +355,8 @@ final class CCSwitchRepository {
         let proxyHistoryKey = proxyHistoryKey(appType: appType)
         // Remember a local proxy observation even when the database is temporarily unavailable.
         if let data = try? readState(stateURL ?? deviceStateURL),
-           let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           let codex = (object["apps"] as? [String: Any])?[appType] as? [String: Any],
-           codex["mode"] as? String == "proxy", !UserDefaults.standard.bool(forKey: proxyHistoryKey) {
+           case let .trusted(mode, _, _, _) = Self.parseDeviceAppState(data, appType: appType),
+           mode == "proxy", !UserDefaults.standard.bool(forKey: proxyHistoryKey) {
             UserDefaults.standard.set(true, forKey: proxyHistoryKey)
         }
         var database: OpaquePointer?
@@ -305,22 +378,16 @@ final class CCSwitchRepository {
                 catch let error as CocoaError where error.code == .fileReadNoSuchFile { return nil }
             }
             let before = try stateData()
-            var mode: String?
-            if let before {
-                guard let object = try JSONSerialization.jsonObject(with: before) as? [String: Any],
-                      object["version"] == nil || ((object["version"] as? NSNumber).map { CFGetTypeID($0) != CFBooleanGetTypeID() && $0.intValue == 1 && $0.doubleValue == 1 } == true),
-                      let apps = object["apps"] as? [String: Any] else { return .blockedUntrusted }
-                if let raw = apps[appType] {
-                    guard let codex = raw as? [String: Any],
-                          codex["pending"] == nil || codex["pending"] is NSNull else { return .blockedUntrusted }
-                    mode = codex["mode"] as? String
-                    if mode == "proxy" {
-                        if !UserDefaults.standard.bool(forKey: proxyHistoryKey) { UserDefaults.standard.set(true, forKey: proxyHistoryKey) }
-                        return appType == "codex" && (codex["stack"] as? [String: Any])?["enabled"] as? Bool == true
-                            ? .blockedAggregation : .blockedRouting
-                    }
-                    guard mode == "direct", codex["attached"] as? Bool != true else { return .blockedUntrusted }
-                }
+            guard case let .trusted(mode, hasEntry, stackEnabled, attached) = Self.parseDeviceAppState(before, appType: appType) else {
+                return .blockedUntrusted
+            }
+            if mode == "proxy" {
+                if !UserDefaults.standard.bool(forKey: proxyHistoryKey) { UserDefaults.standard.set(true, forKey: proxyHistoryKey) }
+                return appType == "codex" && stackEnabled
+                    ? .blockedAggregation : .blockedRouting
+            }
+            if hasEntry {
+                guard mode == "direct", !attached else { return .blockedUntrusted }
             }
             let evidence = proxyTakeoverStatus(appType: appType, database: database, includeSyncedEnabled: mode != "direct")
             guard evidence == .inactive else { return .blockedUntrusted }

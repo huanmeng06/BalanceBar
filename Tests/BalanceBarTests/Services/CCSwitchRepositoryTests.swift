@@ -603,6 +603,47 @@ extension CCSwitchRepositoryTests {
         XCTAssertEqual(repository.quickSwitchSafety(), .blockedUntrusted)
     }
 
+    func testConnectionModeMapsDeviceStateCombinations() throws {
+        func read(_ state: String?) -> (URL) throws -> Data {
+            { _ in
+                guard let state else { throw CocoaError(.fileReadNoSuchFile) }
+                return Data(state.utf8)
+            }
+        }
+        // The fixture writes codex "direct" in setUp.
+        XCTAssertEqual(repository.connectionMode(appType: "codex"), .direct)
+        try writeDeviceMode("proxy", stack: true)
+        XCTAssertEqual(repository.connectionMode(appType: "codex"), .aggregation)
+        try writeDeviceMode("proxy")
+        XCTAssertEqual(repository.connectionMode(appType: "codex"), .proxy)
+
+        let bothDirect = #"{"version":1,"apps":{"claude":{"mode":"direct"},"codex":{"mode":"direct"}}}"#
+        XCTAssertEqual(repository.connectionModes(readState: read(bothDirect)),
+                       CCSwitchConnectionModes(claude: .direct, codex: .direct))
+        // Stack aggregation is Codex-only; a Claude proxy takeover stays proxy.
+        let mixed = #"{"version":1,"apps":{"claude":{"mode":"proxy","attached":true,"stack":{"enabled":true}},"codex":{"mode":"proxy","attached":true,"stack":{"enabled":true}}}}"#
+        XCTAssertEqual(repository.connectionModes(readState: read(mixed)),
+                       CCSwitchConnectionModes(claude: .proxy, codex: .aggregation))
+
+        XCTAssertEqual(repository.connectionMode(appType: "codex", readState: read(#"{"version":1,"apps":{"codex":{"mode":"direct","attached":true}}}"#)), .unknown,
+                       "direct with proxy residue is not trustworthy")
+        XCTAssertEqual(repository.connectionMode(appType: "claude", readState: read(#"{"version":1,"apps":{"codex":{"mode":"direct"}}}"#)), .unknown,
+                       "missing app entry reports unknown")
+        XCTAssertEqual(repository.connectionMode(appType: "codex", readState: read(#"{"version":1,"apps":{"codex":{}}}"#)), .unknown,
+                       "missing mode key reports unknown")
+        XCTAssertEqual(repository.connectionMode(appType: "codex", readState: read(#"{"version":1,"apps":{"codex":{"mode":"tunnel"}}}"#)), .unknown,
+                       "unrecognized mode reports unknown")
+        XCTAssertEqual(repository.connectionMode(appType: "grok", readState: read(bothDirect)), .unknown,
+                       "only claude and codex are addressable")
+
+        for state in ["broken", #"{"version":99,"apps":{}}"#, #"{"version":true,"apps":{"codex":{"mode":"direct"}}}"#, #"{"apps":{"codex":{"mode":"direct","pending":{}}}}"#, "{}"] {
+            XCTAssertEqual(repository.connectionMode(appType: "codex", readState: read(state)), .unknown, state)
+            XCTAssertEqual(repository.connectionMode(appType: "claude", readState: read(state)), .unknown, state)
+        }
+        XCTAssertEqual(repository.connectionMode(appType: "codex", readState: read(nil)), .unknown, "missing CC Switch install reports unknown")
+        XCTAssertEqual(repository.connectionModes(readState: read(nil)), .unknown)
+    }
+
     func testChangedTargetRevisionBeforeTerminateAbortsAndLocalMarkerIsNotNegated() throws {
         var terminated = false
         let failed = expectation(description: "revision changed before termination")

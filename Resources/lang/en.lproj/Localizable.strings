@@ -201,6 +201,11 @@
 "dashboard.general.and.refresh.pages.launch_with_chatgpt_operation_failed" = "Could not update Launch with ChatGPT. Check System Settings → General → Login Items and try again.";
 "dashboard.general.and.refresh.pages.launch_with_chatgpt_unavailable" = "Unable to read the ChatGPT launch service status";
 "dashboard.general.and.refresh.pages.current_provider_value" = "Current Provider: %1$@";
+"dashboard.general.and.refresh.pages.connection_mode_value" = "Claude Code: %1$@ · Codex: %2$@";
+"dashboard.general.and.refresh.pages.connection_mode_direct" = "Direct";
+"dashboard.general.and.refresh.pages.connection_mode_aggregation" = "Aggregation";
+"dashboard.general.and.refresh.pages.connection_mode_proxy" = "Proxy";
+"dashboard.general.and.refresh.pages.connection_mode_unknown" = "Unknown";
 "dashboard.general.and.refresh.pages.system" = "System";
 "dashboard.general.and.refresh.pages.every_1_sec" = "Every 1 sec";
 "dashboard.general.and.refresh.pages.every_2_sec" = "Every 2 sec";

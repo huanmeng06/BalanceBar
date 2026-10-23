@@ -201,6 +201,11 @@
 "dashboard.general.and.refresh.pages.launch_with_chatgpt_operation_failed" = "Impossible de mettre à jour « Lancer avec ChatGPT ». Vérifiez Réglages Système → Général → Éléments d’ouverture et réessayez.";
 "dashboard.general.and.refresh.pages.launch_with_chatgpt_unavailable" = "Impossible de lire l’état du service de lancement avec ChatGPT";
 "dashboard.general.and.refresh.pages.current_provider_value" = "Fournisseur actuel : %1$@";
+"dashboard.general.and.refresh.pages.connection_mode_value" = "Claude Code : %1$@ · Codex : %2$@";
+"dashboard.general.and.refresh.pages.connection_mode_direct" = "Direct";
+"dashboard.general.and.refresh.pages.connection_mode_aggregation" = "Agrégation";
+"dashboard.general.and.refresh.pages.connection_mode_proxy" = "Proxy";
+"dashboard.general.and.refresh.pages.connection_mode_unknown" = "Inconnu";
 "dashboard.general.and.refresh.pages.system" = "Système";
 "dashboard.general.and.refresh.pages.every_1_sec" = "Toutes les 1 s";
 "dashboard.general.and.refresh.pages.every_2_sec" = "Toutes les 2 s";
