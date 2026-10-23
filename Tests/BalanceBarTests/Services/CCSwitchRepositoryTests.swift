@@ -662,17 +662,21 @@ extension CCSwitchRepositoryTests {
             grok: CCSwitchConnectionSummary(mode: .direct, providerNames: ["GrokShop"])
         ))
 
-        // A readable state with an unreadable database keeps the modes but drops the names.
+        // An unreadable or schema-broken database degrades everything to unknown.
         let dbMissing = CCSwitchRepository(
             databaseURL: temporaryDirectoryURL.appendingPathComponent("missing.db"),
             appSettingsURL: appSettingsURL,
             homeDirectoryURL: temporaryDirectoryURL
         )
-        XCTAssertEqual(summaries(repository: dbMissing), CCSwitchConnectionSummaries(
-            codex: CCSwitchConnectionSummary(mode: .aggregation, providerNames: []),
-            claude: CCSwitchConnectionSummary(mode: .direct, providerNames: []),
-            grok: CCSwitchConnectionSummary(mode: .direct, providerNames: [])
-        ))
+        XCTAssertEqual(summaries(repository: dbMissing), .unknown)
+        let emptyDatabaseURL = temporaryDirectoryURL.appendingPathComponent("empty.db")
+        try Data().write(to: emptyDatabaseURL)
+        let schemaBroken = CCSwitchRepository(
+            databaseURL: emptyDatabaseURL,
+            appSettingsURL: appSettingsURL,
+            homeDirectoryURL: temporaryDirectoryURL
+        )
+        XCTAssertEqual(summaries(repository: schemaBroken), .unknown)
 
         // Codex outside aggregation reports only its current provider.
         let directState = #"{"version":1,"apps":{"codex":{"mode":"direct"},"claude":{"mode":"proxy"},"grokbuild":{"mode":"direct"}}}"#

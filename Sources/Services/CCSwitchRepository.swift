@@ -323,9 +323,11 @@ final class CCSwitchRepository {
 
         var database: OpaquePointer?
         let openCode = sqlite3_open_v2(databaseURL.path, &database, SQLITE_OPEN_READONLY, nil)
+        // Issue #577 acceptance: an unreadable database must degrade the whole
+        // display to 未知 instead of showing modes without complete evidence.
         guard openCode == SQLITE_OK, let database else {
             if let database { sqlite3_close(database) }
-            return CCSwitchConnectionSummaries(codex: codex, claude: claude, grok: grok)
+            return .unknown
         }
         defer { sqlite3_close(database) }
         sqlite3_busy_timeout(database, 100)
@@ -335,12 +337,13 @@ final class CCSwitchRepository {
         var currentStatement: OpaquePointer?
         defer { sqlite3_finalize(currentStatement) }
         let currentSQL = "SELECT app_type, name FROM providers WHERE is_current = 1 AND app_type IN ('codex', 'claude', 'grokbuild')"
-        if sqlite3_prepare_v2(database, currentSQL, -1, &currentStatement, nil) == SQLITE_OK, let currentStatement {
-            while sqlite3_step(currentStatement) == SQLITE_ROW {
-                if let appType = text(from: currentStatement, column: 0),
-                   let name = text(from: currentStatement, column: 1) {
-                    currentNames[appType] = name
-                }
+        guard sqlite3_prepare_v2(database, currentSQL, -1, &currentStatement, nil) == SQLITE_OK, let currentStatement else {
+            return .unknown
+        }
+        while sqlite3_step(currentStatement) == SQLITE_ROW {
+            if let appType = text(from: currentStatement, column: 0),
+               let name = text(from: currentStatement, column: 1) {
+                currentNames[appType] = name
             }
         }
         claude = Self.displaySummary(mode: claude.mode, names: currentNames["claude"].map { [$0] } ?? [])
@@ -352,7 +355,10 @@ final class CCSwitchRepository {
             for id in ([route].compactMap { $0 } + stackMembers) where !ids.contains(id) {
                 ids.append(id)
             }
-            codex = Self.displaySummary(mode: codex.mode, names: providerNames(database: database, appType: "codex", ids: ids))
+            guard let members = providerNames(database: database, appType: "codex", ids: ids) else {
+                return .unknown
+            }
+            codex = Self.displaySummary(mode: codex.mode, names: members)
         } else {
             codex = Self.displaySummary(mode: codex.mode, names: currentNames["codex"].map { [$0] } ?? [])
         }
@@ -365,12 +371,13 @@ final class CCSwitchRepository {
         CCSwitchConnectionSummary(mode: mode, providerNames: mode == .unknown ? [] : names)
     }
 
-    private func providerNames(database: OpaquePointer, appType: String, ids: [String]) -> [String] {
+    /// nil when the member query cannot run; callers degrade to `.unknown`.
+    private func providerNames(database: OpaquePointer, appType: String, ids: [String]) -> [String]? {
         guard !ids.isEmpty else { return [] }
         var statement: OpaquePointer?
         defer { sqlite3_finalize(statement) }
         let sql = "SELECT id, name FROM providers WHERE app_type = ? AND id IN (" + Array(repeating: "?", count: ids.count).joined(separator: ",") + ")"
-        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK, let statement else { return [] }
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK, let statement else { return nil }
         bind(appType, to: statement, at: 1)
         for (index, id) in ids.enumerated() { bind(id, to: statement, at: Int32(index + 2)) }
         var byID: [String: String] = [:]

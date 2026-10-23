@@ -1679,6 +1679,43 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertTrue(applied.isEmpty)
     }
 
+    func testGeneralPageConnectionRowGrowsWhenSummariesLengthen() throws {
+        let suiteName = "DashboardPreferencePagesTests.ConnectionRowHeight.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let controller = DashboardGeneralPage()
+        let page = controller.make(.init(
+            preferences: AppPreferences(defaults: defaults),
+            relay: DashboardPreferencePageRelay(),
+            updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6")))
+        ))
+        let row = try XCTUnwrap(
+            descendants(of: page).compactMap { $0 as? SettingsRowView }
+                .first { $0.titleLabel.stringValue == tr(.keyDashboardGeneralAndRefreshPagesCcSwitch) }
+        )
+        row.frame = NSRect(x: 0, y: 0, width: 360, height: 200)
+        row.layoutSubtreeIfNeeded()
+        row.flushPendingWrappingHeightCommit()
+        let shortHeight = row.hostedCardHeight()
+
+        let longSummaries = CCSwitchConnectionSummaries(
+            codex: CCSwitchConnectionSummary(
+                mode: .aggregation,
+                providerNames: ["OpenAI Official Long Provider Name", "Another Very Long Provider Name", "Third Long Provider"]
+            ),
+            claude: CCSwitchConnectionSummary(mode: .direct, providerNames: ["Claude Official Long Provider Name"]),
+            grok: CCSwitchConnectionSummary(mode: .direct, providerNames: ["A Fairly Long Grok Provider Name"])
+        )
+        controller.refreshConnectionSummaries(longSummaries)
+        row.layoutSubtreeIfNeeded()
+        row.flushPendingWrappingHeightCommit()
+        let tallHeight = row.hostedCardHeight()
+
+        XCTAssertGreaterThan(tallHeight, shortHeight, "wrapping rows must grow after the detail text lengthens")
+    }
+
     func testGeneralPageShowsAndRefreshesCCSwitchConnectionLines() throws {
         let suiteName = "DashboardPreferencePagesTests.ConnectionLines.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!

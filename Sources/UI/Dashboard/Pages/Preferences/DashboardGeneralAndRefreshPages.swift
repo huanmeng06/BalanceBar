@@ -682,8 +682,15 @@ final class DashboardGeneralPage {
     private func applyConnectionSummaries() {
         guard let currentProviderDetailLabel else { return }
         currentProviderDetailLabel.attributedStringValue = DashboardSettingsFormattedCopy.ccSwitchConnectionDetail(connectionSummaries)
-        currentProviderDetailLabel.superview?.needsLayout = true
-        currentProviderDetailLabel.superview?.superview?.needsLayout = true
+        // The three lines can grow from short 未知 text to wrapped provider
+        // lists; re-run the row's wrapping-height machinery so card height
+        // follows instead of clipping.
+        if let row = SettingsRowView.enclosing(currentProviderDetailLabel) {
+            row.invalidateAfterContentChange()
+        } else {
+            currentProviderDetailLabel.superview?.needsLayout = true
+            currentProviderDetailLabel.superview?.superview?.needsLayout = true
+        }
     }
 
     private func launchAtLoginSubtitle(for state: LaunchAtLoginState) -> String {
