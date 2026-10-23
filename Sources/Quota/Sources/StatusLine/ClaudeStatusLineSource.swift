@@ -79,6 +79,10 @@ final class ClaudeStatusLineSource: QuotaSource, RealtimeSourceFreshnessProvidin
     private let accountProvider: AccountIdentityProviding
     private let tracker: ClaudeRealtimeTracker
     private let sessionStarts: ClaudeSessionStartLookup
+    /// Sessions silent for longer than this never participate in conflict detection.
+    private let sessionStaleInterval: TimeInterval
+    /// How long a silent session may stay cached before its session registry is checked.
+    private let endedSessionCheckInterval: TimeInterval
     private let now: () -> Date
     /// Merge state; never blocks on sockets.
     private let queue = DispatchQueue(label: "BalanceBar.ClaudeStatusLineSource", qos: .utility)
@@ -101,12 +105,16 @@ final class ClaudeStatusLineSource: QuotaSource, RealtimeSourceFreshnessProvidin
         tracker: ClaudeRealtimeTracker,
         socketURL: URL = ClaudeStatusLineSource.defaultSocketURL,
         sessionStarts: ClaudeSessionStartLookup = ClaudeSessionRegistry(),
+        sessionStaleInterval: TimeInterval = 15 * 60,
+        endedSessionCheckInterval: TimeInterval = 5 * 60,
         now: @escaping () -> Date = Date.init
     ) {
         self.accountProvider = accountProvider
         self.tracker = tracker
         self.socketURL = socketURL
         self.sessionStarts = sessionStarts
+        self.sessionStaleInterval = sessionStaleInterval
+        self.endedSessionCheckInterval = endedSessionCheckInterval
         self.now = now
     }
 
@@ -150,7 +158,13 @@ final class ClaudeStatusLineSource: QuotaSource, RealtimeSourceFreshnessProvidin
 
     func setGradeAResets(_ resets: [QuotaWindowKind: Date?]) {
         queue.async { [self] in
+            let previous = gradeAResets
             gradeAResets = resets
+            // A new authoritative cycle makes every observation from the old cycle stale.
+            invalidateOldCycleValues(previous: previous, current: resets)
+            // The registry removes a session file when Claude Code exits; use that as an
+            // early end-of-session signal before the normal stale interval.
+            pruneEndedSessions(at: now())
             recomputeConflict()
         }
     }
@@ -360,13 +374,59 @@ final class ClaudeStatusLineSource: QuotaSource, RealtimeSourceFreshnessProvidin
         }
     }
 
+    /// Drops cached values for windows whose official reset moved to a new cycle. Sessions that
+    /// already reported the new cycle keep their matching value; silent old sessions stop
+    /// contributing to the conflict check without losing their remaining window values.
+    private func invalidateOldCycleValues(
+        previous: [QuotaWindowKind: Date?],
+        current: [QuotaWindowKind: Date?]
+    ) {
+        var updated = sessions
+        for (window, currentEntry) in current {
+            guard let currentReset = currentEntry else { continue }
+            if let previousEntry = previous[window], let previousReset = previousEntry,
+               QuotaMergeEngine.sameResetInstant(previousReset, currentReset) {
+                continue
+            }
+            for (sessionID, session) in updated {
+                guard let value = session.lastValues[window] else { continue }
+                if let reset = value.reset, QuotaMergeEngine.sameResetInstant(reset, currentReset) {
+                    continue
+                }
+                var copy = session
+                copy.lastValues.removeValue(forKey: window)
+                updated[sessionID] = copy
+            }
+        }
+        sessions = updated
+    }
+
+    /// Removes sessions whose Claude Code process is gone. Only sessions that have already
+    /// been silent for the check interval are probed, so a busy session is never discarded.
+    private func pruneEndedSessions(at date: Date) {
+        guard endedSessionCheckInterval > 0 else { return }
+        let cutoff = date.addingTimeInterval(-endedSessionCheckInterval)
+        var updated = sessions
+        for (sessionID, session) in sessions where session.lastUsedAt < cutoff {
+            if sessionStarts.startedAt(sessionID: sessionID) == nil {
+                updated.removeValue(forKey: sessionID)
+            }
+        }
+        sessions = updated
+    }
+
     /// Two attributable sessions disagreeing on the official reset time means two identities
     /// are reporting at once; native data stops until the next official reading.
     private func recomputeConflict() {
         guard !gradeAResets.isEmpty else { return }
+        let date = now()
+        let cutoff = sessionStaleInterval > 0
+            ? date.addingTimeInterval(-sessionStaleInterval)
+            : Date.distantPast
         let conflict = gradeAResets.contains { window, expected in
-            let values = sessions.values.filter { $0.attribution != .rejected }
-                .compactMap { $0.lastValues[window]?.reset }
+            let values = sessions.values.filter {
+                $0.attribution != .rejected && $0.lastUsedAt >= cutoff
+            }.compactMap { $0.lastValues[window]?.reset }
             guard let expected, !values.isEmpty else { return false }
             let matching = values.map { QuotaMergeEngine.sameResetInstant($0, expected) }
             return matching.contains(true) && matching.contains(false)

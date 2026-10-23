@@ -229,6 +229,10 @@ final class ClaudeQuotaPipeline {
     func manualRefreshNotice() -> ClaudeManualRefreshNotice? {
         if stateStore.snapshot.isUnauthorizedPaused { return .loginExpired }
         if let until = manualRefreshBlockedUntil() { return .rateLimited(until: until) }
+        // Native data can make a server read unnecessary before the OAuth success window ends.
+        if realtimeTracker?.lastTrustedRealtimeObservationAt != nil {
+            return .localFresh
+        }
         if let at = lock.withLock({ lastSuccessAt }), now().timeIntervalSince(at) < manualRefreshWindow {
             return .justRefreshed
         }

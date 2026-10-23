@@ -37,7 +37,26 @@ final class ClaudeStatusLineSourceTests: XCTestCase {
         collector = Collector()
         source = ClaudeStatusLineSource(
             accountProvider: identity, tracker: ClaudeRealtimeTracker(now: { [unowned self] in clock }),
-            socketURL: socketURL, sessionStarts: registry, now: { [unowned self] in clock })
+            socketURL: socketURL, sessionStarts: registry,
+            sessionStaleInterval: 7_200, endedSessionCheckInterval: 7_200,
+            now: { [unowned self] in clock })
+        source.start { [collector] in collector!.append($0) }
+        source.waitUntilIdle()
+    }
+
+    /// Recreates the listener with explicit lifecycle thresholds for the focused tests.
+    private func restartSource(
+        sessionStaleInterval: TimeInterval = 7_200,
+        endedSessionCheckInterval: TimeInterval = 7_200
+    ) {
+        source.stop()
+        source.waitUntilIdle()
+        source = ClaudeStatusLineSource(
+            accountProvider: identity, tracker: ClaudeRealtimeTracker(now: { [unowned self] in clock }),
+            socketURL: socketURL, sessionStarts: registry,
+            sessionStaleInterval: sessionStaleInterval,
+            endedSessionCheckInterval: endedSessionCheckInterval,
+            now: { [unowned self] in clock })
         source.start { [collector] in collector!.append($0) }
         source.waitUntilIdle()
     }
@@ -248,5 +267,148 @@ final class ClaudeStatusLineSourceTests: XCTestCase {
         startNewSession("s1")
         deliver(payload())
         XCTAssertTrue(collector.all.isEmpty)
+    }
+
+    // MARK: - Reset-cycle and session lifetime
+
+    func testEndedSessionWithOldResetDoesNotBlockActiveSessionInNextCycle() {
+        source.setGradeAResets([
+            .fiveHour: Date(timeIntervalSince1970: fiveReset),
+            .sevenDay: Date(timeIntervalSince1970: sevenReset)
+        ])
+        source.waitUntilIdle()
+        startNewSession("old")
+        deliver(payload(session: "old", five: 10))
+        XCTAssertEqual(collector.all.count, 2)
+        // The session's Claude Code process is gone; it will never update again.
+        registry.starts.removeValue(forKey: "old")
+        startNewSession("new")
+        deliver(payload(session: "new", five: 20))
+        XCTAssertEqual(collector.all.count, 4)
+
+        clock = clock.addingTimeInterval(3_600)
+        source.setGradeAResets([
+            .fiveHour: Date(timeIntervalSince1970: fiveReset + 3_600),
+            .sevenDay: Date(timeIntervalSince1970: sevenReset)
+        ])
+        source.waitUntilIdle()
+        deliver(payload(session: "new", five: 5, fiveReset: fiveReset + 3_600))
+        XCTAssertEqual(collector.all.count, 6,
+                       "an old silent session must not block the active session's next cycle")
+    }
+
+    func testActiveSessionsStillBlockAfterANewCycle() {
+        source.setGradeAResets([
+            .fiveHour: Date(timeIntervalSince1970: fiveReset),
+            .sevenDay: Date(timeIntervalSince1970: sevenReset)
+        ])
+        source.waitUntilIdle()
+        startNewSession("one")
+        deliver(payload(session: "one", five: 10))
+        startNewSession("two")
+        deliver(payload(session: "two", five: 20))
+        XCTAssertEqual(collector.all.count, 4)
+
+        clock = clock.addingTimeInterval(3_600)
+        source.setGradeAResets([
+            .fiveHour: Date(timeIntervalSince1970: fiveReset + 3_600),
+            .sevenDay: Date(timeIntervalSince1970: sevenReset)
+        ])
+        source.waitUntilIdle()
+        deliver(payload(session: "one", five: 20, fiveReset: fiveReset + 3_600))
+        XCTAssertEqual(collector.all.count, 6, "the active session can lead the new cycle")
+        deliver(payload(session: "two", five: 30))
+        XCTAssertEqual(collector.all.count, 6,
+                       "two active sessions disagreeing on the cycle must still block")
+    }
+
+    func testFiveHourResetKeepsSevenDayBaseline() {
+        source.setGradeAResets([
+            .fiveHour: Date(timeIntervalSince1970: fiveReset),
+            .sevenDay: Date(timeIntervalSince1970: sevenReset)
+        ])
+        source.waitUntilIdle()
+        startNewSession("s")
+        deliver(payload(session: "s", five: 10, seven: 40))
+        XCTAssertEqual(collector.all.count, 2)
+
+        clock = clock.addingTimeInterval(3_600)
+        source.setGradeAResets([
+            .fiveHour: Date(timeIntervalSince1970: fiveReset + 3_600),
+            .sevenDay: Date(timeIntervalSince1970: sevenReset)
+        ])
+        source.waitUntilIdle()
+        let sevenOnly: [String: Any] = [
+            "schemaVersion": 1, "sessionID": "s",
+            "sevenDay": ["usedPercentage": 30, "resetsAt": sevenReset]
+        ]
+        deliver(try! JSONSerialization.data(withJSONObject: sevenOnly))
+        XCTAssertEqual(collector.all.count, 2,
+                       "an unchanged 7d cycle keeps its monotonic baseline")
+    }
+
+    func testSameSessionContinuesAcrossReset() {
+        source.setGradeAResets([
+            .fiveHour: Date(timeIntervalSince1970: fiveReset),
+            .sevenDay: Date(timeIntervalSince1970: sevenReset)
+        ])
+        source.waitUntilIdle()
+        startNewSession("s")
+        deliver(payload(session: "s", five: 10, seven: 40))
+        XCTAssertEqual(collector.all.count, 2)
+
+        clock = clock.addingTimeInterval(3_600)
+        source.setGradeAResets([
+            .fiveHour: Date(timeIntervalSince1970: fiveReset + 3_600),
+            .sevenDay: Date(timeIntervalSince1970: sevenReset)
+        ])
+        source.waitUntilIdle()
+        deliver(payload(session: "s", five: 5, fiveReset: fiveReset + 3_600))
+        XCTAssertEqual(collector.all.count, 4)
+        XCTAssertEqual(collector.all.last { $0.window == .fiveHour }?.usedPercentage, 5)
+    }
+
+    func testSilentSessionPastStaleIntervalIsIgnored() {
+        restartSource(sessionStaleInterval: 60, endedSessionCheckInterval: 7_200)
+        source.setGradeAResets([
+            .fiveHour: Date(timeIntervalSince1970: fiveReset),
+            .sevenDay: Date(timeIntervalSince1970: sevenReset)
+        ])
+        source.waitUntilIdle()
+        startNewSession("old")
+        deliver(payload(session: "old", five: 10))
+        startNewSession("new")
+        deliver(payload(session: "new", five: 30, fiveReset: fiveReset + 900))
+        XCTAssertEqual(collector.all.count, 2, "fresh conflicting sessions are blocked")
+
+        clock = clock.addingTimeInterval(120)
+        deliver(payload(session: "new", five: 31, fiveReset: fiveReset + 900))
+        XCTAssertEqual(collector.all.count, 4,
+                       "a session silent past the stale interval stops blocking")
+    }
+
+    func testEndedSessionIsPrunedByRegistryCheck() {
+        restartSource(sessionStaleInterval: 7_200, endedSessionCheckInterval: 60)
+        source.setGradeAResets([
+            .fiveHour: Date(timeIntervalSince1970: fiveReset),
+            .sevenDay: Date(timeIntervalSince1970: sevenReset)
+        ])
+        source.waitUntilIdle()
+        startNewSession("old")
+        deliver(payload(session: "old", five: 10))
+        startNewSession("new")
+        deliver(payload(session: "new", five: 30, fiveReset: fiveReset + 900))
+        XCTAssertEqual(collector.all.count, 2)
+
+        registry.starts.removeValue(forKey: "old")
+        clock = clock.addingTimeInterval(120)
+        source.setGradeAResets([
+            .fiveHour: Date(timeIntervalSince1970: fiveReset),
+            .sevenDay: Date(timeIntervalSince1970: sevenReset)
+        ])
+        source.waitUntilIdle()
+        deliver(payload(session: "new", five: 31, fiveReset: fiveReset + 900))
+        XCTAssertEqual(collector.all.count, 4,
+                       "the deleted session registry entry removes the ended session")
     }
 }
