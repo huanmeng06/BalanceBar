@@ -206,7 +206,7 @@
 "dashboard.general.and.refresh.pages.connection_mode_more" = " など";
 "dashboard.general.and.refresh.pages.connection_mode_direct" = "ダイレクト";
 "dashboard.general.and.refresh.pages.connection_mode_aggregation" = "アグリゲーション";
-"dashboard.general.and.refresh.pages.connection_mode_proxy" = "プロキシ";
+"dashboard.general.and.refresh.pages.connection_mode_proxy" = "ルーティング";
 "dashboard.general.and.refresh.pages.connection_mode_unknown" = "不明";
 "dashboard.general.and.refresh.pages.system" = "システム";
 "dashboard.general.and.refresh.pages.every_1_sec" = "1秒ごと";

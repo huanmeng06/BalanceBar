@@ -206,7 +206,7 @@
 "dashboard.general.and.refresh.pages.connection_mode_more" = " 等";
 "dashboard.general.and.refresh.pages.connection_mode_direct" = "直連";
 "dashboard.general.and.refresh.pages.connection_mode_aggregation" = "聚合";
-"dashboard.general.and.refresh.pages.connection_mode_proxy" = "代理";
+"dashboard.general.and.refresh.pages.connection_mode_proxy" = "路由";
 "dashboard.general.and.refresh.pages.connection_mode_unknown" = "未知";
 "dashboard.general.and.refresh.pages.system" = "系統";
 "dashboard.general.and.refresh.pages.every_1_sec" = "每 1 秒";

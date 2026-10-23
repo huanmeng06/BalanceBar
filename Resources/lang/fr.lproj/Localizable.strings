@@ -206,7 +206,7 @@
 "dashboard.general.and.refresh.pages.connection_mode_more" = ", etc.";
 "dashboard.general.and.refresh.pages.connection_mode_direct" = "Direct";
 "dashboard.general.and.refresh.pages.connection_mode_aggregation" = "Agrégation";
-"dashboard.general.and.refresh.pages.connection_mode_proxy" = "Proxy";
+"dashboard.general.and.refresh.pages.connection_mode_proxy" = "Routage";
 "dashboard.general.and.refresh.pages.connection_mode_unknown" = "Inconnu";
 "dashboard.general.and.refresh.pages.system" = "Système";
 "dashboard.general.and.refresh.pages.every_1_sec" = "Toutes les 1 s";

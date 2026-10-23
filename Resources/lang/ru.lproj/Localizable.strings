@@ -206,7 +206,7 @@
 "dashboard.general.and.refresh.pages.connection_mode_more" = " и др.";
 "dashboard.general.and.refresh.pages.connection_mode_direct" = "Прямое";
 "dashboard.general.and.refresh.pages.connection_mode_aggregation" = "Агрегация";
-"dashboard.general.and.refresh.pages.connection_mode_proxy" = "Прокси";
+"dashboard.general.and.refresh.pages.connection_mode_proxy" = "Маршрутизация";
 "dashboard.general.and.refresh.pages.connection_mode_unknown" = "Неизвестно";
 "dashboard.general.and.refresh.pages.system" = "Система";
 "dashboard.general.and.refresh.pages.every_1_sec" = "Каждые 1 с";
