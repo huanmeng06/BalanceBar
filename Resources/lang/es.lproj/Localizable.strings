@@ -572,13 +572,13 @@
 "quota.failure.open_usage_page" = "Abrir la página oficial de uso";
 "quota.status.accessibility" = "Estado de la cuota: %1$@";
 "claude.refresh.login_expired" = "El inicio de sesión de Claude Code ha caducado. Ejecuta claude una vez en una terminal para restaurarlo; BalanceBar nunca renueva el inicio de sesión por sí mismo.";
-"status.item.controller.refresh_now_login_expired" = "Sesión de Claude caducada, ejecuta claude primero";
+"status.item.controller.refresh_now_login_expired" = "Las credenciales de Claude caducaron; inicia sesión de nuevo en Claude Code";
 "status.item.controller.refresh_now_rate_limited" = "Límite de peticiones, disponible en %1$@";
 "status.item.controller.refresh_now_just_refreshed" = "Recién actualizado";
 "status.item.controller.refresh_now_recent_result" = "Recién actualizado · reintenta en %1$@ s";
 "status.item.controller.refresh_now_awaiting_confirmation" = "Esperando confirmación del restablecimiento; haz clic para confirmar ahora";
 "status.item.controller.refresh_now_failure_backoff" = "La petición falló; reintento automático en %1$@ s";
-"status.item.controller.refresh_now_out_of_tokens" = "Presupuesto de peticiones agotado, se recupera en %1$@ s";
+"status.item.controller.refresh_now_out_of_tokens" = "Actualizas con demasiada frecuencia; reintenta en %1$@ s";
 "claude.status_line.enabled" = "Sincronización nativa de Claude Code";
 "claude.status_line.description" = "Usa la interfaz interna de Claude Code para obtener antes la hora de reinicio, la cuota restante y el estado tras cada respuesta de Claude.";
 "claude.status_line.calibration" = "Calibración de la cuota oficial de Claude";

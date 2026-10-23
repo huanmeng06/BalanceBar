@@ -572,13 +572,13 @@
 "quota.failure.open_usage_page" = "Offizielle Nutzungsseite öffnen";
 "quota.status.accessibility" = "Kontingentstatus: %1$@";
 "claude.refresh.login_expired" = "Die Claude-Code-Anmeldung ist abgelaufen. Führe einmal claude im Terminal aus, um sie wiederherzustellen; BalanceBar erneuert die Anmeldung nie selbst.";
-"status.item.controller.refresh_now_login_expired" = "Claude-Anmeldung abgelaufen, zuerst claude ausführen";
+"status.item.controller.refresh_now_login_expired" = "Claude-Anmeldedaten abgelaufen; melde dich erneut in Claude Code an";
 "status.item.controller.refresh_now_rate_limited" = "Ratenlimit, verfügbar in %1$@";
 "status.item.controller.refresh_now_just_refreshed" = "Gerade aktualisiert";
 "status.item.controller.refresh_now_recent_result" = "Gerade aktualisiert · Wiederholung in %1$@ s";
 "status.item.controller.refresh_now_awaiting_confirmation" = "Warte auf offizielle Bestätigung des Zurücksetzens; klicken, um jetzt zu bestätigen";
 "status.item.controller.refresh_now_failure_backoff" = "Anfrage fehlgeschlagen; automatische Wiederholung in %1$@ s";
-"status.item.controller.refresh_now_out_of_tokens" = "Anfragebudget erschöpft, erholt sich in %1$@ s";
+"status.item.controller.refresh_now_out_of_tokens" = "Zu häufig aktualisiert; Wiederholung in %1$@ s möglich";
 "claude.status_line.enabled" = "Native Synchronisierung mit Claude Code";
 "claude.status_line.description" = "Nutzt die interne Schnittstelle von Claude Code, um Reset-Zeit, verbleibendes Kontingent und Status nach jeder Claude-Antwort früher zu erhalten.";
 "claude.status_line.calibration" = "Abgleich des offiziellen Claude-Kontingents";

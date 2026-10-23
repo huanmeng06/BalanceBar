@@ -572,13 +572,13 @@
 "quota.failure.open_usage_page" = "공식 사용량 페이지 열기";
 "quota.status.accessibility" = "할당량 상태: %1$@";
 "claude.refresh.login_expired" = "Claude Code 로그인이 만료되었습니다. 터미널에서 claude를 한 번 실행하면 복구됩니다. BalanceBar는 로그인을 직접 갱신하지 않습니다.";
-"status.item.controller.refresh_now_login_expired" = "Claude 로그인 만료, 먼저 claude 실행";
+"status.item.controller.refresh_now_login_expired" = "Claude 로그인 자격 증명이 만료되었습니다. Claude Code에서 다시 로그인하세요";
 "status.item.controller.refresh_now_rate_limited" = "요청 제한 중, %1$@ 후 가능";
 "status.item.controller.refresh_now_just_refreshed" = "방금 업데이트됨";
 "status.item.controller.refresh_now_recent_result" = "방금 업데이트됨 · %1$@초 후 재시도 가능";
 "status.item.controller.refresh_now_awaiting_confirmation" = "공식 초기화 확인 대기 중, 클릭하면 즉시 확인합니다";
 "status.item.controller.refresh_now_failure_backoff" = "요청 실패, %1$@초 후 자동 재시도";
-"status.item.controller.refresh_now_out_of_tokens" = "요청 한도 소진, %1$@초 후 복구";
+"status.item.controller.refresh_now_out_of_tokens" = "새로고침이 너무 잦습니다. %1$@초 후 재시도할 수 있습니다";
 "claude.status_line.enabled" = "Claude Code 네이티브 동기화";
 "claude.status_line.description" = "Claude Code 내부 인터페이스를 사용해 Claude 답변이 끝날 때마다 초기화 시간, 남은 한도, 상태를 더 빨리 가져옵니다.";
 "claude.status_line.calibration" = "Claude 공식 할당량 보정";

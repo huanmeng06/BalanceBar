@@ -572,13 +572,13 @@
 "quota.failure.open_usage_page" = "Открыть официальную страницу использования";
 "quota.status.accessibility" = "Состояние квоты: %1$@";
 "claude.refresh.login_expired" = "Срок входа в Claude Code истёк. Запустите claude один раз в терминале, чтобы восстановить вход; BalanceBar сам вход не продлевает.";
-"status.item.controller.refresh_now_login_expired" = "Вход в Claude истёк, сначала запустите claude";
+"status.item.controller.refresh_now_login_expired" = "Учётные данные Claude истекли; войдите заново в Claude Code";
 "status.item.controller.refresh_now_rate_limited" = "Лимит запросов, доступно через %1$@";
 "status.item.controller.refresh_now_just_refreshed" = "Только что обновлено";
 "status.item.controller.refresh_now_recent_result" = "Только что обновлено · повтор через %1$@ с";
 "status.item.controller.refresh_now_awaiting_confirmation" = "Ожидание подтверждения сброса; нажмите, чтобы подтвердить сейчас";
 "status.item.controller.refresh_now_failure_backoff" = "Запрос не удался; автоматический повтор через %1$@ с";
-"status.item.controller.refresh_now_out_of_tokens" = "Лимит запросов исчерпан, восстановление через %1$@ с";
+"status.item.controller.refresh_now_out_of_tokens" = "Слишком частое обновление; повтор через %1$@ с";
 "claude.status_line.enabled" = "Нативная синхронизация Claude Code";
 "claude.status_line.description" = "Использует внутренний интерфейс Claude Code, чтобы после каждого ответа Claude быстрее получать время сброса, остаток лимита и статус.";
 "claude.status_line.calibration" = "Сверка официальной квоты Claude";
