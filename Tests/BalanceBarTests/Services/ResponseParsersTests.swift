@@ -992,8 +992,10 @@ final class ResponseParsersTests: XCTestCase {
         let forecast = CodexResetForecastParser.parse(data: payload, now: observedAt)
         XCTAssertEqual(forecast.officialSignal?.episodeKey, "tweet_id:2113492502355562875")
         XCTAssertEqual(forecast.officialSignal?.targetAt, deadline)
+        XCTAssertEqual(forecast.officialSignal?.windowKind, .deadline)
         XCTAssertEqual(forecast.remainingCountdownSeconds(now: observedAt), 25 * 60)
         XCTAssertEqual(forecast.menuPrimaryDisplayText(language: .english, now: observedAt), "25m")
+        XCTAssertEqual(forecast.officialCountdownLabel(language: .simplifiedChinese, now: observedAt), "窗口截止倒计时")
         XCTAssertEqual(forecast.officialSignal?.probability, .percent(93))
         XCTAssertNotNil(forecast.officialCountdownProgressSpan())
 
@@ -1002,6 +1004,7 @@ final class ResponseParsersTests: XCTestCase {
         XCTAssertEqual(expired.officialSignal?.targetAt, deadline)
         XCTAssertEqual(expired.remainingCountdownSeconds(now: afterDeadline), 0)
         XCTAssertEqual(expired.menuPrimaryDisplayText(language: .english, now: afterDeadline), "0m")
+        XCTAssertEqual(expired.officialCountdownLabel(language: .simplifiedChinese, now: afterDeadline), "窗口截止倒计时")
         XCTAssertFalse(expired.isOfficialResetConfirmed)
     }
 
@@ -1018,7 +1021,9 @@ final class ResponseParsersTests: XCTestCase {
             now: now
         )
         XCTAssertEqual(forecast.officialSignal?.targetAt, deadline)
+        XCTAssertEqual(forecast.officialSignal?.windowKind, .range)
         XCTAssertEqual(forecast.menuPrimaryDisplayText(language: .english, now: now), "15m")
+        XCTAssertEqual(forecast.officialCountdownLabel(language: .simplifiedChinese, now: now), "窗口结束倒计时")
 
         let noDeadline = CodexResetForecastParser.parse(
             data: Data(#"""
@@ -1028,6 +1033,7 @@ final class ResponseParsersTests: XCTestCase {
             now: now
         )
         XCTAssertNil(noDeadline.officialSignal?.targetAt)
+        XCTAssertNil(noDeadline.officialSignal?.windowKind)
     }
 
     func testCodexResetForecastParserReadsOfficialSignalWindowAsFutureInstant() throws {

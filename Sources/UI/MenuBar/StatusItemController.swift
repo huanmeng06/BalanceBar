@@ -7991,7 +7991,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         }
         // The title, not the amount, hosts the source bubble and website link.
-        let titleText = tr(.keyCodexBankedResetProbabilityPrefix)
+        // A window-deadline countdown replaces the generic prefix so the large
+        // number is never read as a guaranteed reset instant.
+        let titleText = forecast.officialCountdownLabel(now: bankedResetCountdownNow())
+            ?? tr(.keyCodexBankedResetProbabilityPrefix)
         let titleLink = contentKey.primary == .confirmed ? nil : HoverLinkTextField(text: titleText)
         let probabilityTitle = AccountMarqueeView(
             text: titleText,
@@ -8422,7 +8425,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             section.updateText(title: reserve.menuTitleText, subtitle: reserve.menuSubtitle(timeZone: settings.displayTimeZone))
         }
         if let section = sections.first(where: { $0.sectionID == .resetProbability }) {
-            (section.titleView as? AccountMarqueeView)?.updateText(tr(.keyCodexBankedResetProbabilityPrefix), preserveScrollPosition: true)
+            (section.titleView as? AccountMarqueeView)?.updateText(
+                presentation.resetForecast.officialCountdownLabel(now: bankedResetCountdownNow())
+                    ?? tr(.keyCodexBankedResetProbabilityPrefix),
+                preserveScrollPosition: true
+            )
         }
         if let banked = presentation.bankedReset,
            let section = sections.first(where: { $0.sectionID == .bankedReset }) {

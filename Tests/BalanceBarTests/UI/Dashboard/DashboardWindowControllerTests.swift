@@ -5975,6 +5975,118 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         controller.menuDidClose(controller.statusMenuForTesting)
     }
 
+    func testOfficialCodexMenuCountdownLabelsWindowDeadlineBoundary() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
+        let windows = [
+            OfficialQuotaWindow(
+                kind: .fiveHour,
+                remaining: 80,
+                label: "5h",
+                daysText: "5h",
+                reset: "5h",
+                durationSeconds: 18_000
+            )
+        ]
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let forecast = CodexResetForecast(
+            probability24h: .percent(20),
+            probability48h: .percent(35),
+            confidence: .low,
+            updatedAt: now,
+            isCached: false,
+            officialSignal: CodexResetOfficialSignal(
+                probability: .percent(93),
+                targetAt: now.addingTimeInterval(25 * 60),
+                windowKind: .deadline,
+                publishedAt: now.addingTimeInterval(-3_600)
+            )
+        )
+        let input = StatusItemController.MenuInput(
+            choices: [],
+            quickSwitchSummaries: [:],
+            activeClient: .codex,
+            openAIAccount: nil,
+            statusLinks: [],
+            showQuickSwitchMenu: false,
+            showOpenChatGPTMenu: false,
+            showOpenCCSwitchMenu: false,
+            showStatusMenu: false
+        )
+        let settings = StatusItemController.MenuBarSettings(
+            showIcon: true,
+            showAmount: true,
+            showReset: true,
+            horizontalPadding: 6,
+            keepMenuOpenAfterRefresh: true
+        )
+        let controller = StatusItemController(
+            actions: StatusItemController.Actions(
+                manualRefresh: {},
+                openDashboard: {},
+                openChatGPT: {},
+                openCCSwitch: {},
+                quit: {},
+                switchProvider: { _ in },
+                openProviderWebsite: {},
+                openStatusLink: { _ in },
+                iconChanged: { _ in }
+            )
+        )
+        defer { controller.teardown() }
+        controller.bankedResetCountdownNowForTesting = now
+        controller.overviewNumericReduceMotionForTesting = true
+        controller.start(
+            snapshot: .official("OpenAI Official", 80, "5h", "5h", now, windows: windows, resetForecast: forecast),
+            refreshDate: now,
+            menuInput: input,
+            settings: settings
+        )
+        let overview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        // The countdown reuses the large number and progress bar, while the
+        // title marks the target as an observation-window boundary.
+        let title = try XCTUnwrap(allControls(of: overview, as: AccountMarqueeView.self).first {
+            $0.accountLabel.stringValue == tr(.keyCodexBankedResetOfficialCountdownDeadline)
+        })
+        XCTAssertEqual(title.accountLabel.stringValue, "窗口截止倒计时")
+        XCTAssertFalse(allControls(of: overview, as: NSTextField.self).contains {
+            $0.stringValue == tr(.keyCodexBankedResetProbabilityPrefix)
+        })
+        XCTAssertFalse(allControls(of: overview, as: NSTextField.self).contains {
+            $0.identifier?.rawValue == "codex.bankedReset.officialHint"
+        })
+        let countdown = try XCTUnwrap(
+            allControls(of: overview, as: OverviewNumericHoverLinkTextField.self).first {
+                $0.identifier?.rawValue == "codex.bankedReset.probabilityCountdownAmount"
+            }
+        )
+        XCTAssertEqual(countdown.stringValue, "25m")
+        XCTAssertTrue(allControls(of: overview, as: QuotaProgressView.self).contains {
+            $0.identifier?.rawValue == "codex.bankedReset.officialCountdownProgress"
+        })
+
+        // An in-place refresh keeps the window-boundary title instead of
+        // resetting it to the generic probability prefix.
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        controller.update(
+            snapshot: .official(
+                "OpenAI Official",
+                80,
+                "5h",
+                "5h",
+                now,
+                windows: windows,
+                resetForecast: forecast.markingCached()
+            ),
+            refreshDate: now,
+            menuInput: input,
+            settings: settings
+        )
+        XCTAssertEqual(title.accountLabel.stringValue, "窗口截止倒计时")
+        controller.menuDidClose(controller.statusMenuForTesting)
+    }
+
     func testOfficialCodexMenuCardHidesBankedResetWhenShowBankedResetIsOff() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }

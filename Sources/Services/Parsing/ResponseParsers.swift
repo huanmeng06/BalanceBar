@@ -727,9 +727,11 @@ enum CodexResetForecastParser {
         case nil, is NSNull:
             return nil
         default:
+            let target = officialSignalTarget(from: object, now: now)
             return CodexResetOfficialSignal(
                 probability: signalProbability(from: object),
-                targetAt: officialSignalTargetAt(from: object, now: now),
+                targetAt: target.targetAt,
+                windowKind: target.windowKind,
                 publishedAt: officialSignalPublishedAt(from: object),
                 episodeKey: officialSignalEpisodeKey(from: object, now: now)
             )
@@ -788,15 +790,25 @@ enum CodexResetForecastParser {
     /// take precedence over legacy aliases. Keep an expired target while the
     /// signal remains active, so the clock displays 0m instead of reverting to
     /// a probability. Never use the tweet or forecast update time as a target.
-    private static func officialSignalTargetAt(
+    /// A `target_kind=deadline` target or an `end_at`-only range endpoint is
+    /// an observation-window boundary, not a guaranteed reset instant; the
+    /// returned kind preserves that distinction for countdown labelling.
+    private static func officialSignalTarget(
         from object: [String: Any],
         now: Date
-    ) -> Date? {
+    ) -> (targetAt: Date?, windowKind: CodexResetOfficialSignal.WindowKind?) {
         let official = object["official_signal"] as? [String: Any]
-        guard let official else { return nil }
-        return singleFutureInstant(official["window"], now: now)
-            ?? ResponseParsingSupport.resetDate(official["deadline"], now: now)
-            ?? ResponseParsingSupport.resetDate(official["target"], now: now)
+        guard let official else { return (nil, nil) }
+        if let windowTarget = windowTarget(official["window"], now: now) {
+            return windowTarget
+        }
+        if let deadline = ResponseParsingSupport.resetDate(official["deadline"], now: now) {
+            return (deadline, .deadline)
+        }
+        if let target = ResponseParsingSupport.resetDate(official["target"], now: now) {
+            return (target, nil)
+        }
+        return (nil, nil)
     }
 
     /// Publish instant from `official_signal.at`. Past timestamps are kept so
@@ -807,20 +819,43 @@ enum CodexResetForecastParser {
         return ResponseParsingSupport.timestampDate(official["at"])
     }
 
-    private static func singleFutureInstant(_ value: Any?, now: Date) -> Date? {
+    private static func windowTarget(
+        _ value: Any?,
+        now: Date
+    ) -> (targetAt: Date?, windowKind: CodexResetOfficialSignal.WindowKind?)? {
         switch value {
         case nil, is NSNull:
             return nil
         case let dict as [String: Any]:
+            let targetKind = (dict["target_kind"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+            let isDeadlineKind = targetKind == "deadline"
+                || targetKind == "end"
+                || targetKind == "window_end"
             // Live API: window.target_at is the observed announced deadline;
             // window.end_at is its explicit range endpoint. Both are absolute.
-            return ResponseParsingSupport.timestampDate(dict["target_at"])
-                ?? ResponseParsingSupport.timestampDate(dict["end_at"])
-                ?? ResponseParsingSupport.resetDate(dict["at"], now: now)
-                ?? ResponseParsingSupport.resetDate(dict["deadline"], now: now)
-                ?? ResponseParsingSupport.resetDate(dict["target"], now: now)
+            if let targetAt = ResponseParsingSupport.timestampDate(dict["target_at"]) {
+                return (targetAt, isDeadlineKind ? .deadline : nil)
+            }
+            if let endAt = ResponseParsingSupport.timestampDate(dict["end_at"]) {
+                return (endAt, .range)
+            }
+            if let at = ResponseParsingSupport.resetDate(dict["at"], now: now) {
+                return (at, nil)
+            }
+            if let deadline = ResponseParsingSupport.resetDate(dict["deadline"], now: now) {
+                return (deadline, .deadline)
+            }
+            if let target = ResponseParsingSupport.resetDate(dict["target"], now: now) {
+                return (target, nil)
+            }
+            return nil
         default:
-            return ResponseParsingSupport.resetDate(value, now: now)
+            guard let date = ResponseParsingSupport.resetDate(value, now: now) else {
+                return nil
+            }
+            return (date, nil)
         }
     }
 
