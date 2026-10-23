@@ -4344,12 +4344,21 @@ extension ProviderRefreshCoordinatorTests {
         let official = OfficialQuotaClient(session: session,
             credentialReader: FixtureCredentialReader(codexToken: nil, claudeToken: "claude-fixture"), now: { clock.now })
         let harness = try makeClaudeHarness(official: official, clock: clock)
+        // The prediction journal is durable and keyed by the fixture account's
+        // stable ID, so it must not be shared with the standard defaults: an
+        // earlier Claude sample written with the real clock (or by a previous
+        // run) leaves a `lastSampleAt` ahead of this test clock and the store
+        // then refuses every sample, which reads as "no contexts".
+        let defaultsSuite = "ClaudePredictionContexts.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: defaultsSuite))
+        defer { defaults.removePersistentDomain(forName: defaultsSuite) }
         let initialPublication = expectation(description: "initial Claude contexts")
         let nextCyclePublication = expectation(description: "next-cycle Claude contexts")
         let switchedAccountPublication = expectation(description: "switched-account Claude contexts")
         var snapshots: [Snapshot] = []
         var step = 1
         let coordinator = makeCoordinator(repository: repository, officialQuotaClient: official,
+            codexResetObservationStore: CodexResetObservationStore(defaults: defaults),
             actions: claudeActions { snapshot in
                 guard snapshot.kind == .official else { return }
                 snapshots.append(snapshot)
