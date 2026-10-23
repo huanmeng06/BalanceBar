@@ -774,7 +774,9 @@ enum CodexResetForecastParser {
     private static func absoluteSignalInstant(_ value: Any?) -> Date? {
         switch value {
         case let dict as [String: Any]:
-            return ResponseParsingSupport.timestampDate(dict["at"])
+            return ResponseParsingSupport.timestampDate(dict["target_at"])
+                ?? ResponseParsingSupport.timestampDate(dict["end_at"])
+                ?? ResponseParsingSupport.timestampDate(dict["at"])
                 ?? ResponseParsingSupport.timestampDate(dict["deadline"])
                 ?? ResponseParsingSupport.timestampDate(dict["target"])
         default:
@@ -782,9 +784,10 @@ enum CodexResetForecastParser {
         }
     }
 
-    /// Single future instant from `official_signal.window` or equivalent
-    /// deadline/target fields. Recurring hour windows, `last_reset_at`, and
-    /// `context.reset_at` are ignored. Tweet time is `publishedAt`.
+    /// Explicit absolute targets from the public `official_signal.window`
+    /// take precedence over legacy aliases. Keep an expired target while the
+    /// signal remains active, so the clock displays 0m instead of reverting to
+    /// a probability. Never use the tweet or forecast update time as a target.
     private static func officialSignalTargetAt(
         from object: [String: Any],
         now: Date
@@ -809,7 +812,11 @@ enum CodexResetForecastParser {
         case nil, is NSNull:
             return nil
         case let dict as [String: Any]:
-            return ResponseParsingSupport.resetDate(dict["at"], now: now)
+            // Live API: window.target_at is the observed announced deadline;
+            // window.end_at is its explicit range endpoint. Both are absolute.
+            return ResponseParsingSupport.timestampDate(dict["target_at"])
+                ?? ResponseParsingSupport.timestampDate(dict["end_at"])
+                ?? ResponseParsingSupport.resetDate(dict["at"], now: now)
                 ?? ResponseParsingSupport.resetDate(dict["deadline"], now: now)
                 ?? ResponseParsingSupport.resetDate(dict["target"], now: now)
         default:
