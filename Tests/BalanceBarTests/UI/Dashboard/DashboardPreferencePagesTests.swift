@@ -1703,7 +1703,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertTrue(mountedPlain.contains(DashboardSettingsFormattedCopy.ccSwitchConnectionModeName(.aggregation)))
         // Three agent lines, one per app, each led by an icon placeholder.
         XCTAssertEqual(mountedPlain.components(separatedBy: "\n").count, 3)
-        XCTAssertFalse(mountedPlain.contains("Extra"), "only the first three provider names are shown")
+        XCTAssertTrue(mountedPlain.contains("OpenAI Official"))
+        XCTAssertTrue(mountedPlain.contains("tokenshop"))
+        XCTAssertFalse(mountedPlain.contains("DeepSeek"), "aggregation shows at most two provider names")
+        XCTAssertFalse(mountedPlain.contains("Extra"), "aggregation shows at most two provider names")
 
         let attributed = DashboardSettingsFormattedCopy.ccSwitchConnectionDetail(mounted)
         XCTAssertEqual(attributed.string, mountedPlain)

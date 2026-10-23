@@ -1122,14 +1122,23 @@ enum AgentMark {
 /// light/dark appearances; Claude keeps its brand colors.
 final class AgentMarkAttachmentCell: NSTextAttachmentCell {
     private let tintsWithLabel: Bool
+    private let baselineOffset: CGFloat
 
-    init(image: NSImage?, tintsWithLabel: Bool) {
+    init(image: NSImage?, tintsWithLabel: Bool, baselineOffset: CGFloat = 0) {
         self.tintsWithLabel = tintsWithLabel
+        self.baselineOffset = baselineOffset
         super.init(imageCell: image)
     }
 
     required init(coder: NSCoder) {
         fatalError("init(coder:) is not supported")
+    }
+
+    /// NSTextAttachmentCell positions its image on the text baseline by
+    /// default, which sits a 13pt mark visibly above the 12pt text mass. The
+    /// formatter passes a negative offset to optically center the mark.
+    override func cellBaselineOffset() -> CGPoint {
+        CGPoint(x: 0, y: baselineOffset)
     }
 
     override func draw(withFrame cellFrame: NSRect, in controlView: NSView?, characterIndex charIndex: Int) {

@@ -643,10 +643,10 @@ enum DashboardSettingsFormattedCopy {
         ]
     }
 
-    /// Provider names beside the mode, capped at three plus a localized
+    /// Provider names beside the mode, capped at two plus a localized
     /// "and more" suffix. Aggregation shows the stack members (default route
     /// first); other modes show the current provider.
-    static let ccSwitchMaximumProviderNames = 3
+    static let ccSwitchMaximumProviderNames = 2
 
     private static func ccSwitchProviderList(_ names: [String]) -> String {
         guard !names.isEmpty else { return "" }
@@ -699,13 +699,10 @@ enum DashboardSettingsFormattedCopy {
                 let attachment = NSTextAttachment()
                 attachment.attachmentCell = AgentMarkAttachmentCell(
                     image: image,
-                    tintsWithLabel: agent.markResource != "Claude"
-                )
-                attachment.bounds = NSRect(
-                    x: 0,
-                    y: (font.capHeight - image.size.height) / 2,
-                    width: image.size.width,
-                    height: image.size.height
+                    tintsWithLabel: agent.markResource != "Claude",
+                    // The cell ignores attachment.bounds for baseline layout;
+                    // drop the mark so it centers on the text mass.
+                    baselineOffset: -(image.size.height - font.capHeight) / 2 + 0.9
                 )
                 line.append(NSAttributedString(attachment: attachment))
             } else {
