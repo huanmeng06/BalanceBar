@@ -572,9 +572,9 @@
 "quota.failure.open_usage_page" = "打开官方用量页";
 "quota.status.accessibility" = "额度状态：%1$@";
 "claude.refresh.login_expired" = "Claude Code 登录已过期。在终端运行一次 claude 即可恢复；BalanceBar 不会自行续期登录。";
-"status.item.controller.refresh_now_login_expired" = "立即刷新（Claude 登录已过期，请先运行 claude）";
-"status.item.controller.refresh_now_rate_limited" = "立即刷新（被限流，%1$@后可用）";
-"status.item.controller.refresh_now_just_refreshed" = "立即刷新（刚刚已刷新）";
+"status.item.controller.refresh_now_login_expired" = "Claude 登录已过期，请先运行 claude";
+"status.item.controller.refresh_now_rate_limited" = "被限流，%1$@后可用";
+"status.item.controller.refresh_now_just_refreshed" = "刚刚已刷新";
 "claude.status_line.enabled" = "Claude Code 原生同步";
 "claude.status_line.description" = "从 Claude Code 状态栏提前同步新额度，并保留已有状态栏。开启后 Claude Code 可能隐藏部分底部提示。";
 "claude.status_line.calibration" = "Claude 官方额度校准";

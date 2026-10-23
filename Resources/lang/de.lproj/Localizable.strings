@@ -572,9 +572,9 @@
 "quota.failure.open_usage_page" = "Offizielle Nutzungsseite öffnen";
 "quota.status.accessibility" = "Kontingentstatus: %1$@";
 "claude.refresh.login_expired" = "Die Claude-Code-Anmeldung ist abgelaufen. Führe einmal claude im Terminal aus, um sie wiederherzustellen; BalanceBar erneuert die Anmeldung nie selbst.";
-"status.item.controller.refresh_now_login_expired" = "Jetzt aktualisieren (Claude-Anmeldung abgelaufen, zuerst claude ausführen)";
-"status.item.controller.refresh_now_rate_limited" = "Jetzt aktualisieren (Ratenlimit, verfügbar in %1$@)";
-"status.item.controller.refresh_now_just_refreshed" = "Jetzt aktualisieren (gerade aktualisiert)";
+"status.item.controller.refresh_now_login_expired" = "Claude-Anmeldung abgelaufen, zuerst claude ausführen";
+"status.item.controller.refresh_now_rate_limited" = "Ratenlimit, verfügbar in %1$@";
+"status.item.controller.refresh_now_just_refreshed" = "Gerade aktualisiert";
 "claude.status_line.enabled" = "Native Synchronisierung mit Claude Code";
 "claude.status_line.description" = "Übernimmt neue Kontingentwerte früher aus der Claude-Code-Statuszeile; deine bisherige Statuszeile bleibt erhalten. Solange aktiv, blendet Claude Code eventuell einige Fußzeilenhinweise aus.";
 "claude.status_line.calibration" = "Abgleich des offiziellen Claude-Kontingents";

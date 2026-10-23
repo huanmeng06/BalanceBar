@@ -3336,18 +3336,27 @@ extension StatusItemControllerTests {
         controller.start(snapshot: .placeholder, refreshDate: Date(), menuInput: input, settings: makeSettings())
         let refresh = try XCTUnwrap(controller.statusMenuForTesting.items.first { $0.title == tr(.keyStatusItemControllerRefreshNow) })
 
+        let actionTitle = tr(.keyStatusItemControllerRefreshNow)
+        func assertRefresh(subtitle: String?, _ message: String, line: UInt = #line) {
+            XCTAssertEqual(refresh.title, actionTitle, "the action title never carries the status", line: line)
+            if #available(macOS 14.4, *) {
+                XCTAssertEqual(refresh.subtitle, subtitle, message, line: line)
+            }
+        }
+
+        assertRefresh(subtitle: nil, "no notice, no subtitle")
         notice = .loginExpired
         XCTAssertTrue(controller.validateMenuItem(refresh), "a paused login can still be retried after claude renews it")
-        XCTAssertEqual(refresh.title, tr(.keyStatusItemControllerRefreshNowLoginExpired))
+        assertRefresh(subtitle: tr(.keyStatusItemControllerRefreshNowLoginExpired), "login expired")
         notice = .rateLimited(until: Date().addingTimeInterval(900))
         _ = controller.validateMenuItem(refresh)
-        XCTAssertEqual(refresh.title, tr(.keyStatusItemControllerRefreshNowRateLimited, arguments: ["15m"]))
+        assertRefresh(subtitle: tr(.keyStatusItemControllerRefreshNowRateLimited, arguments: ["15m"]), "rate limited")
         notice = .justRefreshed
         _ = controller.validateMenuItem(refresh)
-        XCTAssertEqual(refresh.title, tr(.keyStatusItemControllerRefreshNowJustRefreshed))
+        assertRefresh(subtitle: tr(.keyStatusItemControllerRefreshNowJustRefreshed), "just refreshed")
         notice = nil
         _ = controller.validateMenuItem(refresh)
-        XCTAssertEqual(refresh.title, tr(.keyStatusItemControllerRefreshNow))
+        assertRefresh(subtitle: nil, "the subtitle clears with the notice")
     }
 
     @MainActor

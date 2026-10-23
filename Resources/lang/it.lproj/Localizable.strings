@@ -572,9 +572,9 @@
 "quota.failure.open_usage_page" = "Apri la pagina di utilizzo ufficiale";
 "quota.status.accessibility" = "Stato della quota: %1$@";
 "claude.refresh.login_expired" = "L'accesso a Claude Code è scaduto. Esegui claude una volta nel terminale per ripristinarlo; BalanceBar non rinnova mai l'accesso da solo.";
-"status.item.controller.refresh_now_login_expired" = "Aggiorna ora (accesso a Claude scaduto, esegui prima claude)";
-"status.item.controller.refresh_now_rate_limited" = "Aggiorna ora (limite di richieste, disponibile tra %1$@)";
-"status.item.controller.refresh_now_just_refreshed" = "Aggiorna ora (appena aggiornato)";
+"status.item.controller.refresh_now_login_expired" = "Accesso a Claude scaduto, esegui prima claude";
+"status.item.controller.refresh_now_rate_limited" = "Limite di richieste, disponibile tra %1$@";
+"status.item.controller.refresh_now_just_refreshed" = "Appena aggiornato";
 "claude.status_line.enabled" = "Sincronizzazione nativa Claude Code";
 "claude.status_line.description" = "Recupera prima la nuova quota dalla riga di stato di Claude Code; la riga di stato esistente viene mantenuta. Se attivo, Claude Code può nascondere alcuni suggerimenti in basso.";
 "claude.status_line.calibration" = "Calibrazione della quota ufficiale Claude";

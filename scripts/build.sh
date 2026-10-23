@@ -10,7 +10,7 @@ images_src="$resources_src/images"
 lang_src="$resources_src/lang"
 usage() {
     cat <<'EOF'
-Usage: build.sh [production|dev|demo-zero|demo-unavailable|demo-five-hour-exhausted|demo-seven-day-exhausted|demo-both-exhausted|demo-banked-reset-10|demo-banked-reset-0|demo-banked-reset-confirmed]
+Usage: build.sh [production|dev|demo-zero|demo-unavailable|demo-five-hour-exhausted|demo-seven-day-exhausted|demo-both-exhausted|demo-banked-reset-10|demo-banked-reset-0|demo-banked-reset-confirmed|demo-claude-idle]
 
 Build the macOS app without changing the checked-in Info.plist.
 
@@ -31,6 +31,8 @@ Build the macOS app without changing the checked-in Info.plist.
               Build a demo app that shows 0 official Codex banked reset cards.
   demo-banked-reset-confirmed
               Build a demo app that shows an observed official reset signal.
+  demo-claude-idle
+              Build a demo app that shows untouched (100%) Claude 5-hour and 7-day quotas.
 EOF
 }
 
@@ -139,6 +141,16 @@ case "$variant" in
         bundle_name="BalanceBar Demo · Reset Confirmed"
         demo_mode="banked-reset-confirmed"
         banked_reset_demo_mode="banked-reset-confirmed"
+        module_cache_dir="$build_dir/swift-module-cache"
+        clean_paths=("$build_dir")
+        ;;
+    demo-claude-idle)
+        build_dir="$repo_root/build/demo/claude-idle"
+        app_bundle="$build_dir/BalanceBar-ClaudeIdle.app"
+        bundle_identifier="com.huanmeng06.BalanceBar.demo.claude-idle"
+        bundle_name="BalanceBar Demo · Claude Idle"
+        demo_mode="claude-idle"
+        claude_idle_demo_mode="claude-idle"
         module_cache_dir="$build_dir/swift-module-cache"
         clean_paths=("$build_dir")
         ;;
@@ -312,7 +324,9 @@ fi
 if [[ -n "$demo_mode" ]]; then
     plutil -replace CFBundleName -string "$bundle_name" "$bundle_plist"
     plutil -replace CFBundleDisplayName -string "$bundle_name" "$bundle_plist"
-    if [[ -n "${banked_reset_demo_mode:-}" ]]; then
+    if [[ -n "${claude_idle_demo_mode:-}" ]]; then
+        plutil -replace BalanceBarClaudeIdleDemo -string "$claude_idle_demo_mode" "$bundle_plist"
+    elif [[ -n "${banked_reset_demo_mode:-}" ]]; then
         plutil -replace BalanceBarBankedResetDemo -string "$banked_reset_demo_mode" "$bundle_plist"
     else
         plutil -replace BalanceBarLunaReserveDemo -string "$demo_mode" "$bundle_plist"
