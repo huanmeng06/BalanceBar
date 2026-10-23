@@ -1180,28 +1180,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             )
             DispatchQueue.main.async {
                 self?.preferences.claudeStatusLineEnabled = active
-                if failedToDisable { Self.reportClaudeStatusLineDisableFailure() }
+                if failedToDisable { ClaudeStatusLineDisableFailurePresenter.present() }
             }
         }
-    }
-
-    /// The switch was turned off but settings.json still runs the wrapper: put the switch back on and tell the user.
-    private static func reportClaudeStatusLineDisableFailure() {
-        func switches(in view: NSView) -> [NSSwitch] {
-            (view as? NSSwitch).map { [$0] } ?? view.subviews.flatMap(switches(in:))
-        }
-        for window in NSApp.windows {
-            guard let content = window.contentView else { continue }
-            for sync in switches(in: content) where sync.identifier?.rawValue == "claudeStatusLineEnabled" {
-                sync.state = .on
-            }
-        }
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = tr(.keyClaudeStatusLineDisableFailedTitle)
-        alert.informativeText = tr(.keyClaudeStatusLineDisableFailedMessage)
-        alert.addButton(withTitle: tr(.keyClaudeStatusLineDisableFailedOK))
-        alert.runModal()
     }
 
     /// At launch the bridge is only resumed, never re-installed: if something else replaced the
