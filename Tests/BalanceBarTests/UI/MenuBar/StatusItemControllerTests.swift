@@ -597,6 +597,52 @@ final class StatusItemControllerTests: XCTestCase {
     }
 
     @MainActor
+    func testChangingClickSettingsInvalidatesQueuedRightMouseDown() {
+        let controller = makeController()
+        defer { controller.teardown() }
+
+        controller.start(
+            snapshot: .placeholder,
+            refreshDate: nil,
+            menuInput: makeMenuInput(),
+            settings: makeSettings(rightClickAction: .openAgent)
+        )
+        XCTAssertNil(controller.handleStatusItemEventForTesting(makeMouseEvent(.rightMouseDown)))
+
+        controller.update(
+            snapshot: .placeholder,
+            refreshDate: nil,
+            menuInput: makeMenuInput(),
+            settings: makeSettings(rightClickAction: .openCCSwitch)
+        )
+        RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+        XCTAssertTrue(controller.isStatusMenuBoundForTesting)
+    }
+
+    @MainActor
+    func testChangingReversedClickSettingsInvalidatesQueuedLeftMouseDown() {
+        let controller = makeController()
+        defer { controller.teardown() }
+
+        controller.start(
+            snapshot: .placeholder,
+            refreshDate: nil,
+            menuInput: makeMenuInput(),
+            settings: makeSettings(rightClickAction: .openAgent, reverseMouseButtons: true)
+        )
+        XCTAssertNil(controller.handleStatusItemEventForTesting(makeMouseEvent(.leftMouseDown)))
+
+        controller.update(
+            snapshot: .placeholder,
+            refreshDate: nil,
+            menuInput: makeMenuInput(),
+            settings: makeSettings(rightClickAction: .openCCSwitch, reverseMouseButtons: true)
+        )
+        RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+        XCTAssertTrue(controller.isStatusMenuBoundForTesting)
+    }
+
+    @MainActor
     func testReverseIsIgnoredWhenRightClickMatchesLeftClick() {
         var dashboardOpens = 0
         let controller = makeController(
