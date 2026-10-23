@@ -1548,6 +1548,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             updateStatusItem(for: snapshot, refreshDashboard: false)
             updateDashboard(for: snapshot, refreshDate: refreshDate(for: snapshot))
             dashboardComposition.refreshMenuPage()
+        case AppPreferences.showQuotaPaceIndicatorKey:
+            preferences.showQuotaPaceIndicator = enabled
+            updateStatusItem(for: snapshot, refreshDashboard: false)
+            dashboardComposition.refreshMenuPage()
         case AppPreferences.showBankedResetKey:
             preferences.showBankedReset = enabled
             updateStatusItem(for: snapshot, refreshDashboard: false)
