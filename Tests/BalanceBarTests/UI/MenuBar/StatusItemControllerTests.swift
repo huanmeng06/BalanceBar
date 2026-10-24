@@ -20,6 +20,25 @@ final class StatusItemControllerTests: XCTestCase {
         XCTAssertFalse(future.contains("-"))
     }
 
+    func testRechargeTooltipCollapsesElapsedDaysIntoDayUnits() throws {
+        let previous = AppLanguage.selected
+        defer { AppLanguage.selected = previous }
+        AppLanguage.selected = .english
+        let start = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-10-16T03:23:00Z"))
+        let zone = try XCTUnwrap(TimeZone(secondsFromGMT: 0))
+        let text = StatusItemController.balanceRechargeTooltipText(startDate: start,
+            now: start.addingTimeInterval(170 * 3600 + 3 * 60), timeZone: zone, locale: Locale(identifier: "en_US"))
+        XCTAssertTrue(text.hasPrefix("10/16 03:23 · "), text)
+        XCTAssertTrue(text.contains("7 days"), text)
+        XCTAssertFalse(text.contains("hour"), text)
+        XCTAssertFalse(text.contains("minute"), text)
+        XCTAssertTrue(text.hasSuffix(" ago"), text)
+        let exactDay = StatusItemController.balanceRechargeTooltipText(startDate: start,
+            now: start.addingTimeInterval(24 * 3600), timeZone: zone, locale: Locale(identifier: "en_US"))
+        XCTAssertTrue(exactDay.contains("1 day"), exactDay)
+        XCTAssertFalse(exactDay.contains("hour"), exactDay)
+    }
+
     /// The status item button must carry an image at all times (see
     /// `StatusItemController.placeholderButtonImage`), and that image must
     /// stay empty so it renders no pixels and does not affect item layout.

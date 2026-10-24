@@ -6980,10 +6980,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         calendar.locale = locale
         calendar.timeZone = timeZone
         formatter.calendar = calendar
-        formatter.allowedUnits = [.hour, .minute]
+        let minutes = max(0, floor(now.timeIntervalSince(startDate) / 60))
+        formatter.allowedUnits = minutes >= 24 * 60 ? [.day] : [.hour, .minute]
         formatter.unitsStyle = .full
         formatter.zeroFormattingBehavior = .dropLeading
-        let minutes = max(0, floor(now.timeIntervalSince(startDate) / 60))
         let duration = formatter.string(from: minutes * 60) ?? "0"
         return BalanceRecharge.dateText(for: startDate, now: now, timeZone: timeZone) + " "
             + BalanceRecharge.clockText(for: startDate, timeZone: timeZone) + " · "
