@@ -850,6 +850,46 @@ final class OverviewNumericPresentationControllerTests: XCTestCase {
         XCTAssertNil(controller.quotaPaceTimerForTesting)
     }
 
+    /// Issue #584: a Claude direct card predicts from its account-scoped
+    /// context exactly like the Codex card; a foreign account never qualifies.
+    func testClaudeDirectCardPredictsFromAccountScopedContext() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let windows = [
+            OfficialQuotaWindow(kind: .fiveHour, remaining: 40, label: "5h", daysText: "5h", reset: nil,
+                durationSeconds: 18_000, resetAt: now.addingTimeInterval(9_000)),
+            OfficialQuotaWindow(kind: .sevenDay, remaining: 40, label: "7d", daysText: "7d", reset: nil,
+                durationSeconds: 604_800, resetAt: now.addingTimeInterval(302_400))]
+        // The coordinator records Claude evidence under the same journal with a
+        // "claude:"-prefixed account key; the snapshot carries the raw email.
+        let contexts = predictionStore.updatePredictionContexts(providerID: "claude-official",
+            accountKey: "claude:pace@example.com", windows: windows, now: now)
+        XCTAssertEqual(contexts.count, 2)
+        func snapshot(account: String, contexts: [QuotaPredictionContext]) -> Snapshot {
+            .official("Claude Official", 40, "7d", nil, now, windows: windows,
+                quotaPredictionContexts: contexts, quotaPredictionAccountKey: account)
+        }
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.quotaPaceNowForTesting = now
+        controller.start(snapshot: snapshot(account: "pace@example.com", contexts: []), refreshDate: now,
+            menuInput: makeMenuInput(activeClient: .claude), settings: makeSettings())
+        let host = try XCTUnwrap(controller.menuItemsForTesting.first?.view as? MenuHoverLinkHostView)
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        XCTAssertTrue(host.paceViews.allSatisfy { $0.prediction == nil },
+            "without a coordinator context the Claude card never infers a cycle start")
+        controller.update(snapshot: snapshot(account: "other@example.com", contexts: contexts), refreshDate: now,
+            menuInput: makeMenuInput(activeClient: .claude), settings: makeSettings())
+        XCTAssertTrue(host.paceViews.allSatisfy { $0.prediction == nil },
+            "another account's context never qualifies")
+        controller.update(snapshot: snapshot(account: "pace@example.com", contexts: contexts), refreshDate: now,
+            menuInput: makeMenuInput(activeClient: .claude), settings: makeSettings())
+        XCTAssertEqual(host.paceViews.count, 2)
+        XCTAssertTrue(host.paceViews.allSatisfy { $0.prediction != nil },
+            "the Claude five-hour and seven-day cards both show an exhaustion estimate")
+        controller.menuDidClose(controller.statusMenuForTesting)
+        XCTAssertNil(controller.quotaPaceTimerForTesting)
+    }
+
     func testPaceMinuteTickAndQuotaRefreshKeepExistingProgressAndView() throws {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
         let reset = now.addingTimeInterval(9_000)

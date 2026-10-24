@@ -117,6 +117,20 @@ public final class FetchScheduler: FetchScheduling {
         queue.sync {
             let now = clock.now
             refillTokens(now: now)
+            let failureBackoffUntil: Date?
+            if let lastServerAttemptAt, consecutiveFailures > 0 {
+                let until = lastServerAttemptAt.addingTimeInterval(failureBackoffInterval)
+                failureBackoffUntil = until > now ? until : nil
+            } else {
+                failureBackoffUntil = nil
+            }
+            let manualTokensReadyAt: Date?
+            if tokens < configuration.manualTokenCost, configuration.tokenRefillInterval > 0 {
+                let missing = Double(configuration.manualTokenCost - tokens)
+                manualTokensReadyAt = tokenRefillAnchor.addingTimeInterval(missing * configuration.tokenRefillInterval)
+            } else {
+                manualTokensReadyAt = nil
+            }
             return FetchSchedulerStatus(
                 tokens: tokens,
                 tokenCapacity: configuration.tokenCapacity,
@@ -131,6 +145,8 @@ public final class FetchScheduler: FetchScheduling {
                 manualTokenCost: configuration.manualTokenCost,
                 manualRefreshWindow: configuration.manualRefreshWindow,
                 cooldownRemaining: cooldownRemaining(now: now),
+                failureBackoffUntil: failureBackoffUntil,
+                manualTokensReadyAt: manualTokensReadyAt,
                 isUnauthorizedPaused: persistent.isUnauthorizedPaused,
                 isBusy: isBusy,
                 at: now)
@@ -203,7 +219,8 @@ public final class FetchScheduler: FetchScheduling {
 
     private func evaluateManual(_ reasons: [FetchRequestReason], now: Date) {
         let window = configuration.manualRefreshWindow
-        if let lastSuccessAt = currentEpochLastSuccessAt, now.timeIntervalSince(lastSuccessAt) < window {
+        if let lastSuccessAt = currentEpochLastSuccessAt, now.timeIntervalSince(lastSuccessAt) < window,
+           !manualResultCannotConfirmPendingReset(lastSuccessAt: lastSuccessAt) {
             return log(.skipped, reasons: reasons, skip: .recentResult)
         }
         guard let freePathChecker else { return spendAndDispatch(reasons, cost: configuration.manualTokenCost) }
@@ -224,8 +241,11 @@ public final class FetchScheduler: FetchScheduling {
     }
 
     private func evaluateAutomatic(_ reasons: [FetchRequestReason], now: Date) {
-        let bypassMinimum = (reasons.contains(.initial) || reasons.contains(.accountChanged))
+        let firstRead = (reasons.contains(.initial) || reasons.contains(.accountChanged))
             && currentEpochLastSuccessAt == nil
+        // A reset confirmation cannot wait out the minimum interval: the deadline already
+        // passed, so only the 401 pause, cooldown, failure backoff and budget may hold it.
+        let bypassMinimum = firstRead || reasons.contains(.resetConfirmation)
         if !bypassMinimum,
            let lastSuccessAt = currentEpochLastSuccessAt,
            now.timeIntervalSince(lastSuccessAt) < automaticMinimumInterval {
@@ -239,7 +259,14 @@ public final class FetchScheduler: FetchScheduling {
         }
         // A first read for a new or newly loaded account is user-visible, so it is charged like
         // a manual request instead of waiting for the routine budget.
-        spendAndDispatch(reasons, cost: bypassMinimum ? configuration.manualTokenCost : configuration.automaticTokenCost)
+        spendAndDispatch(reasons, cost: firstRead ? configuration.manualTokenCost : configuration.automaticTokenCost)
+    }
+
+    /// A success from before the pending reset deadline still describes the previous cycle,
+    /// so it can never confirm the reset and must not suppress a manual refresh.
+    private func manualResultCannotConfirmPendingReset(lastSuccessAt: Date) -> Bool {
+        guard let pending = realtimeFreshness?.pendingResetOf else { return false }
+        return lastSuccessAt <= pending
     }
 
     /// Last success time for the current account epoch; another account's success never counts.

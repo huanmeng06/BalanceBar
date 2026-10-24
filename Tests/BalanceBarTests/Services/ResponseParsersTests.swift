@@ -136,12 +136,29 @@ final class ResponseParsersTests: XCTestCase {
         XCTAssertEqual(output.remaining, 59, "legacy scalar accessors still prefer weekly quota")
     }
 
-    func testClaudeQuotaSkipsMissingOrMalformedWindowsWithoutInventingValues() throws {
+    /// Issue #580: an explicit null window / null utilization means the window has not
+    /// started and must still produce a 0% reading, or a pending reset can never be
+    /// confirmed. A window that merely lacks the utilization key stays unknown, so a
+    /// malformed payload cannot invent a fresh cycle and wrongly confirm a reset.
+    func testClaudeQuotaTreatsExplicitNullWindowsAsNotStarted() throws {
         let output = try OfficialQuotaResponseParser.parse(data: fixture(#"{"five_hour":{"utilization":"25"},"seven_day":null,"seven_day_sonnet":{"utilization":"invalid"}}"#), client: .claude, now: now)
-        XCTAssertEqual(output.windows.map(\.kind), [.fiveHour])
-        XCTAssertEqual(output.remaining, 75)
+        XCTAssertEqual(output.windows.map(\.kind), [.fiveHour, .sevenDay])
+        XCTAssertEqual(output.windows.map(\.remaining), [75, 100], "a null window has not started")
+        XCTAssertNil(output.windows.last?.resetAt)
         XCTAssertNil(output.windows.first?.resetAt)
-        XCTAssertThrowsError(try OfficialQuotaResponseParser.parse(data: fixture(#"{"five_hour":null,"seven_day":{}}"#), client: .claude, now: now))
+
+        let missingKey = try OfficialQuotaResponseParser.claudeReadings(
+            object: ["five_hour": [String: Any](), "seven_day": ["utilization": 41, "resets_at": "2023-11-21T00:13:20Z"]], now: now)
+        XCTAssertEqual(missingKey.map(\.key), ["seven_day"], "a window without the utilization key stays unknown")
+
+        let nullWindow = try OfficialQuotaResponseParser.parse(data: fixture(#"{"five_hour":null,"seven_day":{"utilization":41}}"#), client: .claude, now: now)
+        XCTAssertEqual(nullWindow.windows.map(\.kind), [.fiveHour, .sevenDay])
+        XCTAssertEqual(nullWindow.windows.map(\.remaining), [100, 59], "only the explicit null window reads as not started")
+
+        let nullUtilization = try OfficialQuotaResponseParser.claudeReadings(
+            object: ["seven_day": ["utilization": NSNull()]], now: now)
+        XCTAssertEqual(nullUtilization.map(\.usedPercentage), [0])
+        XCTAssertNil(nullUtilization.first?.resetsAt, "a not-started window has no reset time")
     }
 
     func testOfficialQuotaFixturesCoverClaudeAndCodexWindows() throws {
@@ -995,7 +1012,6 @@ final class ResponseParsersTests: XCTestCase {
         XCTAssertEqual(forecast.officialSignal?.windowKind, .deadline)
         XCTAssertEqual(forecast.remainingCountdownSeconds(now: observedAt), 25 * 60)
         XCTAssertEqual(forecast.menuPrimaryDisplayText(language: .english, now: observedAt), "25m")
-        XCTAssertEqual(forecast.officialCountdownLabel(language: .simplifiedChinese, now: observedAt), "窗口截止倒计时")
         XCTAssertEqual(forecast.officialSignal?.probability, .percent(93))
         XCTAssertNotNil(forecast.officialCountdownProgressSpan())
 
@@ -1004,7 +1020,6 @@ final class ResponseParsersTests: XCTestCase {
         XCTAssertEqual(expired.officialSignal?.targetAt, deadline)
         XCTAssertEqual(expired.remainingCountdownSeconds(now: afterDeadline), 0)
         XCTAssertEqual(expired.menuPrimaryDisplayText(language: .english, now: afterDeadline), "0m")
-        XCTAssertEqual(expired.officialCountdownLabel(language: .simplifiedChinese, now: afterDeadline), "窗口截止倒计时")
         XCTAssertFalse(expired.isOfficialResetConfirmed)
     }
 
@@ -1023,7 +1038,6 @@ final class ResponseParsersTests: XCTestCase {
         XCTAssertEqual(forecast.officialSignal?.targetAt, deadline)
         XCTAssertEqual(forecast.officialSignal?.windowKind, .range)
         XCTAssertEqual(forecast.menuPrimaryDisplayText(language: .english, now: now), "15m")
-        XCTAssertEqual(forecast.officialCountdownLabel(language: .simplifiedChinese, now: now), "窗口结束倒计时")
 
         let noDeadline = CodexResetForecastParser.parse(
             data: Data(#"""

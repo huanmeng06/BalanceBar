@@ -315,6 +315,22 @@ final class LocalizationTests: XCTestCase {
             "Reset probability"
         )
         XCTAssertEqual(
+            tr(.keyCodexBankedResetWindowDeadlineCountdown, language: .simplifiedChinese),
+            "重置窗口"
+        )
+        XCTAssertEqual(
+            tr(.keyCodexBankedResetWindowDeadlineCountdown, language: .english),
+            "Reset window"
+        )
+        XCTAssertEqual(
+            tr(.keyCodexResetSignalWindowTooltipBody, language: .simplifiedChinese),
+            "倒计时窗口结束前，Codex 官方会发放重置卡，或进行全局额度重置。"
+        )
+        XCTAssertEqual(
+            tr(.keyCodexResetSignalWindowTooltipDisclaimer, language: .simplifiedChinese),
+            "实际额度以官方接口为准。"
+        )
+        XCTAssertEqual(
             tr(.keyCodexBankedResetProbabilitySource, language: .simplifiedChinese),
             "数据来源"
         )
@@ -1264,7 +1280,7 @@ final class LocalizationTests: XCTestCase {
     func testAllTypedKeysExistInEveryBundledLanguage() throws {
         let expectedKeys = Set(LocalizationKey.allCases.map(\.rawKey))
         XCTAssertEqual(expectedKeys.count, LocalizationKey.allCases.count)
-        XCTAssertEqual(expectedKeys.count, 570)
+        XCTAssertEqual(expectedKeys.count, 583)
         let newLanguages: Set<AppLanguage> = [.portuguese, .russian, .italian]
 
         func keySequence(from text: String) -> [String] {

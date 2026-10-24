@@ -77,6 +77,19 @@ private final class GatedConfigurationReader: AccountConfigurationReading {
     }
 }
 
+/// Records confirmation-retry delays and runs them only when the test fires them.
+private final class ManualRetryTimer: SchedulerTimer {
+    private(set) var delays: [TimeInterval] = []
+    private var works: [() -> Void] = []
+
+    func schedule(after delay: TimeInterval, _ work: @escaping () -> Void) {
+        delays.append(delay)
+        works.append(work)
+    }
+
+    func fireFirst() { guard !works.isEmpty else { return }; works.removeFirst()() }
+}
+
 private final class LockedLines {
     private let lock = NSLock()
     private var values: [String] = []
@@ -96,6 +109,16 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
     private static let start = Date(timeIntervalSince1970: 1_700_000_000) // 2023-11-14T22:13:20Z
     private static let usage = Data(#"{"five_hour":{"utilization":23,"resets_at":"2023-11-15T03:00:00Z"},"seven_day":{"utilization":41,"resets_at":"2023-11-20T00:00:00Z"}}"#.utf8)
     private static let nextCycle = Data(#"{"five_hour":{"utilization":2,"resets_at":"2023-11-15T08:00:00Z"},"seven_day":{"utilization":42,"resets_at":"2023-11-20T00:00:00Z"}}"#.utf8)
+    /// Old-cycle data whose five-hour reset lies only a minute ahead, so a test can cross it
+    /// while still inside Claude V1's five-minute minimum interval.
+    private static let nearReset = Data(#"{"five_hour":{"utilization":23,"resets_at":1700000060},"seven_day":{"utilization":41,"resets_at":"2023-11-21T00:00:00Z"}}"#.utf8)
+
+    /// Claude V1 timing with a short coalescing window for deterministic stub round trips.
+    private var claudeV1TestConfiguration: FetchSchedulerConfiguration {
+        var configuration = FetchSchedulerConfiguration.claudeV1
+        configuration.coalescingWindow = 0.02
+        return configuration
+    }
 
     override func setUpWithError() throws {
         try super.setUpWithError()
@@ -128,18 +151,20 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
 
     private func makePipeline(
         reader configurationReader: AccountConfigurationReading = DefaultAccountConfigurationReader(),
-        realtimeTracker: ClaudeRealtimeTracker? = nil
+        realtimeTracker: ClaudeRealtimeTracker? = nil,
+        configuration: FetchSchedulerConfiguration? = nil,
+        confirmationTimer: SchedulerTimer = DispatchSchedulerTimer()
     ) -> ClaudeQuotaPipeline {
         let identityQueue = DispatchQueue(label: "test.pipeline.identity")
         let identity = ClaudeAccountIdentityProvider(
             configurationURL: configurationURL, reader: configurationReader,
             workQueue: identityQueue, coalescingInterval: 0.02, now: { [clock] in clock!.now })
-        var configuration = FetchSchedulerConfiguration()
-        configuration.coalescingWindow = 0.02
+        var resolved = configuration ?? FetchSchedulerConfiguration()
+        resolved.coalescingWindow = 0.02
         let pipeline = ClaudeQuotaPipeline(
             client: official, identity: identity, identityQueue: identityQueue,
             stateDirectory: directory.appendingPathComponent("state", isDirectory: true),
-            schedulerClock: clock, schedulerConfiguration: configuration,
+            schedulerClock: clock, confirmationTimer: confirmationTimer, schedulerConfiguration: resolved,
             realtimeTracker: realtimeTracker,
             now: { [clock] in clock!.now },
             diagnostics: { [diagnosticLines] message, _ in diagnosticLines.append(message) })
@@ -295,7 +320,10 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         let state = waitForState(restarted) { !$0.windows.isEmpty }
         XCTAssertNil(state?.failure)
         XCTAssertEqual(PipelineStubProtocol.requestCount, 2)
-        XCTAssertEqual(restarted.manualRefreshNotice(), .justRefreshed, "the login-expired hint is gone once a read succeeds")
+        guard case let .recentResult(until)? = restarted.manualRefreshNotice() else {
+            return XCTFail("the login-expired hint is gone once a read succeeds; got \(String(describing: restarted.manualRefreshNotice()))")
+        }
+        XCTAssertEqual(until.timeIntervalSince(clock.now), 60, accuracy: 1)
     }
 
     func testManualRefreshDuringCooldownShowsTheWaitAndLogsTheSkip() throws {
@@ -321,7 +349,10 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         let pipeline = makePipeline()
         pipeline.requestFetch(reason: .initial)
         XCTAssertNotNil(waitForState(pipeline) { !$0.windows.isEmpty })
-        XCTAssertEqual(pipeline.manualRefreshNotice(), .justRefreshed)
+        guard case let .recentResult(until)? = pipeline.manualRefreshNotice() else {
+            return XCTFail("expected a recent-result notice, got \(String(describing: pipeline.manualRefreshNotice()))")
+        }
+        XCTAssertEqual(until.timeIntervalSince(Self.start), 60, accuracy: 1)
 
         clock.advance(by: 10)
         pipeline.requestFetch(reason: .manual)
@@ -355,6 +386,42 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         XCTAssertEqual(first.accountEpoch, second.accountEpoch)
         XCTAssertEqual(first.accountScope, second.accountScope)
         XCTAssertFalse((first.accountScope ?? "").contains("a@example.com"), "the scope is an opaque hash")
+    }
+
+    /// Issue #584: the state carries the normalized account key that scopes
+    /// quota prediction evidence, and it follows the signed-in account.
+    func testPredictionAccountKeyIsNormalizedAndTracksTheSignedInAccount() throws {
+        XCTAssertNil(ClaudeQuotaPipeline.predictionAccountKey(for: nil))
+        XCTAssertNil(ClaudeQuotaPipeline.predictionAccountKey(
+            for: AccountIdentity(stableID: "id", email: "  ", idSource: .emailFallback)))
+        XCTAssertEqual(ClaudeQuotaPipeline.predictionAccountKey(
+            for: AccountIdentity(stableID: "id", email: " A@Example.COM ", idSource: .accountUUID)), "a@example.com")
+
+        // The evidence journal is keyed by the stable account ID, not the
+        // email: same-email Claude accounts must stay isolated (PR #587 review).
+        XCTAssertNil(ClaudeQuotaPipeline.predictionEvidenceKey(for: nil))
+        XCTAssertNil(ClaudeQuotaPipeline.predictionEvidenceKey(
+            for: AccountIdentity(stableID: "claude:acc-1:org", email: " ", idSource: .accountUUID)))
+        let sameEmailA = AccountIdentity(stableID: "claude:acc-1:org", email: "a@example.com", idSource: .accountUUID)
+        let sameEmailB = AccountIdentity(stableID: "claude:acc-2:org", email: "a@example.com", idSource: .accountUUID)
+        XCTAssertEqual(ClaudeQuotaPipeline.predictionEvidenceKey(for: sameEmailA), "claude:acc-1:org")
+        XCTAssertEqual(ClaudeQuotaPipeline.predictionEvidenceKey(for: sameEmailB), "claude:acc-2:org")
+        XCTAssertEqual(ClaudeQuotaPipeline.predictionAccountKey(for: sameEmailA),
+                       ClaudeQuotaPipeline.predictionAccountKey(for: sameEmailB), "the menu key stays email-based")
+
+        let pipeline = makePipeline()
+        pipeline.requestFetch(reason: .initial)
+        let first = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+        XCTAssertEqual(first.predictionAccountKey, "a@example.com")
+        XCTAssertEqual(first.predictionEvidenceKey, "claude:account-a:org")
+
+        PipelineStubProtocol.set(.init(data: Self.nextCycle))
+        try writeAccount("account-b", email: "B@Example.com")
+        let second = try XCTUnwrap(waitForState(pipeline) {
+            $0.accountEpoch != first.accountEpoch && !$0.windows.isEmpty
+        })
+        XCTAssertEqual(second.predictionAccountKey, "b@example.com", "the key is lowercased and never reused across accounts")
+        XCTAssertEqual(second.predictionEvidenceKey, "claude:account-b:org")
     }
 
     func testAccountSwitchClearsOldValuesBumpsEpochAndReadsTheNewAccount() throws {
@@ -443,6 +510,154 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         })
         XCTAssertEqual(state.windows.first?.remaining, 77, "an old-cycle reading is not a confirmation")
     }
+
+    /// Issue #580: crossing the reset deadline inside the automatic minimum interval still
+    /// dispatches the official confirmation immediately instead of skipping it.
+    func testResetConfirmationDispatchesImmediatelyDespiteRecentSuccess() throws {
+        PipelineStubProtocol.set(.init(data: Self.nearReset))
+        let pipeline = makePipeline(configuration: claudeV1TestConfiguration)
+        pipeline.requestFetch(reason: .initial)
+        _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+
+        clock.advance(by: 120) // past the five-hour deadline, inside the 5-minute minimum interval
+        PipelineStubProtocol.set(.init(data: Self.nextCycle))
+        pipeline.tick()
+        waitForRequests(2)
+
+        let confirmed = try XCTUnwrap(waitForState(pipeline) { $0.windows.first?.remaining == 98 })
+        XCTAssertEqual(confirmed.status, .official(at: clock.now), "the new cycle is confirmed without waiting")
+    }
+
+    /// Issue #580: while the reset waits for official confirmation, a manual refresh reaches
+    /// the server instead of being silently skipped by the recent-result window.
+    func testManualRefreshDuringPendingResetReachesTheServerAndExplainsItself() throws {
+        PipelineStubProtocol.set(.init(data: Self.nearReset))
+        let tracker = ClaudeRealtimeTracker(now: { [clock] in clock!.now })
+        let pipeline = makePipeline(realtimeTracker: tracker, configuration: claudeV1TestConfiguration)
+        pipeline.requestFetch(reason: .initial)
+        _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+
+        clock.advance(by: 120)
+        // The confirmation request fails to parse, so no success updates the suppression window.
+        PipelineStubProtocol.set(.init(data: Data("not json".utf8)))
+        pipeline.tick()
+        waitForRequests(2)
+        quiet(pipeline)
+        XCTAssertEqual(pipeline.latestState?.display.state, .resetPendingConfirmation)
+
+        // 121 s clears the failure backoff while staying inside Claude V1's 5-minute manual window.
+        clock.advance(by: 121)
+        XCTAssertEqual(pipeline.manualRefreshNotice(), .awaitingResetConfirmation,
+                       "past the backoff, the menu explains the pending confirmation")
+        PipelineStubProtocol.set(.init(data: Self.nextCycle))
+        pipeline.requestFetch(reason: .manual)
+        waitForRequests(3)
+        let confirmed = try XCTUnwrap(waitForState(pipeline) { $0.windows.first?.remaining == 98 })
+        XCTAssertEqual(confirmed.status, .official(at: clock.now))
+    }
+
+    /// Issue #580: an unconfirmed reset keeps retrying the official read on a 1 → 2 minute
+    /// cadence until the new cycle arrives.
+    func testPendingResetRetriesConfirmationUntilTheNewCycleArrives() throws {
+        PipelineStubProtocol.set(.init(data: Self.nearReset))
+        let retryTimer = ManualRetryTimer()
+        let pipeline = makePipeline(configuration: claudeV1TestConfiguration, confirmationTimer: retryTimer)
+        pipeline.requestFetch(reason: .initial)
+        _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+
+        clock.advance(by: 120)
+        PipelineStubProtocol.set(.init(data: Data("not json".utf8)))
+        pipeline.tick()
+        waitForRequests(2)
+        quiet(pipeline)
+        XCTAssertEqual(retryTimer.delays, [60], "the first retry is armed one minute out")
+
+        clock.advance(by: 121) // past the failure backoff
+        PipelineStubProtocol.set(.init(data: Self.nextCycle))
+        retryTimer.fireFirst()
+        waitForRequests(3)
+        let confirmed = try XCTUnwrap(waitForState(pipeline) { $0.windows.first?.remaining == 98 })
+        XCTAssertEqual(confirmed.status, .official(at: clock.now))
+        XCTAssertEqual(retryTimer.delays, [60, 120], "the cadence backs off while confirmation is pending")
+    }
+
+    /// Issue #580 review: while the pending confirmation's request failed and the backoff
+    /// holds clicks back, the menu must say so instead of promising an immediate read.
+    func testManualRefreshNoticeExplainsFailureBackoffWhilePending() throws {
+        PipelineStubProtocol.set(.init(data: Self.nearReset))
+        let tracker = ClaudeRealtimeTracker(now: { [clock] in clock!.now })
+        let pipeline = makePipeline(realtimeTracker: tracker, configuration: claudeV1TestConfiguration)
+        pipeline.requestFetch(reason: .initial)
+        _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+
+        clock.advance(by: 120)
+        PipelineStubProtocol.set(.init(data: Data("not json".utf8)))
+        pipeline.tick()
+        waitForRequests(2)
+        quiet(pipeline)
+        XCTAssertEqual(pipeline.latestState?.display.state, .resetPendingConfirmation)
+        guard case let .failureBackoff(until)? = pipeline.manualRefreshNotice() else {
+            return XCTFail("expected a failure-backoff notice, got \(String(describing: pipeline.manualRefreshNotice()))")
+        }
+        XCTAssertEqual(until.timeIntervalSince(clock.now), 60, accuracy: 1,
+                       "the subtitle counts down to the real retry moment")
+    }
+
+    /// Issue #580 review: an exhausted request budget must be explained too, not offered
+    /// as an immediate confirmation.
+    func testManualRefreshNoticeExplainsExhaustedTokens() throws {
+        var configuration = FetchSchedulerConfiguration()
+        configuration.coalescingWindow = 0.02
+        configuration.manualRefreshWindow = 10
+        configuration.tokenRefillInterval = 600
+        let pipeline = makePipeline(configuration: configuration)
+        pipeline.requestFetch(reason: .initial) // first read: manual cost, tokens 3 → 2
+        _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+
+        clock.advance(by: 11)
+        pipeline.requestFetch(reason: .manual) // tokens 2 → 1
+        waitForRequests(2)
+        quiet(pipeline) // the stub completes asynchronously; drain before advancing the fake clock
+        clock.advance(by: 11)
+        pipeline.requestFetch(reason: .manual) // tokens 1 → 0
+        waitForRequests(3)
+        quiet(pipeline)
+
+        clock.advance(by: 11)
+        pipeline.requestFetch(reason: .manual) // suppressed by insufficient tokens
+        quiet(pipeline)
+        XCTAssertEqual(PipelineStubProtocol.requestCount, 3)
+        XCTAssertTrue(diagnosticLines.all.contains { $0.contains("skip=insufficientTokens") })
+        guard case let .outOfTokens(until)? = pipeline.manualRefreshNotice() else {
+            return XCTFail("expected an out-of-tokens notice, got \(String(describing: pipeline.manualRefreshNotice()))")
+        }
+        XCTAssertEqual(until.timeIntervalSince(Self.start), 600, accuracy: 1,
+                       "one token refills ten minutes after the epoch anchor")
+    }
+    /// Issue #580: a window past its reset keeps no future reset time; the card row explains
+    /// the wait instead of showing an unknown countdown.
+    func testCardWindowShowsAwaitingConfirmationInsteadOfUnknownWhilePending() {
+        let display = QuotaWindowDisplay(
+            kind: .fiveHour, usedPercentage: 70, resetsAt: Self.start.addingTimeInterval(-60),
+            isEstimated: false, state: .resetPendingConfirmation, hoverTextKey: "quota.merge.hover.reset_pending_confirmation")
+        let model = QuotaDisplayModel(
+            windows: [display], isEstimated: false,
+            state: .resetPendingConfirmation, hoverTextKey: "quota.merge.hover.reset_pending_confirmation")
+        let windows = ClaudeQuotaPipeline.cardWindows(from: model, now: Self.start)
+        XCTAssertEqual(windows.map(\.kind), [.fiveHour])
+        XCTAssertEqual(windows.first?.reset, tr(.keyQuotaCardResetAwaitingConfirmation))
+        XCTAssertNil(windows.first?.resetAt)
+
+        // Outside the pending state an unknown reset stays unknown.
+        let inProgress = QuotaWindowDisplay(
+            kind: .fiveHour, usedPercentage: 70, resetsAt: Self.start.addingTimeInterval(-60),
+            isEstimated: false, state: .inProgress, hoverTextKey: "quota.merge.hover.in_progress")
+        let plain = ClaudeQuotaPipeline.cardWindows(
+            from: QuotaDisplayModel(windows: [inProgress], isEstimated: false, state: .inProgress, hoverTextKey: "quota.merge.hover.in_progress"),
+            now: Self.start)
+        XCTAssertNil(plain.first?.reset)
+    }
+
     // MARK: Manual-test fixtures (PR "如何人工测试" steps 6 and 7)
 
     func testDocumentedCooldownFileDisablesReadsAfterRestart() throws {

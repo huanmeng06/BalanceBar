@@ -2585,6 +2585,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var rightClickMonitor: Any?
     private var isRightClickPressActive = false
     private var isLeftClickPressActive = false
+    private var clickStateGeneration = 0
     /// True while a reversed right-click is being delivered as a native
     /// left-click so AppKit can track the status menu. The local monitor
     /// must not treat that rewritten click as the configured left-click action.
@@ -3090,6 +3091,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         settings: MenuBarSettings,
         deferMenuRebuild: Bool = false
     ) {
+        let clickBehaviorChanged = self.settings.rightClickAction != settings.rightClickAction
+            || self.settings.reverseMouseButtons != settings.reverseMouseButtons
         let iconDisplayModeChanged = self.settings.iconDisplayMode != settings.iconDisplayMode
         let iconDisplayDelayChanged = self.settings.iconDisplayDelay != settings.iconDisplayDelay
         let taskIconVisibilityChanged = self.settings.showIcon != settings.showIcon
@@ -3105,6 +3108,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         quotaPaceSnapshotAccount = menuInput.openAIAccount
         quotaPaceSnapshotClient = menuInput.activeClient
         aggregationOverviewDisplays = aggregationGrouping.cards(menuInput.aggregatedProviders)
+        if clickBehaviorChanged {
+            resetStatusItemClickState()
+        }
         self.settings = settings
         if iconSizeChanged {
             loadMenuBarIconAssets(size: settings.iconSize)
@@ -3432,6 +3438,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     func menuDidClose(_ menu: NSMenu) {
         guard menu === statusMenu else { return }
+        resetStatusItemClickState()
         menuDismissalTrace?.record("menu.didClose", view: statusMenu.items.first?.view,
             details: "controller_tracking=\(isStatusMenuTracking); rebuild_pending=\(statusMenuNeedsRebuild)")
         if overviewMenuWasSeen {
@@ -3899,9 +3906,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             NSEvent.removeMonitor(rightClickMonitor)
             self.rightClickMonitor = nil
         }
+        resetStatusItemClickState()
+    }
+
+    private func resetStatusItemClickState() {
+        clickStateGeneration += 1
         isRightClickPressActive = false
         isLeftClickPressActive = false
         isPassingThroughRewrittenMenuClick = false
+        setStatusItemHighlighted(false)
         restoreStatusMenuAfterCustomClick()
     }
 
@@ -3916,8 +3929,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     cancelMenuBarTracking()
                     isRightClickPressActive = true
                     let generation = lifecycleGeneration
+                    let clickGeneration = clickStateGeneration
                     DispatchQueue.main.async { [weak self] in
-                        guard let self, self.lifecycleGeneration == generation else { return }
+                        guard let self,
+                              self.lifecycleGeneration == generation,
+                              self.clickStateGeneration == clickGeneration else { return }
                         self.handleRightClickMouseDown()
                     }
                     return nil
@@ -3929,8 +3945,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             cancelMenuBarTracking()
             isLeftClickPressActive = true
             let generation = lifecycleGeneration
+            let clickGeneration = clickStateGeneration
             DispatchQueue.main.async { [weak self] in
-                guard let self, self.lifecycleGeneration == generation else { return }
+                guard let self,
+                      self.lifecycleGeneration == generation,
+                      self.clickStateGeneration == clickGeneration else { return }
                 self.handleLeftClickMouseDown()
             }
             return nil
@@ -3939,8 +3958,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             if isRightClickPressActive {
                 isRightClickPressActive = false
                 let generation = lifecycleGeneration
+                let clickGeneration = clickStateGeneration
                 DispatchQueue.main.async { [weak self] in
-                    guard let self, self.lifecycleGeneration == generation else { return }
+                    guard let self,
+                          self.lifecycleGeneration == generation,
+                          self.clickStateGeneration == clickGeneration else { return }
                     self.handleRightClickMouseUp()
                 }
                 return nil
@@ -3955,8 +3977,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             }
             isLeftClickPressActive = false
             let generation = lifecycleGeneration
+            let clickGeneration = clickStateGeneration
             DispatchQueue.main.async { [weak self] in
-                guard let self, self.lifecycleGeneration == generation else { return }
+                guard let self,
+                      self.lifecycleGeneration == generation,
+                      self.clickStateGeneration == clickGeneration else { return }
                 self.handleLeftClickMouseUp()
             }
             return nil
@@ -3976,8 +4001,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             }
             isRightClickPressActive = true
             let generation = lifecycleGeneration
+            let clickGeneration = clickStateGeneration
             DispatchQueue.main.async { [weak self] in
-                guard let self, self.lifecycleGeneration == generation else { return }
+                guard let self,
+                      self.lifecycleGeneration == generation,
+                      self.clickStateGeneration == clickGeneration else { return }
                 self.handleRightClickMouseDown()
             }
             return nil
@@ -3989,8 +4017,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             if isRightClickPressActive {
                 isRightClickPressActive = false
                 let generation = lifecycleGeneration
+                let clickGeneration = clickStateGeneration
                 DispatchQueue.main.async { [weak self] in
-                    guard let self, self.lifecycleGeneration == generation else { return }
+                    guard let self,
+                          self.lifecycleGeneration == generation,
+                          self.clickStateGeneration == clickGeneration else { return }
                     self.handleRightClickMouseUp()
                 }
                 return nil
@@ -6098,7 +6129,18 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             return tr(.keyStatusItemControllerRefreshNowRateLimited, arguments: [text])
         case .justRefreshed?:
             return tr(.keyStatusItemControllerRefreshNowJustRefreshed)
-        case .localFresh?, .recentResult?, .inFlight?:
+        case let .recentResult(until)?:
+            let seconds = Int(max(0, until.timeIntervalSince(now).rounded(.up)))
+            return tr(.keyStatusItemControllerRefreshNowRecentResult, arguments: ["\(seconds)"])
+        case let .failureBackoff(until)?:
+            let seconds = Int(max(0, until.timeIntervalSince(now).rounded(.up)))
+            return tr(.keyStatusItemControllerRefreshNowFailureBackoff, arguments: ["\(seconds)"])
+        case let .outOfTokens(until)?:
+            let seconds = Int(max(0, until.timeIntervalSince(now).rounded(.up)))
+            return tr(.keyStatusItemControllerRefreshNowOutOfTokens, arguments: ["\(seconds)"])
+        case .awaitingResetConfirmation?:
+            return tr(.keyStatusItemControllerRefreshNowAwaitingConfirmation)
+        case .localFresh?, .inFlight?:
             return tr(.keyStatusItemControllerRefreshNowJustRefreshed)
         case .networkUnavailable?, .succeeded?:
             return nil
@@ -7008,6 +7050,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             includesBankedResetNearestExpiry: nearestExpiryText != nil,
             includesResetProbability: settings.showBankedReset && snapshot.kind == .official
                 && (bankedReset != nil || presentation.resetForecast.hasAnyValue),
+            includesBankedResetCountdownProgress: settings.showBankedReset
+                && snapshot.kind == .official
+                && presentation.resetForecast.showsOfficialWindowDeadlineProgress,
             bankedResetTicketMetrics: bankedResetTicketMetrics
         )
     }
@@ -7712,10 +7757,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     /// Each card is validated against its own account: aggregated Codex
-    /// cards may belong to accounts other than the active one.
+    /// cards may belong to accounts other than the active one. Claude cards
+    /// use the same rule; their contexts are recorded by the refresh
+    /// coordinator from the account-wide Claude quota pipeline.
     private func quotaPaceCycleStart(for window: OfficialQuotaWindow, context: OverviewCardContext) -> Date? {
         let snapshot = context.snapshot
-        guard context.paceClient == .codex, snapshot.kind == .official,
+        guard context.paceClient == .codex || context.paceClient == .claude, snapshot.kind == .official,
               case .available(let email) = context.account?.state,
               snapshot.quotaPredictionAccountKey == email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
               let cycle = QuotaPredictionCycle(window: window) else { return nil }
@@ -7863,11 +7910,23 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             updatedText = "--"
         }
         let isSignal = forecast.officialSignal != nil
+        // The countdown variant describes the reset window itself; a
+        // probability-only official signal keeps the generic signal copy.
+        let isWindowDeadline = forecast.isOfficialWindowDeadlineCountdown
+        let titleKey: LocalizationKey = isWindowDeadline
+            ? .keyCodexBankedResetWindowDeadlineCountdown
+            : (isSignal ? .keyCodexResetSignalTooltipTitle : .keyCodexBankedResetTooltipTitle)
+        let bodyKey: LocalizationKey = isWindowDeadline
+            ? .keyCodexResetSignalWindowTooltipBody
+            : (isSignal ? .keyCodexResetSignalTooltipBody : .keyCodexBankedResetTooltipBody)
+        let disclaimerKey: LocalizationKey = isWindowDeadline
+            ? .keyCodexResetSignalWindowTooltipDisclaimer
+            : (isSignal ? .keyCodexResetSignalTooltipDisclaimer : .keyCodexBankedResetTooltipDisclaimer)
         return DashboardForecastTooltipContent(
-            title: tr(isSignal ? .keyCodexResetSignalTooltipTitle : .keyCodexBankedResetTooltipTitle, language: language),
-            body: tr(isSignal ? .keyCodexResetSignalTooltipBody : .keyCodexBankedResetTooltipBody, language: language),
+            title: tr(titleKey, language: language),
+            body: tr(bodyKey, language: language),
             source: tr(.keyCodexBankedResetTooltipSource, arguments: [updatedText], language: language),
-            disclaimer: tr(isSignal ? .keyCodexResetSignalTooltipDisclaimer : .keyCodexBankedResetTooltipDisclaimer, language: language)
+            disclaimer: tr(disclaimerKey, language: language)
         )
     }
 
@@ -7991,10 +8050,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         }
         // The title, not the amount, hosts the source bubble and website link.
-        // A window-deadline countdown replaces the generic prefix so the large
-        // number is never read as a guaranteed reset instant.
-        let titleText = forecast.officialCountdownLabel(now: bankedResetCountdownNow())
-            ?? tr(.keyCodexBankedResetProbabilityPrefix)
+        let titleText = contentKey.primary == .countdown
+            ? tr(.keyCodexBankedResetWindowDeadlineCountdown)
+            : tr(.keyCodexBankedResetProbabilityPrefix)
         let titleLink = contentKey.primary == .confirmed ? nil : HoverLinkTextField(text: titleText)
         let probabilityTitle = AccountMarqueeView(
             text: titleText,
@@ -8021,9 +8079,31 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             configureBankedResetSourceLink(titleLink, forecast: forecast)
             eventHost.track(titleLink)
         }
-        // Reuse the source subtitle slot and stop at the primary amount's
-        // visible leading edge. Long localized copy uses the marquee viewport.
-        if !row.reset.isEmpty {
+        // The countdown variant reserves a dedicated subtitle line for the
+        // absolute deadline and a separate bottom row for the progress bar.
+        // Other presentations keep the shared forecast/hint subtitle slot.
+        if contentKey.primary == .countdown {
+            let deadlineFrame = overviewMarqueeFrame(
+                row.reset, avoidingAmountFrame: amount.frame,
+                amountText: marqueeAmountText, amountFont: reservationFont,
+                minimumAmountGap: 12
+            )
+            if let deadline = forecast.officialWindowDeadlineText(timeZone: settings.displayTimeZone) {
+                addBankedResetOfficialCountdownDeadline(
+                    to: view,
+                    frame: deadlineFrame,
+                    text: deadline,
+                    leadingInkAnchor: leadingInkAnchor
+                )
+            }
+            if let remaining = forecast.officialCountdownRemainingFraction(now: bankedResetCountdownNow()) {
+                addBankedResetOfficialCountdownProgress(
+                    to: view,
+                    frame: row.progress,
+                    remainingFraction: remaining
+                )
+            }
+        } else if !row.reset.isEmpty {
             let subtitleFrame = row.reset
             let metricsFrame = overviewMarqueeFrame(
                 subtitleFrame, avoidingAmountFrame: amount.frame,
@@ -8046,24 +8126,38 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
     }
 
+    private func addBankedResetOfficialCountdownDeadline(
+        to view: NSView,
+        frame: NSRect,
+        text: String,
+        leadingInkAnchor: CGFloat
+    ) {
+        let label = makeMarqueeOverviewLabel(
+            text,
+            font: OpenCodexCardLayout.bankedResetForecastSubtitleFont,
+            textColor: .secondaryLabelColor,
+            frame: frame,
+            leadingInkAnchor: leadingInkAnchor
+        )
+        label.identifier = NSUserInterfaceItemIdentifier(
+            "codex.bankedReset.officialCountdownDeadline"
+        )
+        label.accountLabel.identifier = label.identifier
+        view.addSubview(label)
+    }
+
     private func addBankedResetOfficialCountdownProgress(
         to view: NSView,
         frame: NSRect,
         remainingFraction: Double
     ) {
-        let height = OpenCodexCardLayout.quotaProgressHeight
-        let barFrame = NSRect(
-            x: frame.minX,
-            y: frame.midY - height / 2,
-            width: frame.width,
-            height: height
-        )
+        guard frame.width > 0, frame.height > 0 else { return }
         let progress = QuotaProgressView(
             percentage: remainingFraction * 100,
             colorConfiguration: settings.quotaProgressColorConfiguration,
             fillOrigin: .leading
         )
-        progress.frame = barFrame
+        progress.frame = frame
         progress.identifier = NSUserInterfaceItemIdentifier(
             "codex.bankedReset.officialCountdownProgress"
         )
@@ -8425,11 +8519,17 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             section.updateText(title: reserve.menuTitleText, subtitle: reserve.menuSubtitle(timeZone: settings.displayTimeZone))
         }
         if let section = sections.first(where: { $0.sectionID == .resetProbability }) {
-            (section.titleView as? AccountMarqueeView)?.updateText(
-                presentation.resetForecast.officialCountdownLabel(now: bankedResetCountdownNow())
-                    ?? tr(.keyCodexBankedResetProbabilityPrefix),
-                preserveScrollPosition: true
-            )
+            let titleText = presentation.resetForecast.isOfficialWindowDeadlineCountdown
+                ? tr(.keyCodexBankedResetWindowDeadlineCountdown)
+                : tr(.keyCodexBankedResetProbabilityPrefix)
+            (section.titleView as? AccountMarqueeView)?.updateText(titleText, preserveScrollPosition: true)
+            if let deadline = presentation.resetForecast.officialWindowDeadlineText(
+                timeZone: settings.displayTimeZone
+            ) {
+                descendantViews(of: section, as: AccountMarqueeView.self).first {
+                    $0.identifier?.rawValue == "codex.bankedReset.officialCountdownDeadline"
+                }?.updateText(deadline, preserveScrollPosition: true)
+            }
         }
         if let banked = presentation.bankedReset,
            let section = sections.first(where: { $0.sectionID == .bankedReset }) {

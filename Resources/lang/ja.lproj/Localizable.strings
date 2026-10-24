@@ -201,6 +201,13 @@
 "dashboard.general.and.refresh.pages.launch_with_chatgpt_operation_failed" = "ChatGPTと一緒に起動する設定を更新できませんでした。システム設定 → 一般 → ログイン項目を確認して、もう一度お試しください。";
 "dashboard.general.and.refresh.pages.launch_with_chatgpt_unavailable" = "ChatGPT起動サービスの状態を読み取れません";
 "dashboard.general.and.refresh.pages.current_provider_value" = "現在のプロバイダー：%1$@";
+"dashboard.general.and.refresh.pages.connection_mode_line" = "%1$@：%2$@ ・ %3$@";
+"dashboard.general.and.refresh.pages.connection_mode_line_only" = "%1$@：%2$@";
+"dashboard.general.and.refresh.pages.connection_mode_more" = " など";
+"dashboard.general.and.refresh.pages.connection_mode_direct" = "ダイレクト";
+"dashboard.general.and.refresh.pages.connection_mode_aggregation" = "アグリゲーション";
+"dashboard.general.and.refresh.pages.connection_mode_proxy" = "ルーティング";
+"dashboard.general.and.refresh.pages.connection_mode_unknown" = "不明";
 "dashboard.general.and.refresh.pages.system" = "システム";
 "dashboard.general.and.refresh.pages.every_1_sec" = "1秒ごと";
 "dashboard.general.and.refresh.pages.every_2_sec" = "2秒ごと";
@@ -466,8 +473,6 @@
 "codex.banked_reset.official_hint_time" = "公式リセット案内 · 具体的な時刻";
 "codex.banked_reset.official_hint_deadline" = "公式リセット案内 · 締切";
 "codex.banked_reset.official_hint_window" = "公式リセット案内 · 時間枠";
-"codex.banked_reset.official_countdown_deadline" = "期限までの残り時間";
-"codex.banked_reset.official_countdown_window" = "時間枠終了まで";
 "codex.banked_reset.confidence_prefix" = "信頼度：";
 "codex.banked_reset.confidence_low" = "低";
 "codex.banked_reset.confidence_medium" = "中";
@@ -484,10 +489,13 @@
 
 "codex.banked_reset.official_hint_confirmed" = "今回分は完了";
 "codex.banked_reset.official_reset_confirmed" = "✅ リセット済み";
+"codex.banked_reset.window_deadline_countdown" = "リセット枠";
 
 "codex.reset_signal.tooltip_title" = "公式リセットシグナル";
 "codex.reset_signal.tooltip_body" = "現在の公式シグナルの強シグナル確率またはカウントダウンです。通常の 24 / 48 時間予測とは別です。";
 "codex.reset_signal.tooltip_disclaimer" = "このシグナルは、このアカウントのリセット完了やリセットカードの配布を保証しません。実際の残量は公式 API に従います。";
+"codex.reset_signal.window_tooltip_body" = "カウントダウン終了までに、Codex 公式がリセットカードを配布、または全体クォータをリセットします。";
+"codex.reset_signal.window_tooltip_disclaimer" = "実際の残量は公式 API に従います。";
 
 // Application display time zone
 "timezone.title" = "タイムゾーン";
@@ -572,12 +580,17 @@
 "quota.status.hover.external_activity" = "他のクライアントでの利用を検出したため、更新頻度を上げました";
 "quota.status.reset_pending" = "リセット済みの可能性があります。確認待ち";
 "quota.status.reset_pending_short" = "確認待ち";
+"quota.card.reset_awaiting_confirmation" = "リセット時間経過、確認待ち";
 "quota.failure.open_usage_page" = "公式の使用状況ページを開く";
 "quota.status.accessibility" = "クォータの状態：%1$@";
 "claude.refresh.login_expired" = "Claude Code のサインインが期限切れです。ターミナルで claude を一度実行すると復旧します。BalanceBar がサインインを自動更新することはありません。";
-"status.item.controller.refresh_now_login_expired" = "Claude のサインインが期限切れ。先に claude を実行";
+"status.item.controller.refresh_now_login_expired" = "Claude のログイン資格情報が期限切れです。Claude Code で再ログインしてください";
 "status.item.controller.refresh_now_rate_limited" = "レート制限中、%1$@後に利用可能";
 "status.item.controller.refresh_now_just_refreshed" = "直前に更新済み";
+"status.item.controller.refresh_now_recent_result" = "直前に更新済み · %1$@秒後に再試行できます";
+"status.item.controller.refresh_now_awaiting_confirmation" = "公式のリセット確認を待っています。クリックで今すぐ確認します";
+"status.item.controller.refresh_now_failure_backoff" = "リクエスト失敗、%1$@秒後に自動再試行します";
+"status.item.controller.refresh_now_out_of_tokens" = "更新が頻繁すぎます。%1$@秒後に再試行できます";
 "claude.status_line.enabled" = "Claude Code ネイティブ同期";
 "claude.status_line.description" = "Claude Code の内部インターフェースを使い、Claude の回答が終わるたびにリセット時刻・残り枠・状態をより早く取得します。";
 "claude.status_line.calibration" = "Claude 公式クォータの校正";

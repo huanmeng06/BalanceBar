@@ -201,6 +201,13 @@
 "dashboard.general.and.refresh.pages.launch_with_chatgpt_operation_failed" = "Could not update Launch with ChatGPT. Check System Settings → General → Login Items and try again.";
 "dashboard.general.and.refresh.pages.launch_with_chatgpt_unavailable" = "Unable to read the ChatGPT launch service status";
 "dashboard.general.and.refresh.pages.current_provider_value" = "Current Provider: %1$@";
+"dashboard.general.and.refresh.pages.connection_mode_line" = "%1$@: %2$@ · %3$@";
+"dashboard.general.and.refresh.pages.connection_mode_line_only" = "%1$@: %2$@";
+"dashboard.general.and.refresh.pages.connection_mode_more" = ", etc.";
+"dashboard.general.and.refresh.pages.connection_mode_direct" = "Direct";
+"dashboard.general.and.refresh.pages.connection_mode_aggregation" = "Aggregation";
+"dashboard.general.and.refresh.pages.connection_mode_proxy" = "Routing";
+"dashboard.general.and.refresh.pages.connection_mode_unknown" = "Unknown";
 "dashboard.general.and.refresh.pages.system" = "System";
 "dashboard.general.and.refresh.pages.every_1_sec" = "Every 1 sec";
 "dashboard.general.and.refresh.pages.every_2_sec" = "Every 2 sec";
@@ -466,8 +473,6 @@
 "codex.banked_reset.official_hint_time" = "Official reset hint · Specific time";
 "codex.banked_reset.official_hint_deadline" = "Official reset hint · Deadline";
 "codex.banked_reset.official_hint_window" = "Official reset hint · Time window";
-"codex.banked_reset.official_countdown_deadline" = "Window deadline";
-"codex.banked_reset.official_countdown_window" = "Window ends in";
 "codex.banked_reset.confidence_prefix" = "Confidence:";
 "codex.banked_reset.confidence_low" = "Low";
 "codex.banked_reset.confidence_medium" = "Medium";
@@ -484,10 +489,13 @@
 
 "codex.banked_reset.official_hint_confirmed" = "This round completed";
 "codex.banked_reset.official_reset_confirmed" = "✅ Reset";
+"codex.banked_reset.window_deadline_countdown" = "Reset window";
 
 "codex.reset_signal.tooltip_title" = "Official reset signal";
 "codex.reset_signal.tooltip_body" = "Strong-signal probability or countdown for the current official signal, separate from the ordinary 24 / 48-hour forecast.";
 "codex.reset_signal.tooltip_disclaimer" = "The signal does not confirm a reset for this account or guarantee reset credits. Actual quota comes from the official API.";
+"codex.reset_signal.window_tooltip_body" = "Before the countdown window ends, Codex will issue reset cards or perform a global quota reset.";
+"codex.reset_signal.window_tooltip_disclaimer" = "Actual quota comes from the official API.";
 
 // Application display time zone
 "timezone.title" = "Time zone";
@@ -572,12 +580,17 @@
 "quota.status.hover.external_activity" = "Activity detected on another client; refreshing more often";
 "quota.status.reset_pending" = "Likely reset; awaiting confirmation";
 "quota.status.reset_pending_short" = "Pending";
+"quota.card.reset_awaiting_confirmation" = "Past reset time, awaiting confirmation";
 "quota.failure.open_usage_page" = "Open official usage page";
 "quota.status.accessibility" = "Quota status: %1$@";
 "claude.refresh.login_expired" = "Claude Code sign-in has expired. Run claude once in a terminal to restore it; BalanceBar never renews the login itself.";
-"status.item.controller.refresh_now_login_expired" = "Claude sign-in expired, run claude first";
+"status.item.controller.refresh_now_login_expired" = "Claude sign-in credentials expired, sign in again in Claude Code";
 "status.item.controller.refresh_now_rate_limited" = "Rate limited, available in %1$@";
 "status.item.controller.refresh_now_just_refreshed" = "Just refreshed";
+"status.item.controller.refresh_now_recent_result" = "Just refreshed · retry in %1$@ s";
+"status.item.controller.refresh_now_awaiting_confirmation" = "Awaiting official reset confirmation; click to confirm now";
+"status.item.controller.refresh_now_failure_backoff" = "Last request failed; retrying automatically in %1$@ s";
+"status.item.controller.refresh_now_out_of_tokens" = "Refreshing too often, retry in %1$@ s";
 "claude.status_line.enabled" = "Claude Code native sync";
 "claude.status_line.description" = "Uses Claude Code's internal interface to pick up the reset time, remaining quota and status sooner after each Claude reply.";
 "claude.status_line.calibration" = "Claude official quota calibration";

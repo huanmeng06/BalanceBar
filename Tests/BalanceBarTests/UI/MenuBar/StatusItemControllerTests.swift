@@ -516,6 +516,133 @@ final class StatusItemControllerTests: XCTestCase {
     }
 
     @MainActor
+    func testReversedExternalActionsUseLeftClickForAgentAndCCSwitch() {
+        for action in [MenuBarRightClickAction.openAgent, .openCCSwitch] {
+            do {
+                var agentOpens = 0
+                var ccSwitchOpens = 0
+                let controller = makeController(
+                    openChatGPT: { agentOpens += 1 },
+                    openCCSwitch: { ccSwitchOpens += 1 }
+                )
+                defer { controller.teardown() }
+
+                controller.start(
+                    snapshot: .placeholder,
+                    refreshDate: nil,
+                    menuInput: makeMenuInput(),
+                    settings: makeSettings(rightClickAction: action, reverseMouseButtons: true)
+                )
+                controller.handleStatusItemLeftMouseDownForTesting()
+                controller.handleStatusItemLeftMouseUpForTesting()
+
+                XCTAssertEqual(agentOpens, action == .openAgent ? 1 : 0)
+                XCTAssertEqual(ccSwitchOpens, action == .openCCSwitch ? 1 : 0)
+            }
+        }
+    }
+
+    @MainActor
+    func testMenuCloseClearsRewrittenClickBeforeNextReversedAction() {
+        var agentOpens = 0
+        let controller = makeController(openChatGPT: { agentOpens += 1 })
+        defer { controller.teardown() }
+
+        controller.start(
+            snapshot: .placeholder,
+            refreshDate: nil,
+            menuInput: makeMenuInput(),
+            settings: makeSettings(rightClickAction: .openAgent, reverseMouseButtons: true)
+        )
+        XCTAssertEqual(
+            controller.handleStatusItemEventForTesting(makeMouseEvent(.rightMouseDown))?.type,
+            .leftMouseDown
+        )
+        controller.menuDidClose(controller.statusMenuForTesting)
+
+        XCTAssertNil(controller.handleStatusItemEventForTesting(makeMouseEvent(.leftMouseDown)))
+        XCTAssertNil(controller.handleStatusItemEventForTesting(makeMouseEvent(.leftMouseUp)))
+        RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+        XCTAssertEqual(agentOpens, 1)
+    }
+
+    @MainActor
+    func testChangingClickSettingsClearsPendingRewrittenClick() {
+        var ccSwitchOpens = 0
+        let controller = makeController(openCCSwitch: { ccSwitchOpens += 1 })
+        defer { controller.teardown() }
+
+        controller.start(
+            snapshot: .placeholder,
+            refreshDate: nil,
+            menuInput: makeMenuInput(),
+            settings: makeSettings(rightClickAction: .openAgent, reverseMouseButtons: true)
+        )
+        XCTAssertEqual(
+            controller.handleStatusItemEventForTesting(makeMouseEvent(.rightMouseDown))?.type,
+            .leftMouseDown
+        )
+
+        controller.update(
+            snapshot: .placeholder,
+            refreshDate: nil,
+            menuInput: makeMenuInput(),
+            settings: makeSettings(rightClickAction: .openCCSwitch)
+        )
+        XCTAssertTrue(controller.isStatusMenuBoundForTesting)
+        XCTAssertNil(controller.handleStatusItemEventForTesting(makeMouseEvent(.rightMouseDown)))
+        XCTAssertNil(controller.handleStatusItemEventForTesting(makeMouseEvent(.rightMouseUp)))
+        RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+        XCTAssertEqual(ccSwitchOpens, 1)
+    }
+
+    @MainActor
+    func testChangingClickSettingsInvalidatesQueuedRightMouseDown() {
+        let controller = makeController()
+        defer { controller.teardown() }
+
+        controller.start(
+            snapshot: .placeholder,
+            refreshDate: nil,
+            menuInput: makeMenuInput(),
+            settings: makeSettings(rightClickAction: .openAgent)
+        )
+        XCTAssertNil(controller.handleStatusItemEventForTesting(makeMouseEvent(.rightMouseDown)))
+
+        controller.update(
+            snapshot: .placeholder,
+            refreshDate: nil,
+            menuInput: makeMenuInput(),
+            settings: makeSettings(rightClickAction: .openCCSwitch)
+        )
+        RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+        XCTAssertTrue(controller.isStatusMenuBoundForTesting)
+    }
+
+    @MainActor
+    func testChangingReversedClickSettingsInvalidatesQueuedLeftMouseDown() {
+        let controller = makeController()
+        defer { controller.teardown() }
+
+        controller.start(
+            snapshot: .placeholder,
+            refreshDate: nil,
+            menuInput: makeMenuInput(),
+            settings: makeSettings(rightClickAction: .openAgent, reverseMouseButtons: true)
+        )
+        XCTAssertNil(controller.handleStatusItemEventForTesting(makeMouseEvent(.leftMouseDown)))
+
+        controller.update(
+            snapshot: .placeholder,
+            refreshDate: nil,
+            menuInput: makeMenuInput(),
+            settings: makeSettings(rightClickAction: .openCCSwitch, reverseMouseButtons: true)
+        )
+        RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+        XCTAssertTrue(controller.isStatusMenuBoundForTesting)
+    }
+
+    @MainActor
     func testReverseIsIgnoredWhenRightClickMatchesLeftClick() {
         var dashboardOpens = 0
         let controller = makeController(
@@ -3354,6 +3481,22 @@ extension StatusItemControllerTests {
         notice = .justRefreshed
         _ = controller.validateMenuItem(refresh)
         assertRefresh(subtitle: tr(.keyStatusItemControllerRefreshNowJustRefreshed), "just refreshed")
+        notice = .recentResult(until: Date().addingTimeInterval(-10))
+        _ = controller.validateMenuItem(refresh)
+        assertRefresh(subtitle: tr(.keyStatusItemControllerRefreshNowRecentResult, arguments: ["0"]),
+                      "a recent result counts down to the next useful retry")
+        notice = .awaitingResetConfirmation
+        _ = controller.validateMenuItem(refresh)
+        assertRefresh(subtitle: tr(.keyStatusItemControllerRefreshNowAwaitingConfirmation),
+                      "a pending reset explains itself instead of silently skipping")
+        notice = .failureBackoff(until: Date().addingTimeInterval(-10))
+        _ = controller.validateMenuItem(refresh)
+        assertRefresh(subtitle: tr(.keyStatusItemControllerRefreshNowFailureBackoff, arguments: ["0"]),
+                      "a failure backoff counts down to the automatic retry")
+        notice = .outOfTokens(until: Date().addingTimeInterval(-10))
+        _ = controller.validateMenuItem(refresh)
+        assertRefresh(subtitle: tr(.keyStatusItemControllerRefreshNowOutOfTokens, arguments: ["0"]),
+                      "an exhausted budget counts down to the next token")
         notice = nil
         _ = controller.validateMenuItem(refresh)
         assertRefresh(subtitle: nil, "the subtitle clears with the notice")

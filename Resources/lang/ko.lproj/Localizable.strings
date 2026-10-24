@@ -201,6 +201,13 @@
 "dashboard.general.and.refresh.pages.launch_with_chatgpt_operation_failed" = "ChatGPT와 함께 실행 설정을 업데이트할 수 없습니다. 시스템 설정 → 일반 → 로그인 항목을 확인한 후 다시 시도하세요.";
 "dashboard.general.and.refresh.pages.launch_with_chatgpt_unavailable" = "ChatGPT 실행 서비스 상태를 읽을 수 없습니다";
 "dashboard.general.and.refresh.pages.current_provider_value" = "현재 서비스 제공자: %1$@";
+"dashboard.general.and.refresh.pages.connection_mode_line" = "%1$@: %2$@ · %3$@";
+"dashboard.general.and.refresh.pages.connection_mode_line_only" = "%1$@: %2$@";
+"dashboard.general.and.refresh.pages.connection_mode_more" = " 외";
+"dashboard.general.and.refresh.pages.connection_mode_direct" = "직접 연결";
+"dashboard.general.and.refresh.pages.connection_mode_aggregation" = "통합";
+"dashboard.general.and.refresh.pages.connection_mode_proxy" = "라우팅";
+"dashboard.general.and.refresh.pages.connection_mode_unknown" = "알 수 없음";
 "dashboard.general.and.refresh.pages.system" = "시스템";
 "dashboard.general.and.refresh.pages.every_1_sec" = "1초마다";
 "dashboard.general.and.refresh.pages.every_2_sec" = "2초마다";
@@ -466,8 +473,6 @@
 "codex.banked_reset.official_hint_time" = "공식 리셋 안내 · 구체적 시각";
 "codex.banked_reset.official_hint_deadline" = "공식 리셋 안내 · 마감";
 "codex.banked_reset.official_hint_window" = "공식 리셋 안내 · 시간 범위";
-"codex.banked_reset.official_countdown_deadline" = "마감까지 남은 시간";
-"codex.banked_reset.official_countdown_window" = "시간 범위 종료까지";
 "codex.banked_reset.confidence_prefix" = "신뢰도:";
 "codex.banked_reset.confidence_low" = "낮음";
 "codex.banked_reset.confidence_medium" = "중간";
@@ -484,10 +489,13 @@
 
 "codex.banked_reset.official_hint_confirmed" = "이번 회차 완료";
 "codex.banked_reset.official_reset_confirmed" = "✅ 리셋 완료";
+"codex.banked_reset.window_deadline_countdown" = "리셋 기간";
 
 "codex.reset_signal.tooltip_title" = "공식 리셋 신호";
 "codex.reset_signal.tooltip_body" = "현재 공식 신호의 강한 신호 확률 또는 카운트다운이며 일반 24 / 48시간 예측과는 별개입니다.";
 "codex.reset_signal.tooltip_disclaimer" = "신호는 이 계정의 리셋 완료나 리셋 카드 지급을 보장하지 않습니다. 실제 할당량은 공식 API를 따릅니다.";
+"codex.reset_signal.window_tooltip_body" = "카운트다운이 끝나기 전에 Codex가 리셋 카드를 지급하거나 전체 할당량을 리셋합니다.";
+"codex.reset_signal.window_tooltip_disclaimer" = "실제 할당량은 공식 API를 따릅니다.";
 
 // Application display time zone
 "timezone.title" = "시간대";
@@ -572,12 +580,17 @@
 "quota.status.hover.external_activity" = "다른 클라이언트에서 사용 중임을 감지하여 업데이트 빈도를 높였습니다";
 "quota.status.reset_pending" = "초기화된 것으로 보이며 확인을 기다리는 중입니다";
 "quota.status.reset_pending_short" = "확인 대기";
+"quota.card.reset_awaiting_confirmation" = "초기화 시간 지남, 확인 대기 중";
 "quota.failure.open_usage_page" = "공식 사용량 페이지 열기";
 "quota.status.accessibility" = "할당량 상태: %1$@";
 "claude.refresh.login_expired" = "Claude Code 로그인이 만료되었습니다. 터미널에서 claude를 한 번 실행하면 복구됩니다. BalanceBar는 로그인을 직접 갱신하지 않습니다.";
-"status.item.controller.refresh_now_login_expired" = "Claude 로그인 만료, 먼저 claude 실행";
+"status.item.controller.refresh_now_login_expired" = "Claude 로그인 자격 증명이 만료되었습니다. Claude Code에서 다시 로그인하세요";
 "status.item.controller.refresh_now_rate_limited" = "요청 제한 중, %1$@ 후 가능";
 "status.item.controller.refresh_now_just_refreshed" = "방금 업데이트됨";
+"status.item.controller.refresh_now_recent_result" = "방금 업데이트됨 · %1$@초 후 재시도 가능";
+"status.item.controller.refresh_now_awaiting_confirmation" = "공식 초기화 확인 대기 중, 클릭하면 즉시 확인합니다";
+"status.item.controller.refresh_now_failure_backoff" = "요청 실패, %1$@초 후 자동 재시도";
+"status.item.controller.refresh_now_out_of_tokens" = "새로고침이 너무 잦습니다. %1$@초 후 재시도할 수 있습니다";
 "claude.status_line.enabled" = "Claude Code 네이티브 동기화";
 "claude.status_line.description" = "Claude Code 내부 인터페이스를 사용해 Claude 답변이 끝날 때마다 초기화 시간, 남은 한도, 상태를 더 빨리 가져옵니다.";
 "claude.status_line.calibration" = "Claude 공식 할당량 보정";

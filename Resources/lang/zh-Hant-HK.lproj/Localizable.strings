@@ -201,6 +201,13 @@
 "dashboard.general.and.refresh.pages.launch_with_chatgpt_operation_failed" = "無法更新「隨 ChatGPT 啟動」。請檢查「系統設定」→「一般」→「登入項目」後重試。";
 "dashboard.general.and.refresh.pages.launch_with_chatgpt_unavailable" = "暫時無法讀取隨 ChatGPT 啟動服務狀態";
 "dashboard.general.and.refresh.pages.current_provider_value" = "目前服務商：%1$@";
+"dashboard.general.and.refresh.pages.connection_mode_line" = "%1$@：%2$@ · %3$@";
+"dashboard.general.and.refresh.pages.connection_mode_line_only" = "%1$@：%2$@";
+"dashboard.general.and.refresh.pages.connection_mode_more" = " 等";
+"dashboard.general.and.refresh.pages.connection_mode_direct" = "直連";
+"dashboard.general.and.refresh.pages.connection_mode_aggregation" = "聚合";
+"dashboard.general.and.refresh.pages.connection_mode_proxy" = "路由";
+"dashboard.general.and.refresh.pages.connection_mode_unknown" = "未知";
 "dashboard.general.and.refresh.pages.system" = "系統";
 "dashboard.general.and.refresh.pages.every_1_sec" = "每 1 秒";
 "dashboard.general.and.refresh.pages.every_2_sec" = "每 2 秒";
@@ -466,8 +473,6 @@
 "codex.banked_reset.official_hint_time" = "官方重置提示 · 具體時間點";
 "codex.banked_reset.official_hint_deadline" = "官方重置提示 · 窗口截止";
 "codex.banked_reset.official_hint_window" = "官方重置提示 · 時間窗口";
-"codex.banked_reset.official_countdown_deadline" = "窗口截止倒數";
-"codex.banked_reset.official_countdown_window" = "窗口結束倒數";
 "codex.banked_reset.confidence_prefix" = "置信度：";
 "codex.banked_reset.confidence_low" = "低";
 "codex.banked_reset.confidence_medium" = "中";
@@ -484,10 +489,13 @@
 
 "codex.banked_reset.official_hint_confirmed" = "本輪已完成";
 "codex.banked_reset.official_reset_confirmed" = "✅ 已重置";
+"codex.banked_reset.window_deadline_countdown" = "重置窗口";
 
 "codex.reset_signal.tooltip_title" = "官方重置信號";
 "codex.reset_signal.tooltip_body" = "目前官方訊號的強訊號機率或倒數提示，獨立於一般 24 / 48 小時預測。";
 "codex.reset_signal.tooltip_disclaimer" = "訊號提示不代表目前帳戶已完成重置，也不保證發放重置卡；實際額度以官方介面為準。";
+"codex.reset_signal.window_tooltip_body" = "倒數窗口結束前，Codex 官方會發放重置卡，或進行全域額度重置。";
+"codex.reset_signal.window_tooltip_disclaimer" = "實際額度以官方介面為準。";
 
 // Application display time zone
 "timezone.title" = "時區";
@@ -572,12 +580,17 @@
 "quota.status.hover.external_activity" = "偵測到其他裝置正在使用，已提高更新頻率";
 "quota.status.reset_pending" = "預計已重置，等待確認";
 "quota.status.reset_pending_short" = "待確認";
+"quota.card.reset_awaiting_confirmation" = "已過重置時間，等待確認";
 "quota.failure.open_usage_page" = "開啟官方用量頁面";
 "quota.status.accessibility" = "額度狀態：%1$@";
 "claude.refresh.login_expired" = "Claude Code 登入已過期。在終端機執行一次 claude 即可恢復；BalanceBar 不會自行續期登入。";
-"status.item.controller.refresh_now_login_expired" = "Claude 登入已過期，請先執行 claude";
+"status.item.controller.refresh_now_login_expired" = "Claude 登入憑證過期，請重新在 Claude Code 中登入";
 "status.item.controller.refresh_now_rate_limited" = "被限流，%1$@後可用";
 "status.item.controller.refresh_now_just_refreshed" = "剛剛已刷新";
+"status.item.controller.refresh_now_recent_result" = "剛剛已刷新 · %1$@ 秒後可再試";
+"status.item.controller.refresh_now_awaiting_confirmation" = "等待官方確認重置，點擊立即向官方確認";
+"status.item.controller.refresh_now_failure_backoff" = "請求失敗，%1$@ 秒後自動重試";
+"status.item.controller.refresh_now_out_of_tokens" = "刷新過於頻繁，%1$@ 秒後可重試";
 "claude.status_line.enabled" = "Claude Code 原生同步";
 "claude.status_line.description" = "透過 Claude Code 內部介面，在 Claude 每次回答結束後，更即時地取得刷新時間、剩餘額度和狀態。";
 "claude.status_line.calibration" = "Claude 官方額度校準";

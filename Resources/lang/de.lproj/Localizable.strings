@@ -201,6 +201,13 @@
 "dashboard.general.and.refresh.pages.launch_with_chatgpt_operation_failed" = "„Mit ChatGPT starten“ konnte nicht aktualisiert werden. Überprüfe Systemeinstellungen → Allgemein → Anmeldeobjekte und versuche es erneut.";
 "dashboard.general.and.refresh.pages.launch_with_chatgpt_unavailable" = "Der Status des ChatGPT-Startdienstes kann nicht gelesen werden";
 "dashboard.general.and.refresh.pages.current_provider_value" = "Aktueller Anbieter: %1$@";
+"dashboard.general.and.refresh.pages.connection_mode_line" = "%1$@: %2$@ · %3$@";
+"dashboard.general.and.refresh.pages.connection_mode_line_only" = "%1$@: %2$@";
+"dashboard.general.and.refresh.pages.connection_mode_more" = ", usw.";
+"dashboard.general.and.refresh.pages.connection_mode_direct" = "Direkt";
+"dashboard.general.and.refresh.pages.connection_mode_aggregation" = "Aggregation";
+"dashboard.general.and.refresh.pages.connection_mode_proxy" = "Routing";
+"dashboard.general.and.refresh.pages.connection_mode_unknown" = "Unbekannt";
 "dashboard.general.and.refresh.pages.system" = "System";
 "dashboard.general.and.refresh.pages.every_1_sec" = "Alle 1 Sek.";
 "dashboard.general.and.refresh.pages.every_2_sec" = "Alle 2 Sek.";
@@ -466,8 +473,6 @@
 "codex.banked_reset.official_hint_time" = "Offizieller Hinweis · Zeitpunkt";
 "codex.banked_reset.official_hint_deadline" = "Offizieller Hinweis · Frist";
 "codex.banked_reset.official_hint_window" = "Offizieller Hinweis · Zeitfenster";
-"codex.banked_reset.official_countdown_deadline" = "Bis zur Frist";
-"codex.banked_reset.official_countdown_window" = "Bis zum Fensterende";
 "codex.banked_reset.confidence_prefix" = "Konfidenz:";
 "codex.banked_reset.confidence_low" = "Niedrig";
 "codex.banked_reset.confidence_medium" = "Mittel";
@@ -484,10 +489,13 @@
 
 "codex.banked_reset.official_hint_confirmed" = "Diese Runde abgeschlossen";
 "codex.banked_reset.official_reset_confirmed" = "✅ Zurückgesetzt";
+"codex.banked_reset.window_deadline_countdown" = "Reset-Fenster";
 
 "codex.reset_signal.tooltip_title" = "Offizielles Reset-Signal";
 "codex.reset_signal.tooltip_body" = "Wahrscheinlichkeit oder Countdown des aktuellen starken offiziellen Signals, getrennt von der normalen 24-/48-Stunden-Prognose.";
 "codex.reset_signal.tooltip_disclaimer" = "Das Signal bestätigt keinen Reset dieses Kontos und garantiert keine Reset-Guthaben. Das tatsächliche Kontingent stammt aus der offiziellen API.";
+"codex.reset_signal.window_tooltip_body" = "Vor Ende des Countdowns gibt Codex Reset-Karten aus oder setzt das globale Kontingent zurück.";
+"codex.reset_signal.window_tooltip_disclaimer" = "Das tatsächliche Kontingent stammt aus der offiziellen API.";
 
 // Application display time zone
 "timezone.title" = "Zeitzone";
@@ -572,12 +580,17 @@
 "quota.status.hover.external_activity" = "Aktivität auf einem anderen Client erkannt; Aktualisierung erfolgt häufiger";
 "quota.status.reset_pending" = "Wahrscheinlich zurückgesetzt; Bestätigung steht aus";
 "quota.status.reset_pending_short" = "Offen";
+"quota.card.reset_awaiting_confirmation" = "Zurücksetzungszeit überschritten, warte auf Bestätigung";
 "quota.failure.open_usage_page" = "Offizielle Nutzungsseite öffnen";
 "quota.status.accessibility" = "Kontingentstatus: %1$@";
 "claude.refresh.login_expired" = "Die Claude-Code-Anmeldung ist abgelaufen. Führe einmal claude im Terminal aus, um sie wiederherzustellen; BalanceBar erneuert die Anmeldung nie selbst.";
-"status.item.controller.refresh_now_login_expired" = "Claude-Anmeldung abgelaufen, zuerst claude ausführen";
+"status.item.controller.refresh_now_login_expired" = "Claude-Anmeldedaten abgelaufen; melde dich erneut in Claude Code an";
 "status.item.controller.refresh_now_rate_limited" = "Ratenlimit, verfügbar in %1$@";
 "status.item.controller.refresh_now_just_refreshed" = "Gerade aktualisiert";
+"status.item.controller.refresh_now_recent_result" = "Gerade aktualisiert · Wiederholung in %1$@ s";
+"status.item.controller.refresh_now_awaiting_confirmation" = "Warte auf offizielle Bestätigung des Zurücksetzens; klicken, um jetzt zu bestätigen";
+"status.item.controller.refresh_now_failure_backoff" = "Anfrage fehlgeschlagen; automatische Wiederholung in %1$@ s";
+"status.item.controller.refresh_now_out_of_tokens" = "Zu häufig aktualisiert; Wiederholung in %1$@ s möglich";
 "claude.status_line.enabled" = "Native Synchronisierung mit Claude Code";
 "claude.status_line.description" = "Nutzt die interne Schnittstelle von Claude Code, um Reset-Zeit, verbleibendes Kontingent und Status nach jeder Claude-Antwort früher zu erhalten.";
 "claude.status_line.calibration" = "Abgleich des offiziellen Claude-Kontingents";

@@ -4320,6 +4320,136 @@ extension ProviderRefreshCoordinatorTests {
         XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 2)
     }
 
+    /// Issue #584: the Claude official snapshot carries account-scoped
+    /// prediction contexts equivalent to Codex. The shared journal advances
+    /// with a new cycle, suppresses a same-cycle refill, and never reuses
+    /// another account's basis.
+    func testClaudeOfficialSnapshotCarriesAccountScopedPredictionContexts() throws {
+        let current = try useClaudeOfficialProvider()
+        let base = Date(timeIntervalSince1970: 1_700_000_000)
+        let clock = TestClock(date: base)
+        let formatter = ISO8601DateFormatter()
+        func usage(fiveUtilization: Int, fiveReset: Date, sevenUtilization: Int, sevenReset: Date) throws -> Data {
+            let object: [String: Any] = [
+                "five_hour": ["utilization": fiveUtilization, "resets_at": formatter.string(from: fiveReset)],
+                "seven_day": ["utilization": sevenUtilization, "resets_at": formatter.string(from: sevenReset)],
+                // A non-standard sibling window must never become a prediction basis.
+                "seven_day_sonnet": ["utilization": 10, "resets_at": formatter.string(from: sevenReset)]
+            ]
+            return try JSONSerialization.data(withJSONObject: object)
+        }
+        var reply = try usage(fiveUtilization: 60, fiveReset: base.addingTimeInterval(9_000),
+            sevenUtilization: 41, sevenReset: base.addingTimeInterval(302_400))
+        DelayedBalanceURLProtocol.setHandler { _ in .init(data: reply, statusCode: 200) }
+        let official = OfficialQuotaClient(session: session,
+            credentialReader: FixtureCredentialReader(codexToken: nil, claudeToken: "claude-fixture"), now: { clock.now })
+        let harness = try makeClaudeHarness(official: official, clock: clock)
+        // The prediction journal is durable and keyed by the fixture account's
+        // stable ID, so it must not be shared with the standard defaults: an
+        // earlier Claude sample written with the real clock (or by a previous
+        // run) leaves a `lastSampleAt` ahead of this test clock and the store
+        // then refuses every sample, which reads as "no contexts".
+        let defaultsSuite = "ClaudePredictionContexts.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: defaultsSuite))
+        defer { defaults.removePersistentDomain(forName: defaultsSuite) }
+        let initialPublication = expectation(description: "initial Claude contexts")
+        let nextCyclePublication = expectation(description: "next-cycle Claude contexts")
+        let switchedAccountPublication = expectation(description: "switched-account Claude contexts")
+        var snapshots: [Snapshot] = []
+        var step = 1
+        let coordinator = makeCoordinator(repository: repository, officialQuotaClient: official,
+            codexResetObservationStore: CodexResetObservationStore(defaults: defaults),
+            actions: claudeActions { snapshot in
+                guard snapshot.kind == .official else { return }
+                snapshots.append(snapshot)
+                let fiveHourRemaining = snapshot.officialQuotaWindows.first { $0.kind == .fiveHour }?.remaining
+                switch step {
+                case 1:
+                    if snapshot.quotaPredictionAccountKey == "a@example.com", fiveHourRemaining == 40 {
+                        step = 2
+                        initialPublication.fulfill()
+                    }
+                case 2:
+                    if snapshot.quotaPredictionAccountKey == "a@example.com", fiveHourRemaining == 90 {
+                        step = 3
+                        nextCyclePublication.fulfill()
+                    }
+                default:
+                    if snapshot.quotaPredictionAccountKey == "a@example.com",
+                       fiveHourRemaining == 95 {
+                        switchedAccountPublication.fulfill()
+                    }
+                }
+            }, claudeQuota: harness.pipeline, now: { clock.now })
+
+        func fiveHourWindow(of snapshot: Snapshot) throws -> OfficialQuotaWindow {
+            try XCTUnwrap(snapshot.officialQuotaWindows.first { $0.kind == .fiveHour })
+        }
+        func sevenDayWindow(of snapshot: Snapshot) throws -> OfficialQuotaWindow {
+            try XCTUnwrap(snapshot.officialQuotaWindows.first { $0.kind == .sevenDay })
+        }
+
+        coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: false, switched: false)
+        wait(for: [initialPublication], timeout: 3)
+        settle(coordinator, harness)
+        let initial = try XCTUnwrap(snapshots.last { $0.quotaPredictionAccountKey == "a@example.com" })
+        let kinds = Set(initial.quotaPredictionContexts.map { $0.cycle.kind })
+        XCTAssertEqual(kinds, [.fiveHour, .sevenDay], "only the two standard windows become prediction bases")
+        let initialFiveHour = try XCTUnwrap(initial.quotaPredictionContexts.first { $0.cycle.kind == .fiveHour })
+        XCTAssertEqual(initialFiveHour.inferredCycleStart, base.addingTimeInterval(-9_000))
+        let initialSevenDay = try XCTUnwrap(initial.quotaPredictionContexts.first { $0.cycle.kind == .sevenDay })
+        XCTAssertEqual(initialSevenDay.inferredCycleStart, base.addingTimeInterval(-302_400))
+        guard case .runsOut(let seconds)? = OfficialQuotaUsagePrediction.make(
+            for: try fiveHourWindow(of: initial), cycleStart: initialFiveHour.inferredCycleStart, now: clock.now) else {
+            return XCTFail("the five-hour window must qualify for an exhaustion estimate")
+        }
+        XCTAssertEqual(seconds, 6_000, accuracy: 0.001)
+        XCTAssertEqual(OfficialQuotaUsagePrediction.make(
+            for: try sevenDayWindow(of: initial), cycleStart: initialSevenDay.inferredCycleStart, now: clock.now), .lastsUntilReset)
+
+        clock.advance(by: 10_000)
+        reply = try usage(fiveUtilization: 10, fiveReset: base.addingTimeInterval(27_000),
+            sevenUtilization: 30, sevenReset: base.addingTimeInterval(302_400))
+        coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: false, switched: false)
+        wait(for: [nextCyclePublication], timeout: 3)
+        settle(coordinator, harness)
+        let nextCycle = try XCTUnwrap(snapshots.last {
+            $0.quotaPredictionAccountKey == "a@example.com"
+                && $0.officialQuotaWindows.first { $0.kind == .fiveHour }?.remaining == 90
+        })
+        let advancedFiveHour = try XCTUnwrap(nextCycle.quotaPredictionContexts.first { $0.cycle.kind == .fiveHour })
+        XCTAssertEqual(advancedFiveHour.inferredCycleStart, base.addingTimeInterval(9_000),
+            "a rolled-over cycle starts a fresh basis; the old one is never reused")
+        XCTAssertNil(nextCycle.quotaPredictionContexts.first { $0.cycle.kind == .sevenDay }?.inferredCycleStart,
+            "a refill inside the same seven-day cycle suppresses its basis")
+        guard case .runsOut(let advancedSeconds)? = OfficialQuotaUsagePrediction.make(
+            for: try fiveHourWindow(of: nextCycle), cycleStart: advancedFiveHour.inferredCycleStart, now: clock.now) else {
+            return XCTFail("the new five-hour cycle must qualify for an exhaustion estimate")
+        }
+        XCTAssertEqual(advancedSeconds, 9_000, accuracy: 0.001)
+
+        // PR #587 review: two Claude accounts sharing one email but not an
+        // account UUID are different accounts. Same reset cycle, higher
+        // remaining — an email-keyed journal would misread this as a refill.
+        let epochBeforeSwitch = harness.identity.accountEpoch
+        reply = try usage(fiveUtilization: 5, fiveReset: base.addingTimeInterval(27_000),
+            sevenUtilization: 35, sevenReset: base.addingTimeInterval(302_400))
+        clock.advance(by: 180) // one request token refills
+        try harness.writeAccount("account-b", email: "a@example.com")
+        harness.waitForEpoch(after: epochBeforeSwitch)
+        wait(for: [switchedAccountPublication], timeout: 3)
+        settle(coordinator, harness)
+        let switched = try XCTUnwrap(snapshots.last {
+            $0.quotaPredictionAccountKey == "a@example.com"
+                && $0.officialQuotaWindows.first { $0.kind == .fiveHour }?.remaining == 95
+        })
+        XCTAssertEqual(switched.quotaPredictionAccountKey, "a@example.com",
+            "the menu key stays email-based across the same-email switch")
+        let switchedFiveHour = try XCTUnwrap(switched.quotaPredictionContexts.first { $0.cycle.kind == .fiveHour })
+        XCTAssertEqual(switchedFiveHour.inferredCycleStart, base.addingTimeInterval(9_000),
+            "same-email accounts keep separate journals; the prior account's 90% baseline never suppresses this 95% reading as a refill")
+    }
+
     func testClaudeStandardSummaryAndActivityBurstShareOneScheduledRequest() throws {
         let current = try useClaudeOfficialProvider()
         DelayedBalanceURLProtocol.setHandler { _ in .init(data: Self.claudeUsage, statusCode: 200) }

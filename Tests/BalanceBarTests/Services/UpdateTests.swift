@@ -2575,7 +2575,6 @@ final class UpdateTests: XCTestCase {
 
         let page = pageController.make(.init(
             preferences: AppPreferences(defaults: defaults),
-            currentProviderName: "OpenAI",
             relay: relay,
             updateState: service.state
         ))
@@ -2658,7 +2657,6 @@ final class UpdateTests: XCTestCase {
 
         let page = pageController.make(.init(
             preferences: preferences,
-            currentProviderName: "OpenAI",
             relay: relay,
             updateState: service.state
         ))
@@ -2859,7 +2857,6 @@ final class UpdateTests: XCTestCase {
         let pageController = DashboardGeneralPage()
         let page = pageController.make(.init(
             preferences: preferences,
-            currentProviderName: "OpenAI",
             relay: relay,
             updateState: .latest(current: try XCTUnwrap(AppSemanticVersion("1.0.6")))
         ))
@@ -2963,7 +2960,6 @@ final class UpdateTests: XCTestCase {
         let page = DashboardScrollablePageViewController.makePageView(
             hosting: pageController.make(.init(
                 preferences: preferences,
-                currentProviderName: "OpenAI",
                 relay: relay,
                 updateState: .available(
                     current: try XCTUnwrap(AppSemanticVersion("1.0.0")),
@@ -3042,7 +3038,6 @@ final class UpdateTests: XCTestCase {
         let page = DashboardScrollablePageViewController.makePageView(
             hosting: pageController.make(.init(
                 preferences: preferences,
-                currentProviderName: "OpenAI",
                 relay: relay,
                 updateState: .checking(current: try XCTUnwrap(AppSemanticVersion("1.2.3")))
             ))
@@ -3135,7 +3130,6 @@ final class UpdateTests: XCTestCase {
         let narrowPage = DashboardScrollablePageViewController.makePageView(
             hosting: narrowPageController.make(.init(
                 preferences: preferences,
-                currentProviderName: "OpenAI",
                 relay: narrowRelay,
                 updateState: .available(
                     current: current,
@@ -3292,7 +3286,6 @@ final class UpdateTests: XCTestCase {
             let page = DashboardScrollablePageViewController.makePageView(
                 hosting: pageController.make(.init(
                     preferences: preferences,
-                    currentProviderName: "OpenAI",
                     relay: relay,
                     updateState: .available(current: current, latest: latest)
                 ))
@@ -3481,7 +3474,6 @@ final class UpdateTests: XCTestCase {
         let page = DashboardScrollablePageViewController.makePageView(
             hosting: pageController.make(.init(
                 preferences: preferences,
-                currentProviderName: "OpenAI",
                 relay: DashboardPreferencePageRelay(),
                 updateState: .available(
                     current: try XCTUnwrap(AppSemanticVersion("1.2.3")),

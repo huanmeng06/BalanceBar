@@ -11,7 +11,7 @@ final class ClaudeRealtimeTracker: RealtimeSourceFreshnessProviding, ManualRefre
 
     private var epoch: AccountEpoch?
     private var lastTrusted: [QuotaWindowKind: Date] = [:]
-    private var pendingReset = false
+    private var pendingReset: Date?
     private var identityConflict = false
 
     init(freshness: TimeInterval = 120, now: @escaping () -> Date = Date.init) {
@@ -27,21 +27,25 @@ final class ClaudeRealtimeTracker: RealtimeSourceFreshnessProviding, ManualRefre
         lock.withLock { bothWindowsFreshUntilLocked(at: now()) }
     }
 
+    var pendingResetOf: Date? {
+        lock.withLock { pendingReset }
+    }
+
     func recordTrustedObservation(window: QuotaWindowKind, receivedAt: Date, epoch: AccountEpoch) {
         guard window == .fiveHour || window == .sevenDay else { return }
         lock.withLock {
             if self.epoch != epoch {
                 self.epoch = epoch
                 lastTrusted.removeAll()
-                pendingReset = false
+                pendingReset = nil
                 identityConflict = false
             }
             lastTrusted[window] = receivedAt
         }
     }
 
-    func markPendingReset(_ pending: Bool) {
-        lock.withLock { pendingReset = pending }
+    func markPendingReset(_ resetsAt: Date?) {
+        lock.withLock { pendingReset = resetsAt }
     }
 
     func markIdentityConflict(_ conflict: Bool) {
@@ -52,7 +56,7 @@ final class ClaudeRealtimeTracker: RealtimeSourceFreshnessProviding, ManualRefre
         lock.withLock {
             self.epoch = epoch
             lastTrusted.removeAll()
-            pendingReset = false
+            pendingReset = nil
             identityConflict = false
         }
     }
@@ -66,7 +70,7 @@ final class ClaudeRealtimeTracker: RealtimeSourceFreshnessProviding, ManualRefre
     }
 
     private func bothWindowsFreshUntilLocked(at date: Date) -> Date? {
-        guard !pendingReset, !identityConflict,
+        guard pendingReset == nil, !identityConflict,
               let five = lastTrusted[.fiveHour], let seven = lastTrusted[.sevenDay] else { return nil }
         let until = min(five, seven).addingTimeInterval(freshness)
         return until > date ? until : nil

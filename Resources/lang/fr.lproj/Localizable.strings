@@ -201,6 +201,13 @@
 "dashboard.general.and.refresh.pages.launch_with_chatgpt_operation_failed" = "Impossible de mettre à jour « Lancer avec ChatGPT ». Vérifiez Réglages Système → Général → Éléments d’ouverture et réessayez.";
 "dashboard.general.and.refresh.pages.launch_with_chatgpt_unavailable" = "Impossible de lire l’état du service de lancement avec ChatGPT";
 "dashboard.general.and.refresh.pages.current_provider_value" = "Fournisseur actuel : %1$@";
+"dashboard.general.and.refresh.pages.connection_mode_line" = "%1$@ : %2$@ · %3$@";
+"dashboard.general.and.refresh.pages.connection_mode_line_only" = "%1$@ : %2$@";
+"dashboard.general.and.refresh.pages.connection_mode_more" = ", etc.";
+"dashboard.general.and.refresh.pages.connection_mode_direct" = "Direct";
+"dashboard.general.and.refresh.pages.connection_mode_aggregation" = "Agrégation";
+"dashboard.general.and.refresh.pages.connection_mode_proxy" = "Routage";
+"dashboard.general.and.refresh.pages.connection_mode_unknown" = "Inconnu";
 "dashboard.general.and.refresh.pages.system" = "Système";
 "dashboard.general.and.refresh.pages.every_1_sec" = "Toutes les 1 s";
 "dashboard.general.and.refresh.pages.every_2_sec" = "Toutes les 2 s";
@@ -466,8 +473,6 @@
 "codex.banked_reset.official_hint_time" = "Indication officielle · Heure précise";
 "codex.banked_reset.official_hint_deadline" = "Indication officielle · Échéance";
 "codex.banked_reset.official_hint_window" = "Indication officielle · Fenêtre temporelle";
-"codex.banked_reset.official_countdown_deadline" = "Avant l’échéance";
-"codex.banked_reset.official_countdown_window" = "Avant la fin de fenêtre";
 "codex.banked_reset.confidence_prefix" = "Confiance :";
 "codex.banked_reset.confidence_low" = "Faible";
 "codex.banked_reset.confidence_medium" = "Moyenne";
@@ -484,10 +489,13 @@
 
 "codex.banked_reset.official_hint_confirmed" = "Terminé pour ce cycle";
 "codex.banked_reset.official_reset_confirmed" = "✅ Réinitialisé";
+"codex.banked_reset.window_deadline_countdown" = "Fenêtre reset";
 
 "codex.reset_signal.tooltip_title" = "Signal officiel de réinitialisation";
 "codex.reset_signal.tooltip_body" = "Probabilité du signal officiel fort actuel ou compte à rebours, distincts des prévisions ordinaires à 24 / 48 heures.";
 "codex.reset_signal.tooltip_disclaimer" = "Le signal ne confirme pas la réinitialisation de ce compte et ne garantit pas de crédits. Le quota réel provient de l’API officielle.";
+"codex.reset_signal.window_tooltip_body" = "Avant la fin du compte à rebours, Codex émettra des cartes de réinitialisation ou réinitialisera le quota global.";
+"codex.reset_signal.window_tooltip_disclaimer" = "Le quota réel provient de l’API officielle.";
 
 // Application display time zone
 "timezone.title" = "Fuseau horaire";
@@ -572,12 +580,17 @@
 "quota.status.hover.external_activity" = "Activité détectée sur un autre client ; actualisation plus fréquente";
 "quota.status.reset_pending" = "Réinitialisation probable ; en attente de confirmation";
 "quota.status.reset_pending_short" = "En attente";
+"quota.card.reset_awaiting_confirmation" = "Heure de réinitialisation passée, en attente de confirmation";
 "quota.failure.open_usage_page" = "Ouvrir la page d’utilisation officielle";
 "quota.status.accessibility" = "État du quota : %1$@";
 "claude.refresh.login_expired" = "La connexion à Claude Code a expiré. Exécutez claude une fois dans un terminal pour la rétablir ; BalanceBar ne renouvelle jamais la connexion lui-même.";
-"status.item.controller.refresh_now_login_expired" = "Connexion Claude expirée, exécutez d'abord claude";
+"status.item.controller.refresh_now_login_expired" = "Identifiants Claude expirés ; reconnectez-vous dans Claude Code";
 "status.item.controller.refresh_now_rate_limited" = "Limite de requêtes, disponible dans %1$@";
 "status.item.controller.refresh_now_just_refreshed" = "Vient d'être actualisé";
+"status.item.controller.refresh_now_recent_result" = "Vient d'être actualisé · nouvelle tentative dans %1$@ s";
+"status.item.controller.refresh_now_awaiting_confirmation" = "En attente de confirmation de la réinitialisation ; cliquez pour confirmer maintenant";
+"status.item.controller.refresh_now_failure_backoff" = "Échec de la requête ; nouvelle tentative automatique dans %1$@ s";
+"status.item.controller.refresh_now_out_of_tokens" = "Actualisation trop fréquente ; nouvelle tentative dans %1$@ s";
 "claude.status_line.enabled" = "Synchronisation native Claude Code";
 "claude.status_line.description" = "Utilise l’interface interne de Claude Code pour obtenir plus tôt l’heure de réinitialisation, le quota restant et l’état après chaque réponse de Claude.";
 "claude.status_line.calibration" = "Recalage du quota officiel Claude";
