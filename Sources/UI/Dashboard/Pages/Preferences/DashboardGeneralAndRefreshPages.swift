@@ -57,6 +57,38 @@ struct DashboardUpdatePresentation: Equatable {
                 showsReleaseNotesButton: true,
                 showsUpdateBadge: true
             )
+        case .revalidating(let current, let latest):
+            // A re-check over a retained update must keep the badge and the
+            // release notes entry visible while it runs.
+            return DashboardUpdatePresentation(
+                subtitle: tr(.keyDashboardGeneralAndRefreshPagesUpdateAvailableRevalidatingValueValue, arguments: [String(describing: current), String(describing: latest)], language: language),
+                buttonTitle: tr(.keyDashboardGeneralAndRefreshPagesChecking, language: language),
+                buttonEnabled: false,
+                performsInstall: false,
+                showsReleaseNotesButton: true,
+                showsUpdateBadge: true
+            )
+        case .recheckFailed(_, let latest, let failure):
+            // The retained update stays installable; the failure text covers
+            // this verification attempt only.
+            let subtitle: String
+            if let details = localizedUpdateCheckFailureDetails(for: failure, language: language) {
+                subtitle = tr(
+                    .keyDashboardGeneralAndRefreshPagesUpdateCheckFailedUpdateRetainedValueValueValue,
+                    arguments: [String(describing: latest), details.reason, details.suggestion],
+                    language: language
+                )
+            } else {
+                subtitle = tr(.keyDashboardGeneralAndRefreshPagesUpdateCheckFailedTryAgain, language: language)
+            }
+            return DashboardUpdatePresentation(
+                subtitle: subtitle,
+                buttonTitle: tr(.keyDashboardGeneralAndRefreshPagesDownloadAndInstall, language: language),
+                buttonEnabled: true,
+                performsInstall: true,
+                showsReleaseNotesButton: true,
+                showsUpdateBadge: true
+            )
         case .downloading(_, _, let progress):
             return DashboardUpdatePresentation(
                 subtitle: tr(.keyDashboardGeneralAndRefreshPagesDownloadingTheNewVersion, language: language),
@@ -157,6 +189,28 @@ struct DashboardUpdatePresentation: Equatable {
                     language: language
                 ),
                 tr(suggestionKey, language: language)
+            )
+        case .rateLimited(let retryAfter):
+            let suggestion: String
+            if let retryAfter {
+                let minutes = Int((retryAfter / 60.0).rounded(.up))
+                suggestion = tr(
+                    .keyDashboardGeneralAndRefreshPagesUpdateCheckFailureSuggestionRateLimitedWaitValue,
+                    arguments: [String(minutes)],
+                    language: language
+                )
+            } else {
+                suggestion = tr(
+                    .keyDashboardGeneralAndRefreshPagesUpdateCheckFailureSuggestionHttpTooManyRequests,
+                    language: language
+                )
+            }
+            return (
+                tr(
+                    .keyDashboardGeneralAndRefreshPagesUpdateCheckFailureReasonRateLimited,
+                    language: language
+                ),
+                suggestion
             )
         case .invalidResponse:
             return (

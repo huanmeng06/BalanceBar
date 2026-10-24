@@ -7,7 +7,19 @@ import CryptoKit
 enum GitHubReleaseClientError: Error {
     case transport
     case httpStatus(Int)
+    case rateLimited(GitHubRateLimitInfo)
     case invalidResponse
+}
+
+/// Rate-limit signal extracted from a GitHub API response. `retryAfter` is
+/// already resolved into seconds measured from the response moment: a
+/// `Retry-After` delay (or HTTP date), or `X-RateLimit-Reset` minus the
+/// response time for the primary unauthenticated limit. It is nil when the
+/// response indicates rate limiting but carries no usable recovery time.
+struct GitHubRateLimitInfo: Equatable {
+    let statusCode: Int
+    let rateLimitRemaining: Int?
+    let retryAfter: TimeInterval?
 }
 
 protocol GitHubReleaseFetching {
@@ -83,7 +95,15 @@ final class GitHubReleaseClient: GitHubReleaseFetching {
                 return
             }
             guard (200..<300).contains(httpResponse.statusCode) else {
-                completion(.failure(.httpStatus(httpResponse.statusCode)))
+                if let rateLimit = Self.rateLimitInfo(
+                    from: httpResponse,
+                    body: data,
+                    responseEpoch: Date().timeIntervalSince1970
+                ) {
+                    completion(.failure(.rateLimited(rateLimit)))
+                } else {
+                    completion(.failure(.httpStatus(httpResponse.statusCode)))
+                }
                 return
             }
             guard let data else {
@@ -99,6 +119,78 @@ final class GitHubReleaseClient: GitHubReleaseFetching {
             }
         }.resume()
     }
+
+    /// Classifies GitHub rate limiting from the status code, response
+    /// headers, and error body. HTTP 429 is always rate limiting. HTTP 403 is
+    /// rate limiting with any of the documented signals: an exhausted
+    /// unauthenticated quota (`X-RateLimit-Remaining: 0`, governed by
+    /// `X-RateLimit-Reset`), a secondary limit signalled by `Retry-After`, or
+    /// an error body whose `message` names the secondary limit — some
+    /// secondary limits send neither header. Any other 403 stays a plain
+    /// forbidden error so the UI does not blame request frequency.
+    static func rateLimitInfo(
+        from response: HTTPURLResponse,
+        body: Data?,
+        responseEpoch: TimeInterval
+    ) -> GitHubRateLimitInfo? {
+        let statusCode = response.statusCode
+        guard statusCode == 429 || statusCode == 403 else { return nil }
+        let remaining = response.value(forHTTPHeaderField: "X-RateLimit-Remaining")
+            .flatMap { Int($0) }
+        let reset = response.value(forHTTPHeaderField: "X-RateLimit-Reset")
+            .flatMap { TimeInterval($0) }
+        let retryAfter = parseRetryAfterInterval(
+            response.value(forHTTPHeaderField: "Retry-After"),
+            now: responseEpoch
+        )
+        let bodySignalsSecondaryLimit = statusCode == 403
+            && Self.errorBodySignalsSecondaryRateLimit(body)
+        guard statusCode == 429 || remaining == 0 || retryAfter != nil || bodySignalsSecondaryLimit
+        else { return nil }
+        let resolvedRetryAfter: TimeInterval?
+        if let retryAfter {
+            resolvedRetryAfter = retryAfter
+        } else if let reset, remaining == 0 {
+            resolvedRetryAfter = max(0, reset - responseEpoch)
+        } else {
+            resolvedRetryAfter = nil
+        }
+        return GitHubRateLimitInfo(
+            statusCode: statusCode,
+            rateLimitRemaining: remaining,
+            retryAfter: resolvedRetryAfter
+        )
+    }
+
+    /// GitHub's secondary limit rejections name themselves in the error
+    /// body's `message` field, with no rate-limit headers on some variants.
+    static func errorBodySignalsSecondaryRateLimit(_ body: Data?) -> Bool {
+        guard let body,
+              let object = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
+              let message = object["message"] as? String
+        else { return false }
+        let lowered = message.lowercased()
+        return lowered.contains("secondary rate limit")
+            || lowered.contains("abuse detection mechanism")
+    }
+
+    private static func parseRetryAfterInterval(_ value: String?, now: TimeInterval) -> TimeInterval? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let seconds = TimeInterval(trimmed) {
+            return max(0, seconds)
+        }
+        guard let date = Self.retryAfterDateFormatter.date(from: trimmed) else { return nil }
+        return max(0, date.timeIntervalSince1970 - now)
+    }
+
+    private static let retryAfterDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "GMT")
+        formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss 'GMT'"
+        return formatter
+    }()
 }
 
 /// Reads a local release JSON fixture for development-only manual UI testing.
@@ -831,13 +923,30 @@ final class UpdateService {
     private var updateCheckGeneration: UInt64 = 0
 
     private(set) var state: UpdateCheckState
+    /// Last verified update per channel. It survives re-checks and check
+    /// failures so the update entry cannot disappear while a refresh runs or
+    /// GitHub rate limits the request; only a confirmed newer server truth
+    /// (no update, ignore, or a channel's own new candidate) replaces it.
+    private struct RetainedUpdate: Equatable {
+        let release: GitHubRelease
+        let releases: [GitHubRelease]
+        let latest: AppSemanticVersion
+    }
+
+    private var retainedUpdatesByChannel: [UpdateChannel: RetainedUpdate] = [:]
+    /// Scheduler-clock deadline for the global (cross-channel) GitHub release
+    /// endpoint cooldown. Server-guided waits use the response's
+    /// `Retry-After` / `X-RateLimit-Reset`; unguided waits use capped
+    /// exponential backoff. Manual checks may bypass the automatic minimum
+    /// interval but never this cooldown.
+    private var rateLimitedUntil: TimeInterval?
+    private var rateLimitBackoffIndex = 0
     var updateChannel: UpdateChannel {
         didSet {
             guard oldValue != updateChannel else { return }
             updateCheckGeneration &+= 1
-            availableRelease = nil
-            availableReleases = []
             checkingStartedAt = nil
+            applyRetainedUpdatePresentation(for: updateChannel)
 
             guard let currentVersion else { return }
             switch state {
@@ -846,7 +955,11 @@ final class UpdateService {
                 // the channel selected for the next check.
                 break
             default:
-                transition(to: .idle(current: currentVersion))
+                if let retained = retainedUpdatesByChannel[updateChannel] {
+                    transition(to: .available(current: currentVersion, latest: retained.latest))
+                } else {
+                    transition(to: .idle(current: currentVersion))
+                }
             }
         }
     }
@@ -856,6 +969,9 @@ final class UpdateService {
     /// uses this read-only seam for release notes and the GitHub link while
     /// the service remains the sole owner of update selection/install logic.
     var availableReleaseForPresentation: GitHubRelease? { availableRelease }
+
+    /// The installed version the retained update was discovered against.
+    var installedVersion: AppSemanticVersion? { currentVersion }
 
     /// The newer releases crossed by the current update, ordered from the
     /// target version back toward the installed version. The target release
@@ -902,6 +1018,8 @@ final class UpdateService {
     /// so redraws, window resizes, and repeated page-entry callbacks cannot
     /// create a request storm. Channel changes can bypass the cooldown after
     /// the caller has invalidated the previous channel's presentation state.
+    /// Neither automatic path bypasses a GitHub rate-limit cooldown, and only
+    /// the user-initiated channel change surfaces the refusal as feedback.
     func checkForUpdatesIfNeeded(force: Bool = false) {
         guard currentVersion != nil, !isBusy else { return }
         let channel = updateChannel
@@ -910,6 +1028,7 @@ final class UpdateService {
            scheduler.now - lastCheckStartedAt < automaticCheckMinimumInterval {
             return
         }
+        if !force, rateLimitRemainingWait() != nil { return }
         checkForUpdates()
     }
 
@@ -917,14 +1036,31 @@ final class UpdateService {
         guard let currentVersion,
               !isBusy
         else { return }
+        if let remainingWait = rateLimitRemainingWait() {
+            // A rate-limited endpoint stays rate limited no matter how the
+            // check was triggered. Re-show the failure with the remaining
+            // wait instead of spending another request.
+            applyCheckFailure(
+                .rateLimited(retryAfter: remainingWait),
+                currentVersion: currentVersion,
+                updateChannel: updateChannel
+            )
+            return
+        }
         let updateChannel = self.updateChannel
         let updateCheckGeneration = self.updateCheckGeneration
         let checkStartedAt = scheduler.now
-        availableRelease = nil
-        availableReleases = []
         lastCheckStartedAtByChannel[updateChannel] = checkStartedAt
         checkingStartedAt = checkStartedAt
-        transition(to: .checking(current: currentVersion))
+        if let retained = retainedUpdatesByChannel[updateChannel] {
+            availableRelease = retained.release
+            availableReleases = retained.releases
+            transition(to: .revalidating(current: currentVersion, latest: retained.latest))
+        } else {
+            availableRelease = nil
+            availableReleases = []
+            transition(to: .checking(current: currentVersion))
+        }
         releaseFetcher.fetchReleases { [weak self] result in
             guard let self else { return }
             self.callbackQueue.async {
@@ -938,11 +1074,25 @@ final class UpdateService {
         }
     }
 
+    /// Retires the advertised version. Every state that shows a valid
+    /// candidate — including the retained-update states reached from the
+    /// release notes window — must honor the ignore action, otherwise the
+    /// window closes while the badge survives and the action looks broken.
     func ignoreAvailableUpdate() {
-        guard let currentVersion,
-              case .available(_, let latest) = state
-        else { return }
+        let latest: AppSemanticVersion
+        switch state {
+        case .available(_, let advertised):
+            latest = advertised
+        case .revalidating(_, let advertised):
+            latest = advertised
+        case .recheckFailed(_, let advertised, _):
+            latest = advertised
+        default:
+            return
+        }
+        guard let currentVersion else { return }
         ignoredVersionStore.ignore(version: latest, for: updateChannel)
+        retainedUpdatesByChannel[updateChannel] = nil
         availableRelease = nil
         availableReleases = []
         transition(to: .latest(current: currentVersion))
@@ -955,7 +1105,7 @@ final class UpdateService {
         updateCheckGeneration: UInt64
     ) {
         guard self.updateCheckGeneration == updateCheckGeneration,
-              case .checking = state else { return }
+              isReleaseCheckInFlight else { return }
         let elapsed = checkingStartedAt.map { scheduler.now - $0 } ?? minimumCheckingDuration
         let remaining = max(0, minimumCheckingDuration - elapsed)
         guard remaining > 0 else {
@@ -973,7 +1123,7 @@ final class UpdateService {
             guard let self else { return }
             self.callbackQueue.async {
                 guard self.updateCheckGeneration == updateCheckGeneration,
-                      case .checking = self.state else { return }
+                      self.isReleaseCheckInFlight else { return }
                 self.checkingStartedAt = nil
                 self.handleReleaseResult(
                     result,
@@ -986,7 +1136,24 @@ final class UpdateService {
     }
 
     func installAvailableUpdate() {
-        guard case .available(let currentVersion, let latestVersion) = state,
+        // A retained update stays installable after a failed re-check, and
+        // stays installable while a re-check runs: the candidate release and
+        // its asset were validated when discovered, and the download/install
+        // pipeline re-verifies size, digest, and bundle metadata before
+        // replacing anything. The in-flight re-check's result is discarded by
+        // the state guards once the download transaction owns the state.
+        let latestVersion: AppSemanticVersion
+        switch state {
+        case .available(_, let latest):
+            latestVersion = latest
+        case .revalidating(_, let latest):
+            latestVersion = latest
+        case .recheckFailed(_, let latest, _):
+            latestVersion = latest
+        default:
+            return
+        }
+        guard let currentVersion,
               let release = availableRelease,
               let asset = release.matchingAsset(for: latestVersion)
         else { return }
@@ -1024,10 +1191,67 @@ final class UpdateService {
 
     private var isBusy: Bool {
         switch state {
-        case .checking, .downloading, .installing, .restarting:
+        case .checking, .revalidating, .downloading, .installing, .restarting:
             return true
-        case .idle, .latest, .available, .failed:
+        case .idle, .latest, .available, .recheckFailed, .failed:
             return false
+        }
+    }
+
+    private var isReleaseCheckInFlight: Bool {
+        switch state {
+        case .checking, .revalidating:
+            return true
+        default:
+            return false
+        }
+    }
+
+    private func rateLimitRemainingWait() -> TimeInterval? {
+        guard let rateLimitedUntil else { return nil }
+        let remaining = rateLimitedUntil - scheduler.now
+        return remaining > 0 ? remaining : nil
+    }
+
+    private static func nextRateLimitBackoffDelay(index: inout Int) -> TimeInterval {
+        let delay = min(60.0 * pow(2.0, Double(index)), 1800.0)
+        index += 1
+        return delay
+    }
+
+    /// Moves the machine out of an in-flight check after the request failed.
+    /// A retained update keeps its badge, notes, and install entry, with the
+    /// failure marked as this attempt's result; without a retained update the
+    /// plain failure state applies.
+    private func applyCheckFailure(
+        _ failure: UpdateFailure,
+        currentVersion: AppSemanticVersion,
+        updateChannel: UpdateChannel
+    ) {
+        checkingStartedAt = nil
+        if let retained = retainedUpdatesByChannel[updateChannel] {
+            transition(to: .recheckFailed(
+                current: currentVersion,
+                latest: retained.latest,
+                failure: failure
+            ))
+        } else {
+            availableRelease = nil
+            availableReleases = []
+            transition(to: .failed(failure))
+        }
+    }
+
+    /// Swaps the visible release/notes to the selected channel's retained
+    /// update, or clears them when that channel has none. A channel never
+    /// inherits another channel's update entry.
+    private func applyRetainedUpdatePresentation(for channel: UpdateChannel) {
+        if let retained = retainedUpdatesByChannel[channel] {
+            availableRelease = retained.release
+            availableReleases = retained.releases
+        } else {
+            availableRelease = nil
+            availableReleases = []
         }
     }
 
@@ -1038,20 +1262,31 @@ final class UpdateService {
         updateCheckGeneration: UInt64
     ) {
         guard self.updateCheckGeneration == updateCheckGeneration,
-              case .checking = state else { return }
+              isReleaseCheckInFlight else { return }
         switch result {
         case .failure(let error):
-            availableRelease = nil
-            availableReleases = []
             switch error {
+            case .rateLimited(let info):
+                let wait = info.retryAfter ?? Self.nextRateLimitBackoffDelay(index: &rateLimitBackoffIndex)
+                rateLimitedUntil = scheduler.now + max(0, wait)
+                applyCheckFailure(
+                    .rateLimited(retryAfter: wait),
+                    currentVersion: currentVersion,
+                    updateChannel: updateChannel
+                )
             case .transport:
-                transition(to: .failed(.network))
+                rateLimitedUntil = nil
+                applyCheckFailure(.network, currentVersion: currentVersion, updateChannel: updateChannel)
             case .httpStatus(let statusCode):
-                transition(to: .failed(.httpStatus(statusCode)))
+                rateLimitedUntil = nil
+                applyCheckFailure(.httpStatus(statusCode), currentVersion: currentVersion, updateChannel: updateChannel)
             case .invalidResponse:
-                transition(to: .failed(.invalidResponse))
+                rateLimitedUntil = nil
+                applyCheckFailure(.invalidResponse, currentVersion: currentVersion, updateChannel: updateChannel)
             }
         case .success(let releases):
+            rateLimitedUntil = nil
+            rateLimitBackoffIndex = 0
             var candidates: [UpdateReleaseCandidate] = []
             var hasInvalidNewerRelease = false
             var hasUnavailableNewerRelease = false
@@ -1073,16 +1308,26 @@ final class UpdateService {
             }
 
             if let candidate = candidates.max(by: { $0.version < $1.version }) {
-                availableRelease = candidate.release
-                availableReleases = releaseNotesReleases(
+                let notesReleases = releaseNotesReleases(
                     from: releases,
                     currentVersion: currentVersion,
                     targetVersion: candidate.version,
                     targetRelease: candidate.release,
                     updateChannel: updateChannel
                 )
+                retainedUpdatesByChannel[updateChannel] = RetainedUpdate(
+                    release: candidate.release,
+                    releases: notesReleases,
+                    latest: candidate.version
+                )
+                availableRelease = candidate.release
+                availableReleases = notesReleases
                 transition(to: .available(current: currentVersion, latest: candidate.version))
             } else {
+                // A successful response is authoritative: a confirmed "no new
+                // version" (or an ignored/unusable one) retires the retained
+                // entry for this channel.
+                retainedUpdatesByChannel[updateChannel] = nil
                 availableRelease = nil
                 availableReleases = []
                 if hasUnavailableNewerRelease {

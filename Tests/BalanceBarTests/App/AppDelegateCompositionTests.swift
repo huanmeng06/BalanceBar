@@ -179,7 +179,10 @@ final class AppDelegateCompositionTests: XCTestCase {
         )
         let property = String(source[propertyStart.lowerBound..<propertyEnd.lowerBound])
 
-        XCTAssertTrue(property.contains("if case .available = updateService.state"))
+        // The badge derives from the update states that advertise a verified
+        // or retained update, never from presentation objects or version math.
+        XCTAssertTrue(property.contains("case .available, .revalidating, .recheckFailed:"))
+        XCTAssertTrue(property.contains("updateService.state"))
         XCTAssertFalse(property.contains("availableReleaseForPresentation"))
         XCTAssertFalse(property.contains("latest > current"))
     }
@@ -1299,11 +1302,18 @@ final class AppDelegateCompositionTests: XCTestCase {
 
         let availableRequestCount = fetcher.requestCount
         appDelegate.backgroundUpdateTimerForTesting?.fire()
+        // Issue 591: a visible badge must not stop background probing. The
+        // timer revalidates while the retained update keeps the entry shown.
         XCTAssertEqual(
             fetcher.requestCount,
-            availableRequestCount,
-            "the low-frequency check must not clear an already available badge"
+            availableRequestCount + 1,
+            "the low-frequency timer must keep probing even while an update is advertised"
         )
+        guard case .revalidating(_, let retainedLatest) = service.state else {
+            XCTFail("the timer recheck should revalidate over the retained update")
+            return
+        }
+        XCTAssertEqual(retainedLatest, AppSemanticVersion("1.3.0"))
     }
 
     @MainActor
