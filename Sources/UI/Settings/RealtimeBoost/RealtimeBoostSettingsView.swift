@@ -11,6 +11,14 @@ enum RealtimeBoostText: String, CaseIterable {
     case install = "mod.settings.action.install"
     case copyCommands = "mod.settings.action.copy"
     case promptToggle = "mod.settings.prompt_toggle"
+    case statusDetecting = "mod.sync.status.detecting"
+    case statusClaudeMissing = "mod.sync.status.claude_missing"
+    case statusVersionTooOld = "mod.sync.status.version_too_old"
+    case statusInboxNotReady = "mod.sync.status.inbox_not_ready"
+    case statusOtherScope = "mod.sync.status.other_scope"
+    case statusDisabled = "mod.sync.status.disabled"
+    case statusRejectedAccount = "mod.sync.status.rejected_account"
+    case statusRejectedCycle = "mod.sync.status.rejected_cycle"
 
     var defaultText: String {
         switch self {
@@ -23,6 +31,14 @@ enum RealtimeBoostText: String, CaseIterable {
         case .install: return "一键安装"
         case .copyCommands: return "复制命令"
         case .promptToggle: return "在菜单中提示实时增强"
+        case .statusDetecting: return "正在检测…"
+        case .statusClaudeMissing: return "未找到 claude 命令。请安装 Claude Code 后重试"
+        case .statusVersionTooOld: return "Claude Code %@ 过旧，需要 v2.1.287 或更高版本"
+        case .statusInboxNotReady: return "快照收件箱不可用（权限不足或所有者不符）。点击安装可重建"
+        case .statusOtherScope: return "用户级未安装（检测到项目级安装，仅该项目生效）"
+        case .statusDisabled: return "已安装但已停用，实时同步不会运行"
+        case .statusRejectedAccount: return "快照被拒：Claude 登录账号与 BalanceBar 当前账号不一致"
+        case .statusRejectedCycle: return "快照被拒：周期与官方数据不一致，已回退官方额度"
         }
     }
 
@@ -53,6 +69,45 @@ struct RealtimeBoostPresentation: Equatable {
         case let .unsupportedClaudeCode(version):
             return .init(statusText: String(format: localize(.statusUnsupported), "\(version.major).\(version.minor).\(version.patch)"),
                          showsInstallAction: false, showsCopyAction: false)
+        }
+    }
+
+    /// The settings entry's honest status text for `ModSyncStatus`. Only the merge
+    /// engine's acceptance of a trusted snapshot produces the "active" wording; every
+    /// failure state names its cause and the action that addresses it.
+    static func make(
+        status: ModSyncStatus,
+        timeZone: TimeZone = .current,
+        localize: (RealtimeBoostText) -> String = RealtimeBoostText.defaultLocalize
+    ) -> RealtimeBoostPresentation {
+        switch status {
+        case .detecting:
+            return .init(statusText: localize(.statusDetecting), showsInstallAction: false, showsCopyAction: false)
+        case .claudeMissing:
+            return .init(statusText: localize(.statusClaudeMissing), showsInstallAction: true, showsCopyAction: true)
+        case let .claudeVersionTooOld(version):
+            return .init(
+                statusText: String(format: localize(.statusVersionTooOld), "\(version.major).\(version.minor).\(version.patch)"),
+                showsInstallAction: false, showsCopyAction: false)
+        case .inboxNotReady:
+            return .init(statusText: localize(.statusInboxNotReady), showsInstallAction: true, showsCopyAction: false)
+        case let .notInstalled(hasOtherScopeInstall):
+            if hasOtherScopeInstall {
+                return .init(statusText: localize(.statusOtherScope), showsInstallAction: true, showsCopyAction: true)
+            }
+            return .init(statusText: localize(.statusNotInstalled), showsInstallAction: true, showsCopyAction: true)
+        case .disabled:
+            return .init(statusText: localize(.statusDisabled), showsInstallAction: false, showsCopyAction: false)
+        case .waitingForData:
+            return .init(statusText: localize(.statusWaiting), showsInstallAction: false, showsCopyAction: false)
+        case let .active(last):
+            return .init(statusText: String(format: localize(.statusActive), StatusSlotAppearance.timeText(last, timeZone: timeZone)),
+                         showsInstallAction: false, showsCopyAction: false)
+        case .silent:
+            return .init(statusText: localize(.statusSilent), showsInstallAction: false, showsCopyAction: true)
+        case let .snapshotRejected(event):
+            let text: RealtimeBoostText = event.rejection == .accountMismatch ? .statusRejectedAccount : .statusRejectedCycle
+            return .init(statusText: localize(text), showsInstallAction: false, showsCopyAction: false)
         }
     }
 }

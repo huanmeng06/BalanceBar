@@ -10,7 +10,7 @@ enum ModPanelItem: Equatable {
     case button(title: String, action: ButtonAction)
 
     enum StepStatus: String, Equatable { case pending, running, done }
-    enum ButtonAction: Equatable { case install, close, copyCommands, copyReload, undoDismiss }
+    enum ButtonAction: Equatable { case install, close, copyCommands, copyReload, undoDismiss, uninstall, copyUninstall, copyEnable }
 
     var snapshotLine: String {
         switch self {
@@ -26,22 +26,52 @@ enum ModPanelItem: Equatable {
     }
 }
 
+/// The live sync status injected by the settings entry: what the panel shows at the top
+/// and whether install or uninstall actions apply. `nil` keeps the legacy menu-prompt
+/// panel (dismiss checkbox, install only).
+struct ModPanelSyncContext: Equatable {
+    var status: ModSyncStatus
+    var statusText: String
+}
+
 enum ModPanelContent {
+    /// The user-scope installation states the panel treats as "the Mod is in place";
+    /// only these expose the uninstall action.
+    static func isInstalled(_ status: ModSyncStatus) -> Bool {
+        switch status {
+        case .waitingForData, .active, .silent, .disabled, .snapshotRejected: return true
+        case .detecting, .claudeMissing, .claudeVersionTooOld, .inboxNotReady, .notInstalled: return false
+        }
+    }
+
     static func items(
         for state: ModPanelState,
         plan: ModInstallPlan,
-        localize: (ModOnboardingText) -> String
+        localize: (ModOnboardingText) -> String,
+        sync: ModPanelSyncContext? = nil
     ) -> [ModPanelItem] {
         let t = localize
         switch state {
         case let .intro(checked):
-            return [
-                .title(t(.panelTitle)),
-                .text("• " + t(.point1)), .text("• " + t(.point2)), .text("• " + t(.point3)), .text("• " + t(.point4)),
-                .checkbox(title: t(.dismissCheckbox), checked: checked),
-                .button(title: t(.installButton), action: .install),
-                .button(title: t(.closeButton), action: .close),
+            var items: [ModPanelItem] = [.title(t(.panelTitle))]
+            if let sync { items.append(.text(sync.statusText)) }
+            items += [
+                .text("• " + t(.point1)), .text("• " + t(.point2)),
+                .text("• " + t(.point3)), .text("• " + t(.point4)),
             ]
+            if sync == nil {
+                items.append(.checkbox(title: t(.dismissCheckbox), checked: checked))
+            }
+            if let sync, isInstalled(sync.status) {
+                if sync.status == .disabled {
+                    items.append(.button(title: t(.copyEnableCommands), action: .copyEnable))
+                }
+                items.append(.button(title: t(.uninstallButton), action: .uninstall))
+            } else {
+                items.append(.button(title: t(.installButton), action: .install))
+            }
+            items.append(.button(title: t(.closeButton), action: .close))
+            return items
         case let .installing(current):
             let labels = [t(.step1), t(.step2), t(.step3)]
             let steps = ModInstallStep.allCases.map { step -> ModPanelItem in
@@ -58,10 +88,35 @@ enum ModPanelContent {
                    .button(title: ModInstallPlan.reloadCommand, action: .copyReload),
                    .button(title: t(.closeButton), action: .close)]
         case let .failed(failure):
-            let reason: ModOnboardingText = failure == .claudeNotFound ? .failureClaudeMissing : .failureCommandFailed
+            let reason: ModOnboardingText
+            switch failure {
+            case .claudeNotFound: reason = .failureClaudeMissing
+            case .inboxNotReady: reason = .failureInbox
+            case .commandFailed: reason = .failureCommandFailed
+            }
             return [
                 .title(t(.failureTitle)), .text(t(reason)), .code(plan.copyableCommands),
                 .button(title: t(.copyCommands), action: .copyCommands),
+                .button(title: t(.closeButton), action: .close),
+            ]
+        case let .uninstalling(current):
+            let labels = [t(.uninstallStep1), t(.uninstallStep2), t(.step3)]
+            let steps = ModUninstallStep.allCases.map { step -> ModPanelItem in
+                let status: ModPanelItem.StepStatus = step.rawValue < current.rawValue ? .done
+                    : step == current ? .running : .pending
+                return .step(label: labels[step.rawValue], status: status)
+            }
+            return [.title(t(.panelTitle))] + steps
+        case .uninstallSucceeded:
+            return [
+                .title(t(.uninstallDone)), .text(t(.uninstallDoneNote)),
+                .button(title: t(.closeButton), action: .close),
+            ]
+        case let .uninstallFailed(failure):
+            let reason: ModOnboardingText = failure == .claudeNotFound ? .failureClaudeMissing : .failureUninstall
+            return [
+                .title(t(.failureTitle)), .text(t(reason)), .code(plan.copyableUninstallCommands),
+                .button(title: t(.copyCommands), action: .copyUninstall),
                 .button(title: t(.closeButton), action: .close),
             ]
         case .dismissConfirmed:
@@ -111,14 +166,21 @@ final class ModOnboardingPanelView: NSView {
     private let controller: ModOnboardingController
     private let localize: (ModOnboardingText) -> String
     private let stack = NSStackView()
+    /// Read on every reload; `nil` keeps the legacy menu-prompt panel.
+    var syncProvider: (() -> ModPanelSyncContext?)?
     var onRequestClose: () -> Void = {}
 
     private(set) var items: [ModPanelItem] = []
     var snapshotLines: [String] { items.map(\.snapshotLine) }
 
-    init(controller: ModOnboardingController, localize: @escaping (ModOnboardingText) -> String = ModOnboardingText.defaultLocalize) {
+    init(
+        controller: ModOnboardingController,
+        localize: @escaping (ModOnboardingText) -> String = ModOnboardingText.defaultLocalize,
+        syncProvider: (() -> ModPanelSyncContext?)? = nil
+    ) {
         self.controller = controller
         self.localize = localize
+        self.syncProvider = syncProvider
         super.init(frame: NSRect(x: 0, y: 0, width: Self.fixedWidth, height: 10))
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -140,7 +202,8 @@ final class ModOnboardingPanelView: NSView {
     required init?(coder: NSCoder) { nil }
 
     func reload() {
-        items = ModPanelContent.items(for: controller.state, plan: controller.plan, localize: localize)
+        let sync = syncProvider?()
+        items = ModPanelContent.items(for: controller.state, plan: controller.plan, localize: localize, sync: sync)
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         for item in items { stack.addArrangedSubview(makeView(item)) }
         layoutSubtreeIfNeeded()
@@ -153,6 +216,9 @@ final class ModOnboardingPanelView: NSView {
         case .copyCommands: controller.copyInstallCommands()
         case .copyReload: controller.copyReloadCommand()
         case .undoDismiss: controller.setPromptEnabled(true)
+        case .uninstall: controller.startUninstall()
+        case .copyUninstall: controller.copyUninstallCommands()
+        case .copyEnable: controller.copyEnableCommand()
         case .close: if controller.close() { onRequestClose() }
         }
     }
@@ -205,6 +271,7 @@ final class ModOnboardingPanelView: NSView {
 
     private static func identifier(for action: ModPanelItem.ButtonAction) -> String { String(describing: action) }
     private static func action(for id: String) -> ModPanelItem.ButtonAction? {
-        [.install, .close, .copyCommands, .copyReload, .undoDismiss].first { identifier(for: $0) == id }
+        [.install, .close, .copyCommands, .copyReload, .undoDismiss, .uninstall, .copyUninstall, .copyEnable]
+            .first { identifier(for: $0) == id }
     }
 }

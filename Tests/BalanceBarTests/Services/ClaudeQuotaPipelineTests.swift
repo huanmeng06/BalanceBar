@@ -815,6 +815,43 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         Set((pipeline.mergeStateForDiagnostics?.windows ?? [:]).keys)
     }
 
+    func testModSnapshotEventSinkReceivesAcceptancesAndInboxRejections() throws {
+        final class EventBox {
+            private let lock = NSLock()
+            private var values: [ClaudeQuotaPipeline.ModSnapshotEvent] = []
+            func append(_ value: ClaudeQuotaPipeline.ModSnapshotEvent) { lock.lock(); values.append(value); lock.unlock() }
+            func snapshot() -> [ClaudeQuotaPipeline.ModSnapshotEvent] { lock.lock(); defer { lock.unlock() }; return values }
+        }
+        let events = EventBox()
+        let pipeline = makePipeline(configuration: claudeV1TestConfiguration, withInbox: true)
+        pipeline.modSnapshotEventSink = { events.append($0) }
+        pipeline.start()
+        pipeline.requestFetch(reason: .initial)
+        _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+        XCTAssertTrue(events.snapshot().isEmpty, "official reads never produce Mod snapshot events")
+
+        // A changed snapshot on the official cycle is accepted: one processed event per window.
+        clock.advance(by: 305)
+        try placeModSnapshot(five: 25, seven: 42, observedAt: Self.start.addingTimeInterval(310))
+        XCTAssertTrue(pollUntil { events.snapshot().count >= 2 })
+        let acceptances = events.snapshot().prefix(2)
+        for (event, window) in zip(acceptances, [QuotaWindowKind.fiveHour, .sevenDay]) {
+            XCTAssertEqual(event.kind, .processed(accepted: true))
+            XCTAssertEqual(event.window, window)
+            XCTAssertEqual(event.observedAt, Self.start.addingTimeInterval(310))
+        }
+
+        // A snapshot from a foreign account is rejected before emission and reported once.
+        try placeModSnapshot(
+            five: 30, seven: 50, observedAt: Self.start.addingTimeInterval(320),
+            emailHash: "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            as: "foreign.json")
+        XCTAssertTrue(pollUntil { events.snapshot().count >= 3 })
+        XCTAssertEqual(events.snapshot().count, 3, "no extra events beyond two acceptances and one rejection")
+        XCTAssertEqual(events.snapshot()[2].kind, .rejected(reason: .accountEmailHashMismatch))
+        XCTAssertNil(events.snapshot()[2].window)
+    }
+
     func testModSnapshotDisplaysAndSuppressesAutomaticReadsWhileFresh() throws {
         let pipeline = makePipeline(
             configuration: claudeV1TestConfiguration, withTestStatusLine: true, withInbox: true)
