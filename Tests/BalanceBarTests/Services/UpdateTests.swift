@@ -3100,10 +3100,11 @@ final class UpdateTests: XCTestCase {
     func testGitHubReleaseClientClassifiesRateLimitResponses() throws {
         func clientResult(
             statusCode: Int,
-            headers: [String: String]
+            headers: [String: String],
+            body: Data? = nil
         ) throws -> Result<[GitHubRelease], GitHubReleaseClientError> {
             StubURLProtocol.setHandler { _ in
-                StubURLResult(statusCode: statusCode, data: nil, headers: headers)
+                StubURLResult(statusCode: statusCode, data: body, headers: headers)
             }
             let client = GitHubReleaseClient(session: session)
             let done = expectation(description: "client fetch settled")
@@ -3159,6 +3160,34 @@ final class UpdateTests: XCTestCase {
             return XCTFail("429 without headers must classify as unguided rate limiting")
         }
 
+        // Secondary limit: some 403 variants send neither Retry-After nor an
+        // exhausted quota and name the limit in the error body instead.
+        let secondaryBody = try clientResult(
+            statusCode: 403,
+            headers: ["X-RateLimit-Remaining": "3560"],
+            body: Data(#"{"message":"You have exceeded a secondary rate limit. Please wait a few minutes before you try again.","documentation_url":"https://docs.github.com"}"#.utf8)
+        )
+        guard case .failure(.rateLimited(let bodySignalled)) = secondaryBody else {
+            return XCTFail("a 403 body naming the secondary rate limit must classify as rate limited")
+        }
+        XCTAssertEqual(bodySignalled.statusCode, 403)
+        XCTAssertEqual(bodySignalled.rateLimitRemaining, 3560)
+        XCTAssertNil(
+            bodySignalled.retryAfter,
+            "a body-signalled secondary limit has no server-guided wait and must fall back to backoff"
+        )
+
+        // A 403 body without a rate-limit message keeps the plain forbidden
+        // classification even with quota remaining.
+        let plainForbiddenBody = try clientResult(
+            statusCode: 403,
+            headers: ["X-RateLimit-Remaining": "3560"],
+            body: Data(#"{"message":"Repository access blocked"}"#.utf8)
+        )
+        guard case .failure(.httpStatus(403)) = plainForbiddenBody else {
+            return XCTFail("a 403 without any rate-limit signal must stay a plain forbidden error")
+        }
+
         // A plain 403 without rate-limit evidence is not rate limiting.
         let plainForbidden = try clientResult(statusCode: 403, headers: [:])
         guard case .failure(.httpStatus(403)) = plainForbidden else {
@@ -3170,6 +3199,106 @@ final class UpdateTests: XCTestCase {
         guard case .failure(.httpStatus(503)) = serverError else {
             return XCTFail("503 must stay a server error, not rate limiting")
         }
+    }
+
+    func testIgnoreAvailableUpdateWorksInRetainedStates() throws {
+        // The ignore store must never touch the host's standard defaults;
+        // this suite isolates the ignore record like every other test that
+        // exercises it.
+        let suiteName = "UpdateTests.retained-ignore.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let fetcher = StubReleaseFetcher()
+        let queue = DispatchQueue(label: "UpdateTests.retained-ignore")
+        let service = UpdateService(
+            releaseFetcher: fetcher,
+            currentVersionString: "1.0.0",
+            callbackQueue: queue,
+            workQueue: queue,
+            minimumCheckingDuration: 0,
+            ignoredVersionStore: UserDefaultsUpdateVersionIgnoreStore(defaults: defaults)
+        )
+        let available = waitForState(service, queue: queue) { state in
+            if case .available(_, let latest) = state {
+                return latest == AppSemanticVersion("1.1.0")
+            }
+            return false
+        }
+        service.checkForUpdates()
+        fetcher.resolve(.success([makeRelease(tag: "v1.1.0")]))
+        wait(for: [available], timeout: 2)
+
+        let recheckFailed = expectation(description: "recheck failure keeps the retained update")
+        recheckFailed.assertForOverFulfill = false
+        service.onStateChange = { state in
+            if case .recheckFailed = state { recheckFailed.fulfill() }
+        }
+        service.checkForUpdates()
+        fetcher.resolve(.failure(.transport))
+        wait(for: [recheckFailed], timeout: 2)
+
+        // The release-notes window routes its ignore action here even while
+        // the badge shows the retained failure state; it must actually
+        // retire the update instead of closing as a silent no-op.
+        service.ignoreAvailableUpdate()
+        guard case .latest(let current) = service.state else {
+            return XCTFail("ignoring from the retained failure state must settle in latest")
+        }
+        XCTAssertEqual(current, AppSemanticVersion("1.0.0"))
+        XCTAssertNil(service.availableReleaseForPresentation)
+
+        service.updateChannel = .beta
+        service.updateChannel = .stable
+        guard case .idle = service.state else {
+            return XCTFail("ignoring must retire the retained snapshot for the channel")
+        }
+    }
+
+    func testInstallFromRevalidatingDiscardsTheInFlightResult() {
+        let fetcher = StubReleaseFetcher()
+        let downloader = StubDownloader()
+        let queue = DispatchQueue(label: "UpdateTests.revalidating-install")
+        let service = UpdateService(
+            releaseFetcher: fetcher,
+            downloader: downloader,
+            currentVersionString: "1.0.0",
+            callbackQueue: queue,
+            workQueue: queue,
+            minimumCheckingDuration: 0
+        )
+        let available = waitForState(service, queue: queue) { state in
+            if case .available(_, let latest) = state {
+                return latest == AppSemanticVersion("1.1.0")
+            }
+            return false
+        }
+        service.checkForUpdates()
+        fetcher.resolve(.success([makeRelease(tag: "v1.1.0")]))
+        wait(for: [available], timeout: 2)
+
+        let revalidating = expectation(description: "recheck starts over the retained update")
+        service.onStateChange = { state in
+            if case .revalidating = state { revalidating.fulfill() }
+        }
+        service.checkForUpdates()
+        wait(for: [revalidating], timeout: 2)
+
+        // The release-notes window offers install while the re-check runs;
+        // the action must start the download instead of doing nothing.
+        service.installAvailableUpdate()
+        XCTAssertEqual(downloader.requestCount, 1)
+        guard case .downloading(_, let downloadLatest, _) = service.state else {
+            return XCTFail("installing from the revalidating state must start the download")
+        }
+        XCTAssertEqual(downloadLatest, AppSemanticVersion("1.1.0"))
+
+        // The still-running re-check must not overwrite the install state.
+        fetcher.resolve(.success([makeRelease(tag: "v1.2.0")]))
+        queue.sync {}
+        guard case .downloading(_, let latestAfterResult, _) = service.state else {
+            return XCTFail("the in-flight recheck result must not replace the download transaction")
+        }
+        XCTAssertEqual(latestAfterResult, AppSemanticVersion("1.1.0"))
     }
 
     func testDashboardUpdatePresentationRetainsUpdateDuringRevalidatingAndRecheckFailure() throws {
@@ -3196,7 +3325,7 @@ final class UpdateTests: XCTestCase {
         XCTAssertTrue(recheckFailed.performsInstall, "the retained update stays installable")
         XCTAssertEqual(
             recheckFailed.subtitle,
-            "已保留之前发现的更新 1.5.0；本次重新验证失败。\n原因：已达到 GitHub API 请求限额\n建议：GitHub 正在限制更新请求，约 2 分钟后可重试。"
+            "上次发现更新：1.5.0；本次获取更新失败。\n原因：已达到 GitHub API 请求限额\n建议：GitHub 正在限制更新请求，约 2 分钟后可重试。"
         )
 
         let englishFailure = DashboardUpdatePresentation.make(
@@ -3205,7 +3334,7 @@ final class UpdateTests: XCTestCase {
         )
         XCTAssertEqual(
             englishFailure.subtitle,
-            "The update 1.5.0 found earlier is kept; this re-check failed.\nReason: The network request failed\nSuggestion: Check your network or proxy settings, then try again."
+            "Update found last time: 1.5.0; fetching it failed this time.\nReason: The network request failed\nSuggestion: Check your network or proxy settings, then try again."
         )
 
         let unguided = DashboardUpdatePresentation.make(

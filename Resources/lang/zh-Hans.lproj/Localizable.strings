@@ -184,7 +184,7 @@
 "dashboard.general.and.refresh.pages.update_check_failure_suggestion_invalid_response" = "请稍后重试；若持续出现，请联系维护者。";
 "dashboard.general.and.refresh.pages.update_check_failure_suggestion_invalid_release_version" = "请联系维护者检查发布版本号。";
 "dashboard.general.and.refresh.pages.update_available_revalidating_value_value" = "新版本可用：%1$@ -> %2$@（正在重新验证…）";
-"dashboard.general.and.refresh.pages.update_check_failed_update_retained_value_value_value" = "已保留之前发现的更新 %1$@；本次重新验证失败。\n原因：%2$@\n建议：%3$@";
+"dashboard.general.and.refresh.pages.update_check_failed_update_retained_value_value_value" = "上次发现更新：%1$@；本次获取更新失败。\n原因：%2$@\n建议：%3$@";
 "dashboard.general.and.refresh.pages.update_check_failure_reason_rate_limited" = "已达到 GitHub API 请求限额";
 "dashboard.general.and.refresh.pages.update_check_failure_suggestion_rate_limited_wait_value" = "GitHub 正在限制更新请求，约 %1$@ 分钟后可重试。";
 "dashboard.general.and.refresh.pages.retry" = "重试";

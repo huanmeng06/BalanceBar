@@ -97,6 +97,7 @@ final class GitHubReleaseClient: GitHubReleaseFetching {
             guard (200..<300).contains(httpResponse.statusCode) else {
                 if let rateLimit = Self.rateLimitInfo(
                     from: httpResponse,
+                    body: data,
                     responseEpoch: Date().timeIntervalSince1970
                 ) {
                     completion(.failure(.rateLimited(rateLimit)))
@@ -119,14 +120,17 @@ final class GitHubReleaseClient: GitHubReleaseFetching {
         }.resume()
     }
 
-    /// Classifies GitHub rate limiting from the status code and response
-    /// headers. HTTP 429 is always rate limiting. HTTP 403 is rate limiting
-    /// only with evidence: an exhausted unauthenticated quota
-    /// (`X-RateLimit-Remaining: 0`, governed by `X-RateLimit-Reset`) or a
-    /// secondary limit signalled by `Retry-After`. Any other 403 stays a
-    /// plain forbidden error so the UI does not blame request frequency.
+    /// Classifies GitHub rate limiting from the status code, response
+    /// headers, and error body. HTTP 429 is always rate limiting. HTTP 403 is
+    /// rate limiting with any of the documented signals: an exhausted
+    /// unauthenticated quota (`X-RateLimit-Remaining: 0`, governed by
+    /// `X-RateLimit-Reset`), a secondary limit signalled by `Retry-After`, or
+    /// an error body whose `message` names the secondary limit — some
+    /// secondary limits send neither header. Any other 403 stays a plain
+    /// forbidden error so the UI does not blame request frequency.
     static func rateLimitInfo(
         from response: HTTPURLResponse,
+        body: Data?,
         responseEpoch: TimeInterval
     ) -> GitHubRateLimitInfo? {
         let statusCode = response.statusCode
@@ -139,7 +143,10 @@ final class GitHubReleaseClient: GitHubReleaseFetching {
             response.value(forHTTPHeaderField: "Retry-After"),
             now: responseEpoch
         )
-        guard statusCode == 429 || remaining == 0 || retryAfter != nil else { return nil }
+        let bodySignalsSecondaryLimit = statusCode == 403
+            && Self.errorBodySignalsSecondaryRateLimit(body)
+        guard statusCode == 429 || remaining == 0 || retryAfter != nil || bodySignalsSecondaryLimit
+        else { return nil }
         let resolvedRetryAfter: TimeInterval?
         if let retryAfter {
             resolvedRetryAfter = retryAfter
@@ -153,6 +160,18 @@ final class GitHubReleaseClient: GitHubReleaseFetching {
             rateLimitRemaining: remaining,
             retryAfter: resolvedRetryAfter
         )
+    }
+
+    /// GitHub's secondary limit rejections name themselves in the error
+    /// body's `message` field, with no rate-limit headers on some variants.
+    static func errorBodySignalsSecondaryRateLimit(_ body: Data?) -> Bool {
+        guard let body,
+              let object = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
+              let message = object["message"] as? String
+        else { return false }
+        let lowered = message.lowercased()
+        return lowered.contains("secondary rate limit")
+            || lowered.contains("abuse detection mechanism")
     }
 
     private static func parseRetryAfterInterval(_ value: String?, now: TimeInterval) -> TimeInterval? {
@@ -1055,10 +1074,23 @@ final class UpdateService {
         }
     }
 
+    /// Retires the advertised version. Every state that shows a valid
+    /// candidate — including the retained-update states reached from the
+    /// release notes window — must honor the ignore action, otherwise the
+    /// window closes while the badge survives and the action looks broken.
     func ignoreAvailableUpdate() {
-        guard let currentVersion,
-              case .available(_, let latest) = state
-        else { return }
+        let latest: AppSemanticVersion
+        switch state {
+        case .available(_, let advertised):
+            latest = advertised
+        case .revalidating(_, let advertised):
+            latest = advertised
+        case .recheckFailed(_, let advertised, _):
+            latest = advertised
+        default:
+            return
+        }
+        guard let currentVersion else { return }
         ignoredVersionStore.ignore(version: latest, for: updateChannel)
         retainedUpdatesByChannel[updateChannel] = nil
         availableRelease = nil
@@ -1104,13 +1136,17 @@ final class UpdateService {
     }
 
     func installAvailableUpdate() {
-        // A retained update stays installable after a failed re-check: the
-        // candidate release and its asset were validated when discovered, and
-        // the download/install pipeline re-verifies size, digest, and bundle
-        // metadata before replacing anything.
+        // A retained update stays installable after a failed re-check, and
+        // stays installable while a re-check runs: the candidate release and
+        // its asset were validated when discovered, and the download/install
+        // pipeline re-verifies size, digest, and bundle metadata before
+        // replacing anything. The in-flight re-check's result is discarded by
+        // the state guards once the download transaction owns the state.
         let latestVersion: AppSemanticVersion
         switch state {
         case .available(_, let latest):
+            latestVersion = latest
+        case .revalidating(_, let latest):
             latestVersion = latest
         case .recheckFailed(_, let latest, _):
             latestVersion = latest

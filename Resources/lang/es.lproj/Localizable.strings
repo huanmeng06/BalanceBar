@@ -184,7 +184,7 @@
 "dashboard.general.and.refresh.pages.update_check_failure_suggestion_invalid_response" = "Vuelve a intentarlo más tarde; si el problema persiste, contacta con el mantenedor.";
 "dashboard.general.and.refresh.pages.update_check_failure_suggestion_invalid_release_version" = "Contacta con el mantenedor para verificar la versión de la publicación.";
 "dashboard.general.and.refresh.pages.update_available_revalidating_value_value" = "Nueva versión disponible: %1$@ -> %2$@; verificando de nuevo…";
-"dashboard.general.and.refresh.pages.update_check_failed_update_retained_value_value_value" = "La actualización %1$@ encontrada antes se mantiene; esta nueva verificación falló.\nMotivo: %2$@\nSugerencia: %3$@";
+"dashboard.general.and.refresh.pages.update_check_failed_update_retained_value_value_value" = "Última actualización encontrada: %1$@; esta vez no se pudo obtener.\nMotivo: %2$@\nSugerencia: %3$@";
 "dashboard.general.and.refresh.pages.update_check_failure_reason_rate_limited" = "Se alcanzó el límite de solicitudes de la API de GitHub";
 "dashboard.general.and.refresh.pages.update_check_failure_suggestion_rate_limited_wait_value" = "GitHub limita las solicitudes de actualización; inténtalo de nuevo en unos %1$@ minutos.";
 "dashboard.general.and.refresh.pages.retry" = "Reintentar";

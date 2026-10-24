@@ -184,7 +184,7 @@
 "dashboard.general.and.refresh.pages.update_check_failure_suggestion_invalid_response" = "しばらくしてから再試行してください。続く場合はメンテナーに連絡してください。";
 "dashboard.general.and.refresh.pages.update_check_failure_suggestion_invalid_release_version" = "メンテナーにリリースバージョンを確認してもらってください。";
 "dashboard.general.and.refresh.pages.update_available_revalidating_value_value" = "新しいバージョンがあります：%1$@ -> %2$@（再確認中…）";
-"dashboard.general.and.refresh.pages.update_check_failed_update_retained_value_value_value" = "以前に検出したアップデート %1$@ は保持されています。再確認に失敗しました。\n原因：%2$@\n対処：%3$@";
+"dashboard.general.and.refresh.pages.update_check_failed_update_retained_value_value_value" = "前回検出したアップデート：%1$@。今回の取得に失敗しました。\n原因：%2$@\n対処：%3$@";
 "dashboard.general.and.refresh.pages.update_check_failure_reason_rate_limited" = "GitHub API のレート制限に達しました";
 "dashboard.general.and.refresh.pages.update_check_failure_suggestion_rate_limited_wait_value" = "GitHub はアップデートのリクエストを制限しています。約 %1$@ 分後に再試行してください。";
 "dashboard.general.and.refresh.pages.retry" = "再試行";
