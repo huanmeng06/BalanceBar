@@ -159,8 +159,6 @@ final class ClaudeQuotaPipeline {
     private var lastClientError: OfficialQuotaClientError?
     private var lastSuccessAt: Date?
     private var state: ClaudeQuotaState?
-    /// Per-window last accepted Mod evidence; pipeline-queue confined (see `receiveInbox`).
-    private var modEvidence: [QuotaWindowKind: ModWindowEvidence] = [:]
     /// Whether any window is awaiting official reset confirmation (pipeline queue).
     private var awaitingResetConfirmation = false
     /// Confirmation requests already repeated by the retry timer in the current pending period.
@@ -411,7 +409,6 @@ final class ClaudeQuotaPipeline {
         engine.accountDidChange(epoch: change.epoch, accountID: change.identity?.stableID)
         realtimeTracker?.reset(epoch: change.epoch)
         statusLineSource?.accountDidChange(epoch: change.epoch)
-        modEvidence.removeAll()
         lock.withLock {
             failure = nil
             refreshing = false
@@ -422,39 +419,72 @@ final class ClaudeQuotaPipeline {
         if change.identity != nil { requestForNewAccount() }
     }
 
-    /// Last accepted Mod evidence per window, used to reject out-of-order snapshots from
-    /// concurrent sessions whose usage would move the display backwards inside one cycle.
-    private struct ModWindowEvidence: Equatable {
-        let usedPercentage: Double
-        let resetsAt: Date?
-        let epoch: AccountEpoch
-    }
-
     private func receiveInbox(_ observation: QuotaObservation) {
         // Only the BalanceBar Mod's standard windows are Claude quota evidence; the Mod's
         // superset windows and unrelated inbox sources never reach the merge engine or card.
         guard observation.source == SnapshotInbox.modSourceID,
               observation.window == .fiveHour || observation.window == .sevenDay else { return }
-        if let last = modEvidence[observation.window],
-           last.epoch == observation.epoch,
-           Self.sameCycle(last.resetsAt, observation.resetsAt),
-           observation.usedPercentage < last.usedPercentage {
+        // The snapshot proves its email, not which organization wrote it; when an official
+        // calibration exists, the observation must describe that same cycle to be attributed.
+        if let reason = unverifiedAgainstOfficialCycle(observation) {
             diagnostics(
-                "claude mod snapshot rejected; reason=usage_decreased_within_cycle; window=\(observation.window.rawValue)",
+                "claude mod snapshot rejected; reason=\(reason); window=\(observation.window.rawValue)",
                 .debug)
             return
         }
         let accepted = receiveNative(observation)
-        if accepted {
-            modEvidence[observation.window] = ModWindowEvidence(
-                usedPercentage: observation.usedPercentage,
-                resetsAt: observation.resetsAt,
-                epoch: observation.epoch)
-        } else {
+        if !accepted {
             diagnostics(
                 "claude mod snapshot rejected; reason=not_displayed_by_merge; window=\(observation.window.rawValue)",
                 .debug)
         }
+    }
+
+    /// Returns a rejection reason when the observation cannot be tied to the active
+    /// account's official cycle. The Mod contract carries only an email hash, so a foreign
+    /// identity under the same email can only be told apart by its quota cycle: an
+    /// observation whose reset times do not match the latest official reading is never
+    /// attributed to this account and falls back to the official data.
+    private func unverifiedAgainstOfficialCycle(_ observation: QuotaObservation) -> String? {
+        guard let engine else { return nil }
+        let window = engine.currentState.windows[observation.window.rawValue]
+        // Without an official baseline the merge engine's grade-B rules reject anyway.
+        guard let gradeA = window?.latestGradeA, gradeA.epoch == observation.epoch else { return nil }
+        // While a reset awaits confirmation the engine's own provisional rules govern.
+        guard window?.pendingResetOf == nil else { return nil }
+        guard let gradeAReset = gradeA.resetsAt, let reset = observation.resetsAt,
+              QuotaMergeEngine.sameResetInstant(reset, gradeAReset) else {
+            return "cycle_unverified_against_official"
+        }
+        return nil
+    }
+
+    /// What a native (statusLine, Mod) observation may do against the displayed reading.
+    private enum NativeObservationDecision: Equatable {
+        /// New evidence: merge and extend realtime freshness.
+        case evidence
+        /// Same value as the displayed reading: merge (refreshes the receipt time), but it
+        /// is a replay, not consumption evidence, and never extends freshness.
+        case replay
+        case rejected(reason: String)
+    }
+
+    /// Native grade-B observations must never move the display backwards inside one cycle,
+    /// whichever local source they come from. Official grade-A readings keep their own
+    /// reset-confirmation rules, so a correction from the server always goes through.
+    private func decide(_ observation: QuotaObservation) -> NativeObservationDecision {
+        guard observation.trust != .a else { return .evidence }
+        guard let engine else { return .evidence }
+        guard let displayed = engine.currentState.windows[observation.window.rawValue]?.displayed,
+              displayed.epoch == observation.epoch,
+              Self.sameCycle(displayed.resetsAt, observation.resetsAt) else { return .evidence }
+        if observation.usedPercentage < displayed.usedPercentage {
+            return .rejected(reason: "usage_decreased_within_cycle")
+        }
+        if observation.usedPercentage == displayed.usedPercentage {
+            return .replay
+        }
+        return .evidence
     }
 
     /// Merges one native observation; returns whether the engine now displays it, which is
@@ -462,11 +492,18 @@ final class ClaudeQuotaPipeline {
     @discardableResult
     private func receiveNative(_ observation: QuotaObservation) -> Bool {
         guard let engine else { return false }
+        let decision = decide(observation)
+        if case let .rejected(reason) = decision {
+            diagnostics(
+                "claude native observation rejected; reason=\(reason); source=\(observation.source); window=\(observation.window.rawValue)",
+                .debug)
+            return false
+        }
         _ = engine.merge(observation)
         let displayed = engine.currentState.windows[observation.window.rawValue]?.displayed
         let accepted = displayed?.source == observation.source
             && displayed?.receivedAt == observation.receivedAt
-        if accepted {
+        if accepted, decision == .evidence {
             realtimeTracker?.recordTrustedObservation(
                 window: observation.window,
                 observedAt: observation.observedAt ?? observation.receivedAt,
