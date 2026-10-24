@@ -134,8 +134,11 @@ final class ModOnboardingController {
 
     var isPromptDismissed: Bool { preference.isPromptDismissed }
 
+    /// Prepares the panel for a (re)presentation: finished install/uninstall/failure
+    /// pages must not survive into the next management session. Operations that are
+    /// still running keep their progress.
     func resetToIntro() {
-        guard !installInFlight else { return }
+        guard !installInFlight, !uninstallInFlight else { return }
         state = .intro(dismissChecked: false)
     }
 

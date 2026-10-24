@@ -21,7 +21,11 @@ final class ModSyncCoordinator {
     private var evidence = ModSnapshotEvidence()
     private var detectionInFlight = false
     private var lastDetectionStartedAt = Date.distantPast
-    private weak var popover: NSPopover?
+    /// The currently presented management panel; refreshed on every status change so an
+    /// open panel never keeps showing "detecting" or a finished operation's page.
+    private weak var presentedPanel: ModOnboardingPanelView?
+    /// Strong reference: the system does not guarantee an NSPopover survives without one.
+    private var popover: NSPopover?
 
     /// Fired on the main thread whenever the status changes; the owner refreshes the row.
     var onStatusChange: ((ModSyncStatus) -> Void)?
@@ -38,10 +42,14 @@ final class ModSyncCoordinator {
         self.activityProvider = activityProvider
         self.localizePanel = localizePanel
         self.localizeSync = localizeSync
-        controller.onInstallCompleted = { [weak self] _ in
+        controller.onInstallCompleted = { [weak self] result in
+            // A (re)install invalidates the previous plugin's snapshot evidence: until a
+            // new trusted snapshot arrives the status is "waiting for data", never active.
+            if case .success = result { self?.resetSnapshotEvidence() }
             self?.startDetectionIfNeeded(force: true)
         }
-        controller.onUninstallCompleted = { [weak self] _ in
+        controller.onUninstallCompleted = { [weak self] result in
+            if case .success = result { self?.resetSnapshotEvidence() }
             self?.startDetectionIfNeeded(force: true)
         }
     }
@@ -84,6 +92,10 @@ final class ModSyncCoordinator {
             case let .rejected(reason):
                 self.evidence.lastRejection = ModRejectionEvent(
                     rejection: Self.uiRejection(reason), at: event.receivedAt)
+            case .accountChanged:
+                // Snapshot evidence belongs to the account that produced it; a switch must
+                // never let the new account inherit the old one's "realtime" display.
+                self.resetSnapshotEvidence()
             }
             self.recomputeStatus()
         }
@@ -92,25 +104,43 @@ final class ModSyncCoordinator {
     /// Opens the management panel anchored to the settings row's button. Detection runs
     /// (throttled) so the panel opens with current facts.
     func presentPanel(from anchor: NSView) {
+        let panel = attachPanel()
         startDetectionIfNeeded()
-        let popover = NSPopover()
-        popover.behavior = .transient
+        popover?.performClose(nil)
+        let newPopover = NSPopover()
+        newPopover.behavior = .transient
+        let viewController = NSViewController()
+        viewController.view = panel
+        newPopover.contentViewController = viewController
+        newPopover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .minY)
+        popover = newPopover
+    }
+
+    /// Builds the management panel for presentation: resets finished operation pages to
+    /// the management intro (running operations keep their progress) and registers the
+    /// panel so later status changes refresh it live.
+    func attachPanel() -> ModOnboardingPanelView {
+        controller.resetToIntro()
         let panel = ModOnboardingPanelView(
             controller: controller,
             localize: localizePanel,
             syncProvider: { [weak self] in self.map { $0.syncContext } })
-        panel.onRequestClose = { [weak popover] in popover?.performClose(nil) }
-        let viewController = NSViewController()
-        viewController.view = panel
-        popover.contentViewController = viewController
-        popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .minY)
-        self.popover = popover
+        panel.onRequestClose = { [weak self] in self?.popover?.performClose(nil) }
+        presentedPanel = panel
+        return panel
+    }
+
+    /// Drops all accepted/rejected snapshot evidence and recomputes the status.
+    private func resetSnapshotEvidence() {
+        evidence = ModSnapshotEvidence()
+        recomputeStatus()
     }
 
     private func recomputeStatus() {
         let newStatus = ModSyncStatus.resolve(environment: environment, evidence: evidence, now: Date())
         guard newStatus != status else { return }
         status = newStatus
+        presentedPanel?.reload()
         onStatusChange?(status)
     }
 

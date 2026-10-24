@@ -185,6 +185,9 @@ final class ClaudeQuotaPipeline {
             case processed(accepted: Bool)
             /// The inbox refused to emit the snapshot at all.
             case rejected(reason: SnapshotRejectionReason)
+            /// The signed-in account changed: the settings entry must drop all snapshot
+            /// evidence gathered for the previous account.
+            case accountChanged
         }
 
         var kind: Kind
@@ -446,6 +449,12 @@ final class ClaudeQuotaPipeline {
 
     private func identityChanged(_ change: AccountIdentityChange) {
         guard change.accountChanged, let engine else { return }
+        // The settings entry must not carry the previous account's snapshot evidence
+        // across a switch (Issue #597: installed is never conflated with collecting).
+        if let sink = modSnapshotEventSink {
+            sink(ModSnapshotEvent(
+                kind: .accountChanged, window: nil, observedAt: nil, receivedAt: now()))
+        }
         engine.accountDidChange(epoch: change.epoch, accountID: change.identity?.stableID)
         realtimeTracker?.reset(epoch: change.epoch)
         statusLineSource?.accountDidChange(epoch: change.epoch)

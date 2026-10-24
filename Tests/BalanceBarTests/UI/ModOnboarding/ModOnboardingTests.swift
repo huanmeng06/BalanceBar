@@ -749,3 +749,126 @@ final class ModSyncCoordinatorTests: XCTestCase {
         XCTAssertFalse(coordinator.syncContext.statusText.isEmpty)
     }
 }
+
+// MARK: - Review fixes (PR #603 round 2): panel reset, evidence lifecycle, live reload
+
+extension ModSyncCoordinatorTests {
+    private var probeVersion: ModCommandResult {
+        ModCommandResult(exitCode: 0, stdout: "2.1.291 (Claude Code)", stderr: "")
+    }
+
+    private func listResult(enabled: Bool = true) -> ModCommandResult {
+        ModCommandResult(exitCode: 0, stdout: String(decoding: listJSON(enabled: enabled), as: UTF8.self), stderr: "")
+    }
+
+    func testOpenPanelRefreshesWhenDetectionCompletes() {
+        let (coordinator, _) = makeCoordinator(
+            locator: "/bin/claude", results: [probeVersion, listResult()])
+        // The user opens the panel before the first detection has finished.
+        let panel = coordinator.attachPanel()
+        XCTAssertTrue(
+            panel.snapshotLines.contains { $0.contains("正在检测…") },
+            "panel opens with the detecting status: \(panel.snapshotLines)")
+        let detected = expectation(description: "detected")
+        coordinator.onStatusChange = { _ in detected.fulfill() }
+        coordinator.startDetectionIfNeeded(force: true)
+        wait(for: [detected], timeout: 5)
+        XCTAssertTrue(
+            panel.snapshotLines.contains { $0.contains("已安装，等待新会话的数据") },
+            "the open panel must refresh when detection lands: \(panel.snapshotLines)")
+        XCTAssertFalse(panel.snapshotLines.contains { $0.contains("正在检测…") })
+    }
+
+    func testReopeningThePanelResetsFinishedOperationPages() {
+        let (coordinator, _) = makeCoordinator(
+            locator: "/bin/claude",
+            results: [probeVersion, listResult(), ok, ok, probeVersion, listResult()])
+        let installed = expectation(description: "installed")
+        coordinator.onStatusChange = { _ in installed.fulfill() }
+        coordinator.startDetectionIfNeeded(force: true)
+        wait(for: [installed], timeout: 5)
+
+        // A finished install success page must not survive into the next management view.
+        let installedDone = expectation(description: "install finished")
+        coordinator.controller.onChange = { if coordinator.controller.state == .succeeded { installedDone.fulfill() } }
+        coordinator.controller.startInstall()
+        wait(for: [installedDone], timeout: 5)
+        XCTAssertEqual(coordinator.controller.state, .succeeded)
+
+        let panel = coordinator.attachPanel()
+        XCTAssertEqual(coordinator.controller.state, .intro(dismissChecked: false))
+        XCTAssertTrue(
+            panel.snapshotLines.contains { $0.contains("<卸载实时同步>") },
+            "the reopened panel shows the management view for an installed Mod: \(panel.snapshotLines)")
+        XCTAssertFalse(panel.snapshotLines.contains { $0.contains("已开启 ✓") })
+    }
+
+    func testSnapshotEvidenceIsClearedOnAccountChange() {
+        let (coordinator, _) = makeCoordinator(
+            locator: "/bin/claude", results: [probeVersion, listResult()])
+        let installed = expectation(description: "installed")
+        coordinator.onStatusChange = { _ in installed.fulfill() }
+        coordinator.startDetectionIfNeeded(force: true)
+        wait(for: [installed], timeout: 5)
+
+        let accepted = expectation(description: "accepted")
+        coordinator.onStatusChange = { if case .active = $0 { accepted.fulfill() } }
+        coordinator.ingest(.init(kind: .processed(accepted: true), window: .fiveHour, observedAt: nil, receivedAt: Date()))
+        wait(for: [accepted], timeout: 5)
+
+        // Switching the Claude account must not let account B inherit account A's evidence.
+        let reset = expectation(description: "evidence reset")
+        coordinator.onStatusChange = { if $0 == .waitingForData { reset.fulfill() } }
+        coordinator.ingest(.init(kind: .accountChanged, window: nil, observedAt: nil, receivedAt: Date()))
+        wait(for: [reset], timeout: 5)
+        XCTAssertEqual(coordinator.status, .waitingForData)
+    }
+
+    func testReinstallDoesNotInheritPreviousSnapshotEvidence() {
+        let (coordinator, _) = makeCoordinator(
+            locator: "/bin/claude",
+            results: [probeVersion, listResult(), ok, ok, probeVersion, listResult()])
+        let installed = expectation(description: "installed")
+        coordinator.onStatusChange = { _ in installed.fulfill() }
+        coordinator.startDetectionIfNeeded(force: true)
+        wait(for: [installed], timeout: 5)
+
+        let accepted = expectation(description: "accepted")
+        coordinator.onStatusChange = { if case .active = $0 { accepted.fulfill() } }
+        coordinator.ingest(.init(kind: .processed(accepted: true), window: .fiveHour, observedAt: nil, receivedAt: Date()))
+        wait(for: [accepted], timeout: 5)
+
+        // A successful (re)install resets the old evidence: until a fresh trusted snapshot
+        // arrives the status is "waiting for data", never "realtime".
+        let reinstallDone = expectation(description: "reinstall finished")
+        let backToWaiting = expectation(description: "back to waiting")
+        coordinator.controller.onChange = { if coordinator.controller.state == .succeeded { reinstallDone.fulfill() } }
+        coordinator.onStatusChange = { if $0 == .waitingForData { backToWaiting.fulfill() } }
+        coordinator.controller.startInstall()
+        wait(for: [reinstallDone, backToWaiting], timeout: 5)
+        XCTAssertEqual(coordinator.status, .waitingForData)
+    }
+}
+
+extension ModPanelSyncContextTests {
+    func testResetToIntroPreservesInFlightOperationsAndClearsFinishedPages() {
+        let q = DispatchQueue(label: "test.reset.intro")
+        let installer = ModInstaller(
+            locator: FakeLocator(path: "/bin/claude"), runner: ScriptedRunner([ok, ok]),
+            prepareInbox: { true }, workQueue: q, callbackQueue: .main)
+        let controller = ModOnboardingController(installer: installer, preference: MemoryPreference())
+
+        // An operation in flight keeps its progress across a presentation reset.
+        controller.startUninstall()
+        XCTAssertEqual(controller.state, .uninstalling(current: .uninstallPlugin))
+        controller.resetToIntro()
+        XCTAssertEqual(controller.state, .uninstalling(current: .uninstallPlugin))
+
+        // A finished page is cleared, so the next management view starts at the intro.
+        let done = expectation(description: "uninstall finished")
+        controller.onChange = { if controller.state == .uninstallSucceeded { done.fulfill() } }
+        wait(for: [done], timeout: 5)
+        controller.resetToIntro()
+        XCTAssertEqual(controller.state, .intro(dismissChecked: false))
+    }
+}

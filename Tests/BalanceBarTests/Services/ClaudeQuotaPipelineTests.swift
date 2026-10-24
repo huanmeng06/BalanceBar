@@ -815,6 +815,28 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         Set((pipeline.mergeStateForDiagnostics?.windows ?? [:]).keys)
     }
 
+    func testAccountSwitchNotifiesTheModSnapshotEventSink() throws {
+        final class EventBox {
+            private let lock = NSLock()
+            private var values: [ClaudeQuotaPipeline.ModSnapshotEvent] = []
+            func append(_ value: ClaudeQuotaPipeline.ModSnapshotEvent) { lock.lock(); values.append(value); lock.unlock() }
+            func snapshot() -> [ClaudeQuotaPipeline.ModSnapshotEvent] { lock.lock(); defer { lock.unlock() }; return values }
+        }
+        let events = EventBox()
+        let pipeline = makePipeline(withInbox: true)
+        pipeline.modSnapshotEventSink = { events.append($0) }
+        pipeline.start()
+        pipeline.requestFetch(reason: .initial)
+        let first = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+        XCTAssertFalse(events.snapshot().contains { $0.kind == .accountChanged })
+
+        try writeAccount("account-b", email: "b@example.com")
+        _ = try XCTUnwrap(waitForState(pipeline) { $0.accountEpoch != first.accountEpoch && !$0.windows.isEmpty })
+        XCTAssertTrue(
+            pollUntil { events.snapshot().contains { $0.kind == .accountChanged } },
+            "an account switch must tell the settings entry to drop the old account's evidence")
+    }
+
     func testModSnapshotEventSinkReceivesAcceptancesAndInboxRejections() throws {
         final class EventBox {
             private let lock = NSLock()
