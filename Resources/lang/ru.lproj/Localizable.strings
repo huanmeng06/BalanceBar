@@ -485,6 +485,8 @@
 "codex.reset_signal.tooltip_title" = "Официальный сигнал сброса";
 "codex.reset_signal.tooltip_body" = "Вероятность текущего сильного официального сигнала или обратный отсчёт, отдельно от обычного прогноза на 24 / 48 часов.";
 "codex.reset_signal.tooltip_disclaimer" = "Сигнал не подтверждает сброс этой учётной записи и не гарантирует кредиты сброса. Фактическую квоту определяет официальный API.";
+"codex.reset_signal.window_tooltip_body" = "До окончания обратного отсчёта Codex выдаст карты сброса или выполнит глобальный сброс квоты.";
+"codex.reset_signal.window_tooltip_disclaimer" = "Фактическую квоту определяет официальный API.";
 
 // Application display time zone
 "timezone.title" = "Часовой пояс";

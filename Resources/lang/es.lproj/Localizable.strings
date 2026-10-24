@@ -485,6 +485,8 @@
 "codex.reset_signal.tooltip_title" = "Señal oficial de restablecimiento";
 "codex.reset_signal.tooltip_body" = "Probabilidad de señal fuerte o cuenta atrás de la señal oficial actual, distinta del pronóstico normal de 24 / 48 horas.";
 "codex.reset_signal.tooltip_disclaimer" = "La señal no confirma un restablecimiento de esta cuenta ni garantiza créditos. La cuota real procede de la API oficial.";
+"codex.reset_signal.window_tooltip_body" = "Antes de que termine la cuenta atrás, Codex emitirá tarjetas de restablecimiento o restablecerá la cuota global.";
+"codex.reset_signal.window_tooltip_disclaimer" = "La cuota real procede de la API oficial.";
 
 // Application display time zone
 "timezone.title" = "Zona horaria";

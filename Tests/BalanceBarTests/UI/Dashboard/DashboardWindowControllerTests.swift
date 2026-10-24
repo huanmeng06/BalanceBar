@@ -5820,7 +5820,15 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertNil(countdown.forecastTooltipContent)
         let titleLink = try XCTUnwrap(bankedResetTitleLink(in: overview))
         XCTAssertNotNil(titleLink.onActivate)
-        XCTAssertEqual(titleLink.forecastTooltipContent?.title, "官方重置信号")
+        XCTAssertEqual(titleLink.forecastTooltipContent?.title, "重置窗口")
+        XCTAssertEqual(
+            titleLink.forecastTooltipContent?.body,
+            "倒计时窗口结束前，Codex 官方会发放重置卡，或进行全局额度重置。"
+        )
+        XCTAssertEqual(
+            titleLink.forecastTooltipContent?.disclaimer,
+            "实际额度以官方接口为准。"
+        )
 
         controller.menuWillOpen(controller.statusMenuForTesting)
         XCTAssertNotNil(controller.bankedResetCountdownTimerForTesting)
@@ -6000,7 +6008,15 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertNil(countdown.forecastTooltipContent)
         let titleLink = try XCTUnwrap(bankedResetTitleLink(in: overview))
         XCTAssertNotNil(titleLink.onActivate)
-        XCTAssertEqual(titleLink.forecastTooltipContent?.title, "官方重置信号")
+        XCTAssertEqual(titleLink.forecastTooltipContent?.title, "重置窗口")
+        XCTAssertEqual(
+            titleLink.forecastTooltipContent?.body,
+            "倒计时窗口结束前，Codex 官方会发放重置卡，或进行全局额度重置。"
+        )
+        XCTAssertEqual(
+            titleLink.forecastTooltipContent?.disclaimer,
+            "实际额度以官方接口为准。"
+        )
 
         controller.menuWillOpen(controller.statusMenuForTesting)
         controller.bankedResetCountdownNowForTesting = now.addingTimeInterval(1)

@@ -485,6 +485,8 @@
 "codex.reset_signal.tooltip_title" = "官方重置信号";
 "codex.reset_signal.tooltip_body" = "当前官方信号的强信号概率或倒计时提示，独立于普通 24 / 48 小时预测。";
 "codex.reset_signal.tooltip_disclaimer" = "信号提示不等于当前账户已完成重置，也不保证发放重置卡；实际额度以官方接口为准。";
+"codex.reset_signal.window_tooltip_body" = "倒计时窗口结束前，Codex 官方会发放重置卡，或进行全局额度重置。";
+"codex.reset_signal.window_tooltip_disclaimer" = "实际额度以官方接口为准。";
 
 // Application display time zone
 "timezone.title" = "时区";

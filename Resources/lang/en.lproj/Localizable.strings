@@ -485,6 +485,8 @@
 "codex.reset_signal.tooltip_title" = "Official reset signal";
 "codex.reset_signal.tooltip_body" = "Strong-signal probability or countdown for the current official signal, separate from the ordinary 24 / 48-hour forecast.";
 "codex.reset_signal.tooltip_disclaimer" = "The signal does not confirm a reset for this account or guarantee reset credits. Actual quota comes from the official API.";
+"codex.reset_signal.window_tooltip_body" = "Before the countdown window ends, Codex will issue reset cards or perform a global quota reset.";
+"codex.reset_signal.window_tooltip_disclaimer" = "Actual quota comes from the official API.";
 
 // Application display time zone
 "timezone.title" = "Time zone";

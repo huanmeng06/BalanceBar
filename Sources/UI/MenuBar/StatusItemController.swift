@@ -7897,11 +7897,23 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             updatedText = "--"
         }
         let isSignal = forecast.officialSignal != nil
+        // The countdown variant describes the reset window itself; a
+        // probability-only official signal keeps the generic signal copy.
+        let isWindowDeadline = forecast.isOfficialWindowDeadlineCountdown
+        let titleKey: LocalizationKey = isWindowDeadline
+            ? .keyCodexBankedResetWindowDeadlineCountdown
+            : (isSignal ? .keyCodexResetSignalTooltipTitle : .keyCodexBankedResetTooltipTitle)
+        let bodyKey: LocalizationKey = isWindowDeadline
+            ? .keyCodexResetSignalWindowTooltipBody
+            : (isSignal ? .keyCodexResetSignalTooltipBody : .keyCodexBankedResetTooltipBody)
+        let disclaimerKey: LocalizationKey = isWindowDeadline
+            ? .keyCodexResetSignalWindowTooltipDisclaimer
+            : (isSignal ? .keyCodexResetSignalTooltipDisclaimer : .keyCodexBankedResetTooltipDisclaimer)
         return DashboardForecastTooltipContent(
-            title: tr(isSignal ? .keyCodexResetSignalTooltipTitle : .keyCodexBankedResetTooltipTitle, language: language),
-            body: tr(isSignal ? .keyCodexResetSignalTooltipBody : .keyCodexBankedResetTooltipBody, language: language),
+            title: tr(titleKey, language: language),
+            body: tr(bodyKey, language: language),
             source: tr(.keyCodexBankedResetTooltipSource, arguments: [updatedText], language: language),
-            disclaimer: tr(isSignal ? .keyCodexResetSignalTooltipDisclaimer : .keyCodexBankedResetTooltipDisclaimer, language: language)
+            disclaimer: tr(disclaimerKey, language: language)
         )
     }
 

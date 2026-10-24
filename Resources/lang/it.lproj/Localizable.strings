@@ -485,6 +485,8 @@
 "codex.reset_signal.tooltip_title" = "Segnale ufficiale di ripristino";
 "codex.reset_signal.tooltip_body" = "Probabilità del segnale ufficiale forte attuale o conto alla rovescia, distinti dalla previsione ordinaria a 24 / 48 ore.";
 "codex.reset_signal.tooltip_disclaimer" = "Il segnale non conferma il ripristino di questo account e non garantisce crediti. La quota effettiva proviene dall’API ufficiale.";
+"codex.reset_signal.window_tooltip_body" = "Prima della fine del conto alla rovescia, Codex emetterà carte di ripristino o ripristinerà la quota globale.";
+"codex.reset_signal.window_tooltip_disclaimer" = "La quota effettiva proviene dall’API ufficiale.";
 
 // Application display time zone
 "timezone.title" = "Fuso orario";

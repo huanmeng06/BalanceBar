@@ -323,6 +323,14 @@ final class LocalizationTests: XCTestCase {
             "Reset window"
         )
         XCTAssertEqual(
+            tr(.keyCodexResetSignalWindowTooltipBody, language: .simplifiedChinese),
+            "倒计时窗口结束前，Codex 官方会发放重置卡，或进行全局额度重置。"
+        )
+        XCTAssertEqual(
+            tr(.keyCodexResetSignalWindowTooltipDisclaimer, language: .simplifiedChinese),
+            "实际额度以官方接口为准。"
+        )
+        XCTAssertEqual(
             tr(.keyCodexBankedResetProbabilitySource, language: .simplifiedChinese),
             "数据来源"
         )

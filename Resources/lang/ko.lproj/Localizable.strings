@@ -485,6 +485,8 @@
 "codex.reset_signal.tooltip_title" = "공식 리셋 신호";
 "codex.reset_signal.tooltip_body" = "현재 공식 신호의 강한 신호 확률 또는 카운트다운이며 일반 24 / 48시간 예측과는 별개입니다.";
 "codex.reset_signal.tooltip_disclaimer" = "신호는 이 계정의 리셋 완료나 리셋 카드 지급을 보장하지 않습니다. 실제 할당량은 공식 API를 따릅니다.";
+"codex.reset_signal.window_tooltip_body" = "카운트다운이 끝나기 전에 Codex가 리셋 카드를 지급하거나 전체 할당량을 리셋합니다.";
+"codex.reset_signal.window_tooltip_disclaimer" = "실제 할당량은 공식 API를 따릅니다.";
 
 // Application display time zone
 "timezone.title" = "시간대";

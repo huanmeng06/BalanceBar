@@ -485,6 +485,8 @@
 "codex.reset_signal.tooltip_title" = "Sinal oficial de redefinição";
 "codex.reset_signal.tooltip_body" = "Probabilidade do sinal oficial forte atual ou contagem regressiva, separadas da previsão normal de 24 / 48 horas.";
 "codex.reset_signal.tooltip_disclaimer" = "O sinal não confirma a redefinição desta conta nem garante créditos. A cota real vem da API oficial.";
+"codex.reset_signal.window_tooltip_body" = "Antes do fim da contagem regressiva, a Codex emitirá cartões de redefinição ou redefinirá a cota global.";
+"codex.reset_signal.window_tooltip_disclaimer" = "A cota real vem da API oficial.";
 
 // Application display time zone
 "timezone.title" = "Fuso horário";

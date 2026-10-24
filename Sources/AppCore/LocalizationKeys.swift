@@ -541,6 +541,8 @@
     case keyCodexResetSignalTooltipTitle = "codex.reset_signal.tooltip_title"
     case keyCodexResetSignalTooltipBody = "codex.reset_signal.tooltip_body"
     case keyCodexResetSignalTooltipDisclaimer = "codex.reset_signal.tooltip_disclaimer"
+    case keyCodexResetSignalWindowTooltipBody = "codex.reset_signal.window_tooltip_body"
+    case keyCodexResetSignalWindowTooltipDisclaimer = "codex.reset_signal.window_tooltip_disclaimer"
     case keyQuotaPaceStatusUnused = "quota.pace.status.unused"
     case keyQuotaPaceStatusFast = "quota.pace.status.fast"
     case keyQuotaPaceStatusNormal = "quota.pace.status.normal"
