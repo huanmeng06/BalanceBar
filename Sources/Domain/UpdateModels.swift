@@ -271,6 +271,10 @@ struct UpdateReleaseCandidate: Equatable {
 enum UpdateFailure: Equatable {
     case network
     case httpStatus(Int)
+    /// GitHub rate limiting with a server-guided cooldown. `retryAfter` is the
+    /// resolved wait in seconds at the time the failure was recorded, or nil
+    /// when the response carried no usable recovery time.
+    case rateLimited(retryAfter: TimeInterval?)
     case invalidResponse
     case invalidReleaseVersion
     case assetUnavailable
@@ -285,6 +289,13 @@ enum UpdateCheckState: Equatable {
     case checking(current: AppSemanticVersion)
     case latest(current: AppSemanticVersion)
     case available(current: AppSemanticVersion, latest: AppSemanticVersion)
+    /// A re-check is running while a previously verified update stays visible.
+    /// The badge, release notes entry, and retained version must not disappear
+    /// just because a refresh started.
+    case revalidating(current: AppSemanticVersion, latest: AppSemanticVersion)
+    /// The re-check failed but the previously verified update is still shown
+    /// and installable; `failure` describes this attempt, not the update.
+    case recheckFailed(current: AppSemanticVersion, latest: AppSemanticVersion, failure: UpdateFailure)
     case downloading(current: AppSemanticVersion, latest: AppSemanticVersion, progress: Int)
     case installing(current: AppSemanticVersion, latest: AppSemanticVersion, progress: Int)
     case restarting(current: AppSemanticVersion, latest: AppSemanticVersion)

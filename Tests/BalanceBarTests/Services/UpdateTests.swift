@@ -11,11 +11,18 @@ final class UpdateTests: XCTestCase {
         let statusCode: Int
         let data: Data?
         let error: Error?
+        let headers: [String: String]
 
-        init(statusCode: Int = 200, data: Data? = nil, error: Error? = nil) {
+        init(
+            statusCode: Int = 200,
+            data: Data? = nil,
+            error: Error? = nil,
+            headers: [String: String] = [:]
+        ) {
             self.statusCode = statusCode
             self.data = data
             self.error = error
+            self.headers = headers
         }
     }
 
@@ -65,6 +72,7 @@ final class UpdateTests: XCTestCase {
             if let data = result.data {
                 headers["Content-Length"] = String(data.count)
             }
+            result.headers.forEach { key, value in headers[key] = value }
             let response = HTTPURLResponse(
                 url: request.url!,
                 statusCode: result.statusCode,
@@ -1026,7 +1034,7 @@ final class UpdateTests: XCTestCase {
         XCTAssertEqual(store.ignoredVersion(for: .beta), nil)
     }
 
-    func testUpdateServiceChannelSwitchResetsCandidatesInBothDirectionsAndAllowsRecheck() throws {
+    func testUpdateServiceChannelSwitchIsolatesRetainedCandidatesAndAllowsRecheck() throws {
         let fetcher = StubReleaseFetcher()
         let downloader = StubDownloader()
         let queue = DispatchQueue(label: "UpdateTests.channel-switch")
@@ -1074,17 +1082,21 @@ final class UpdateTests: XCTestCase {
         fetcher.resolve(.success([stableRelease, betaRelease]))
         wait(for: [stableAvailable], timeout: 2)
 
-        let resetToBeta = waitForState(service, queue: queue) { state in
-            if case .idle(let current) = state {
-                return current == AppSemanticVersion("1.0.0")
+        let restoredBetaCandidate = waitForState(service, queue: queue) { state in
+            if case .available(_, let latest) = state {
+                return latest == AppSemanticVersion("2.0.1")
             }
             return false
         }
         service.updateChannel = .beta
-        wait(for: [resetToBeta], timeout: 2)
+        wait(for: [restoredBetaCandidate], timeout: 2)
         XCTAssertEqual(service.updateChannel, .beta)
-        service.installAvailableUpdate()
-        XCTAssertEqual(downloader.requestCount, 0, "switching channel must invalidate the old Stable candidate")
+        XCTAssertEqual(downloader.requestCount, 0, "switching channel alone must not start a download")
+        XCTAssertEqual(
+            service.availableReleaseForPresentation?.tagName,
+            "v2.0.1",
+            "switching back must restore Beta's own retained candidate, never Stable's"
+        )
 
         let betaAvailableAgain = waitForState(service, queue: queue) { state in
             if case .available(_, let latest) = state {
@@ -1264,7 +1276,7 @@ final class UpdateTests: XCTestCase {
         wait(for: [secondLatest], timeout: 2)
     }
 
-    func testUpdateServiceDoesNotReusePreviousSuccessAfterNetworkFailure() throws {
+    func testUpdateServiceRetainsVerifiedUpdateAcrossRecheckAndFailure() throws {
         let current = try XCTUnwrap(AppSemanticVersion("1.0.0"))
         let fetcher = StubReleaseFetcher()
         let queue = DispatchQueue(label: "UpdateTests.success-then-failure")
@@ -1289,19 +1301,42 @@ final class UpdateTests: XCTestCase {
         XCTAssertEqual(service.state, .available(current: current, latest: AppSemanticVersion("1.1.0")!))
         XCTAssertEqual(service.availableReleaseForPresentation?.tagName, "v1.1.0")
 
-        let secondFailure = waitForState(service, queue: queue) { state in
-            if case .failed(.network) = state { return true }
-            return false
+        let revalidating = expectation(description: "recheck starts over the retained update")
+        let recheckFailed = expectation(description: "recheck failure keeps the retained update")
+        service.onStateChange = { state in
+            switch state {
+            case .revalidating:
+                revalidating.fulfill()
+            case .recheckFailed:
+                recheckFailed.fulfill()
+            default:
+                break
+            }
         }
         service.checkForUpdates()
-        XCTAssertEqual(service.state, .checking(current: current))
         XCTAssertEqual(fetcher.requestCount, 2)
-        XCTAssertNil(service.availableReleaseForPresentation)
+        XCTAssertEqual(service.state, .revalidating(current: current, latest: AppSemanticVersion("1.1.0")!))
+        XCTAssertEqual(
+            service.availableReleaseForPresentation?.tagName,
+            "v1.1.0",
+            "the verified update must stay visible while the re-check runs"
+        )
         fetcher.resolve(.failure(.transport))
-        wait(for: [secondFailure], timeout: 2)
+        wait(for: [revalidating, recheckFailed], timeout: 2)
 
-        XCTAssertEqual(service.state, .failed(.network))
-        XCTAssertNil(service.availableReleaseForPresentation)
+        XCTAssertEqual(
+            service.state,
+            .recheckFailed(
+                current: current,
+                latest: AppSemanticVersion("1.1.0")!,
+                failure: .network
+            )
+        )
+        XCTAssertEqual(
+            service.availableReleaseForPresentation?.tagName,
+            "v1.1.0",
+            "a failed re-check must not erase the previously verified update"
+        )
     }
 
     func testUpdateServiceRejectsInvalidStableReleaseVersion() throws {
@@ -2799,6 +2834,389 @@ final class UpdateTests: XCTestCase {
         scheduler.advance(by: 60)
         service.checkForUpdatesIfNeeded()
         XCTAssertEqual(fetcher.requestCount, 3, "automatic checking resumes after the cooldown")
+    }
+
+    // MARK: - Retained update and GitHub rate-limit cooldown (Issue 591)
+
+    func testRateLimitCooldownBlocksManualAutomaticAndChannelSwitchRequests() {
+        let fetcher = StubReleaseFetcher()
+        let scheduler = StubUpdateScheduler()
+        let queue = DispatchQueue(label: "UpdateTests.rate-limit-cooldown")
+        let service = UpdateService(
+            releaseFetcher: fetcher,
+            currentVersionString: "1.0.0",
+            callbackQueue: queue,
+            workQueue: queue,
+            scheduler: scheduler,
+            minimumCheckingDuration: 0,
+            automaticCheckMinimumInterval: 60
+        )
+        let rateLimited = expectation(description: "rate limited failure settles")
+        rateLimited.assertForOverFulfill = false
+        service.onStateChange = { state in
+            if case .failed(.rateLimited) = state { rateLimited.fulfill() }
+        }
+        service.checkForUpdates()
+        fetcher.resolve(.failure(.rateLimited(GitHubRateLimitInfo(
+            statusCode: 429,
+            rateLimitRemaining: 0,
+            retryAfter: 120
+        ))))
+        wait(for: [rateLimited], timeout: 2)
+        guard case .failed(.rateLimited(let wait)) = service.state else {
+            return XCTFail("expected the rate-limited failure state")
+        }
+        XCTAssertEqual(wait ?? 0, 120, accuracy: 0.5)
+
+        // A manual click during the cooldown must not spend another request
+        // and must refresh the visible remaining wait.
+        service.checkForUpdates()
+        XCTAssertEqual(fetcher.requestCount, 1, "manual checks must not bypass a rate-limit cooldown")
+        guard case .failed(.rateLimited(let remaining)) = service.state else {
+            return XCTFail("expected the rate-limited feedback to persist")
+        }
+        XCTAssertEqual(remaining ?? 0, 120, accuracy: 0.5)
+
+        // Automatic page/timer triggers stay silent during the cooldown.
+        service.checkForUpdatesIfNeeded()
+        XCTAssertEqual(fetcher.requestCount, 1)
+
+        // After the server-guided wait the manual check is allowed again.
+        scheduler.advance(by: 120.5)
+        service.checkForUpdates()
+        XCTAssertEqual(fetcher.requestCount, 2, "the cooldown must expire after the guided wait")
+    }
+
+    func testRateLimitBackoffGrowsWithoutServerGuidanceAndResetsAfterSuccess() {
+        let fetcher = StubReleaseFetcher()
+        let scheduler = StubUpdateScheduler()
+        let queue = DispatchQueue(label: "UpdateTests.rate-limit-backoff")
+        let service = UpdateService(
+            releaseFetcher: fetcher,
+            currentVersionString: "1.0.0",
+            callbackQueue: queue,
+            workQueue: queue,
+            scheduler: scheduler,
+            minimumCheckingDuration: 0,
+            automaticCheckMinimumInterval: 60
+        )
+
+        // Without Retry-After / X-RateLimit-Reset the service waits at least
+        // one minute and backs off exponentially, capped at 30 minutes.
+        let backoffSequence: [TimeInterval] = [60, 120, 240, 480, 960, 1800, 1800]
+        func resolveUnguidedRateLimit(step: Int, expectedWait: TimeInterval) {
+            let settled = expectation(description: "unguided rate-limit step \(step) settled")
+            service.onStateChange = { state in
+                if case .failed(.rateLimited) = state { settled.fulfill() }
+            }
+            service.checkForUpdates()
+            fetcher.resolve(.failure(.rateLimited(GitHubRateLimitInfo(
+                statusCode: 429,
+                rateLimitRemaining: nil,
+                retryAfter: nil
+            ))))
+            wait(for: [settled], timeout: 2)
+            guard case .failed(.rateLimited(let wait)) = service.state else {
+                XCTFail("expected the rate-limited failure at step \(step)")
+                return
+            }
+            XCTAssertEqual(wait ?? -1, expectedWait, accuracy: 0.5)
+        }
+        for (index, expectedWait) in backoffSequence.enumerated() {
+            resolveUnguidedRateLimit(step: index, expectedWait: expectedWait)
+            scheduler.advance(by: expectedWait + 1)
+        }
+
+        // A successful check resets the backoff to its first step.
+        let latest = waitForState(service, queue: queue) { state in
+            if case .latest = state { return true }
+            return false
+        }
+        service.checkForUpdates()
+        fetcher.resolve(.success([makeRelease(tag: "v1.0.0")]))
+        wait(for: [latest], timeout: 2)
+        resolveUnguidedRateLimit(step: backoffSequence.count, expectedWait: 60)
+    }
+
+    func testRecheckFailureRetainsInstallEntryAndCooldownRefusalKeepsBadge() {
+        let fetcher = StubReleaseFetcher()
+        let downloader = StubDownloader()
+        let scheduler = StubUpdateScheduler()
+        let queue = DispatchQueue(label: "UpdateTests.retained-install")
+        let service = UpdateService(
+            releaseFetcher: fetcher,
+            downloader: downloader,
+            currentVersionString: "1.0.0",
+            callbackQueue: queue,
+            workQueue: queue,
+            scheduler: scheduler,
+            minimumCheckingDuration: 0
+        )
+        let available = waitForState(service, queue: queue) { state in
+            if case .available(_, let latest) = state {
+                return latest == AppSemanticVersion("1.1.0")
+            }
+            return false
+        }
+        service.checkForUpdates()
+        fetcher.resolve(.success([makeRelease(tag: "v1.1.0")]))
+        wait(for: [available], timeout: 2)
+
+        let recheckFailed = expectation(description: "recheck failure keeps the retained update")
+        recheckFailed.assertForOverFulfill = false
+        service.onStateChange = { state in
+            if case .recheckFailed = state { recheckFailed.fulfill() }
+        }
+        service.checkForUpdates()
+        fetcher.resolve(.failure(.rateLimited(GitHubRateLimitInfo(
+            statusCode: 403,
+            rateLimitRemaining: 0,
+            retryAfter: 600
+        ))))
+        wait(for: [recheckFailed], timeout: 2)
+        guard case .recheckFailed(_, let retainedLatest, .rateLimited) = service.state else {
+            return XCTFail("expected the retained-update failure state")
+        }
+        XCTAssertEqual(retainedLatest, AppSemanticVersion("1.1.0"))
+        XCTAssertEqual(service.availableReleaseForPresentation?.tagName, "v1.1.0")
+
+        // Clicking again inside the cooldown gives fresh wait feedback
+        // without another request and without dropping the badge.
+        service.checkForUpdates()
+        XCTAssertEqual(fetcher.requestCount, 2)
+        guard case .recheckFailed(_, _, .rateLimited(let remaining)) = service.state else {
+            return XCTFail("expected the refusal feedback to retain the update")
+        }
+        XCTAssertEqual(remaining ?? 0, 600, accuracy: 0.5)
+
+        // The retained update stays installable after the failed re-check.
+        service.installAvailableUpdate()
+        XCTAssertEqual(downloader.requestCount, 1)
+        if case .downloading(_, let downloadLatest, _) = service.state {
+            XCTAssertEqual(downloadLatest, AppSemanticVersion("1.1.0"))
+        } else {
+            XCTFail("expected the retained update to start downloading")
+        }
+    }
+
+    func testAutomaticCheckRevalidatesRetainedUpdateAndFindsNewerVersion() {
+        let fetcher = StubReleaseFetcher()
+        let scheduler = StubUpdateScheduler()
+        let queue = DispatchQueue(label: "UpdateTests.retained-automatic")
+        let service = UpdateService(
+            releaseFetcher: fetcher,
+            currentVersionString: "1.0.0",
+            callbackQueue: queue,
+            workQueue: queue,
+            scheduler: scheduler,
+            minimumCheckingDuration: 0,
+            automaticCheckMinimumInterval: 60
+        )
+        let available = waitForState(service, queue: queue) { state in
+            if case .available(_, let latest) = state {
+                return latest == AppSemanticVersion("1.1.0")
+            }
+            return false
+        }
+        service.checkForUpdates()
+        fetcher.resolve(.success([makeRelease(tag: "v1.1.0")]))
+        wait(for: [available], timeout: 2)
+
+        // A retained update must not stop background probing: the next
+        // scheduled check revalidates while keeping the entry visible.
+        let revalidating = expectation(description: "automatic recheck revalidates the retained update")
+        let newerAvailable = expectation(description: "automatic recheck finds a newer version")
+        service.onStateChange = { state in
+            switch state {
+            case .revalidating:
+                revalidating.fulfill()
+            case .available(_, let latest):
+                if latest == AppSemanticVersion("1.2.0") { newerAvailable.fulfill() }
+            default:
+                break
+            }
+        }
+        scheduler.advance(by: 60)
+        service.checkForUpdatesIfNeeded()
+        XCTAssertEqual(fetcher.requestCount, 2, "the automatic check must run even while an update is advertised")
+        fetcher.resolve(.success([makeRelease(tag: "v1.2.0")]))
+        wait(for: [revalidating, newerAvailable], timeout: 2)
+        XCTAssertEqual(service.availableReleaseForPresentation?.tagName, "v1.2.0")
+
+        // A confirmed "no new version" retires the retained entry.
+        let upToDate = waitForState(service, queue: queue) { state in
+            if case .latest = state { return true }
+            return false
+        }
+        scheduler.advance(by: 60)
+        service.checkForUpdatesIfNeeded()
+        fetcher.resolve(.success([makeRelease(tag: "v1.0.0")]))
+        wait(for: [upToDate], timeout: 2)
+        XCTAssertNil(service.availableReleaseForPresentation)
+    }
+
+    func testChannelSwitchDuringRateLimitCooldownSurfacesWaitInsteadOfRequest() {
+        let fetcher = StubReleaseFetcher()
+        let scheduler = StubUpdateScheduler()
+        let queue = DispatchQueue(label: "UpdateTests.cooldown-channel-switch")
+        let service = UpdateService(
+            releaseFetcher: fetcher,
+            currentVersionString: "1.0.0",
+            updateChannel: .stable,
+            callbackQueue: queue,
+            workQueue: queue,
+            scheduler: scheduler,
+            minimumCheckingDuration: 0,
+            automaticCheckMinimumInterval: 60
+        )
+        let rateLimited = expectation(description: "rate limited failure settles")
+        rateLimited.assertForOverFulfill = false
+        service.onStateChange = { state in
+            if case .failed(.rateLimited) = state { rateLimited.fulfill() }
+        }
+        service.checkForUpdates()
+        fetcher.resolve(.failure(.rateLimited(GitHubRateLimitInfo(
+            statusCode: 403,
+            rateLimitRemaining: 0,
+            retryAfter: 600
+        ))))
+        wait(for: [rateLimited], timeout: 2)
+
+        let forcedFeedback = expectation(description: "forced recheck surfaces the rate-limit wait")
+        forcedFeedback.assertForOverFulfill = false
+        service.onStateChange = { state in
+            if case .failed(.rateLimited) = state { forcedFeedback.fulfill() }
+        }
+        service.updateChannel = .beta
+        service.checkForUpdatesIfNeeded(force: true)
+        wait(for: [forcedFeedback], timeout: 2)
+        XCTAssertEqual(fetcher.requestCount, 1, "a forced channel-switch recheck must still respect the cooldown")
+        guard case .failed(.rateLimited(let remaining)) = service.state else {
+            return XCTFail("expected visible rate-limit feedback after the forced recheck")
+        }
+        XCTAssertEqual(remaining ?? 0, 600, accuracy: 0.5)
+    }
+
+    func testGitHubReleaseClientClassifiesRateLimitResponses() throws {
+        func clientResult(
+            statusCode: Int,
+            headers: [String: String]
+        ) throws -> Result<[GitHubRelease], GitHubReleaseClientError> {
+            StubURLProtocol.setHandler { _ in
+                StubURLResult(statusCode: statusCode, data: nil, headers: headers)
+            }
+            let client = GitHubReleaseClient(session: session)
+            let done = expectation(description: "client fetch settled")
+            var captured: Result<[GitHubRelease], GitHubReleaseClientError>?
+            client.fetchReleases { result in
+                captured = result
+                done.fulfill()
+            }
+            wait(for: [done], timeout: 2)
+            return try XCTUnwrap(captured)
+        }
+
+        // Primary unauthenticated limit: remaining=0 plus X-RateLimit-Reset.
+        let resetEpoch = Int(Date().timeIntervalSince1970) + 1800
+        let primary = try clientResult(
+            statusCode: 403,
+            headers: ["X-RateLimit-Remaining": "0", "X-RateLimit-Reset": "\(resetEpoch)"]
+        )
+        guard case .failure(.rateLimited(let info)) = primary else {
+            return XCTFail("403 with an exhausted quota must classify as rate limited")
+        }
+        XCTAssertEqual(info.statusCode, 403)
+        XCTAssertEqual(info.rateLimitRemaining, 0)
+        XCTAssertEqual(info.retryAfter ?? 0, 1800, accuracy: 10)
+
+        // Secondary limit: Retry-After in delay-seconds form.
+        let secondary = try clientResult(statusCode: 429, headers: ["Retry-After": "120"])
+        guard case .failure(.rateLimited(let guided)) = secondary else {
+            return XCTFail("429 must classify as rate limited")
+        }
+        XCTAssertEqual(guided.retryAfter ?? 0, 120, accuracy: 0.5)
+
+        // Secondary limit: Retry-After in HTTP-date form.
+        let dateFormatter = DateFormatter()
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dateFormatter.timeZone = TimeZone(identifier: "GMT")
+        dateFormatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss 'GMT'"
+        let httpDate = try clientResult(
+            statusCode: 429,
+            headers: ["Retry-After": dateFormatter.string(from: Date().addingTimeInterval(90))]
+        )
+        guard case .failure(.rateLimited(let dateGuided)) = httpDate else {
+            return XCTFail("a Retry-After HTTP date must classify as rate limited")
+        }
+        XCTAssertEqual(dateGuided.retryAfter ?? 0, 90, accuracy: 10)
+
+        // Rate limiting without any recovery header stays classified as rate
+        // limited; the service applies its own capped backoff.
+        let unguided = try clientResult(statusCode: 429, headers: [:])
+        guard case .failure(.rateLimited(let unguidedInfo)) = unguided,
+              unguidedInfo.retryAfter == nil
+        else {
+            return XCTFail("429 without headers must classify as unguided rate limiting")
+        }
+
+        // A plain 403 without rate-limit evidence is not rate limiting.
+        let plainForbidden = try clientResult(statusCode: 403, headers: [:])
+        guard case .failure(.httpStatus(403)) = plainForbidden else {
+            return XCTFail("a 403 without rate-limit headers must stay a plain forbidden error")
+        }
+
+        // Server errors are never rate limiting, even with an empty quota.
+        let serverError = try clientResult(statusCode: 503, headers: ["X-RateLimit-Remaining": "0"])
+        guard case .failure(.httpStatus(503)) = serverError else {
+            return XCTFail("503 must stay a server error, not rate limiting")
+        }
+    }
+
+    func testDashboardUpdatePresentationRetainsUpdateDuringRevalidatingAndRecheckFailure() throws {
+        let current = try XCTUnwrap(AppSemanticVersion("1.0.0"))
+        let latest = try XCTUnwrap(AppSemanticVersion("1.5.0"))
+
+        let revalidating = DashboardUpdatePresentation.make(
+            for: .revalidating(current: current, latest: latest),
+            language: .simplifiedChinese
+        )
+        XCTAssertTrue(revalidating.showsUpdateBadge, "the badge must survive a re-check start")
+        XCTAssertTrue(revalidating.showsReleaseNotesButton)
+        XCTAssertFalse(revalidating.buttonEnabled)
+        XCTAssertFalse(revalidating.performsInstall)
+        XCTAssertEqual(revalidating.subtitle, "新版本可用：1.0.0 -> 1.5.0（正在重新验证…）")
+
+        let recheckFailed = DashboardUpdatePresentation.make(
+            for: .recheckFailed(current: current, latest: latest, failure: .rateLimited(retryAfter: 90)),
+            language: .simplifiedChinese
+        )
+        XCTAssertTrue(recheckFailed.showsUpdateBadge, "the badge must survive a failed re-check")
+        XCTAssertTrue(recheckFailed.showsReleaseNotesButton)
+        XCTAssertTrue(recheckFailed.buttonEnabled)
+        XCTAssertTrue(recheckFailed.performsInstall, "the retained update stays installable")
+        XCTAssertEqual(
+            recheckFailed.subtitle,
+            "已保留之前发现的更新 1.5.0；本次重新验证失败。\n原因：已达到 GitHub API 请求限额\n建议：GitHub 正在限制更新请求，约 2 分钟后可重试。"
+        )
+
+        let englishFailure = DashboardUpdatePresentation.make(
+            for: .recheckFailed(current: current, latest: latest, failure: .network),
+            language: .english
+        )
+        XCTAssertEqual(
+            englishFailure.subtitle,
+            "The update 1.5.0 found earlier is kept; this re-check failed.\nReason: The network request failed\nSuggestion: Check your network or proxy settings, then try again."
+        )
+
+        let unguided = DashboardUpdatePresentation.make(
+            for: .failed(.rateLimited(retryAfter: nil)),
+            language: .simplifiedChinese
+        )
+        XCTAssertFalse(unguided.showsUpdateBadge)
+        XCTAssertEqual(
+            unguided.subtitle,
+            "检查更新失败，请重试。\n原因：已达到 GitHub API 请求限额\n建议：请稍后重试，避免连续点击。"
+        )
     }
 
     func testForcedAutomaticCheckRevalidatesTheSelectedChannel() {

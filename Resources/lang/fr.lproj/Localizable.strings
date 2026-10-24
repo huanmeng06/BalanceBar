@@ -183,6 +183,10 @@
 "dashboard.general.and.refresh.pages.update_check_failure_suggestion_http_too_many_requests" = "Attendez un moment avant de réessayer et évitez les vérifications répétées.";
 "dashboard.general.and.refresh.pages.update_check_failure_suggestion_invalid_response" = "Réessayez plus tard ; si le problème persiste, contactez le mainteneur.";
 "dashboard.general.and.refresh.pages.update_check_failure_suggestion_invalid_release_version" = "Contactez le mainteneur pour vérifier la version de la release.";
+"dashboard.general.and.refresh.pages.update_available_revalidating_value_value" = "Nouvelle version disponible : %1$@ -> %2$@; nouvelle vérification en cours…";
+"dashboard.general.and.refresh.pages.update_check_failed_update_retained_value_value_value" = "La mise à jour %1$@ trouvée précédemment est conservée ; cette nouvelle vérification a échoué.\nMotif : %2$@\nSuggestion : %3$@";
+"dashboard.general.and.refresh.pages.update_check_failure_reason_rate_limited" = "Limite de requêtes de l'API GitHub atteinte";
+"dashboard.general.and.refresh.pages.update_check_failure_suggestion_rate_limited_wait_value" = "GitHub limite les requêtes de mise à jour ; réessayez dans environ %1$@ minutes.";
 "dashboard.general.and.refresh.pages.retry" = "Réessayer";
 "dashboard.general.and.refresh.pages.open_cc_switch" = "Ouvrir CC Switch";
 "dashboard.general.and.refresh.pages.cc_switch" = "CC Switch";

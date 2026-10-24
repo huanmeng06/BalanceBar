@@ -1020,10 +1020,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     }
 
     private var showsAvailableUpdateBadge: Bool {
-        if case .available = updateService.state {
+        switch updateService.state {
+        case .available, .revalidating, .recheckFailed:
             return true
+        default:
+            return false
         }
-        return false
     }
 
     /// Always read provider metadata in the background. Menus and search use
@@ -2000,11 +2002,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     }
 
     private func showUpdateNotes() {
-        guard case .available(let current, _) = updateService.state,
-              let release = updateService.availableReleaseForPresentation else { return }
+        // The notes chain is retained across re-checks and re-check failures,
+        // matching the badge and install entry.
+        guard let release = updateService.availableReleaseForPresentation,
+              let currentVersion = updateService.installedVersion else { return }
         let releases = updateService.availableReleasesForPresentation
         showUpdateNotes(
-            currentVersion: current,
+            currentVersion: currentVersion,
             releases: releases.isEmpty ? [release] : releases
         )
     }
@@ -2081,10 +2085,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
 
     static let backgroundUpdateCheckInterval: TimeInterval = 6 * 60 * 60
 
+    /// The background timer must keep probing even while an update is
+    /// advertised: a user who postpones installation still needs to learn
+    /// about higher versions. Retained-update presentation and the endpoint
+    /// cooldown inside UpdateService make this safe for the visible state and
+    /// the request budget.
     private func checkForBackgroundUpdate() {
-        if case .available = updateService.state {
-            return
-        }
         updateService.checkForUpdatesIfNeeded()
     }
 
