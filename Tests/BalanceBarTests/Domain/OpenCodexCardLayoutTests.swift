@@ -83,6 +83,89 @@ final class OpenCodexCardLayoutTests: XCTestCase {
         XCTAssertEqual(quota.cardRow, frames.quotaRows.first)
     }
 
+    func testCountdownProgressAddsIndependentFullWidthBottomBar() throws {
+        let windows = [
+            OfficialQuotaWindow(kind: .fiveHour, remaining: 80, label: "5h", daysText: "5 hours", reset: "2h", durationSeconds: 18_000),
+            OfficialQuotaWindow(kind: .sevenDay, remaining: 45, label: "7d", daysText: "7 days", reset: "7d", durationSeconds: 604_800)
+        ]
+        func frames(countdownProgress: Bool) -> OpenCodexCardFrames {
+            OpenCodexCardLayout.frames(
+                for: .quota,
+                officialQuotaWindows: windows,
+                includesBankedReset: true,
+                bankedResetCardCount: 1,
+                includesBankedResetCountdownProgress: countdownProgress
+            )
+        }
+        let textOnly = frames(countdownProgress: false)
+        let countdown = frames(countdownProgress: true)
+        let textOnlySection = try XCTUnwrap(
+            textOnly.sectionLayouts.first { $0.id == .resetProbability }
+        )
+        let countdownSection = try XCTUnwrap(
+            countdown.sectionLayouts.first { $0.id == .resetProbability }
+        )
+        XCTAssertEqual(
+            textOnlySection.height,
+            OpenCodexCardLayout.bankedResetTextBandAmountHeight,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(textOnlySection.row?.progress, .zero)
+        XCTAssertEqual(
+            countdownSection.height,
+            OpenCodexCardLayout.quotaProgressRowHeight,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            countdownSection.height - textOnlySection.height,
+            OpenCodexCardLayout.quotaProgressRowHeight
+                - OpenCodexCardLayout.bankedResetTextBandAmountHeight,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            countdown.cardSize.height - textOnly.cardSize.height,
+            countdownSection.height - textOnlySection.height,
+            accuracy: 0.001
+        )
+        let row = try XCTUnwrap(countdownSection.row)
+        XCTAssertEqual(row.progress, CGRect(
+            x: OpenCodexCardLayout.horizontalInset,
+            y: 0,
+            width: OpenCodexCardLayout.contentWidth,
+            height: OpenCodexCardLayout.quotaProgressHeight
+        ))
+        XCTAssertGreaterThan(row.reset.minY, row.progress.maxY)
+        XCTAssertGreaterThan(row.quotaDetail.minY, row.reset.maxY)
+        XCTAssertEqual(row.amount.minY, row.reset.minY, accuracy: 0.001)
+        XCTAssertEqual(row.amount.height, OpenCodexCardLayout.bankedResetTextBandAmountHeight, accuracy: 0.001)
+        XCTAssertEqual(row.amount.maxX, OpenCodexCardLayout.cardWidth - OpenCodexCardLayout.horizontalInset, accuracy: 0.001)
+        XCTAssertGreaterThan(row.progress.maxX, row.amount.minX)
+        let sevenDaySection = try XCTUnwrap(
+            countdown.sectionLayouts.first { $0.id == .sevenDay }
+        )
+        XCTAssertEqual(
+            sevenDaySection.frame.minY - countdownSection.frame.maxY,
+            OpenCodexCardLayout.metrics.sectionSpacing,
+            accuracy: 0.001
+        )
+        let bankedSection = try XCTUnwrap(
+            countdown.sectionLayouts.first { $0.id == .bankedReset }
+        )
+        XCTAssertEqual(
+            countdownSection.frame.minY - bankedSection.frame.maxY,
+            OpenCodexCardLayout.bankedResetProbabilitySummaryGap,
+            accuracy: 0.001
+        )
+        // Only the reset-probability section grows; its neighbours keep the
+        // standard official quota geometry.
+        for id in [OpenCodexOverviewSectionID.fiveHour, .sevenDay] {
+            let before = try XCTUnwrap(textOnly.sectionLayouts.first { $0.id == id })
+            let after = try XCTUnwrap(countdown.sectionLayouts.first { $0.id == id })
+            XCTAssertEqual(before.height, after.height, accuracy: 0.001)
+            XCTAssertEqual(before.row, after.row)
+        }
+    }
+
     func testSectionCompositionKeepsDocumentCoordinatesOutOfParentBounds() throws {
         let frames = OpenCodexCardLayout.frames(for: .quota, includesBankedReset: true,
             bankedResetCardCount: 8, bankedResetTicketMetrics: Array(repeating:

@@ -475,6 +475,8 @@
 "codex.banked_reset.high_probability" = "Alta prob.";
 "codex.banked_reset.official_hint_no_time" = "Aviso oficial · Sin hora concreta";
 "codex.banked_reset.official_hint_time" = "Aviso oficial · Hora concreta";
+"codex.banked_reset.official_hint_deadline" = "Aviso oficial · Límite de ventana";
+"codex.banked_reset.official_hint_window" = "Aviso oficial · Ventana de tiempo";
 "codex.banked_reset.confidence_prefix" = "Confianza:";
 "codex.banked_reset.confidence_low" = "Baja";
 "codex.banked_reset.confidence_medium" = "Media";
@@ -491,10 +493,13 @@
 
 "codex.banked_reset.official_hint_confirmed" = "Completado este ciclo";
 "codex.banked_reset.official_reset_confirmed" = "✅ Restablecido";
+"codex.banked_reset.window_deadline_countdown" = "Ventana reset";
 
 "codex.reset_signal.tooltip_title" = "Señal oficial de restablecimiento";
 "codex.reset_signal.tooltip_body" = "Probabilidad de señal fuerte o cuenta atrás de la señal oficial actual, distinta del pronóstico normal de 24 / 48 horas.";
 "codex.reset_signal.tooltip_disclaimer" = "La señal no confirma un restablecimiento de esta cuenta ni garantiza créditos. La cuota real procede de la API oficial.";
+"codex.reset_signal.window_tooltip_body" = "Antes de que termine la cuenta atrás, Codex emitirá tarjetas de restablecimiento o restablecerá la cuota global.";
+"codex.reset_signal.window_tooltip_disclaimer" = "La cuota real procede de la API oficial.";
 
 // Application display time zone
 "timezone.title" = "Zona horaria";

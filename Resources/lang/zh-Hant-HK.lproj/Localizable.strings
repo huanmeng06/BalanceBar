@@ -475,6 +475,8 @@
 "codex.banked_reset.high_probability" = "高概率";
 "codex.banked_reset.official_hint_no_time" = "官方重置提示 · 暫無具體時間點";
 "codex.banked_reset.official_hint_time" = "官方重置提示 · 具體時間點";
+"codex.banked_reset.official_hint_deadline" = "官方重置提示 · 窗口截止";
+"codex.banked_reset.official_hint_window" = "官方重置提示 · 時間窗口";
 "codex.banked_reset.confidence_prefix" = "置信度：";
 "codex.banked_reset.confidence_low" = "低";
 "codex.banked_reset.confidence_medium" = "中";
@@ -491,10 +493,13 @@
 
 "codex.banked_reset.official_hint_confirmed" = "本輪已完成";
 "codex.banked_reset.official_reset_confirmed" = "✅ 已重置";
+"codex.banked_reset.window_deadline_countdown" = "重置窗口";
 
 "codex.reset_signal.tooltip_title" = "官方重置信號";
 "codex.reset_signal.tooltip_body" = "目前官方訊號的強訊號機率或倒數提示，獨立於一般 24 / 48 小時預測。";
 "codex.reset_signal.tooltip_disclaimer" = "訊號提示不代表目前帳戶已完成重置，也不保證發放重置卡；實際額度以官方介面為準。";
+"codex.reset_signal.window_tooltip_body" = "倒數窗口結束前，Codex 官方會發放重置卡，或進行全域額度重置。";
+"codex.reset_signal.window_tooltip_disclaimer" = "實際額度以官方介面為準。";
 
 // Application display time zone
 "timezone.title" = "時區";

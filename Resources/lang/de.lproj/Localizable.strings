@@ -475,6 +475,8 @@
 "codex.banked_reset.high_probability" = "Hohe Prob.";
 "codex.banked_reset.official_hint_no_time" = "Offizieller Hinweis · Kein Zeitpunkt";
 "codex.banked_reset.official_hint_time" = "Offizieller Hinweis · Zeitpunkt";
+"codex.banked_reset.official_hint_deadline" = "Offizieller Hinweis · Frist";
+"codex.banked_reset.official_hint_window" = "Offizieller Hinweis · Zeitfenster";
 "codex.banked_reset.confidence_prefix" = "Konfidenz:";
 "codex.banked_reset.confidence_low" = "Niedrig";
 "codex.banked_reset.confidence_medium" = "Mittel";
@@ -491,10 +493,13 @@
 
 "codex.banked_reset.official_hint_confirmed" = "Diese Runde abgeschlossen";
 "codex.banked_reset.official_reset_confirmed" = "✅ Zurückgesetzt";
+"codex.banked_reset.window_deadline_countdown" = "Reset-Fenster";
 
 "codex.reset_signal.tooltip_title" = "Offizielles Reset-Signal";
 "codex.reset_signal.tooltip_body" = "Wahrscheinlichkeit oder Countdown des aktuellen starken offiziellen Signals, getrennt von der normalen 24-/48-Stunden-Prognose.";
 "codex.reset_signal.tooltip_disclaimer" = "Das Signal bestätigt keinen Reset dieses Kontos und garantiert keine Reset-Guthaben. Das tatsächliche Kontingent stammt aus der offiziellen API.";
+"codex.reset_signal.window_tooltip_body" = "Vor Ende des Countdowns gibt Codex Reset-Karten aus oder setzt das globale Kontingent zurück.";
+"codex.reset_signal.window_tooltip_disclaimer" = "Das tatsächliche Kontingent stammt aus der offiziellen API.";
 
 // Application display time zone
 "timezone.title" = "Zeitzone";

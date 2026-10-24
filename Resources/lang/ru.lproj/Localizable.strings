@@ -475,6 +475,8 @@
 "codex.banked_reset.high_probability" = "Выс. вер.";
 "codex.banked_reset.official_hint_no_time" = "Офиц. подсказка · Нет времени";
 "codex.banked_reset.official_hint_time" = "Офиц. подсказка · Есть время";
+"codex.banked_reset.official_hint_deadline" = "Офиц. подсказка · Крайний срок";
+"codex.banked_reset.official_hint_window" = "Офиц. подсказка · Временное окно";
 "codex.banked_reset.confidence_prefix" = "Уверенность:";
 "codex.banked_reset.confidence_low" = "Низкая";
 "codex.banked_reset.confidence_medium" = "Средняя";
@@ -491,10 +493,13 @@
 
 "codex.banked_reset.official_hint_confirmed" = "Этот цикл завершён";
 "codex.banked_reset.official_reset_confirmed" = "✅ Сброшено";
+"codex.banked_reset.window_deadline_countdown" = "Окно сброса";
 
 "codex.reset_signal.tooltip_title" = "Официальный сигнал сброса";
 "codex.reset_signal.tooltip_body" = "Вероятность текущего сильного официального сигнала или обратный отсчёт, отдельно от обычного прогноза на 24 / 48 часов.";
 "codex.reset_signal.tooltip_disclaimer" = "Сигнал не подтверждает сброс этой учётной записи и не гарантирует кредиты сброса. Фактическую квоту определяет официальный API.";
+"codex.reset_signal.window_tooltip_body" = "До окончания обратного отсчёта Codex выдаст карты сброса или выполнит глобальный сброс квоты.";
+"codex.reset_signal.window_tooltip_disclaimer" = "Фактическую квоту определяет официальный API.";
 
 // Application display time zone
 "timezone.title" = "Часовой пояс";

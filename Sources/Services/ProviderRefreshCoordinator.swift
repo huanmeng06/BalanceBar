@@ -107,6 +107,7 @@ enum DevelopmentBankedResetDemo {
         case tenCards = "banked-reset-10"
         case zeroCards = "banked-reset-0"
         case confirmed = "banked-reset-confirmed"
+        case countdown = "banked-reset-countdown"
     }
 
     static let cardCount = 10
@@ -143,6 +144,11 @@ enum DevelopmentBankedResetDemo {
         providerName: String,
         date: Date = Date()
     ) -> Snapshot {
+        SwitchLog.write(
+            "banked-reset demo snapshot requested; mode=\(mode.rawValue); provider=\(providerName)",
+            level: .debug,
+            category: "configuration"
+        )
         let windows = [
             OfficialQuotaWindow(
                 kind: .fiveHour,
@@ -167,7 +173,7 @@ enum DevelopmentBankedResetDemo {
             cardList = cards(now: date)
         case .zeroCards:
             cardList = []
-        case .confirmed:
+        case .confirmed, .countdown:
             cardList = Array(cards(now: date).prefix(2))
         }
         var forecast = CodexResetForecast.demo(updatedAt: date)
@@ -179,9 +185,21 @@ enum DevelopmentBankedResetDemo {
                 episodeKey: "demo-confirmed"
             )
             forecast.officialResetObservation = .observed
+        } else if mode == .countdown {
+            // Keep a valid publish → deadline span at any launch time so the
+            // demo always exercises the full-width countdown progress row.
+            forecast.officialSignal = CodexResetOfficialSignal(
+                probability: .percent(80),
+                targetAt: nextLocalEightPM(after: date),
+                publishedAt: date.addingTimeInterval(-3_600),
+                episodeKey: "demo-countdown"
+            )
         }
+        let displayedProviderName = mode == .countdown
+            ? "\(providerName) · DEMO 20:00"
+            : providerName
         return .official(
-            providerName,
+            displayedProviderName,
             windows[1].remaining,
             windows[1].label,
             windows[1].reset,
@@ -190,6 +208,27 @@ enum DevelopmentBankedResetDemo {
             bankedReset: CodexBankedReset(cards: cardList),
             resetForecast: forecast
         )
+    }
+
+    /// Next 20:00 in the current local zone. Using the local calendar keeps the
+    /// demo aligned with the user's wall clock; the menu still formats the
+    /// instant in the configured display time zone.
+    static func nextLocalEightPM(
+        after date: Date,
+        timeZone: TimeZone = .autoupdatingCurrent
+    ) -> Date {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        var components = calendar.dateComponents([.year, .month, .day], from: date)
+        components.hour = 20
+        components.minute = 0
+        components.second = 0
+        guard let today = calendar.date(from: components) else {
+            return date.addingTimeInterval(3 * 3_600)
+        }
+        if today > date { return today }
+        return calendar.date(byAdding: .day, value: 1, to: today)
+            ?? date.addingTimeInterval(23 * 3_600)
     }
 
     static func cards(now: Date) -> [CodexBankedResetCard] {
@@ -414,7 +453,9 @@ final class ProviderRefreshCoordinator {
         let forecast: CodexResetForecast
         let fetchedAt: Date
     }
-    static let codexResetForecastTTL: TimeInterval = 10 * 60
+    // The public forecast is published with max-age=60. Avoid retaining an
+    // obsolete announced deadline after upstream replaces or retracts it.
+    static let codexResetForecastTTL: TimeInterval = 60
     // Failed/unavailable requests retry on the ordinary quota refresh cadence;
     // only successful forecasts receive the longer cache lifetime.
     static let codexResetForecastRetryInterval: TimeInterval = 60
@@ -1497,7 +1538,10 @@ final class ProviderRefreshCoordinator {
             if isValid(), isCurrentRequest() { officialSampleUnavailable(client: client, providerID: providerID) }
             publish(.providerError(providerName, reason: reason, cachedBalance: nil), providerID: providerID, client: client, isCurrentRequest: isCurrentRequest)
         }
-        if client == .codex, source == nil, let demoSnapshot = DevelopmentLunaReserveDemo.snapshot(providerName: providerName)
+        // Demo bundles bypass real transport for both the direct provider and
+        // aggregated provider rows, so the fixture stays visible regardless of
+        // the user's aggregation setting.
+        if client == .codex, let demoSnapshot = DevelopmentLunaReserveDemo.snapshot(providerName: providerName)
             ?? DevelopmentBankedResetDemo.snapshot(providerName: providerName) {
             publish(
                 demoSnapshot,

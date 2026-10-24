@@ -475,6 +475,8 @@
 "codex.banked_reset.high_probability" = "고확률";
 "codex.banked_reset.official_hint_no_time" = "공식 리셋 안내 · 구체적 시각 없음";
 "codex.banked_reset.official_hint_time" = "공식 리셋 안내 · 구체적 시각";
+"codex.banked_reset.official_hint_deadline" = "공식 리셋 안내 · 마감";
+"codex.banked_reset.official_hint_window" = "공식 리셋 안내 · 시간 범위";
 "codex.banked_reset.confidence_prefix" = "신뢰도:";
 "codex.banked_reset.confidence_low" = "낮음";
 "codex.banked_reset.confidence_medium" = "중간";
@@ -491,10 +493,13 @@
 
 "codex.banked_reset.official_hint_confirmed" = "이번 회차 완료";
 "codex.banked_reset.official_reset_confirmed" = "✅ 리셋 완료";
+"codex.banked_reset.window_deadline_countdown" = "리셋 기간";
 
 "codex.reset_signal.tooltip_title" = "공식 리셋 신호";
 "codex.reset_signal.tooltip_body" = "현재 공식 신호의 강한 신호 확률 또는 카운트다운이며 일반 24 / 48시간 예측과는 별개입니다.";
 "codex.reset_signal.tooltip_disclaimer" = "신호는 이 계정의 리셋 완료나 리셋 카드 지급을 보장하지 않습니다. 실제 할당량은 공식 API를 따릅니다.";
+"codex.reset_signal.window_tooltip_body" = "카운트다운이 끝나기 전에 Codex가 리셋 카드를 지급하거나 전체 할당량을 리셋합니다.";
+"codex.reset_signal.window_tooltip_disclaimer" = "실제 할당량은 공식 API를 따릅니다.";
 
 // Application display time zone
 "timezone.title" = "시간대";

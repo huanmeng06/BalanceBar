@@ -916,6 +916,58 @@ final class DomainModelsTests: XCTestCase {
             inverted.officialHintText(language: .simplifiedChinese),
             "官方重置提示 · 具体时间点"
         )
+
+        // Window-deadline boundaries reuse the countdown UI but must be
+        // labelled as window boundaries, never as a guaranteed reset instant.
+        let deadlineForecast = CodexResetForecast(
+            probability24h: .percent(20),
+            probability48h: .percent(35),
+            confidence: .low,
+            updatedAt: date,
+            isCached: false,
+            officialSignal: CodexResetOfficialSignal(
+                probability: .percent(93),
+                targetAt: resetAt,
+                windowKind: .deadline,
+                publishedAt: published
+            )
+        )
+        XCTAssertNil(deadlineForecast.officialHintText())
+        XCTAssertNotNil(deadlineForecast.officialCountdownProgressSpan())
+        XCTAssertTrue(deadlineForecast.isOfficialWindowDeadlineCountdown)
+        XCTAssertTrue(deadlineForecast.showsOfficialWindowDeadlineProgress)
+        let deadlineWithoutPublish = CodexResetForecast(
+            probability24h: .percent(20),
+            probability48h: .percent(35),
+            confidence: .low,
+            updatedAt: date,
+            isCached: false,
+            officialSignal: CodexResetOfficialSignal(
+                probability: .percent(93),
+                targetAt: resetAt,
+                windowKind: .deadline
+            )
+        )
+        XCTAssertEqual(
+            deadlineWithoutPublish.officialHintText(language: .simplifiedChinese),
+            "官方重置提示 · 窗口截止"
+        )
+        let rangeForecast = CodexResetForecast(
+            probability24h: .percent(20),
+            probability48h: .percent(35),
+            confidence: .low,
+            updatedAt: date,
+            isCached: false,
+            officialSignal: CodexResetOfficialSignal(
+                probability: .percent(93),
+                targetAt: resetAt,
+                windowKind: .range
+            )
+        )
+        XCTAssertEqual(
+            rangeForecast.officialHintText(language: .simplifiedChinese),
+            "官方重置提示 · 时间窗口"
+        )
         XCTAssertNil(zeroCountPresented.resetForecast.officialHintText())
 
         let balance = Snapshot.balance(
@@ -931,6 +983,81 @@ final class DomainModelsTests: XCTestCase {
                 hideExhaustedQuota: false
             ).bankedReset
         )
+    }
+
+    func testOfficialWindowDeadlineTextUsesTargetInstantOffset() throws {
+        let formatter = ISO8601DateFormatter()
+        let target = try XCTUnwrap(formatter.date(from: "2026-10-23T07:00:00Z"))
+        let gmt8 = try XCTUnwrap(TimeZone(secondsFromGMT: 8 * 3_600))
+        let gmtMinus4 = try XCTUnwrap(TimeZone(secondsFromGMT: -4 * 3_600))
+        let kolkata = try XCTUnwrap(TimeZone(identifier: "Asia/Kolkata"))
+        let newYork = try XCTUnwrap(TimeZone(identifier: "America/New_York"))
+
+        XCTAssertEqual(
+            CodexResetOfficialCountdownFormatting.targetInstantText(for: target, timeZone: gmt8),
+            "10/23 15:00 (GMT+8)"
+        )
+        XCTAssertEqual(
+            CodexResetOfficialCountdownFormatting.targetInstantText(for: target, timeZone: gmtMinus4),
+            "10/23 03:00 (GMT-4)"
+        )
+        XCTAssertEqual(
+            CodexResetOfficialCountdownFormatting.targetInstantText(for: target, timeZone: kolkata),
+            "10/23 12:30 (GMT+5:30)"
+        )
+        // The offset is resolved at the target instant, so DST changes between
+        // now and the deadline cannot shift the displayed wall clock.
+        XCTAssertEqual(
+            CodexResetOfficialCountdownFormatting.targetInstantText(for: target, timeZone: newYork),
+            "10/23 03:00 (GMT-4)"
+        )
+        let afterDST = try XCTUnwrap(formatter.date(from: "2026-11-01T06:30:00Z"))
+        XCTAssertEqual(
+            CodexResetOfficialCountdownFormatting.targetInstantText(for: afterDST, timeZone: newYork),
+            "11/1 01:30 (GMT-5)"
+        )
+        let nextDay = try XCTUnwrap(formatter.date(from: "2026-10-23T20:00:00Z"))
+        XCTAssertEqual(
+            CodexResetOfficialCountdownFormatting.targetInstantText(for: nextDay, timeZone: gmt8),
+            "10/24 04:00 (GMT+8)"
+        )
+
+        let countdown = CodexResetForecast(
+            probability24h: .unavailable,
+            probability48h: .unavailable,
+            confidence: .unavailable,
+            updatedAt: nil,
+            isCached: false,
+            officialSignal: CodexResetOfficialSignal(
+                probability: .percent(71),
+                targetAt: target
+            )
+        )
+        XCTAssertTrue(countdown.isOfficialWindowDeadlineCountdown)
+        XCTAssertFalse(countdown.showsOfficialWindowDeadlineProgress)
+        XCTAssertEqual(
+            countdown.officialWindowDeadlineText(timeZone: gmt8),
+            "10/23 15:00 (GMT+8)"
+        )
+
+        var withProgress = countdown
+        withProgress.officialSignal?.publishedAt = target.addingTimeInterval(-3_600)
+        XCTAssertTrue(withProgress.showsOfficialWindowDeadlineProgress)
+
+        let confirmed = countdown.applyingOfficialResetObservation(.observed)
+        XCTAssertFalse(confirmed.isOfficialWindowDeadlineCountdown)
+        XCTAssertNil(confirmed.officialWindowDeadlineText(timeZone: gmt8))
+
+        let noTarget = CodexResetForecast(
+            probability24h: .percent(20),
+            probability48h: .percent(35),
+            confidence: .low,
+            updatedAt: target,
+            isCached: false,
+            officialSignal: CodexResetOfficialSignal(probability: .percent(71))
+        )
+        XCTAssertFalse(noTarget.isOfficialWindowDeadlineCountdown)
+        XCTAssertNil(noTarget.officialWindowDeadlineText(timeZone: gmt8))
     }
 
     func testCodexResetObservationRequiresConsumptionAndASevenDayCycleJump() throws {
@@ -1423,6 +1550,44 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertEqual(snapshot.officialQuotaWindows.last?.remaining, 45)
         XCTAssertEqual(snapshot.resetForecast, .demo(updatedAt: date))
         XCTAssertNil(snapshot.lunaReserve)
+    }
+
+    func testBankedResetCountdownDemoTargetsNextLocalEightPM() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .autoupdatingCurrent
+        let day = calendar.startOfDay(for: Date(timeIntervalSince1970: 1_700_000_000))
+        let afternoon = try XCTUnwrap(
+            calendar.date(bySettingHour: 15, minute: 0, second: 0, of: day)
+        )
+        let snapshot = DevelopmentBankedResetDemo.snapshot(
+            mode: .countdown,
+            providerName: "OpenAI",
+            date: afternoon
+        )
+        let forecast = snapshot.resetForecast
+        let target = try XCTUnwrap(forecast.officialSignal?.targetAt)
+        XCTAssertEqual(calendar.component(.hour, from: target), 20)
+        XCTAssertEqual(calendar.component(.minute, from: target), 0)
+        XCTAssertEqual(
+            calendar.component(.day, from: target),
+            calendar.component(.day, from: afternoon)
+        )
+        XCTAssertTrue(forecast.isOfficialWindowDeadlineCountdown)
+        XCTAssertTrue(forecast.showsOfficialWindowDeadlineProgress)
+        XCTAssertEqual(forecast.remainingCountdownMinutes(now: afternoon), 300)
+        XCTAssertTrue(snapshot.overviewProvider.contains("DEMO 20:00"))
+        XCTAssertEqual(snapshot.bankedReset?.cards.count, 2)
+
+        let evening = try XCTUnwrap(
+            calendar.date(bySettingHour: 21, minute: 0, second: 0, of: day)
+        )
+        let nextDay = try XCTUnwrap(calendar.date(byAdding: .day, value: 1, to: evening))
+        let nextDayTarget = DevelopmentBankedResetDemo.nextLocalEightPM(after: evening)
+        XCTAssertEqual(calendar.component(.hour, from: nextDayTarget), 20)
+        XCTAssertEqual(
+            calendar.component(.day, from: nextDayTarget),
+            calendar.component(.day, from: nextDay)
+        )
     }
 
     func testMenuBarQuotaWindowSelectionUsesRealWindowsAndSafeMissingFallbacks() {

@@ -418,10 +418,19 @@ enum CodexResetProbability: Equatable {
 /// strong-signal mode. Probability and a future countdown instant are parsed
 /// separately and may be missing.
 struct CodexResetOfficialSignal: Equatable {
+    /// Boundary semantics of `targetAt`. When set, the countdown target is an
+    /// announced observation-window boundary, never a guaranteed reset instant.
+    enum WindowKind: Equatable {
+        /// `target_kind=deadline`: the window closes at `targetAt`.
+        case deadline
+        /// No explicit target: `targetAt` is the window's `end_at`.
+        case range
+    }
     var probability: CodexResetProbability
     /// Absolute future instant from `official_signal.window` or an equivalent
     /// single-instant field. Nil when the payload has no countdown target.
     var targetAt: Date? = nil
+    var windowKind: WindowKind? = nil
     /// Tweet/publish instant from `official_signal.at`. Used only as the
     /// progress-bar right endpoint, never as the countdown amount.
     var publishedAt: Date? = nil
@@ -549,6 +558,31 @@ enum CodexResetOfficialCountdownFormatting {
         }
         return "\(remainder)m"
     }
+
+    /// Absolute deadline shown under the countdown title, for example
+    /// `10/23 15:00 (GMT+8)`. The offset is resolved at the target instant so
+    /// DST, day boundaries and sub-hour zones match the displayed local time.
+    /// The numeric pattern is locale-independent because the surrounding menu
+    /// copy is already localized and this line must stay compact.
+    static func targetInstantText(for targetAt: Date, timeZone: TimeZone) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.timeZone = timeZone
+        formatter.dateFormat = "M/d HH:mm"
+        return "\(formatter.string(from: targetAt)) (\(gmtOffsetText(for: targetAt, timeZone: timeZone)))"
+    }
+
+    static func gmtOffsetText(for date: Date, timeZone: TimeZone) -> String {
+        let totalMinutes = timeZone.secondsFromGMT(for: date) / 60
+        let sign = totalMinutes < 0 ? "-" : "+"
+        let absolute = abs(totalMinutes)
+        let hours = absolute / 60
+        let minutes = absolute % 60
+        return minutes == 0
+            ? "GMT\(sign)\(hours)"
+            : String(format: "GMT%@%d:%02d", sign, hours, minutes)
+    }
 }
 
 /// Mutually exclusive menu presentation for the reset-probability block.
@@ -631,6 +665,30 @@ struct CodexResetForecast: Equatable {
         officialSignal != nil && officialResetObservation == .observed
     }
 
+    /// True while the official signal exposes a future window deadline that the
+    /// menu presents as a countdown. A confirmed reset takes precedence, so the
+    /// regular probability copy returns instead of a deadline.
+    var isOfficialWindowDeadlineCountdown: Bool {
+        !isOfficialResetConfirmed && officialSignal?.targetAt != nil
+    }
+
+    /// Progress is only meaningful when both endpoints of the publish → reset
+    /// span are known. A target without `publishedAt` still shows the deadline
+    /// and countdown, but must not invent a percentage.
+    var showsOfficialWindowDeadlineProgress: Bool {
+        isOfficialWindowDeadlineCountdown && officialCountdownProgressSpan() != nil
+    }
+
+    func officialWindowDeadlineText(timeZone: TimeZone) -> String? {
+        guard isOfficialWindowDeadlineCountdown, let targetAt = officialSignal?.targetAt else {
+            return nil
+        }
+        return CodexResetOfficialCountdownFormatting.targetInstantText(
+            for: targetAt,
+            timeZone: timeZone
+        )
+    }
+
     func remainingCountdownSeconds(now: Date = Date()) -> Int? {
         guard !isOfficialResetConfirmed else { return nil }
         guard let targetAt = officialSignal?.targetAt else { return nil }
@@ -674,6 +732,16 @@ struct CodexResetForecast: Equatable {
         }
         if officialCountdownProgressSpan() != nil {
             return nil
+        }
+        if let signal = officialSignal {
+            switch signal.windowKind {
+            case .deadline:
+                return tr(.keyCodexBankedResetOfficialHintDeadline, language: language)
+            case .range:
+                return tr(.keyCodexBankedResetOfficialHintWindow, language: language)
+            case nil:
+                break
+            }
         }
         if officialSignal?.targetAt != nil {
             return tr(.keyCodexBankedResetOfficialHintTime, language: language)
