@@ -108,23 +108,43 @@ final class DashboardPreferencePageRelay: NSObject {
     /// make every settings toggle feel laggy.
     private static let disableConfirmationIdentifiers: Set<String> = ["claudeStatusLineEnabled"]
 
+    /// Generation of each pending disable confirmation, keyed by setting.
+    /// Every toggle of the setting advances its generation, so an earlier
+    /// delayed confirmation cannot run after a newer toggle superseded it.
+    /// Keyed by identifier so toggling another setting does not silently
+    /// cancel a confirmation for this one.
+    private var disableConfirmationGeneration: [String: UInt64] = [:]
+
     /// Let the native turn-off animation finish before presenting the
     /// confirmation. Restoring state from inside the click action (while the
     /// switch is still animating and the alert is becoming key) can leave
     /// macOS 26's hosted switch content without its knob.
     @objc func toggle(_ sender: NSSwitch) {
         guard let identifier = sender.identifier?.rawValue else { return }
+        let requiresDisableConfirmation = Self.disableConfirmationIdentifiers.contains(identifier)
+        var generation: UInt64?
+        if requiresDisableConfirmation {
+            let next = (disableConfirmationGeneration[identifier] ?? 0) &+ 1
+            disableConfirmationGeneration[identifier] = next
+            generation = next
+        }
         if sender.state == .off,
+           requiresDisableConfirmation,
            let confirmDisable,
-           Self.disableConfirmationIdentifiers.contains(identifier) {
+           let generation {
             // Present the confirmation outside the control's action dispatch.
             // `NSSwitch.animator()` is the documented native animation path;
             // assigning `state` directly here snaps and can leave the hosted
             // switch content without its knob when the window is inactive.
             DispatchQueue.main.asyncAfter(
                 deadline: .now() + DashboardSettingsComponents.switchAnimationDuration
-            ) { [weak sender] in
-                guard let sender, sender.state == .off else { return }
+            ) { [weak self, weak sender] in
+                guard let self,
+                      let sender,
+                      sender.state == .off,
+                      self.disableConfirmationGeneration[identifier] == generation else {
+                    return
+                }
                 if confirmDisable(identifier) {
                     self.onToggle?(identifier, false)
                 } else {
