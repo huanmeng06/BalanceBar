@@ -897,8 +897,8 @@ final class QuotaProgressPaceView: NSView, NSPopoverDelegate {
     func firePendingCloseForTesting() { hoverInteraction.firePendingCloseForTesting(for: self) }
 
     var tooltipContent: QuotaPaceTooltipContent? {
-        // A full, untouched window needs no explanation.
-        guard let pace, pace.status != .unused else { return nil }
+        // A valid, untouched window still provides the localized full-quota explanation.
+        guard let pace else { return nil }
         return QuotaPaceTooltipContent(pace: pace, prediction: prediction, resetAt: quotaWindow.resetAt, windowKind: quotaWindow.kind, now: presentationNow, timeZone: displayTimeZone)
     }
 

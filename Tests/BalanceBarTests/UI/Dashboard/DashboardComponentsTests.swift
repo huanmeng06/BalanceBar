@@ -1212,6 +1212,65 @@ final class DashboardComponentsTests: XCTestCase {
         XCTAssertFalse(view.hasPendingCloseForTesting)
     }
 
+    func testFullQuotaMarkerShowsPopoverAtRightEdgeForBothWindows() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        for kind: OfficialQuotaWindow.Kind in [.fiveHour, .sevenDay] {
+            let duration: TimeInterval = kind == .fiveHour ? 18_000 : 604_800
+            for remaining in [100.0, 99.99995] {
+                let quota = paceWindow(remaining: remaining, reset: now.addingTimeInterval(duration), kind: kind)
+                let host = MenuHoverLinkHostView(frame: NSRect(x: 0, y: 0, width: 220, height: 60))
+                let section = OpenCodexMetricSectionView(layout: OpenCodexOverviewSectionLayout(
+                    id: kind == .fiveHour ? .fiveHour : .sevenDay,
+                    frame: NSRect(x: 0, y: 0, width: 220, height: 40), row: nil))
+                host.addSubview(section)
+                let view = QuotaProgressPaceView(percentage: remaining, window: quota,
+                    identity: OverviewNumericPresentation.identity(for: quota, provider: "Official"),
+                    now: now, colorConfiguration: .default)
+                view.frame = NSRect(x: 10, y: 10, width: 200, height: 18)
+                section.addSubview(view)
+                let menu = NSMenu()
+                let item = NSMenuItem()
+                item.view = host
+                menu.addItem(item)
+                let window = NSWindow(contentRect: host.frame, styleMask: .borderless,
+                    backing: .buffered, defer: false)
+                window.contentView = host
+                ApplicationWindowPresentation.presentInBackground(window)
+                defer {
+                    host.setPaceMenuTracking(false)
+                    window.orderOut(nil)
+                    menu.removeAllItems()
+                }
+                host.layoutSubtreeIfNeeded()
+
+                XCTAssertEqual(view.pace?.status, .unused)
+                let content = try XCTUnwrap(view.tooltipContent)
+                XCTAssertEqual(content.body, tr(.keyQuotaPaceBodyUnused))
+                XCTAssertEqual(view.accessibilityLabel(),
+                    [content.title, content.body].compactMap { $0 }.joined(separator: "\n"))
+                XCTAssertEqual(view.markerCenterX, view.bounds.maxX - 1, accuracy: 0.001)
+                XCTAssertEqual(view.markerHitRect.maxX, view.bounds.maxX)
+
+                let popover = QuotaPacePopoverProbe()
+                view.makePopoverForTesting = { popover }
+                host.setPaceMenuTracking(true)
+                let point = host.convert(NSPoint(x: view.bounds.maxX - 1, y: view.bounds.midY), from: view)
+                host.forwardHover(atHostPoint: point)
+                XCTAssertTrue(view.isHovered)
+                XCTAssertTrue(view.hasPendingShowForTesting)
+                view.firePendingShowForTesting()
+                XCTAssertTrue(view.isTooltipVisible)
+                XCTAssertEqual(popover.showCount, 1)
+                XCTAssertEqual((popover.contentViewController as? QuotaPaceTooltipViewController)?.content, content)
+                XCTAssertTrue(popover.anchorView === host)
+
+                host.forwardHover(atHostPoint: NSPoint(x: 5, y: 5))
+                view.firePendingCloseForTesting()
+                XCTAssertFalse(view.isTooltipVisible)
+            }
+        }
+    }
+
     func testPaceUpdateInvalidationAndCompactPredictionCopy() throws {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
         let quota = paceWindow(remaining: 60, reset: now.addingTimeInterval(11_160))
