@@ -870,7 +870,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         XCTAssertEqual(snapshot.resetForecast.confidence.displayText(), "--")
     }
 
-    func testOfficialRefreshRendersQuotaBeforeForecastAndHonorsTenMinuteTTL() throws {
+    func testOfficialRefreshRendersQuotaBeforeForecastAndHonorsSixtySecondTTL() throws {
         try setCurrentProvider("codex-replacement")
         let clock = TestClock(date: Date(timeIntervalSince1970: 1_700_000_000))
         let fiveHour = OfficialQuotaWindow(
@@ -993,7 +993,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         XCTAssertEqual(filled?.resetForecast.probability24h, .percent(24))
         XCTAssertFalse(filled?.resetForecast.isCached ?? true)
 
-        clock.advance(by: 60)
+        clock.advance(by: 30)
         coordinator.refreshStandardProvider(
             current: current,
             client: .codex,
@@ -1951,7 +1951,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         XCTAssertEqual(fixture.forecastRequestCount, 1)
     }
 
-    func testUnavailableAndFailedForecastRetrySoonerThanSuccessfulCacheExpires() throws {
+    func testUnavailableAndFailedForecastRetriesWhileSuccessfulForecastCacheHolds() throws {
         let fixture = ObservationFixture()
         fixture.update { $0.forecast = Data("{}".utf8) }
         let clock = TestClock(date: Date(timeIntervalSince1970: 1_800_000_000))
@@ -1972,9 +1972,9 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         fixture.update { $0.forecastStatus = 200; $0.forecast = ObservationFixture.forecast(episode: "recovered") }
         XCTAssertEqual(try observationRefresh(coordinator, fixture: fixture, renders: 2).resetForecast.officialResetObservation, .watching)
         XCTAssertEqual(fixture.forecastRequestCount, 3)
-        clock.advance(by: ProviderRefreshCoordinator.codexResetForecastRetryInterval)
+        clock.advance(by: ProviderRefreshCoordinator.codexResetForecastTTL - 1)
         _ = try observationRefresh(coordinator, fixture: fixture)
-        XCTAssertEqual(fixture.forecastRequestCount, 3, "successful forecast keeps its ten-minute cache")
+        XCTAssertEqual(fixture.forecastRequestCount, 3, "successful forecast keeps its 60-second cache")
     }
 
     func testForecastRecoveryBeforeResetRetainsConsumptionEvidence() throws {
@@ -1990,8 +1990,8 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         XCTAssertEqual(try observationRefresh(coordinator, fixture: fixture, renders: 2).resetForecast.officialResetObservation, .watching)
         XCTAssertEqual(fixture.forecastRequestCount, 2)
 
-        // T+3 minutes: the same episode resets. The successful cache is sufficient.
-        clock.advance(by: 120)
+        // T+90 seconds: the same episode resets. The successful cache is sufficient.
+        clock.advance(by: 30)
         fixture.update { $0.windows = ObservationFixture.windows(100, 100, cycle: 2) }
         XCTAssertEqual(try observationRefresh(coordinator, fixture: fixture).resetForecast.officialResetObservation, .observed)
         XCTAssertEqual(fixture.forecastRequestCount, 2)
@@ -2177,10 +2177,10 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         let clock = TestClock(date: Date(timeIntervalSince1970: 1_800_000_000))
         let coordinator = try observationCoordinator(fixture, store: observationStore(), clock: clock)
         _ = try observationRefresh(coordinator, fixture: fixture, renders: 2)
-        let published = clock.now.addingTimeInterval(60)
-        clock.advance(by: 90)
+        let published = clock.now.addingTimeInterval(30)
+        clock.advance(by: 40)
         _ = try observationRefresh(coordinator, fixture: fixture)
-        clock.advance(by: 90)
+        clock.advance(by: 10)
         fixture.update { $0.windows = ObservationFixture.windows(100, 100, cycle: 2) }
         XCTAssertNil(try observationRefresh(coordinator, fixture: fixture).resetForecast.officialSignal)
         clock.advance(by: 421)
@@ -2190,16 +2190,16 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
     }
 
     func testNewSignalCanAdoptProvisionalCachedEventOnlyWithinPublicationWindow() throws {
-        for (publicationOffset, validateA) in [(60.0, false), (240.0, false), (60.0, true)] {
+        for (publicationOffset, validateA) in [(15.0, false), (45.0, false), (15.0, true)] {
             let fixture = ObservationFixture()
             let clock = TestClock(date: Date(timeIntervalSince1970: 1_800_000_000))
             let store = try observationStore()
             let coordinator = try observationCoordinator(fixture, store: store, clock: clock)
             _ = try observationRefresh(coordinator, fixture: fixture, renders: 2)
             let published = clock.now.addingTimeInterval(publicationOffset)
-            clock.advance(by: 120)
+            clock.advance(by: 30)
             _ = try observationRefresh(coordinator, fixture: fixture)
-            clock.advance(by: 60)
+            clock.advance(by: 15)
             fixture.update { $0.windows = ObservationFixture.windows(100, 100, cycle: 2) }
             _ = try observationRefresh(coordinator, fixture: fixture)
             XCTAssertNil(store.load(providerID: "codex-replacement", accountKey: "a@example.com")?.observation.confirmedDetectedAt)
@@ -2213,7 +2213,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
             }
             fixture.update { $0.forecast = ObservationFixture.forecast(episode: "second", publishedAt: published) }
             let result = try observationRefresh(coordinator, fixture: fixture, renders: 2)
-            XCTAssertEqual(result.resetForecast.isOfficialResetConfirmed, publicationOffset < 120 && !validateA)
+            XCTAssertEqual(result.resetForecast.isOfficialResetConfirmed, publicationOffset < 30 && !validateA)
             XCTAssertEqual(store.load(providerID: "codex-replacement", accountKey: "a@example.com")?.episodeKey, "tweet_id:second")
         }
     }
@@ -2320,19 +2320,19 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         let clock = TestClock(date: Date(timeIntervalSince1970: 1_800_000_000))
         let coordinator = try observationCoordinator(fixture, store: store, clock: clock)
         _ = try observationRefresh(coordinator, fixture: fixture, renders: 2)
-        clock.advance(by: 60)
+        clock.advance(by: 20)
         let publicationB = clock.now
-        clock.advance(by: 60)
+        clock.advance(by: 10)
         _ = try observationRefresh(coordinator, fixture: fixture)
-        clock.advance(by: 60)
+        clock.advance(by: 10)
         fixture.update { $0.windows = ObservationFixture.windows(100, 100, cycle: 2) }
         _ = try observationRefresh(coordinator, fixture: fixture)
         let event = try XCTUnwrap(store.loadQuotaEvidence(providerID: "codex-replacement", accountKey: "a@example.com")?.detectedAt)
-        clock.advance(by: 60)
+        clock.advance(by: 10)
         fixture.update { $0.windows = ObservationFixture.windows(80, 90, cycle: 2) }
         _ = try observationRefresh(coordinator, fixture: fixture)
         XCTAssertEqual(store.loadQuotaEvidence(providerID: "codex-replacement", accountKey: "a@example.com")?.detectedAt, event)
-        clock.advance(by: 361)
+        clock.advance(by: 421)
         fixture.update { $0.forecast = ObservationFixture.forecast(episode: "B", publishedAt: publicationB) }
         XCTAssertTrue(try observationRefresh(coordinator, fixture: fixture, renders: 2).resetForecast.isOfficialResetConfirmed)
     }
@@ -2343,20 +2343,20 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         let clock = TestClock(date: Date(timeIntervalSince1970: 1_800_000_000))
         let coordinator = try observationCoordinator(fixture, store: store, clock: clock)
         _ = try observationRefresh(coordinator, fixture: fixture, renders: 2)
-        clock.advance(by: 60)
+        clock.advance(by: 10)
         fixture.update { $0.windows = ObservationFixture.windows(100, 100, cycle: 2) }
         XCTAssertTrue(try observationRefresh(coordinator, fixture: fixture).resetForecast.isOfficialResetConfirmed)
         let oldDetected = store.load(providerID: "codex-replacement", accountKey: "a@example.com")?.observation.detectedAt
-        clock.advance(by: 60)
+        clock.advance(by: 10)
         let publicationB = clock.now
-        clock.advance(by: 60)
+        clock.advance(by: 10)
         fixture.update { $0.windows = ObservationFixture.windows(70, 80, cycle: 2) }
         _ = try observationRefresh(coordinator, fixture: fixture)
-        clock.advance(by: 60)
+        clock.advance(by: 10)
         fixture.update { $0.windows = ObservationFixture.windows(100, 100, cycle: 3) }
         _ = try observationRefresh(coordinator, fixture: fixture)
         XCTAssertNotEqual(store.loadQuotaEvidence(providerID: "codex-replacement", accountKey: "a@example.com")?.detectedAt, oldDetected)
-        clock.advance(by: 361)
+        clock.advance(by: 421)
         fixture.update { $0.forecastStatus = 503 }
         _ = try observationRefresh(coordinator, fixture: fixture, renders: 2)
         clock.advance(by: 60)

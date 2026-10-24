@@ -471,6 +471,8 @@
 "codex.banked_reset.high_probability" = "Hohe Prob.";
 "codex.banked_reset.official_hint_no_time" = "Offizieller Hinweis · Kein Zeitpunkt";
 "codex.banked_reset.official_hint_time" = "Offizieller Hinweis · Zeitpunkt";
+"codex.banked_reset.official_hint_deadline" = "Offizieller Hinweis · Frist";
+"codex.banked_reset.official_hint_window" = "Offizieller Hinweis · Zeitfenster";
 "codex.banked_reset.confidence_prefix" = "Konfidenz:";
 "codex.banked_reset.confidence_low" = "Niedrig";
 "codex.banked_reset.confidence_medium" = "Mittel";
