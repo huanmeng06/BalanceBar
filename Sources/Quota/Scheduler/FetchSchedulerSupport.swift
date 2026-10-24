@@ -56,6 +56,13 @@ public protocol ManualRefreshFreePathChecking {
 public protocol RealtimeSourceFreshnessProviding {
     /// Receipt time of the latest trusted real-time observation, or `nil`.
     var lastTrustedRealtimeObservationAt: Date? { get }
+
+    /// Earliest reset deadline that passed and still awaits official confirmation, or `nil`.
+    var pendingResetOf: Date? { get }
+}
+
+public extension RealtimeSourceFreshnessProviding {
+    var pendingResetOf: Date? { nil }
 }
 
 /// Scheduler state that must survive app restarts.
@@ -227,6 +234,10 @@ public struct FetchSchedulerStatus: Equatable {
     public var manualTokenCost: Int
     public var manualRefreshWindow: TimeInterval
     public var cooldownRemaining: TimeInterval
+    /// End of the current failure backoff, when one holds requests back.
+    public var failureBackoffUntil: Date?
+    /// When the token bucket will hold `manualTokenCost` tokens again; `nil` when it already does.
+    public var manualTokensReadyAt: Date?
     public var isUnauthorizedPaused: Bool
     public var isBusy: Bool
     public var at: Date

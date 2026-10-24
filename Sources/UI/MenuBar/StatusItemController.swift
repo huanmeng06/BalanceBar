@@ -6129,7 +6129,18 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             return tr(.keyStatusItemControllerRefreshNowRateLimited, arguments: [text])
         case .justRefreshed?:
             return tr(.keyStatusItemControllerRefreshNowJustRefreshed)
-        case .localFresh?, .recentResult?, .inFlight?:
+        case let .recentResult(until)?:
+            let seconds = Int(max(0, until.timeIntervalSince(now).rounded(.up)))
+            return tr(.keyStatusItemControllerRefreshNowRecentResult, arguments: ["\(seconds)"])
+        case let .failureBackoff(until)?:
+            let seconds = Int(max(0, until.timeIntervalSince(now).rounded(.up)))
+            return tr(.keyStatusItemControllerRefreshNowFailureBackoff, arguments: ["\(seconds)"])
+        case let .outOfTokens(until)?:
+            let seconds = Int(max(0, until.timeIntervalSince(now).rounded(.up)))
+            return tr(.keyStatusItemControllerRefreshNowOutOfTokens, arguments: ["\(seconds)"])
+        case .awaitingResetConfirmation?:
+            return tr(.keyStatusItemControllerRefreshNowAwaitingConfirmation)
+        case .localFresh?, .inFlight?:
             return tr(.keyStatusItemControllerRefreshNowJustRefreshed)
         case .networkUnavailable?, .succeeded?:
             return nil
@@ -7746,10 +7757,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     /// Each card is validated against its own account: aggregated Codex
-    /// cards may belong to accounts other than the active one.
+    /// cards may belong to accounts other than the active one. Claude cards
+    /// use the same rule; their contexts are recorded by the refresh
+    /// coordinator from the account-wide Claude quota pipeline.
     private func quotaPaceCycleStart(for window: OfficialQuotaWindow, context: OverviewCardContext) -> Date? {
         let snapshot = context.snapshot
-        guard context.paceClient == .codex, snapshot.kind == .official,
+        guard context.paceClient == .codex || context.paceClient == .claude, snapshot.kind == .official,
               case .available(let email) = context.account?.state,
               snapshot.quotaPredictionAccountKey == email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
               let cycle = QuotaPredictionCycle(window: window) else { return nil }

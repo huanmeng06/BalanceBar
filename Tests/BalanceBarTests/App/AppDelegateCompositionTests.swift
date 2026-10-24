@@ -175,7 +175,7 @@ final class AppDelegateCompositionTests: XCTestCase {
         let source = try balanceBarSource()
         let propertyStart = try XCTUnwrap(source.range(of: "private var showsAvailableUpdateBadge: Bool"))
         let propertyEnd = try XCTUnwrap(
-            source.range(of: "private func currentProviderName()", range: propertyStart.upperBound..<source.endIndex)
+            source.range(of: "private func reloadCurrentProviderNameCache(", range: propertyStart.upperBound..<source.endIndex)
         )
         let property = String(source[propertyStart.lowerBound..<propertyEnd.lowerBound])
 
