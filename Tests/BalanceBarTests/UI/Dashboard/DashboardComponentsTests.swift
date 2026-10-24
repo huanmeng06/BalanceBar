@@ -3116,6 +3116,53 @@ final class DashboardComponentsTests: XCTestCase {
         }
     }
 
+    func testCountdownTooltipExplainsResetWindowInEveryLanguage() throws {
+        let date = Date(timeIntervalSince1970: 1_800_000_000)
+        let timeZone = try XCTUnwrap(TimeZone(secondsFromGMT: 0))
+        var forecast = CodexResetForecast.demo(updatedAt: date)
+        forecast.officialSignal = CodexResetOfficialSignal(
+            probability: .percent(93),
+            targetAt: date.addingTimeInterval(3_600),
+            publishedAt: date.addingTimeInterval(-3_600)
+        )
+        for language in AppLanguage.allCases where language != .system {
+            let content = StatusItemController.codexResetForecastTooltip(
+                for: forecast, language: language, now: date, timeZone: timeZone
+            )
+            XCTAssertEqual(
+                content.title,
+                tr(.keyCodexBankedResetWindowDeadlineCountdown, language: language),
+                language.rawValue
+            )
+            XCTAssertEqual(
+                content.body,
+                tr(.keyCodexResetSignalWindowTooltipBody, language: language),
+                language.rawValue
+            )
+            XCTAssertEqual(
+                content.disclaimer,
+                tr(.keyCodexResetSignalWindowTooltipDisclaimer, language: language),
+                language.rawValue
+            )
+            XCTAssertNotEqual(
+                content.disclaimer,
+                tr(.keyCodexResetSignalTooltipDisclaimer, language: language),
+                language.rawValue
+            )
+            let controller = DashboardForecastTooltipViewController(content: content)
+            controller.loadViewIfNeeded()
+            for field in controller.view.subviews.compactMap({ $0 as? NSTextField }) {
+                XCTAssertTrue(controller.view.bounds.contains(field.frame), language.rawValue)
+                XCTAssertFalse(field.cell?.truncatesLastVisibleLine ?? true, language.rawValue)
+                XCTAssertGreaterThanOrEqual(
+                    field.frame.height,
+                    try XCTUnwrap(field.cell).cellSize(forBounds: field.bounds).height,
+                    language.rawValue
+                )
+            }
+        }
+    }
+
     func testForecastTooltipKeepsYearForOlderUpdatesAndUnknownDate() throws {
         let formatter = ISO8601DateFormatter()
         let date = try XCTUnwrap(formatter.date(from: "2025-10-07T09:21:00Z"))

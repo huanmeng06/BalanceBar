@@ -549,6 +549,31 @@ enum CodexResetOfficialCountdownFormatting {
         }
         return "\(remainder)m"
     }
+
+    /// Absolute deadline shown under the countdown title, for example
+    /// `10/23 15:00 (GMT+8)`. The offset is resolved at the target instant so
+    /// DST, day boundaries and sub-hour zones match the displayed local time.
+    /// The numeric pattern is locale-independent because the surrounding menu
+    /// copy is already localized and this line must stay compact.
+    static func targetInstantText(for targetAt: Date, timeZone: TimeZone) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.timeZone = timeZone
+        formatter.dateFormat = "M/d HH:mm"
+        return "\(formatter.string(from: targetAt)) (\(gmtOffsetText(for: targetAt, timeZone: timeZone)))"
+    }
+
+    static func gmtOffsetText(for date: Date, timeZone: TimeZone) -> String {
+        let totalMinutes = timeZone.secondsFromGMT(for: date) / 60
+        let sign = totalMinutes < 0 ? "-" : "+"
+        let absolute = abs(totalMinutes)
+        let hours = absolute / 60
+        let minutes = absolute % 60
+        return minutes == 0
+            ? "GMT\(sign)\(hours)"
+            : String(format: "GMT%@%d:%02d", sign, hours, minutes)
+    }
 }
 
 /// Mutually exclusive menu presentation for the reset-probability block.
@@ -629,6 +654,30 @@ struct CodexResetForecast: Equatable {
 
     var isOfficialResetConfirmed: Bool {
         officialSignal != nil && officialResetObservation == .observed
+    }
+
+    /// True while the official signal exposes a future window deadline that the
+    /// menu presents as a countdown. A confirmed reset takes precedence, so the
+    /// regular probability copy returns instead of a deadline.
+    var isOfficialWindowDeadlineCountdown: Bool {
+        !isOfficialResetConfirmed && officialSignal?.targetAt != nil
+    }
+
+    /// Progress is only meaningful when both endpoints of the publish → reset
+    /// span are known. A target without `publishedAt` still shows the deadline
+    /// and countdown, but must not invent a percentage.
+    var showsOfficialWindowDeadlineProgress: Bool {
+        isOfficialWindowDeadlineCountdown && officialCountdownProgressSpan() != nil
+    }
+
+    func officialWindowDeadlineText(timeZone: TimeZone) -> String? {
+        guard isOfficialWindowDeadlineCountdown, let targetAt = officialSignal?.targetAt else {
+            return nil
+        }
+        return CodexResetOfficialCountdownFormatting.targetInstantText(
+            for: targetAt,
+            timeZone: timeZone
+        )
     }
 
     func remainingCountdownSeconds(now: Date = Date()) -> Int? {
