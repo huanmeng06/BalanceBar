@@ -23,6 +23,7 @@ struct DashboardCompositionState {
     let defaultStatusLinks: () -> [StatusLink]
     let setStatusLinks: ([StatusLink]) -> Void
     let notificationConfiguration: DashboardNotificationPageConfiguration?
+    let modSyncStatus: () -> ModSyncStatus?
 
     init(
         preferences: AppPreferences,
@@ -44,7 +45,8 @@ struct DashboardCompositionState {
         notificationConfiguration: DashboardNotificationPageConfiguration? = nil,
         snapshotProviderID: @escaping () -> String? = { nil },
         aggregationSnapshots: @escaping () -> [String: Snapshot] = { [:] },
-        isAggregationMode: @escaping () -> Bool = { false }
+        isAggregationMode: @escaping () -> Bool = { false },
+        modSyncStatus: @escaping () -> ModSyncStatus? = { nil }
     ) {
         self.preferences = preferences
         self.devBundleIdentifier = devBundleIdentifier
@@ -66,6 +68,7 @@ struct DashboardCompositionState {
         self.defaultStatusLinks = defaultStatusLinks
         self.setStatusLinks = setStatusLinks
         self.notificationConfiguration = notificationConfiguration
+        self.modSyncStatus = modSyncStatus
     }
 }
 
@@ -200,6 +203,7 @@ struct DashboardCompositionActions {
     let onUpdateChannelChanged: (UpdateChannel) -> Void
     let onOpenCCSwitch: () -> Void
     let onOpenSystemMenuBarSettings: () -> Void
+    let onManageModSync: (NSView) -> Void
     let onCheckForUpdates: () -> Void
     let onInstallUpdate: () -> Void
     let onOpenUpdateNotes: () -> Void
@@ -270,6 +274,8 @@ final class DashboardCompositionController {
             onOpenCCSwitch: actions.onOpenCCSwitch,
             onOpenSystemMenuBarSettings: actions.onOpenSystemMenuBarSettings,
             onManualRefresh: actions.onManualRefresh,
+            onManageModSync: actions.onManageModSync,
+            modSyncStatusProvider: state.modSyncStatus,
             onCheckForUpdates: actions.onCheckForUpdates,
             onInstallUpdate: actions.onInstallUpdate,
             onOpenUpdateNotes: actions.onOpenUpdateNotes,
@@ -677,6 +683,14 @@ final class DashboardCompositionController {
     func refreshCCSwitchConnectionSummaries() {
         guard canUpdateSettingsPage(.general) else { return }
         dashboardPreferencePages.refreshConnectionSummaries(state.ccSwitchConnectionSummaries())
+        invalidateSearchData()
+    }
+
+    /// Live Claude Mod realtime sync status from the coordinator's detection and the
+    /// pipeline's snapshot evidence. Covers an already-visible General page.
+    func refreshModSync() {
+        guard canUpdateSettingsPage(.general) else { return }
+        dashboardPreferencePages.refreshModSync()
         invalidateSearchData()
     }
 

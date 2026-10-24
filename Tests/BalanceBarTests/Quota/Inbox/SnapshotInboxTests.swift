@@ -88,11 +88,12 @@ final class SnapshotInboxTests: XCTestCase {
 
     /// Writes a Schema v1 snapshot with the given source and account email hash.
     private func placeSnapshot(
-        source: String?, emailHash: String?, as name: String = "snapshot.json"
+        source: String?, emailHash: String?, as name: String = "snapshot.json",
+        percentage: Double = 10
     ) throws {
         var object: [String: Any] = [
             "updated_at": "2026-10-17T06:12:03Z",
-            "five_hour": ["used_percentage": 10, "resets_at": "2026-10-17T09:00:00Z"],
+            "five_hour": ["used_percentage": percentage, "resets_at": "2026-10-17T09:00:00Z"],
         ]
         if let source { object["source"] = source }
         if let emailHash { object["account"] = ["email_hash": emailHash] }
@@ -331,5 +332,93 @@ final class SnapshotInboxTests: XCTestCase {
         XCTAssertThrowsError(try QuotaSnapshotParser.parse(Data(#"{"updated_at":"#.utf8))) {
             XCTAssertEqual($0 as? QuotaSnapshotParseError, .malformedJSON)
         }
+    }
+
+    // MARK: Rejection observer (Issue #597)
+
+    private final class LockedReasons {
+        private let lock = NSLock()
+        private var values: [SnapshotRejectionReason] = []
+        func append(_ value: SnapshotRejectionReason) { lock.lock(); values.append(value); lock.unlock() }
+        var all: [SnapshotRejectionReason] { lock.lock(); defer { lock.unlock() }; return values }
+    }
+
+    /// FSEvents latency plus the watcher's coalescing interval is not a fixed constant,
+    /// so assertions on asynchronously observed files poll up to a generous deadline.
+    private func waitUntil(timeout: TimeInterval = 3, _ condition: () -> Bool) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if condition() { return true }
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        return condition()
+    }
+
+    func testRejectionObserverReportsAccountAttributionRejectionsOnly() throws {
+        let reasons = LockedReasons()
+        let source = SnapshotInbox(
+            inboxDirectory: inbox, identity: FakeIdentity(),
+            configuration: SnapshotInboxConfiguration(halfWriteRetryDelay: 0.05))
+        source.rejectionObserver = { reasons.append($0) }
+        inboxes.append(source)
+        source.start { _ in }
+        // Foreign hash → attribution mismatch.
+        try placeSnapshot(
+            source: "balancebar-mod", emailHash: SnapshotInbox.emailHash("someone-else@example.com"), as: "wrong.json")
+        // Missing hash on a Mod snapshot → attribution impossible.
+        try placeSnapshot(source: "balancebar-mod", emailHash: nil, as: "missing.json")
+        // An unrelated source without a hash is not a Mod snapshot and not a rejection.
+        try placeSnapshot(source: "unrelated-producer", emailHash: nil, as: "other.json")
+        Thread.sleep(forTimeInterval: 0.5)
+        source.stop()
+        // Paths are processed in sorted order, so only the set of reasons is deterministic.
+        XCTAssertEqual(reasons.all.count, 2)
+        XCTAssertEqual(Set(reasons.all), [.accountEmailHashMismatch, .missingAccountEmailHash])
+    }
+
+    func testUnverifiedCycleIsReportedByTheRejectionObserver() throws {
+        let reasons = LockedReasons()
+        let source = SnapshotInbox(
+            inboxDirectory: inbox, identity: FakeIdentity(),
+            configuration: SnapshotInboxConfiguration(halfWriteRetryDelay: 0.05))
+        source.rejectionObserver = { reasons.append($0) }
+        source.cycleVerification = { _, _ in false }
+        inboxes.append(source)
+        source.start { _ in }
+        try placeSnapshot(source: "balancebar-mod", emailHash: SnapshotInbox.emailHash("user@example.com"), as: "cycle.json")
+        XCTAssertTrue(waitUntil { !reasons.all.isEmpty })
+        source.stop()
+        XCTAssertEqual(reasons.all, [.cycleUnverified])
+    }
+
+    func testReplaySuppressionDoesNotFireTheRejectionObserver() throws {
+        let reasons = LockedReasons()
+        let collector = Collector()
+        let source = SnapshotInbox(
+            inboxDirectory: inbox, identity: FakeIdentity(),
+            configuration: SnapshotInboxConfiguration(halfWriteRetryDelay: 0.05))
+        source.rejectionObserver = { reasons.append($0) }
+        inboxes.append(source)
+        source.start { collector.add($0) }
+        try placeSnapshot(
+            source: "balancebar-mod", emailHash: SnapshotInbox.emailHash("user@example.com"),
+            as: "ok.json", percentage: 20)
+        XCTAssertTrue(waitUntil { !collector.all.isEmpty }, "the snapshot is emitted")
+        // Let FSEvents catch-up rescans of the directory settle before promoting the
+        // baseline, so the replay below is measured against adopted evidence only.
+        Thread.sleep(forTimeInterval: 1.5)
+        source.queue.sync {}
+        let adopted = collector.all.map(\.receivedAt)
+        for receivedAt in adopted {
+            source.noteProcessed(source: "balancebar-mod", accountID: "acct-1", receivedAt: receivedAt, accepted: true)
+        }
+        source.queue.sync {}
+        try placeSnapshot(
+            source: "balancebar-mod", emailHash: SnapshotInbox.emailHash("user@example.com"),
+            as: "replay.json", percentage: 20)
+        XCTAssertTrue(waitUntil { source.queue.sync { source.suppressedReplayCount } >= 1 })
+        Thread.sleep(forTimeInterval: 0.5)
+        source.stop()
+        XCTAssertEqual(reasons.all, [], "a whole-snapshot replay is healthy, not a rejection")
     }
 }

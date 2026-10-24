@@ -29,6 +29,8 @@ struct DashboardPreferencePageActions {
     let onOpenCCSwitch: () -> Void
     let onOpenSystemMenuBarSettings: () -> Void
     let onManualRefresh: () -> Void
+    let onManageModSync: (NSView) -> Void
+    let modSyncStatusProvider: () -> ModSyncStatus?
     let onCheckForUpdates: () -> Void
     let onInstallUpdate: () -> Void
     let onOpenUpdateNotes: () -> Void
@@ -103,6 +105,7 @@ final class DashboardPreferencePages {
         relay.onOpenCCSwitch = actions.onOpenCCSwitch
         relay.onOpenSystemMenuBarSettings = actions.onOpenSystemMenuBarSettings
         relay.onManualRefresh = actions.onManualRefresh
+        relay.onManageModSync = actions.onManageModSync
         relay.onCheckForUpdates = actions.onCheckForUpdates
         relay.onInstallUpdate = actions.onInstallUpdate
         relay.onOpenUpdateNotes = actions.onOpenUpdateNotes
@@ -139,7 +142,8 @@ final class DashboardPreferencePages {
                 relay: relay,
                 updateState: updateState,
                 launchAtLoginState: launchAtLoginController.currentState(),
-                launchWithChatGPTState: launchWithChatGPTController.currentState()
+                launchWithChatGPTState: launchWithChatGPTController.currentState(),
+                modSyncStatus: actions.modSyncStatusProvider()
             ))
         case .menuBar:
             return menuBarPage.make(.init(
@@ -386,6 +390,14 @@ final class DashboardPreferencePages {
         generalPage.refreshConnectionSummaries(summaries)
         if isSearchProjectionActive {
             searchGeneralPage.refreshConnectionSummaries(summaries)
+        }
+    }
+
+    func refreshModSync() {
+        let status = actions.modSyncStatusProvider()
+        generalPage.refreshModSync(status)
+        if isSearchProjectionActive {
+            searchGeneralPage.refreshModSync(status)
         }
     }
 

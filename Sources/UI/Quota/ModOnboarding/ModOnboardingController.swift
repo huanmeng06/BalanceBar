@@ -25,6 +25,14 @@ enum ModOnboardingText: String, CaseIterable {
     case dismissedTitle = "mod.dismissed.title"
     case dismissedNote = "mod.dismissed.note"
     case undoDismiss = "mod.dismissed.undo"
+    case uninstallButton = "mod.panel.uninstall"
+    case uninstallStep1 = "mod.uninstall.step1"
+    case uninstallStep2 = "mod.uninstall.step2"
+    case uninstallDone = "mod.uninstall.done"
+    case uninstallDoneNote = "mod.uninstall.done_note"
+    case failureUninstall = "mod.failure.uninstall_command"
+    case copyEnableCommands = "mod.failure.copy_enable"
+    case failureInbox = "mod.failure.inbox"
 
     var defaultText: String {
         switch self {
@@ -51,6 +59,14 @@ enum ModOnboardingText: String, CaseIterable {
         case .dismissedTitle: return "已关闭提示"
         case .dismissedNote: return "菜单底部改为显示“数据来源”。可在 设置 › 高级 › 实时增强 中重新开启。"
         case .undoDismiss: return "撤销"
+        case .uninstallButton: return "卸载实时同步"
+        case .uninstallStep1: return "卸载 Mod"
+        case .uninstallStep2: return "移除安装来源"
+        case .uninstallDone: return "已卸载 ✓"
+        case .uninstallDoneNote: return "额度显示回退到官方路径；statusLine 与其他插件配置保持不变。"
+        case .failureUninstall: return "卸载未完成。请在终端中运行下面的命令："
+        case .copyEnableCommands: return "复制启用命令"
+        case .failureInbox: return "快照收件箱无法创建（权限不足或所有者不符）。请检查 ~/Library/Application Support/BalanceBar/inbox 后重试。"
         }
     }
 
@@ -78,6 +94,9 @@ enum ModPanelState: Equatable {
     case succeeded
     case failed(ModInstallFailure)
     case dismissConfirmed
+    case uninstalling(current: ModUninstallStep)
+    case uninstallSucceeded
+    case uninstallFailed(ModUninstallFailure)
 }
 
 /// Drives the panel and the settings page. Main-thread only; installation work runs on the installer's queue.
@@ -92,6 +111,11 @@ final class ModOnboardingController {
     private let preference: ModPromptPreferenceStoring
     private let copyToPasteboard: (String) -> Void
     private var installInFlight = false
+    private var uninstallInFlight = false
+    /// Fired when the install commands finish, so the owner can re-run detection.
+    var onInstallCompleted: ((ModInstallResult) -> Void)?
+    /// Fired when the uninstall commands finish, so the owner can re-run detection.
+    var onUninstallCompleted: ((ModUninstallResult) -> Void)?
 
     init(
         plan: ModInstallPlan = .standard,
@@ -110,8 +134,11 @@ final class ModOnboardingController {
 
     var isPromptDismissed: Bool { preference.isPromptDismissed }
 
+    /// Prepares the panel for a (re)presentation: finished install/uninstall/failure
+    /// pages must not survive into the next management session. Operations that are
+    /// still running keep their progress.
     func resetToIntro() {
-        guard !installInFlight else { return }
+        guard !installInFlight, !uninstallInFlight else { return }
         state = .intro(dismissChecked: false)
     }
 
@@ -121,7 +148,7 @@ final class ModOnboardingController {
     }
 
     func startInstall() {
-        guard !installInFlight else { return }
+        guard !installInFlight, !uninstallInFlight else { return }
         installInFlight = true
         state = .installing(current: .addMarketplace)
         installer.install(
@@ -133,11 +160,34 @@ final class ModOnboardingController {
                 case .success: self.state = .succeeded
                 case let .failure(failure): self.state = .failed(failure)
                 }
+                self.onInstallCompleted?(result)
+            }
+        )
+    }
+
+    /// Uninstalls this plugin's user-scope registration and the marketplace entry the
+    /// install flow created. Nothing else is touched: no other plugin, no statusLine.
+    func startUninstall() {
+        guard !uninstallInFlight, !installInFlight else { return }
+        uninstallInFlight = true
+        state = .uninstalling(current: .uninstallPlugin)
+        installer.uninstall(
+            progress: { [weak self] step in self?.state = .uninstalling(current: step) },
+            completion: { [weak self] result in
+                guard let self else { return }
+                self.uninstallInFlight = false
+                switch result {
+                case .success: self.state = .uninstallSucceeded
+                case let .failure(failure): self.state = .uninstallFailed(failure)
+                }
+                self.onUninstallCompleted?(result)
             }
         )
     }
 
     func copyInstallCommands() { copyToPasteboard(plan.copyableCommands) }
+    func copyUninstallCommands() { copyToPasteboard(plan.copyableUninstallCommands) }
+    func copyEnableCommand() { copyToPasteboard(plan.copyableEnableCommand) }
     func copyReloadCommand() { copyToPasteboard(ModInstallPlan.reloadCommand) }
 
     /// Closing the panel. With "do not prompt again" checked this enters the confirmation state.

@@ -175,6 +175,35 @@ final class ClaudeQuotaPipeline {
     }
     private var updateHandler: ((ClaudeQuotaState) -> Void)?
 
+    /// What happened to one BalanceBar Mod snapshot; consumed by the settings entry's
+    /// status display (`ModSyncStatus`). The rejection variants are decided by the inbox
+    /// before emission, the processed variant by the merge engine.
+    struct ModSnapshotEvent: Equatable {
+        enum Kind: Equatable {
+            /// The snapshot reached the merge engine; `accepted` says whether it is now
+            /// displayed (the only thing that counts as trusted real-time evidence).
+            case processed(accepted: Bool)
+            /// The inbox refused to emit the snapshot at all.
+            case rejected(reason: SnapshotRejectionReason)
+            /// The signed-in account changed: the settings entry must drop all snapshot
+            /// evidence gathered for the previous account.
+            case accountChanged
+        }
+
+        var kind: Kind
+        var window: QuotaWindowKind?
+        var observedAt: Date?
+        var receivedAt: Date
+    }
+
+    /// Called on pipeline/inbox background queues after each Mod snapshot outcome.
+    /// Pure notification: merge, scheduling and acceptance decisions are untouched.
+    var modSnapshotEventSink: ((ModSnapshotEvent) -> Void)? {
+        get { lock.withLock { modSnapshotEventHandler } }
+        set { lock.withLock { modSnapshotEventHandler = newValue } }
+    }
+    private var modSnapshotEventHandler: ((ModSnapshotEvent) -> Void)?
+
     /// - Parameters:
     ///   - calibrationIntervalCap: Upper bound for how long a fresh real-time source may suppress requests.
     ///   - diagnostics: Receives scheduler skip reasons; production writes them to `SwitchLog`.
@@ -236,6 +265,15 @@ final class ClaudeQuotaPipeline {
         // attributed; the inbox rejects a snapshot when any of its windows fails.
         snapshotInbox?.cycleVerification = { [weak self] window, resetsAt in
             self?.verifySnapshotCycle(window: window, resetsAt: resetsAt)
+        }
+        // Forward inbox-level rejections (account attribution, cycle verification) to the
+        // settings entry; a forwarding-time timestamp is enough because the inbox does not
+        // stamp rejections with an observation time.
+        snapshotInbox?.rejectionObserver = { [weak self] reason in
+            guard let self, let sink = self.modSnapshotEventSink else { return }
+            sink(ModSnapshotEvent(
+                kind: .rejected(reason: reason), window: nil, observedAt: nil,
+                receivedAt: self.now()))
         }
     }
 
@@ -411,6 +449,12 @@ final class ClaudeQuotaPipeline {
 
     private func identityChanged(_ change: AccountIdentityChange) {
         guard change.accountChanged, let engine else { return }
+        // The settings entry must not carry the previous account's snapshot evidence
+        // across a switch (Issue #597: installed is never conflated with collecting).
+        if let sink = modSnapshotEventSink {
+            sink(ModSnapshotEvent(
+                kind: .accountChanged, window: nil, observedAt: nil, receivedAt: now()))
+        }
         engine.accountDidChange(epoch: change.epoch, accountID: change.identity?.stableID)
         realtimeTracker?.reset(epoch: change.epoch)
         statusLineSource?.accountDidChange(epoch: change.epoch)
@@ -446,6 +490,11 @@ final class ClaudeQuotaPipeline {
             diagnostics(
                 "claude mod snapshot rejected; reason=not_displayed_by_merge; window=\(observation.window.rawValue)",
                 .debug)
+        }
+        if let sink = modSnapshotEventSink {
+            sink(ModSnapshotEvent(
+                kind: .processed(accepted: accepted), window: observation.window,
+                observedAt: observation.observedAt, receivedAt: observation.receivedAt))
         }
         return accepted
     }
