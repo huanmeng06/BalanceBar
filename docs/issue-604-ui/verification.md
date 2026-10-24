@@ -8,6 +8,7 @@
 - `git diff --check`: PASS.
 - All three localization probes: PASS. Resource parity: 653 keys × 12 languages.
 - Final UI/search run: **131 tests, 0 failures**. Includes 10 new `ModManagementUITests`, 93 search tests and existing panel/context/coordinator/visibility regressions.
+- Final native-window follow-up: **33 tests, 0 failures**, including 11 management UI tests. Log review found an autoresizing-height conflict when the scroll document changed from a short page to a tall page. The document now measures its stack independently of its previous frame height; `testScrollDocumentGrowsAfterShortPagesAndTracksWindowWidth` covers repeated status changes inside the real scroll view at three widths. The 33-test rerun has **zero unsatisfiable-constraint diagnostics**. The prior 93-test search PASS remains applicable (search code unchanged).
 - Earlier core/localization run: **201 tests, 0 failures**, including 170 core/localization tests listed below and 31 panel/coordinator/render tests. One of the 31 was the temporary historical screenshot exporter; it was removed after generating the before images. Final UI tests supersede that run's overlapping UI evidence.
 - Intermediate search expansion: 2 test methods failed with 6 assertions, identifying missing Mod catalog keys and pre-Mod row-count expectations. Both were fixed in this PR; all 93 search tests then passed in the final 131-test run. No tests skipped or deleted to mask a failure.
 - Local complete XCTest / hosted Full CI: NOT RUN. This PR remains Draft; Full acceptance and real CLI/Desktop Code checks belong to the combined #603 lane.
@@ -26,7 +27,9 @@ xcodebuild -project BalanceBar.xcodeproj -scheme BalanceBar \
 
 The initial build appended `build`. Test runs appended each applicable `-only-testing:BalanceBarTests/<Class>` below, then `test`.
 
-Final run: `ModManagementUITests`, `ModOnboardingPanelTests`, `ModPanelSyncContextTests`, `ModSyncCoordinatorTests`, `ModPromptVisibilityTests`, `DashboardPageSearchTests`.
+Native-window follow-up: `ModManagementUITests`, `ModOnboardingPanelTests`, `ModPanelSyncContextTests`, `ModSyncCoordinatorTests`.
+
+UI/search run: `ModManagementUITests`, `ModOnboardingPanelTests`, `ModPanelSyncContextTests`, `ModSyncCoordinatorTests`, `ModPromptVisibilityTests`, `DashboardPageSearchTests`.
 
 Earlier run: `ModManagementUITests`, `ModOnboardingPanelTests`, `ModPanelSyncContextTests`, `ModSyncCoordinatorTests`, plus these 170 core/localization tests:
 

@@ -297,6 +297,9 @@ final class ModOnboardingPanelView: NSView {
     private(set) var items: [ModPanelItem] = []
     var snapshotLines: [String] { items.map(\.snapshotLine) }
     override var isFlipped: Bool { true }
+    // The scroll document owns its frame height. Do not pin the stack's bottom
+    // to that old height while replacing a short page with taller content.
+    override var fittingSize: NSSize { NSSize(width: bounds.width, height: stack.fittingSize.height) }
     private var contentWidth: CGFloat { max(1, bounds.width - 48) }
 
     init(controller: ModOnboardingController,
@@ -316,7 +319,6 @@ final class ModOnboardingPanelView: NSView {
             stack.leadingAnchor.constraint(equalTo: leadingAnchor),
             stack.trailingAnchor.constraint(equalTo: trailingAnchor),
             stack.topAnchor.constraint(equalTo: topAnchor),
-            stack.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
         controller.onChange = { [weak self] in self?.reload() }
         ready = true
@@ -399,11 +401,11 @@ final class ModOnboardingPanelView: NSView {
             ?? allButtons.first { ["close", "cancelUninstall"].contains($0.identifier?.rawValue ?? "") }
         defaultButton?.keyEquivalent = "\r"
         window?.defaultButtonCell = defaultButton?.cell as? NSButtonCell
-        layoutSubtreeIfNeeded()
         let height = stack.fittingSize.height
         if abs(frame.height - height) > 0.5 {
             super.setFrameSize(NSSize(width: bounds.width, height: height))
         }
+        layoutSubtreeIfNeeded()
         onContentSizeChange?(NSSize(width: bounds.width, height: height))
     }
 

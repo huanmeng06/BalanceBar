@@ -1156,6 +1156,34 @@ final class ModManagementUITests: XCTestCase {
         }
     }
 
+    func testScrollDocumentGrowsAfterShortPagesAndTracksWindowWidth() throws {
+        let c = controller()
+        let windows = ModOnboardingWindowController {
+            ModOnboardingPanelView(controller: c, syncProvider: { self.context(.waitingForData) })
+        }
+        let owner = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 900, height: 800),
+            styleMask: [.titled], backing: .buffered, defer: false)
+        let panel = windows.prepare(owner: owner)
+        defer { windows.close() }
+        let view = try XCTUnwrap(windows.panelView)
+        let scroll = try XCTUnwrap(panel.contentView as? NSScrollView)
+        for width: CGFloat in [420, 760, 480] {
+            panel.setContentSize(NSSize(width: width, height: 360))
+            panel.layoutIfNeeded()
+            for (_, state, status) in fixtures {
+                view.render(content(state, status: status))
+                panel.layoutIfNeeded()
+                XCTAssertEqual(view.frame.width, scroll.contentSize.width, accuracy: 1)
+                XCTAssertEqual(view.frame.height, view.fittingSize.height, accuracy: 1)
+                for field in descendants(view).compactMap({ $0 as? NSTextField }) {
+                    let rect = view.convert(field.bounds, from: field)
+                    XCTAssertLessThanOrEqual(rect.maxY, view.bounds.height + 1)
+                    XCTAssertGreaterThanOrEqual(rect.minY, -1)
+                }
+            }
+        }
+    }
+
     func testExplicitRefreshCallsTheExistingDetectionHook() {
         let view = ModOnboardingPanelView(controller: controller(), syncProvider: { self.context(.claudeMissing) })
         var refreshes = 0
