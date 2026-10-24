@@ -232,6 +232,11 @@ final class ClaudeQuotaPipeline {
         scheduler.setAutomaticTrigger { [weak self] in
             self?.queue.async { self?.prepareAndRequest(.scheduled) }
         }
+        // Inbox snapshots are verified against the official cycle as a whole before they are
+        // attributed; the inbox rejects a snapshot when any of its windows fails.
+        snapshotInbox?.cycleVerification = { [weak self] window, resetsAt in
+            self?.verifySnapshotCycle(window: window, resetsAt: resetsAt)
+        }
     }
 
     deinit {
@@ -424,14 +429,6 @@ final class ClaudeQuotaPipeline {
         // superset windows and unrelated inbox sources never reach the merge engine or card.
         guard observation.source == SnapshotInbox.modSourceID,
               observation.window == .fiveHour || observation.window == .sevenDay else { return }
-        // The snapshot proves its email, not which organization wrote it; when an official
-        // calibration exists, the observation must describe that same cycle to be attributed.
-        if let reason = unverifiedAgainstOfficialCycle(observation) {
-            diagnostics(
-                "claude mod snapshot rejected; reason=\(reason); window=\(observation.window.rawValue)",
-                .debug)
-            return
-        }
         let accepted = receiveNative(observation)
         if !accepted {
             diagnostics(
@@ -440,62 +437,41 @@ final class ClaudeQuotaPipeline {
         }
     }
 
-    /// Returns a rejection reason when the observation cannot be tied to the active
-    /// account's official cycle. The Mod contract carries only an email hash, so a foreign
-    /// identity under the same email can only be told apart by its quota cycle: an
-    /// observation whose reset times do not match the latest official reading is never
-    /// attributed to this account and falls back to the official data.
-    private func unverifiedAgainstOfficialCycle(_ observation: QuotaObservation) -> String? {
+    /// Ingest-time cycle verification handed to the snapshot inbox. The snapshot only
+    /// carries an email hash, so a foreign identity under the same email can only be told
+    /// apart by its quota cycle: a window whose reset time does not match the latest
+    /// official reading fails, which rejects the whole snapshot (`nil` when there is no
+    /// baseline yet — the merge engine's grade-B rules reject those anyway, and while a
+    /// reset awaits confirmation the engine's own provisional rules govern, exactly like
+    /// the statusLine path).
+    fileprivate func verifySnapshotCycle(window: QuotaWindowKind, resetsAt: Date?) -> Bool? {
         guard let engine else { return nil }
-        let window = engine.currentState.windows[observation.window.rawValue]
-        // Without an official baseline the merge engine's grade-B rules reject anyway.
-        guard let gradeA = window?.latestGradeA, gradeA.epoch == observation.epoch else { return nil }
-        // While a reset awaits confirmation the engine's own provisional rules govern.
-        guard window?.pendingResetOf == nil else { return nil }
-        guard let gradeAReset = gradeA.resetsAt, let reset = observation.resetsAt,
-              QuotaMergeEngine.sameResetInstant(reset, gradeAReset) else {
-            return "cycle_unverified_against_official"
-        }
-        return nil
-    }
-
-    /// What a native (statusLine, Mod) observation may do against the displayed reading.
-    private enum NativeObservationDecision: Equatable {
-        /// New evidence: merge and extend realtime freshness.
-        case evidence
-        /// Same value as the displayed reading: merge (refreshes the receipt time), but it
-        /// is a replay, not consumption evidence, and never extends freshness.
-        case replay
-        case rejected(reason: String)
-    }
-
-    /// Native grade-B observations must never move the display backwards inside one cycle,
-    /// whichever local source they come from. Official grade-A readings keep their own
-    /// reset-confirmation rules, so a correction from the server always goes through.
-    private func decide(_ observation: QuotaObservation) -> NativeObservationDecision {
-        guard observation.trust != .a else { return .evidence }
-        guard let engine else { return .evidence }
-        guard let displayed = engine.currentState.windows[observation.window.rawValue]?.displayed,
-              displayed.epoch == observation.epoch,
-              Self.sameCycle(displayed.resetsAt, observation.resetsAt) else { return .evidence }
-        if observation.usedPercentage < displayed.usedPercentage {
-            return .rejected(reason: "usage_decreased_within_cycle")
-        }
-        if observation.usedPercentage == displayed.usedPercentage {
-            return .replay
-        }
-        return .evidence
+        let state = engine.currentState.windows[window.rawValue]
+        guard let gradeA = state?.latestGradeA, gradeA.epoch == identity.accountEpoch else { return nil }
+        guard state?.pendingResetOf == nil else { return true }
+        guard let gradeAReset = gradeA.resetsAt, let reset = resetsAt,
+              QuotaMergeEngine.sameResetInstant(reset, gradeAReset) else { return false }
+        return true
     }
 
     /// Merges one native observation; returns whether the engine now displays it, which is
-    /// the only state that counts as trusted real-time evidence.
+    /// the only state that counts as trusted real-time evidence. Whole-snapshot replays are
+    /// already filtered upstream (statusLine filters them per session, the inbox per
+    /// snapshot), so an accepted observation always records evidence — including a window
+    /// that did not change while its snapshot sibling did.
     @discardableResult
     private func receiveNative(_ observation: QuotaObservation) -> Bool {
         guard let engine else { return false }
-        let decision = decide(observation)
-        if case let .rejected(reason) = decision {
+        // Cross-source monotonicity: a native grade-B reading may never move the display
+        // backwards inside one cycle, whichever local source it comes from. Official
+        // grade-A corrections and the pending-reset rules stay with the merge engine.
+        if observation.trust != .a,
+           let displayed = engine.currentState.windows[observation.window.rawValue]?.displayed,
+           displayed.epoch == observation.epoch,
+           Self.sameCycle(displayed.resetsAt, observation.resetsAt),
+           observation.usedPercentage < displayed.usedPercentage {
             diagnostics(
-                "claude native observation rejected; reason=\(reason); source=\(observation.source); window=\(observation.window.rawValue)",
+                "claude native observation rejected; reason=usage_decreased_within_cycle; source=\(observation.source); window=\(observation.window.rawValue)",
                 .debug)
             return false
         }
@@ -503,7 +479,7 @@ final class ClaudeQuotaPipeline {
         let displayed = engine.currentState.windows[observation.window.rawValue]?.displayed
         let accepted = displayed?.source == observation.source
             && displayed?.receivedAt == observation.receivedAt
-        if accepted, decision == .evidence {
+        if accepted {
             realtimeTracker?.recordTrustedObservation(
                 window: observation.window,
                 observedAt: observation.observedAt ?? observation.receivedAt,

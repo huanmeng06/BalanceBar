@@ -120,6 +120,8 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
     /// Reset times of the stubbed official `usage` response above.
     private static let usageFiveReset = Date(timeIntervalSince1970: 1_700_017_200) // 2023-11-15T03:00:00Z
     private static let usageSevenReset = Date(timeIntervalSince1970: 1_700_438_400) // 2023-11-20T00:00:00Z
+    /// The seven-day reset of the `nearReset` stub (2023-11-21T00:00:00Z).
+    private static let nearResetSevenReset = Date(timeIntervalSince1970: 1_700_000_000 + 524_800)
     private static let isoFormatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
@@ -841,11 +843,13 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         quiet(pipeline)
         XCTAssertEqual(PipelineStubProtocol.requestCount, 1)
 
-        // A same-value heartbeat is a replay: it merges but never extends freshness. Had it
-        // counted as evidence, the tracker would stay fresh until start+486 and both the
+        // A same-value snapshot rewrite is a whole-snapshot replay: the inbox does not even
+        // emit it, so it can neither refresh the display nor extend freshness. Had it been
+        // emitted as evidence, the tracker would stay fresh until start+486 and both the
         // notice and the scheduled read below would disagree.
         try placeModSnapshot(five: 25, seven: 42, observedAt: Self.start.addingTimeInterval(372))
-        _ = try XCTUnwrap(waitForState(pipeline) { $0.updatedAt == Self.start.addingTimeInterval(366) })
+        let inbox = try XCTUnwrap(lastInbox)
+        XCTAssertTrue(pollUntil { inbox.queue.sync { inbox.suppressedReplayCount } >= 1 })
         clock.advance(by: 65) // start+431; the changed snapshot's evidence expired at start+430
         XCTAssertNil(pipeline.manualRefreshNotice(), "the same-value replay must not be local-fresh evidence")
         pipeline.requestFetch(reason: .scheduled)
@@ -860,8 +864,17 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         pipeline.start()
         pipeline.requestFetch(reason: .initial)
         _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+        let inbox = try XCTUnwrap(lastInbox)
         XCTAssertTrue(pollUntil {
-            self.diagnosticLines.all.contains { $0.contains("reason=not_displayed_by_merge") }
+            // Without a baseline the merge engine rejects the snapshot (log); once the
+            // official read has landed first, the cycle verification rejects it (health).
+            let healthRejected = inbox.adapters.contains { adapter in
+                if case let .degraded(reason) = adapter.health,
+                   reason.contains("cycle_unverified_against_official") { return true }
+                return false
+            }
+            return healthRejected
+                || self.diagnosticLines.all.contains { $0.contains("reason=not_displayed_by_merge") }
         }, "the engine rejection should be diagnosed")
         let state = try XCTUnwrap(pipeline.latestState)
         XCTAssertEqual(state.display.window(for: .fiveHour)?.usedPercentage, 23)
@@ -880,11 +893,13 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         try placeModSnapshot(five: 25, seven: 42, observedAt: Self.start.addingTimeInterval(5))
         _ = try XCTUnwrap(waitForState(pipeline) { $0.status == .realtime })
 
-        // Later the same file is rewritten byte for byte (inbox rescan); the freshness is
-        // measured from the snapshot's own observation time, so nothing turns fresh.
+        // Later the same file is rewritten byte for byte (inbox rescan): the whole-snapshot
+        // replay is suppressed upstream and the freshness measured from the snapshot's own
+        // observation time has long expired, so nothing turns fresh.
         clock.advance(by: 300)
         try placeModSnapshot(five: 25, seven: 42, observedAt: Self.start.addingTimeInterval(5))
-        _ = try XCTUnwrap(waitForState(pipeline) { $0.updatedAt == Self.start.addingTimeInterval(300) })
+        let inbox = try XCTUnwrap(lastInbox)
+        XCTAssertTrue(pollUntil { inbox.queue.sync { inbox.suppressedReplayCount } >= 1 })
         XCTAssertNil(pipeline.manualRefreshNotice(), "a rescanned old snapshot is not local-fresh")
         pipeline.requestFetch(reason: .scheduled)
         waitForRequests(2)
@@ -923,8 +938,18 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         pipeline.start()
         pipeline.requestFetch(reason: .initial)
         _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+        let inbox = try XCTUnwrap(lastInbox)
         XCTAssertTrue(pollUntil {
-            self.diagnosticLines.all.contains { $0.contains("reason=cycle_unverified_against_official") }
+            // The superset snapshot is either rejected wholesale by the cycle verification
+            // (health) or passed through and rejected by the merge engine (log) — whichever
+            // official read wins the race; both prove it never displayed.
+            let healthRejected = inbox.adapters.contains { adapter in
+                if case let .degraded(reason) = adapter.health,
+                   reason.contains("cycle_unverified_against_official") { return true }
+                return false
+            }
+            return healthRejected
+                || self.diagnosticLines.all.contains { $0.contains("reason=not_displayed_by_merge") }
         })
         quiet(pipeline)
         XCTAssertEqual(mergeWindowKeys(pipeline), ["five_hour", "seven_day"])
@@ -1026,22 +1051,28 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         pipeline.start()
         pipeline.requestFetch(reason: .initial)
         _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+        let inbox = try XCTUnwrap(lastInbox)
 
         // The snapshot only carries an email hash; a different cycle cannot be tied to this
-        // account's official calibration, so it is never attributed.
+        // account's official calibration, so the whole snapshot is rejected.
         try placeModSnapshot(
             five: 24, seven: 42, observedAt: Self.start.addingTimeInterval(5),
             fiveReset: Self.start.addingTimeInterval(50_000), sevenReset: Self.start.addingTimeInterval(90_000))
-        XCTAssertTrue(pollUntil {
-            self.diagnosticLines.all.contains { $0.contains("reason=cycle_unverified_against_official") }
-        })
+        XCTAssertTrue(pollUntil { inbox.queue.sync { inbox.unverifiedSnapshotRejections } >= 1 })
         XCTAssertEqual(pipeline.latestState?.display.window(for: .fiveHour)?.usedPercentage, 23)
 
-        // Without reset times the cycle cannot be verified either (both windows rejected).
-        try placeModSnapshot(five: 24, seven: 42, observedAt: Self.start.addingTimeInterval(6), omitResets: true)
-        XCTAssertTrue(pollUntil {
-            self.diagnosticLines.all.filter { $0.contains("reason=cycle_unverified_against_official") }.count >= 4
-        })
+        // Mixed cycles: one matching window must not carry a snapshot whose other window
+        // fails verification (no A's 5h next to B's 7d).
+        try placeModSnapshot(
+            five: 24, seven: 42, observedAt: Self.start.addingTimeInterval(6),
+            sevenReset: Self.start.addingTimeInterval(90_000))
+        XCTAssertTrue(pollUntil { inbox.queue.sync { inbox.unverifiedSnapshotRejections } >= 2 })
+        quiet(pipeline)
+        XCTAssertEqual(pipeline.latestState?.display.window(for: .fiveHour)?.usedPercentage, 23)
+
+        // Without reset times the cycle cannot be verified either.
+        try placeModSnapshot(five: 24, seven: 42, observedAt: Self.start.addingTimeInterval(7), omitResets: true)
+        XCTAssertTrue(pollUntil { inbox.queue.sync { inbox.unverifiedSnapshotRejections } >= 3 })
         quiet(pipeline)
         XCTAssertEqual(pipeline.latestState?.display.window(for: .fiveHour)?.usedPercentage, 23)
 
@@ -1049,6 +1080,43 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         try placeModSnapshot(five: 24, seven: 42, observedAt: Self.start.addingTimeInterval(10))
         let attributed = try XCTUnwrap(waitForState(pipeline) { $0.status == .realtime })
         XCTAssertEqual(attributed.display.window(for: .fiveHour)?.usedPercentage, 24)
+    }
+
+    func testStatusLinePartialWindowUpdateKeepsRealtime() throws {
+        let pipeline = makePipeline(
+            configuration: claudeV1TestConfiguration, statusLineEnabled: true,
+            withTestStatusLine: true, withInbox: true)
+        lastStatusLineSessions?.starts["s1"] = Self.start.addingTimeInterval(1)
+        pipeline.start()
+        pipeline.requestFetch(reason: .initial)
+        _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+
+        // statusLine re-renders report both windows whenever any of them changed; a window
+        // whose integer percentage did not move is still part of that fresh report.
+        deliverStatusLine(session: "s1", five: 24, seven: 41, at: Self.start.addingTimeInterval(5))
+        let state = try XCTUnwrap(waitForState(pipeline) { $0.status == .realtime })
+        XCTAssertEqual(state.display.window(for: .fiveHour)?.usedPercentage, 24)
+        XCTAssertEqual(state.display.window(for: .sevenDay)?.usedPercentage, 41)
+    }
+
+    func testModPartialWindowChangeKeepsWholeSnapshotAsEvidence() throws {
+        let tracker = ClaudeRealtimeTracker(now: { [clock] in clock!.now })
+        let pipeline = makePipeline(realtimeTracker: tracker, configuration: claudeV1TestConfiguration, withInbox: true)
+        pipeline.start()
+        pipeline.requestFetch(reason: .initial)
+        _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+        try placeModSnapshot(five: 24, seven: 42, observedAt: Self.start.addingTimeInterval(5))
+        _ = try XCTUnwrap(waitForState(pipeline) { $0.status == .realtime })
+
+        // One window changed, the other repeated its value: like statusLine's whole-payload
+        // semantics, the whole snapshot is fresh evidence, so both windows are re-recorded.
+        clock.advance(by: 10)
+        try placeModSnapshot(five: 25, seven: 42, observedAt: Self.start.addingTimeInterval(15))
+        _ = try XCTUnwrap(waitForState(pipeline) { $0.display.window(for: .fiveHour)?.usedPercentage == 25 })
+        // The unchanged window's evidence moved with this snapshot (start+15 + 120s); a
+        // per-window replay rule would have left it at start+5 + 120s and expired by now.
+        clock.advance(by: 115) // start+125
+        XCTAssertEqual(pipeline.latestState?.status, .realtime)
     }
 
     func testPendingResetBlocksModDataFromSuppressingOfficialConfirmation() throws {
@@ -1064,9 +1132,11 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         waitForRequests(2)
 
         // The Mod's next-cycle snapshot is shown provisionally but the window stays pending.
+        // Its seven-day window still describes the current official cycle, so the snapshot
+        // is coherent and passes the snapshot-atomic cycle verification.
         try placeModSnapshot(
             five: 2, seven: 42, observedAt: Self.start.addingTimeInterval(125),
-            fiveReset: Self.start.addingTimeInterval(10_000))
+            fiveReset: Self.start.addingTimeInterval(10_000), sevenReset: Self.nearResetSevenReset)
         let provisional = try XCTUnwrap(waitForState(pipeline) {
             $0.display.window(for: .fiveHour)?.usedPercentage == 2
         })

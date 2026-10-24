@@ -41,6 +41,13 @@ public final class SnapshotInbox: QuotaSource {
     /// Claude quota evidence; unrelated inbox files are left to whichever consumer declares them.
     public static let modSourceID = "balancebar-mod"
 
+    /// Optional per-window verification of a parsed snapshot against the consumer's
+    /// authoritative state. Return `false` when the window cannot be tied to that state
+    /// (the whole snapshot is then rejected), `true` when it is verified, and `nil` when
+    /// there is no baseline to check against. The check is snapshot atomic: a snapshot in
+    /// which one window fails is never partially attributed.
+    public var cycleVerification: ((QuotaWindowKind, Date?) -> Bool?)?
+
     public let sourceID = "snapshot-inbox"
 
     private let inboxDirectory: URL
@@ -58,6 +65,19 @@ public final class SnapshotInbox: QuotaSource {
     private var handler: ((QuotaObservation) -> Void)?
     private var watchers: [DirectoryWatcher] = []
     private var generation = 0
+    /// Window values of the last emitted snapshot per account and source. A snapshot whose
+    /// windows all repeat the previous emission is a replay: it is not emitted again, so it
+    /// can neither refresh the display nor extend realtime freshness. In-memory only.
+    private var lastEmittedSnapshots: [String: [EmittedWindow]] = [:]
+    /// Diagnostics counters (inbox-queue confined); tests read them through `queue.sync`.
+    private(set) var suppressedReplayCount = 0
+    private(set) var unverifiedSnapshotRejections = 0
+
+    private struct EmittedWindow: Equatable {
+        let kind: QuotaWindowKind
+        let usedPercentage: Double
+        let resetsAt: Date?
+    }
 
     /// - Parameters:
     ///   - inboxDirectory: Directory holding Schema v1 files; created on start when missing.
@@ -223,6 +243,27 @@ public final class SnapshotInbox: QuotaSource {
         }
         let epoch = identity.accountEpoch
         let source = parsed.source.flatMap { $0 == "unknown" ? nil : $0 } ?? adapter.sourceID
+        // Snapshot-atomic cycle verification: one window that cannot be tied to the
+        // consumer's authoritative cycle rejects the whole snapshot, so a snapshot that
+        // cannot be fully attributed is never partially accepted.
+        if let verify = cycleVerification {
+            for window in parsed.windows where verify(window.kind, window.resetsAt) == false {
+                unverifiedSnapshotRejections += 1
+                adapter.health = .degraded(reason: "rejected snapshot: cycle_unverified_against_official")
+                return
+            }
+        }
+        // A whole-snapshot replay (every window identical to the previous emission for this
+        // account and source) carries no new quota evidence and is not emitted again.
+        let fingerprint = parsed.windows.map { EmittedWindow(
+            kind: $0.kind, usedPercentage: $0.usedPercentage, resetsAt: $0.resetsAt) }
+        let emissionKey = "\(account.stableID)/\(source)"
+        if lastEmittedSnapshots[emissionKey] == fingerprint {
+            suppressedReplayCount += 1
+            adapter.health = .healthy
+            return
+        }
+        lastEmittedSnapshots[emissionKey] = fingerprint
         let received = now()
         for window in parsed.windows {
             guard let observation = QuotaObservation(
