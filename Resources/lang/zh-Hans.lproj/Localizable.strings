@@ -480,7 +480,7 @@
 
 "codex.banked_reset.official_hint_confirmed" = "本轮已完成";
 "codex.banked_reset.official_reset_confirmed" = "✅ 已重置";
-"codex.banked_reset.window_deadline_countdown" = "重置 DDL";
+"codex.banked_reset.window_deadline_countdown" = "重置窗口";
 
 "codex.reset_signal.tooltip_title" = "官方重置信号";
 "codex.reset_signal.tooltip_body" = "当前官方信号的强信号概率或倒计时提示，独立于普通 24 / 48 小时预测。";

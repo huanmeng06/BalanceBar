@@ -480,7 +480,7 @@
 
 "codex.banked_reset.official_hint_confirmed" = "Diese Runde abgeschlossen";
 "codex.banked_reset.official_reset_confirmed" = "✅ Zurückgesetzt";
-"codex.banked_reset.window_deadline_countdown" = "Reset-Frist";
+"codex.banked_reset.window_deadline_countdown" = "Reset-Fenster";
 
 "codex.reset_signal.tooltip_title" = "Offizielles Reset-Signal";
 "codex.reset_signal.tooltip_body" = "Wahrscheinlichkeit oder Countdown des aktuellen starken offiziellen Signals, getrennt von der normalen 24-/48-Stunden-Prognose.";

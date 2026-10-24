@@ -480,7 +480,7 @@
 
 "codex.banked_reset.official_hint_confirmed" = "이번 회차 완료";
 "codex.banked_reset.official_reset_confirmed" = "✅ 리셋 완료";
-"codex.banked_reset.window_deadline_countdown" = "리셋 마감";
+"codex.banked_reset.window_deadline_countdown" = "리셋 기간";
 
 "codex.reset_signal.tooltip_title" = "공식 리셋 신호";
 "codex.reset_signal.tooltip_body" = "현재 공식 신호의 강한 신호 확률 또는 카운트다운이며 일반 24 / 48시간 예측과는 별개입니다.";
