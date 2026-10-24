@@ -24,8 +24,7 @@ final class ModSyncCoordinator {
     /// The currently presented management panel; refreshed on every status change so an
     /// open panel never keeps showing "detecting" or a finished operation's page.
     private weak var presentedPanel: ModOnboardingPanelView?
-    /// Strong reference: the system does not guarantee an NSPopover survives without one.
-    private var popover: NSPopover?
+    private lazy var managementWindow = ModOnboardingWindowController { [unowned self] in self.attachPanel() }
 
     /// Fired on the main thread whenever the status changes; the owner refreshes the row.
     var onStatusChange: ((ModSyncStatus) -> Void)?
@@ -101,19 +100,11 @@ final class ModSyncCoordinator {
         }
     }
 
-    /// Opens the management panel anchored to the settings row's button. Detection runs
-    /// (throttled) so the panel opens with current facts.
+    /// Open from the single settings entry, with a parent that owns its lifetime.
     func presentPanel(from anchor: NSView) {
-        let panel = attachPanel()
+        guard let owner = anchor.window else { return }
+        managementWindow.show(owner: owner)
         startDetectionIfNeeded()
-        popover?.performClose(nil)
-        let newPopover = NSPopover()
-        newPopover.behavior = .transient
-        let viewController = NSViewController()
-        viewController.view = panel
-        newPopover.contentViewController = viewController
-        newPopover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .minY)
-        popover = newPopover
     }
 
     /// Builds the management panel for presentation: resets finished operation pages to
@@ -125,7 +116,7 @@ final class ModSyncCoordinator {
             controller: controller,
             localize: localizePanel,
             syncProvider: { [weak self] in self.map { $0.syncContext } })
-        panel.onRequestClose = { [weak self] in self?.popover?.performClose(nil) }
+        panel.onRequestRefresh = { [weak self] in self?.startDetectionIfNeeded(force: true) }
         presentedPanel = panel
         return panel
     }
@@ -161,12 +152,39 @@ func modOnboardingLocalize(_ text: ModOnboardingText) -> String {
 }
 
 func realtimeBoostLocalize(_ text: RealtimeBoostText) -> String {
-    tr(LocalizationKey.key(for: text))
+    realtimeBoostLocalize(text, language: .selected)
+}
+
+/// Presentation accepts a format template; render the localized positional argument
+/// as a literal placeholder here, then let Presentation insert the actual value.
+func realtimeBoostLocalize(_ text: RealtimeBoostText, language: AppLanguage) -> String {
+    switch text {
+    case .statusActive, .statusUnsupported, .statusVersionTooOld:
+        return tr(LocalizationKey.key(for: text), arguments: ["%@"], language: language)
+    default:
+        return tr(LocalizationKey.key(for: text), language: language)
+    }
 }
 
 extension LocalizationKey {
     static func key(for text: ModOnboardingText) -> LocalizationKey {
         switch text {
+        case .subtitle: return .modUISubtitle
+        case .benefitRealtime: return .modUIBenefitRealtime
+        case .benefitFallback: return .modUIBenefitFallback
+        case .benefitPrivacy: return .modUIBenefitPrivacy
+        case .coverageNote: return .modUICoverageNote
+        case .fallbackNote: return .modUIFallbackNote
+        case .waitingTitle: return .modUIWaitingTitle
+        case .waitingStep: return .modUIWaitingStep
+        case .backgroundNote: return .modUIBackgroundNote
+        case .refresh: return .modUIRefresh
+        case .retry: return .modUIRetry
+        case .confirmUninstall: return .modUIConfirmUninstall
+        case .cancel: return .modUICancel
+        case .uninstallFailureTitle: return .modUIUninstallFailureTitle
+        case .accountAdvice: return .modUIAccountAdvice
+        case .cycleAdvice: return .modUICycleAdvice
         case .promptRow: return .modPromptRow
         case .panelTitle: return .modPanelTitle
         case .point1: return .modPanelPoint1

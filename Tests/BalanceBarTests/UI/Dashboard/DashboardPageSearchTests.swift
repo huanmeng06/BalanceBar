@@ -2694,9 +2694,9 @@ final class DashboardPageSearchTests: XCTestCase {
         let firstTitle = tr(.keyDashboardOfficialQuotaRefreshFrequency, language: .english)
         let secondTitle = tr(.keyDashboardGeneralAndRefreshPagesBalanceUpdatesDuringTasks, language: .english)
         let section = try XCTUnwrap(firstSection(titled: refreshHeading, in: page) as? SettingsSectionView)
-        // Codex/Grok official, Claude calibration, Claude Code native sync, API providers.
-        XCTAssertEqual(section.contentViews.count, 4)
-        XCTAssertEqual(section.separators.count, 3)
+        // Codex/Grok official, Claude calibration, native sync, Mod sync, API providers.
+        XCTAssertEqual(section.contentViews.count, 5)
+        XCTAssertEqual(section.separators.count, 4)
         XCTAssertTrue(section.separators.allSatisfy { !$0.isHidden })
         let codexIndex = 0
 
@@ -2718,7 +2718,7 @@ final class DashboardPageSearchTests: XCTestCase {
         }
         assertVisualSeparatorsMatchVisibleRows(section)
         XCTAssertTrue(section.contentViews[codexIndex] === settingsRow(titled: firstTitle, in: section))
-        XCTAssertTrue(section.contentViews[3] === settingsRow(titled: secondTitle, in: section))
+        XCTAssertTrue(section.contentViews[4] === settingsRow(titled: secondTitle, in: section))
     }
 
     func testGeneralSearchCatalogCoversUnifiedRefreshSettings() {
@@ -2734,7 +2734,10 @@ final class DashboardPageSearchTests: XCTestCase {
                 .keyDashboardRefreshAPIScope,
                 .keyDashboardGeneralAndRefreshPagesRefreshNow,
                 .keyClaudeStatusLineCalibration,
-                .keyClaudeStatusLineEnabled
+                .keyClaudeStatusLineEnabled,
+                .keyClaudeModSyncTitle,
+                .keyClaudeModSyncManage,
+                .modSyncStatusDetecting
             ] {
                 XCTAssertTrue(titles.contains(tr(key)), "\(language) search catalog lacks \(key.rawValue)")
             }
