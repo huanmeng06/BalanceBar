@@ -183,7 +183,7 @@
 "dashboard.general.and.refresh.pages.update_check_failure_suggestion_http_too_many_requests" = "Подождите немного перед повторной попыткой и избегайте частых проверок.";
 "dashboard.general.and.refresh.pages.update_check_failure_suggestion_invalid_response" = "Повторите попытку позже; если проблема сохранится, обратитесь к сопровождающему проекта.";
 "dashboard.general.and.refresh.pages.update_check_failure_suggestion_invalid_release_version" = "Повторите попытку позже; если проблема сохранится, обратитесь к сопровождающему проекта.";
-"dashboard.general.and.refresh.pages.update_available_revalidating_value_value" = "Доступна новая версия: %1$@ -> %2$@; идёт повторная проверка…";
+"dashboard.general.and.refresh.pages.update_available_revalidating_value_value" = "Доступна новая версия: %1$@ -> %2$@; получение обновлений…";
 "dashboard.general.and.refresh.pages.update_check_failed_update_retained_value_value_value" = "Найденное в прошлый раз обновление: %1$@; в этот раз получить его не удалось.\nПричина: %2$@\nПредложение: %3$@";
 "dashboard.general.and.refresh.pages.update_check_failure_reason_rate_limited" = "Достигнут лимит запросов к GitHub API";
 "dashboard.general.and.refresh.pages.update_check_failure_suggestion_rate_limited_wait_value" = "GitHub ограничивает запросы обновлений; повторите попытку примерно через %1$@ мин.";

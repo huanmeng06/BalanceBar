@@ -3313,7 +3313,7 @@ final class UpdateTests: XCTestCase {
         XCTAssertTrue(revalidating.showsReleaseNotesButton)
         XCTAssertFalse(revalidating.buttonEnabled)
         XCTAssertFalse(revalidating.performsInstall)
-        XCTAssertEqual(revalidating.subtitle, "新版本可用：1.0.0 -> 1.5.0（正在重新验证…）")
+        XCTAssertEqual(revalidating.subtitle, "新版本可用：1.0.0 -> 1.5.0（正在获取更新…）")
 
         let recheckFailed = DashboardUpdatePresentation.make(
             for: .recheckFailed(current: current, latest: latest, failure: .rateLimited(retryAfter: 90)),

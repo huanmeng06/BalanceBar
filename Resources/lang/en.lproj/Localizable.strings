@@ -183,7 +183,7 @@
 "dashboard.general.and.refresh.pages.update_check_failure_suggestion_http_too_many_requests" = "Wait a while before trying again, and avoid repeated checks.";
 "dashboard.general.and.refresh.pages.update_check_failure_suggestion_invalid_response" = "Try again later; if the problem persists, contact the maintainer.";
 "dashboard.general.and.refresh.pages.update_check_failure_suggestion_invalid_release_version" = "Contact the maintainer to verify the release version.";
-"dashboard.general.and.refresh.pages.update_available_revalidating_value_value" = "New version available: %1$@ -> %2$@; re-verifying…";
+"dashboard.general.and.refresh.pages.update_available_revalidating_value_value" = "New version available: %1$@ -> %2$@; fetching updates…";
 "dashboard.general.and.refresh.pages.update_check_failed_update_retained_value_value_value" = "Update found last time: %1$@; fetching it failed this time.\nReason: %2$@\nSuggestion: %3$@";
 "dashboard.general.and.refresh.pages.update_check_failure_reason_rate_limited" = "GitHub API rate limit reached";
 "dashboard.general.and.refresh.pages.update_check_failure_suggestion_rate_limited_wait_value" = "GitHub limits update requests; try again in about %1$@ minutes.";
