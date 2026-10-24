@@ -201,7 +201,7 @@ final class ResourceRuleCard: NSStackView {
 
     private let titleLabel = NSTextField(labelWithString: "")
     private let currentLabel = NSTextField(labelWithString: "")
-    private let resourceSwitch = DashboardSettingsSwitch()
+    private let resourceSwitch = NSSwitch()
 
     private let sourcePopUp: NSPopUpButton
     private let firstAccessory: ThresholdAccessory

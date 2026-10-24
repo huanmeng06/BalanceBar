@@ -1259,7 +1259,10 @@ enum ClaudeStatusLineDisableFailurePresenter {
         for window in NSApp.windows {
             guard let content = window.contentView else { continue }
             for sync in switches(in: content) where sync.identifier?.rawValue == "claudeStatusLineEnabled" {
-                sync.state = .on
+                // Use AppKit's animator proxy so the restore uses the native
+                // switch animation instead of a state jump that can leave the
+                // macOS 26 hosted knob hidden.
+                sync.animator().state = .on
             }
         }
         let alert = NSAlert()
@@ -1267,6 +1270,12 @@ enum ClaudeStatusLineDisableFailurePresenter {
         alert.messageText = tr(.keyClaudeStatusLineDisableFailedTitle)
         alert.informativeText = tr(.keyClaudeStatusLineDisableFailedMessage)
         alert.addButton(withTitle: tr(.keyClaudeStatusLineDisableFailedOK))
-        alert.runModal()
+        // Let the native switch restore animation finish before taking over
+        // the run loop with the modal alert.
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + DashboardSettingsComponents.switchAnimationDuration
+        ) {
+            alert.runModal()
+        }
     }
 }

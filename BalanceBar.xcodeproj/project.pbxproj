@@ -107,11 +107,9 @@
 		A26400000000000000000001 /* QuotaColorThresholdSlider.swift in Sources */ = {isa = PBXBuildFile; fileRef = A26400000000000000000002 /* QuotaColorThresholdSlider.swift */; };
 		A26400000000000000000003 /* QuotaProgressColorConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A26400000000000000000004 /* QuotaProgressColorConfigurationTests.swift */; };
 		A100000000000000000000A1 /* DashboardSettingsComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000A2 /* DashboardSettingsComponents.swift */; };
-		A39300000000000000000002 /* DashboardSettingsSwitch.swift in Sources */ = {isa = PBXBuildFile; fileRef = A39300000000000000000001 /* DashboardSettingsSwitch.swift */; };
 		A39000000000000000000002 /* SettingsRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A39000000000000000000001 /* SettingsRowView.swift */; };
 		A39100000000000000000002 /* SettingsSectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A39100000000000000000001 /* SettingsSectionView.swift */; };
 		A39000000000000000000004 /* SettingsRowViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A39000000000000000000003 /* SettingsRowViewTests.swift */; };
-		A39400000000000000000004 /* DashboardSettingsSwitchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A39400000000000000000003 /* DashboardSettingsSwitchTests.swift */; };
 		A39100000000000000000004 /* SettingsSectionViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A39100000000000000000003 /* SettingsSectionViewTests.swift */; };
 		A10000000000000000000094 /* DashboardComponentsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000095 /* DashboardComponentsTests.swift */; };
 		A10000000000000000000096 /* StatusLinksEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000097 /* StatusLinksEditor.swift */; };
@@ -374,11 +372,9 @@
 		A26400000000000000000002 /* QuotaColorThresholdSlider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaColorThresholdSlider.swift; sourceTree = "<group>"; };
 		A26400000000000000000004 /* QuotaProgressColorConfigurationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaProgressColorConfigurationTests.swift; sourceTree = "<group>"; };
 		A100000000000000000000A2 /* DashboardSettingsComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardSettingsComponents.swift; sourceTree = "<group>"; };
-		A39300000000000000000001 /* DashboardSettingsSwitch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardSettingsSwitch.swift; sourceTree = "<group>"; };
 		A39000000000000000000001 /* SettingsRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsRowView.swift; sourceTree = "<group>"; };
 		A39100000000000000000001 /* SettingsSectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsSectionView.swift; sourceTree = "<group>"; };
 		A39000000000000000000003 /* SettingsRowViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsRowViewTests.swift; sourceTree = "<group>"; };
-		A39400000000000000000003 /* DashboardSettingsSwitchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardSettingsSwitchTests.swift; sourceTree = "<group>"; };
 		A39100000000000000000003 /* SettingsSectionViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsSectionViewTests.swift; sourceTree = "<group>"; };
 		A10000000000000000000095 /* DashboardComponentsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardComponentsTests.swift; sourceTree = "<group>"; };
 		A10000000000000000000097 /* StatusLinksEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusLinksEditor.swift; sourceTree = "<group>"; };
@@ -859,7 +855,6 @@
 				A1000000000000000000007A /* DashboardWindowDragRegionTests.swift */,
 				A10000000000000000000095 /* DashboardComponentsTests.swift */,
 				A39000000000000000000003 /* SettingsRowViewTests.swift */,
-				A39400000000000000000003 /* DashboardSettingsSwitchTests.swift */,
 				A39100000000000000000003 /* SettingsSectionViewTests.swift */,
 				A1000000000000000000009B /* StatusLinksTests.swift */,
 				A100000000000000000000C2 /* DashboardPreferencePagesTests.swift */,
@@ -1152,7 +1147,6 @@
 				A10000000000000000000091 /* DashboardComponents.swift */,
 				A26400000000000000000002 /* QuotaColorThresholdSlider.swift */,
 				A100000000000000000000A2 /* DashboardSettingsComponents.swift */,
-				A39300000000000000000001 /* DashboardSettingsSwitch.swift */,
 			);
 			path = Components;
 			sourceTree = "<group>";
@@ -1594,7 +1588,6 @@
 				A10000000000000000000090 /* DashboardComponents.swift in Sources */,
 				A26400000000000000000001 /* QuotaColorThresholdSlider.swift in Sources */,
 				A100000000000000000000A1 /* DashboardSettingsComponents.swift in Sources */,
-				A39300000000000000000002 /* DashboardSettingsSwitch.swift in Sources */,
 				A39000000000000000000002 /* SettingsRowView.swift in Sources */,
 				A39100000000000000000002 /* SettingsSectionView.swift in Sources */,
 				A1000000000000000000009D /* DashboardWindowController.swift in Sources */,
@@ -1688,7 +1681,6 @@
 				A10000000000000000000079 /* DashboardWindowDragRegionTests.swift in Sources */,
 				A10000000000000000000094 /* DashboardComponentsTests.swift in Sources */,
 				A39000000000000000000004 /* SettingsRowViewTests.swift in Sources */,
-				A39400000000000000000004 /* DashboardSettingsSwitchTests.swift in Sources */,
 				A39100000000000000000004 /* SettingsSectionViewTests.swift in Sources */,
 				A1000000000000000000006E /* DashboardScrollClampingTests.swift in Sources */,
 				A44600000000000000000004 /* DashboardPlatformCapabilitiesTests.swift in Sources */,

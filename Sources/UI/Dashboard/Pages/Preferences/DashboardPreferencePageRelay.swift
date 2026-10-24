@@ -103,10 +103,34 @@ final class DashboardPreferencePageRelay: NSObject {
         return alert.runModal() == .alertSecondButtonReturn
     }
 
+    /// Only these settings ask before turning off. Ordinary switches apply
+    /// immediately; delaying them for a confirmation that cannot appear would
+    /// make every settings toggle feel laggy.
+    private static let disableConfirmationIdentifiers: Set<String> = ["claudeStatusLineEnabled"]
+
+    /// Let the native turn-off animation finish before presenting the
+    /// confirmation. Restoring state from inside the click action (while the
+    /// switch is still animating and the alert is becoming key) can leave
+    /// macOS 26's hosted switch content without its knob.
     @objc func toggle(_ sender: NSSwitch) {
         guard let identifier = sender.identifier?.rawValue else { return }
-        if sender.state == .off, let confirmDisable, !confirmDisable(identifier) {
-            sender.state = .on
+        if sender.state == .off,
+           let confirmDisable,
+           Self.disableConfirmationIdentifiers.contains(identifier) {
+            // Present the confirmation outside the control's action dispatch.
+            // `NSSwitch.animator()` is the documented native animation path;
+            // assigning `state` directly here snaps and can leave the hosted
+            // switch content without its knob when the window is inactive.
+            DispatchQueue.main.asyncAfter(
+                deadline: .now() + DashboardSettingsComponents.switchAnimationDuration
+            ) { [weak sender] in
+                guard let sender, sender.state == .off else { return }
+                if confirmDisable(identifier) {
+                    self.onToggle?(identifier, false)
+                } else {
+                    sender.animator().state = .on
+                }
+            }
             return
         }
         onToggle?(identifier, sender.state == .on)
