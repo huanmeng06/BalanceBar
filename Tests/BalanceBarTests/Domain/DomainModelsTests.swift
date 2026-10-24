@@ -916,6 +916,58 @@ final class DomainModelsTests: XCTestCase {
             inverted.officialHintText(language: .simplifiedChinese),
             "官方重置提示 · 具体时间点"
         )
+
+        // Window-deadline boundaries reuse the countdown UI but must be
+        // labelled as window boundaries, never as a guaranteed reset instant.
+        let deadlineForecast = CodexResetForecast(
+            probability24h: .percent(20),
+            probability48h: .percent(35),
+            confidence: .low,
+            updatedAt: date,
+            isCached: false,
+            officialSignal: CodexResetOfficialSignal(
+                probability: .percent(93),
+                targetAt: resetAt,
+                windowKind: .deadline,
+                publishedAt: published
+            )
+        )
+        XCTAssertNil(deadlineForecast.officialHintText())
+        XCTAssertNotNil(deadlineForecast.officialCountdownProgressSpan())
+        XCTAssertTrue(deadlineForecast.isOfficialWindowDeadlineCountdown)
+        XCTAssertTrue(deadlineForecast.showsOfficialWindowDeadlineProgress)
+        let deadlineWithoutPublish = CodexResetForecast(
+            probability24h: .percent(20),
+            probability48h: .percent(35),
+            confidence: .low,
+            updatedAt: date,
+            isCached: false,
+            officialSignal: CodexResetOfficialSignal(
+                probability: .percent(93),
+                targetAt: resetAt,
+                windowKind: .deadline
+            )
+        )
+        XCTAssertEqual(
+            deadlineWithoutPublish.officialHintText(language: .simplifiedChinese),
+            "官方重置提示 · 窗口截止"
+        )
+        let rangeForecast = CodexResetForecast(
+            probability24h: .percent(20),
+            probability48h: .percent(35),
+            confidence: .low,
+            updatedAt: date,
+            isCached: false,
+            officialSignal: CodexResetOfficialSignal(
+                probability: .percent(93),
+                targetAt: resetAt,
+                windowKind: .range
+            )
+        )
+        XCTAssertEqual(
+            rangeForecast.officialHintText(language: .simplifiedChinese),
+            "官方重置提示 · 时间窗口"
+        )
         XCTAssertNil(zeroCountPresented.resetForecast.officialHintText())
 
         let balance = Snapshot.balance(

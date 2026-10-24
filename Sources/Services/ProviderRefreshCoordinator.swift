@@ -453,7 +453,9 @@ final class ProviderRefreshCoordinator {
         let forecast: CodexResetForecast
         let fetchedAt: Date
     }
-    static let codexResetForecastTTL: TimeInterval = 10 * 60
+    // The public forecast is published with max-age=60. Avoid retaining an
+    // obsolete announced deadline after upstream replaces or retracts it.
+    static let codexResetForecastTTL: TimeInterval = 60
     // Failed/unavailable requests retry on the ordinary quota refresh cadence;
     // only successful forecasts receive the longer cache lifetime.
     static let codexResetForecastRetryInterval: TimeInterval = 60

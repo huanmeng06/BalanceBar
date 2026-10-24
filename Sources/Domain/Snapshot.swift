@@ -418,10 +418,19 @@ enum CodexResetProbability: Equatable {
 /// strong-signal mode. Probability and a future countdown instant are parsed
 /// separately and may be missing.
 struct CodexResetOfficialSignal: Equatable {
+    /// Boundary semantics of `targetAt`. When set, the countdown target is an
+    /// announced observation-window boundary, never a guaranteed reset instant.
+    enum WindowKind: Equatable {
+        /// `target_kind=deadline`: the window closes at `targetAt`.
+        case deadline
+        /// No explicit target: `targetAt` is the window's `end_at`.
+        case range
+    }
     var probability: CodexResetProbability
     /// Absolute future instant from `official_signal.window` or an equivalent
     /// single-instant field. Nil when the payload has no countdown target.
     var targetAt: Date? = nil
+    var windowKind: WindowKind? = nil
     /// Tweet/publish instant from `official_signal.at`. Used only as the
     /// progress-bar right endpoint, never as the countdown amount.
     var publishedAt: Date? = nil
@@ -723,6 +732,16 @@ struct CodexResetForecast: Equatable {
         }
         if officialCountdownProgressSpan() != nil {
             return nil
+        }
+        if let signal = officialSignal {
+            switch signal.windowKind {
+            case .deadline:
+                return tr(.keyCodexBankedResetOfficialHintDeadline, language: language)
+            case .range:
+                return tr(.keyCodexBankedResetOfficialHintWindow, language: language)
+            case nil:
+                break
+            }
         }
         if officialSignal?.targetAt != nil {
             return tr(.keyCodexBankedResetOfficialHintTime, language: language)

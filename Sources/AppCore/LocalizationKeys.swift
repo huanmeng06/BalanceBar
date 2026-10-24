@@ -538,6 +538,8 @@
     case keyCodexBankedResetHighProbability = "codex.banked_reset.high_probability"
     case keyCodexBankedResetOfficialHintNoTime = "codex.banked_reset.official_hint_no_time"
     case keyCodexBankedResetOfficialHintTime = "codex.banked_reset.official_hint_time"
+    case keyCodexBankedResetOfficialHintDeadline = "codex.banked_reset.official_hint_deadline"
+    case keyCodexBankedResetOfficialHintWindow = "codex.banked_reset.official_hint_window"
     case keyCodexBankedResetOfficialHintConfirmed = "codex.banked_reset.official_hint_confirmed"
     case keyCodexBankedResetOfficialResetConfirmed = "codex.banked_reset.official_reset_confirmed"
     case keyCodexBankedResetConfidencePrefix = "codex.banked_reset.confidence_prefix"
