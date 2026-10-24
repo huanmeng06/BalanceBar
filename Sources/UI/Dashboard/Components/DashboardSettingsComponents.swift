@@ -531,7 +531,7 @@ enum DashboardSettingsComponents {
         target: AnyObject?,
         action: Selector?
     ) -> NSSwitch {
-        let control = NSSwitch()
+        let control = DashboardSettingsSwitch()
         control.identifier = NSUserInterfaceItemIdentifier(identifier)
         control.state = isOn ? .on : .off
         control.target = target
