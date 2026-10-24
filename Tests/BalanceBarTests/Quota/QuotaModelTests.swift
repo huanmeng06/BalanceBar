@@ -29,7 +29,8 @@ final class QuotaModelTests: XCTestCase {
         let snapshot = try QuotaSnapshot.decode(fixture("mod-super-set.json"))
 
         XCTAssertEqual(snapshot.source, "balancebar-mod")
-        XCTAssertEqual(snapshot.account?.emailHash, "sha256:4a1d8cd98f00b204e9800998ecf8427e")
+        // sha256 of "user@example.com", the identity the SnapshotInbox attribution tests use.
+        XCTAssertEqual(snapshot.account?.emailHash, "sha256:b4c9a289323b21a01c3e940f150eb9b8c542587f1abfd8f0e1cc1ffc5e475514")
         XCTAssertEqual(snapshot.windows.count, 4)
         XCTAssertEqual(snapshot.windows[0].kind, .fiveHour)
         XCTAssertEqual(snapshot.windows[1].kind, .sevenDay)

@@ -31,7 +31,12 @@ final class ClaudeRealtimeTracker: RealtimeSourceFreshnessProviding, ManualRefre
         lock.withLock { pendingReset }
     }
 
-    func recordTrustedObservation(window: QuotaWindowKind, receivedAt: Date, epoch: AccountEpoch) {
+    /// Records a trusted native observation for freshness.
+    ///
+    /// `observedAt` is the time the observation was produced at the source (the snapshot's
+    /// own timestamp when it carries one, otherwise the local receipt time). Rescanning an
+    /// old file therefore cannot extend freshness: its observation time stays in the past.
+    func recordTrustedObservation(window: QuotaWindowKind, observedAt: Date, epoch: AccountEpoch) {
         guard window == .fiveHour || window == .sevenDay else { return }
         lock.withLock {
             if self.epoch != epoch {
@@ -40,7 +45,7 @@ final class ClaudeRealtimeTracker: RealtimeSourceFreshnessProviding, ManualRefre
                 pendingReset = nil
                 identityConflict = false
             }
-            lastTrusted[window] = receivedAt
+            lastTrusted[window] = observedAt
         }
     }
 

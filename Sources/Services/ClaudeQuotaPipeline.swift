@@ -138,6 +138,7 @@ final class ClaudeQuotaPipeline {
     private let notificationRouter = ClaudeNotificationRouter()
     private let realtimeTracker: ClaudeRealtimeTracker?
     private let statusLineSource: ClaudeStatusLineSource?
+    private let snapshotInbox: SnapshotInbox?
     private let confirmationTimer: SchedulerTimer
     fileprivate let now: () -> Date
     private let manualRefreshWindow: TimeInterval
@@ -190,6 +191,7 @@ final class ClaudeQuotaPipeline {
         schedulerConfiguration: FetchSchedulerConfiguration = FetchSchedulerConfiguration(),
         realtimeTracker: ClaudeRealtimeTracker? = nil,
         statusLineSource: ClaudeStatusLineSource? = nil,
+        snapshotInbox: SnapshotInbox? = nil,
         statusLineEnabled: Bool = false,
         now: @escaping () -> Date = Date.init,
         diagnostics: @escaping (String, SwitchLog.Level) -> Void = { message, level in
@@ -204,6 +206,7 @@ final class ClaudeQuotaPipeline {
         self.now = now
         self.realtimeTracker = realtimeTracker
         self.statusLineSource = statusLineSource
+        self.snapshotInbox = snapshotInbox
         self.confirmationTimer = confirmationTimer
         self.statusLineEnabled = statusLineEnabled
         stateStore = ObservedFetchSchedulerStateStore(
@@ -229,11 +232,17 @@ final class ClaudeQuotaPipeline {
         scheduler.setAutomaticTrigger { [weak self] in
             self?.queue.async { self?.prepareAndRequest(.scheduled) }
         }
+        // Inbox snapshots are verified against the official cycle as a whole before they are
+        // attributed; the inbox rejects a snapshot when any of its windows fails.
+        snapshotInbox?.cycleVerification = { [weak self] window, resetsAt in
+            self?.verifySnapshotCycle(window: window, resetsAt: resetsAt)
+        }
     }
 
     deinit {
         if let wakeObserver { NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver) }
         statusLineSource?.stop()
+        snapshotInbox?.stop()
         identity.stopMonitoring()
     }
 
@@ -308,6 +317,11 @@ final class ClaudeQuotaPipeline {
         scheduler.statusSnapshot()
     }
 
+    /// Merge-engine state for diagnostics: which sources currently own each window.
+    var mergeStateForDiagnostics: QuotaMergeState? {
+        lock.withLock { engine?.currentState }
+    }
+
     /// Recomputes the pending automatic check after the calibration interval setting changed.
     func calibrationIntervalChanged() {
         scheduler.rearm()
@@ -378,6 +392,9 @@ final class ClaudeQuotaPipeline {
                 self?.queue.async { self?.receiveNative(observation) }
             }
         }
+        snapshotInbox?.start { [weak self] observation in
+            self?.queue.async { self?.receiveInbox(observation) }
+        }
         publish()
         let reasons = pendingReasons
         pendingReasons.removeAll()
@@ -407,16 +424,91 @@ final class ClaudeQuotaPipeline {
         if change.identity != nil { requestForNewAccount() }
     }
 
-    private func receiveNative(_ observation: QuotaObservation) {
-        guard let engine else { return }
+    private func receiveInbox(_ observation: QuotaObservation) {
+        let accepted = receiveInboxObservation(observation)
+        // Adoption feedback drives the inbox's replay baseline: only snapshots whose
+        // observations the merge engine actually adopted may become the baseline a later
+        // duplicate is measured against.
+        snapshotInbox?.noteProcessed(
+            source: observation.source, accountID: observation.accountID,
+            receivedAt: observation.receivedAt, accepted: accepted)
+    }
+
+    /// Returns whether the merge engine adopted the observation; `false` when it was
+    /// filtered (non-Mod source, non-standard window) or rejected.
+    private func receiveInboxObservation(_ observation: QuotaObservation) -> Bool {
+        // Only the BalanceBar Mod's standard windows are Claude quota evidence; the Mod's
+        // superset windows and unrelated inbox sources never reach the merge engine or card.
+        guard observation.source == SnapshotInbox.modSourceID,
+              observation.window == .fiveHour || observation.window == .sevenDay else { return false }
+        let accepted = receiveNative(observation)
+        if !accepted {
+            diagnostics(
+                "claude mod snapshot rejected; reason=not_displayed_by_merge; window=\(observation.window.rawValue)",
+                .debug)
+        }
+        return accepted
+    }
+
+    /// Ingest-time cycle verification handed to the snapshot inbox. The snapshot only
+    /// carries an email hash, so a foreign identity under the same email can only be told
+    /// apart by its quota cycle: a window whose reset time does not match the latest
+    /// official reading fails, which rejects the whole snapshot (`nil` when there is no
+    /// baseline yet — the merge engine's grade-B rules reject those anyway, and while a
+    /// reset awaits confirmation the engine's own provisional rules govern, exactly like
+    /// the statusLine path).
+    fileprivate func verifySnapshotCycle(window: QuotaWindowKind, resetsAt: Date?) -> Bool? {
+        guard let engine else { return nil }
+        let state = engine.currentState.windows[window.rawValue]
+        guard let gradeA = state?.latestGradeA, gradeA.epoch == identity.accountEpoch else { return nil }
+        guard state?.pendingResetOf == nil else { return true }
+        guard let gradeAReset = gradeA.resetsAt, let reset = resetsAt,
+              QuotaMergeEngine.sameResetInstant(reset, gradeAReset) else { return false }
+        return true
+    }
+
+    /// Merges one native observation; returns whether the engine now displays it, which is
+    /// the only state that counts as trusted real-time evidence. Whole-snapshot replays are
+    /// already filtered upstream (statusLine filters them per session, the inbox per
+    /// snapshot), so an accepted observation always records evidence — including a window
+    /// that did not change while its snapshot sibling did.
+    @discardableResult
+    private func receiveNative(_ observation: QuotaObservation) -> Bool {
+        guard let engine else { return false }
+        // Cross-source monotonicity: a native grade-B reading may never move the display
+        // backwards inside one cycle, whichever local source it comes from. Official
+        // grade-A corrections and the pending-reset rules stay with the merge engine.
+        if observation.trust != .a,
+           let displayed = engine.currentState.windows[observation.window.rawValue]?.displayed,
+           displayed.epoch == observation.epoch,
+           Self.sameCycle(displayed.resetsAt, observation.resetsAt),
+           observation.usedPercentage < displayed.usedPercentage {
+            diagnostics(
+                "claude native observation rejected; reason=usage_decreased_within_cycle; source=\(observation.source); window=\(observation.window.rawValue)",
+                .debug)
+            return false
+        }
         _ = engine.merge(observation)
         let displayed = engine.currentState.windows[observation.window.rawValue]?.displayed
-        if displayed?.source == observation.source,
-           displayed?.receivedAt == observation.receivedAt {
+        let accepted = displayed?.source == observation.source
+            && displayed?.receivedAt == observation.receivedAt
+        if accepted {
             realtimeTracker?.recordTrustedObservation(
-                window: observation.window, receivedAt: observation.receivedAt, epoch: observation.epoch)
+                window: observation.window,
+                observedAt: observation.observedAt ?? observation.receivedAt,
+                epoch: observation.epoch)
         }
         publish()
+        return accepted
+    }
+
+    /// Sources disagree below a second; see `QuotaMergeEngine.sameResetInstant`.
+    private static func sameCycle(_ lhs: Date?, _ rhs: Date?) -> Bool {
+        switch (lhs, rhs) {
+        case (nil, nil): return true
+        case let (l?, r?): return QuotaMergeEngine.sameResetInstant(l, r)
+        default: return false
+        }
     }
 
     /// A new account must be read immediately, subject only to auth, cooldown, budget and
@@ -565,10 +657,13 @@ final class ClaudeQuotaPipeline {
         // A failure marks the displayed values as outdated without discarding them.
         let shown = failure == nil ? model : QuotaDisplayModel(
             windows: model.windows, isEstimated: model.isEstimated, state: .error, hoverTextKey: model.hoverTextKey)
-        let nativeDisplayed = statusLineSource != nil
-            && realtimeTracker?.lastTrustedRealtimeObservationAt != nil
-            && engine.currentState.windows[QuotaWindowKind.fiveHour.rawValue]?.displayed?.source == ClaudeStatusLineSource.identifier
-            && engine.currentState.windows[QuotaWindowKind.sevenDay.rawValue]?.displayed?.source == ClaudeStatusLineSource.identifier
+        // "Real-time" status: both standard windows are displayed by a trusted local source
+        // (statusLine or the Mod's inbox snapshots) and the tracker still considers them fresh.
+        let nativeDisplayed = realtimeTracker?.lastTrustedRealtimeObservationAt != nil
+            && [QuotaWindowKind.fiveHour, .sevenDay].allSatisfy { kind in
+                guard let source = engine.currentState.windows[kind.rawValue]?.displayed?.source else { return false }
+                return source == ClaudeStatusLineSource.identifier || source == SnapshotInbox.modSourceID
+            }
         let status = StatusSlotState.resolve(
             model: shown,
             context: StatusSlotContext(isRefreshing: refreshing,
@@ -718,6 +813,9 @@ extension ClaudeQuotaPipeline {
         let identity = ClaudeAccountIdentityProvider(workQueue: identityQueue)
         let tracker = ClaudeRealtimeTracker(now: Date.init)
         let source = ClaudeStatusLineSource(accountProvider: identity, tracker: tracker)
+        // The BalanceBar Mod writes Schema v1 snapshots into the shared inbox; its account
+        // attribution is verified fail closed inside the inbox before anything reaches the engine.
+        let inbox = SnapshotInbox(identity: identity)
         return ClaudeQuotaPipeline(
             client: client,
             identity: identity,
@@ -727,7 +825,8 @@ extension ClaudeQuotaPipeline {
             automaticInterval: automaticInterval,
             schedulerConfiguration: .claudeV1,
             realtimeTracker: tracker,
-            statusLineSource: source)
+            statusLineSource: source,
+            snapshotInbox: inbox)
     }
 }
 

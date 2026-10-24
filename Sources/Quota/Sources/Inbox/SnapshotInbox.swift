@@ -1,3 +1,4 @@
+import CryptoKit
 import Darwin
 import Foundation
 
@@ -36,10 +37,22 @@ public final class SnapshotInbox: QuotaSource {
             .appendingPathComponent("inbox", isDirectory: true)
     }
 
+    /// Source label the BalanceBar Mod writes into its snapshots. Only these snapshots carry
+    /// Claude quota evidence; unrelated inbox files are left to whichever consumer declares them.
+    public static let modSourceID = "balancebar-mod"
+
+    /// Optional per-window verification of a parsed snapshot against the consumer's
+    /// authoritative state. Return `false` when the window cannot be tied to that state
+    /// (the whole snapshot is then rejected), `true` when it is verified, and `nil` when
+    /// there is no baseline to check against. The check is snapshot atomic: a snapshot in
+    /// which one window fails is never partially attributed.
+    public var cycleVerification: ((QuotaWindowKind, Date?) -> Bool?)?
+
     public let sourceID = "snapshot-inbox"
 
     private let inboxDirectory: URL
-    private let adapters: [QuotaSourceAdapter]
+    /// Internal for diagnostics and tests; the health of an adapter explains rejected snapshots.
+    let adapters: [QuotaSourceAdapter]
     private let identity: AccountIdentityProviding
     private let configuration: SnapshotInboxConfiguration
     private let now: () -> Date
@@ -52,6 +65,37 @@ public final class SnapshotInbox: QuotaSource {
     private var handler: ((QuotaObservation) -> Void)?
     private var watchers: [DirectoryWatcher] = []
     private var generation = 0
+    /// Fingerprint of the last snapshot the pipeline adopted, per account epoch and source.
+    /// Only adopted evidence becomes the replay baseline: a snapshot the merge engine
+    /// rejected never updates it, so the previously adopted values keep being recognized as
+    /// duplicates and rejected data cannot make a later same-value snapshot look new.
+    /// In-memory only.
+    private var adoptedSnapshots: [String: [EmittedWindow]] = [:]
+    /// Emitted snapshots awaiting adoption feedback from the pipeline (`noteProcessed`).
+    private var pendingAdoptions: [PendingKey: PendingSnapshot] = [:]
+    /// Diagnostics counters (inbox-queue confined); tests read them through `queue.sync`.
+    private(set) var suppressedReplayCount = 0
+    private(set) var unverifiedSnapshotRejections = 0
+
+    private struct EmittedWindow: Equatable {
+        let kind: QuotaWindowKind
+        let usedPercentage: Double
+        let resetsAt: Date?
+    }
+
+    private struct PendingKey: Hashable {
+        let accountID: String
+        let source: String
+        let receivedAt: Date
+    }
+
+    private struct PendingSnapshot {
+        let emissionKey: String
+        let fingerprint: [EmittedWindow]
+        var remaining: Int
+        var acceptedAny = false
+        let createdAt: Date
+    }
 
     /// - Parameters:
     ///   - inboxDirectory: Directory holding Schema v1 files; created on start when missing.
@@ -103,6 +147,42 @@ public final class SnapshotInbox: QuotaSource {
     /// Safe to call from any thread, including from inside the observation handler.
     public func stop() {
         tearDown().forEach { $0.stop() }
+    }
+
+    /// Adoption feedback for one observation previously handed over by `emit`: the consumer
+    /// reports every observation once, with whether the merge engine adopted it. A snapshot
+    /// becomes the replay baseline only when all of its observations were processed and at
+    /// least one was adopted — a rejected or filtered snapshot never updates the baseline,
+    /// so previously adopted values keep being recognized as duplicates.
+    public func noteProcessed(source: String, accountID: String, receivedAt: Date, accepted: Bool) {
+        queue.async { [weak self] in
+            guard let self else { return }
+            let key = PendingKey(accountID: accountID, source: source, receivedAt: receivedAt)
+            guard var pending = self.pendingAdoptions[key] else { return }
+            pending.remaining -= 1
+            pending.acceptedAny = pending.acceptedAny || accepted
+            if pending.remaining <= 0 {
+                if pending.acceptedAny {
+                    self.adoptedSnapshots[pending.emissionKey] = pending.fingerprint
+                }
+                self.pendingAdoptions[key] = nil
+            } else {
+                self.pendingAdoptions[key] = pending
+            }
+        }
+    }
+
+    /// Drops adoption feedback that can no longer arrive (the consumer stops processing)
+    /// and bounds the pending table.
+    private func pruneStalePendingAdoptions() {
+        let cutoff = now().addingTimeInterval(-60)
+        pendingAdoptions = pendingAdoptions.filter { $0.value.createdAt > cutoff }
+        if pendingAdoptions.count > 32 {
+            let stale = pendingAdoptions
+                .sorted { $0.value.createdAt < $1.value.createdAt }
+                .prefix(pendingAdoptions.count - 32)
+            for key in stale.map(\.key) { pendingAdoptions[key] = nil }
+        }
     }
 
     private func tearDown() -> [DirectoryWatcher] {
@@ -200,9 +280,51 @@ public final class SnapshotInbox: QuotaSource {
             adapter.health = .degraded(reason: "no active account")
             return
         }
+        // Account attribution is fail closed: this inbox stamps every observation with the
+        // active account's identity, so a snapshot that cannot prove it belongs to that
+        // account must never reach the merge engine. Reasons never quote the email or hash.
+        if let provided = parsed.accountEmailHash?.lowercased(), !provided.isEmpty {
+            guard let expected = account.email.map(Self.emailHash), !expected.isEmpty,
+                  provided == expected else {
+                adapter.health = .degraded(reason: "rejected snapshot: account email hash does not match the active account")
+                return
+            }
+        } else if parsed.source == Self.modSourceID {
+            // The Mod hashes the account it runs under; a snapshot without the hash cannot
+            // be attributed to anyone and falls back to the official reading.
+            adapter.health = .degraded(reason: "rejected snapshot: missing account email hash")
+            return
+        }
         let epoch = identity.accountEpoch
         let source = parsed.source.flatMap { $0 == "unknown" ? nil : $0 } ?? adapter.sourceID
         let received = now()
+        // Snapshot-atomic cycle verification: one window that cannot be tied to the
+        // consumer's authoritative cycle rejects the whole snapshot, so a snapshot that
+        // cannot be fully attributed is never partially accepted.
+        if let verify = cycleVerification {
+            for window in parsed.windows where verify(window.kind, window.resetsAt) == false {
+                unverifiedSnapshotRejections += 1
+                adapter.health = .degraded(reason: "rejected snapshot: cycle_unverified_against_official")
+                return
+            }
+        }
+        // A whole-snapshot replay (every window identical to the last ADOPTED snapshot for
+        // this account, epoch and source) carries no new quota evidence and is not emitted
+        // again. The baseline is promoted only through adoption feedback, so a snapshot the
+        // pipeline rejected never becomes the measure for later duplicates.
+        let fingerprint = parsed.windows.map { EmittedWindow(
+            kind: $0.kind, usedPercentage: $0.usedPercentage, resetsAt: $0.resetsAt) }
+        let emissionKey = "\(account.stableID)/\(epoch.rawValue)/\(source)"
+        if adoptedSnapshots[emissionKey] == fingerprint {
+            suppressedReplayCount += 1
+            adapter.health = .healthy
+            return
+        }
+        pruneStalePendingAdoptions()
+        pendingAdoptions[PendingKey(accountID: account.stableID, source: source, receivedAt: received)] =
+            PendingSnapshot(
+                emissionKey: emissionKey, fingerprint: fingerprint,
+                remaining: parsed.windows.count, createdAt: received)
         for window in parsed.windows {
             guard let observation = QuotaObservation(
                 window: window.kind,
@@ -218,6 +340,15 @@ public final class SnapshotInbox: QuotaSource {
             handler?(observation)
         }
         adapter.health = parsed.discarded.isEmpty ? .healthy : .degraded(reason: parsed.discarded.joined(separator: "; "))
+    }
+
+    /// The hash format Schema v1 producers write: `sha256:` plus the hex digest of the
+    /// trimmed, lowercased email — the same rule the BalanceBar Mod applies.
+    static func emailHash(_ email: String) -> String {
+        let normalized = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalized.isEmpty else { return "" }
+        let digest = SHA256.hash(data: Data(normalized.utf8))
+        return "sha256:" + digest.map { String(format: "%02x", $0) }.joined()
     }
 
     // MARK: Paths
