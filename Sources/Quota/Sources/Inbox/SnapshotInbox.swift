@@ -1,3 +1,4 @@
+import CryptoKit
 import Darwin
 import Foundation
 
@@ -36,10 +37,15 @@ public final class SnapshotInbox: QuotaSource {
             .appendingPathComponent("inbox", isDirectory: true)
     }
 
+    /// Source label the BalanceBar Mod writes into its snapshots. Only these snapshots carry
+    /// Claude quota evidence; unrelated inbox files are left to whichever consumer declares them.
+    public static let modSourceID = "balancebar-mod"
+
     public let sourceID = "snapshot-inbox"
 
     private let inboxDirectory: URL
-    private let adapters: [QuotaSourceAdapter]
+    /// Internal for diagnostics and tests; the health of an adapter explains rejected snapshots.
+    let adapters: [QuotaSourceAdapter]
     private let identity: AccountIdentityProviding
     private let configuration: SnapshotInboxConfiguration
     private let now: () -> Date
@@ -200,6 +206,21 @@ public final class SnapshotInbox: QuotaSource {
             adapter.health = .degraded(reason: "no active account")
             return
         }
+        // Account attribution is fail closed: this inbox stamps every observation with the
+        // active account's identity, so a snapshot that cannot prove it belongs to that
+        // account must never reach the merge engine. Reasons never quote the email or hash.
+        if let provided = parsed.accountEmailHash?.lowercased(), !provided.isEmpty {
+            guard let expected = account.email.map(Self.emailHash), !expected.isEmpty,
+                  provided == expected else {
+                adapter.health = .degraded(reason: "rejected snapshot: account email hash does not match the active account")
+                return
+            }
+        } else if parsed.source == Self.modSourceID {
+            // The Mod hashes the account it runs under; a snapshot without the hash cannot
+            // be attributed to anyone and falls back to the official reading.
+            adapter.health = .degraded(reason: "rejected snapshot: missing account email hash")
+            return
+        }
         let epoch = identity.accountEpoch
         let source = parsed.source.flatMap { $0 == "unknown" ? nil : $0 } ?? adapter.sourceID
         let received = now()
@@ -218,6 +239,15 @@ public final class SnapshotInbox: QuotaSource {
             handler?(observation)
         }
         adapter.health = parsed.discarded.isEmpty ? .healthy : .degraded(reason: parsed.discarded.joined(separator: "; "))
+    }
+
+    /// The hash format Schema v1 producers write: `sha256:` plus the hex digest of the
+    /// trimmed, lowercased email — the same rule the BalanceBar Mod applies.
+    static func emailHash(_ email: String) -> String {
+        let normalized = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalized.isEmpty else { return "" }
+        let digest = SHA256.hash(data: Data(normalized.utf8))
+        return "sha256:" + digest.map { String(format: "%02x", $0) }.joined()
     }
 
     // MARK: Paths

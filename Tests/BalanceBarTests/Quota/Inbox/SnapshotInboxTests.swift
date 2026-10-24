@@ -2,7 +2,8 @@ import XCTest
 @testable import BalanceBar
 
 private final class FakeIdentity: AccountIdentityProviding {
-    var accountIdentity: AccountIdentity? = AccountIdentity(stableID: "acct-1", idSource: .accountUUID)
+    var accountIdentity: AccountIdentity? = AccountIdentity(
+        stableID: "acct-1", email: "user@example.com", idSource: .accountUUID)
     var credentialVersion: CredentialVersion? = nil
     var accountEpoch = AccountEpoch(3)
 }
@@ -74,11 +75,89 @@ final class SnapshotInboxTests: XCTestCase {
     }
 
     func testModSupersetProducesAllWindowsWithDeclaredSource() throws {
+        // The fixture's account.email_hash is sha256 of "user@example.com", the FakeIdentity email,
+        // so the fail-closed attribution check accepts it.
         try place(fixture: "mod-super-set.json")
         let observations = collect()
         XCTAssertEqual(Set(observations.map(\.window.rawValue)),
                        ["five_hour", "seven_day", "sonnet_context", "extra_usage"])
         XCTAssertEqual(Set(observations.map(\.source)), ["balancebar-mod"])
+    }
+
+    // MARK: Account attribution (fail closed)
+
+    /// Writes a Schema v1 snapshot with the given source and account email hash.
+    private func placeSnapshot(
+        source: String?, emailHash: String?, as name: String = "snapshot.json"
+    ) throws {
+        var object: [String: Any] = [
+            "updated_at": "2026-10-17T06:12:03Z",
+            "five_hour": ["used_percentage": 10, "resets_at": "2026-10-17T09:00:00Z"],
+        ]
+        if let source { object["source"] = source }
+        if let emailHash { object["account"] = ["email_hash": emailHash] }
+        try JSONSerialization.data(withJSONObject: object).write(to: inbox.appendingPathComponent(name))
+    }
+
+    private func latestInboxHealth() -> QuotaAdapterHealth? {
+        inboxes.last?.adapters.first { $0.sourceID == "inbox" }?.health
+    }
+
+    func testModSnapshotWithMatchingEmailHashIsEmitted() throws {
+        try placeSnapshot(
+            source: "balancebar-mod",
+            emailHash: SnapshotInbox.emailHash("user@example.com"))
+        let observations = collect()
+        XCTAssertEqual(observations.map(\.window), [.fiveHour])
+        XCTAssertEqual(observations.map(\.source), ["balancebar-mod"])
+    }
+
+    func testModSnapshotWithForeignEmailHashIsRejected() throws {
+        try placeSnapshot(
+            source: "balancebar-mod",
+            emailHash: SnapshotInbox.emailHash("someone-else@example.com"))
+        XCTAssertTrue(collect().isEmpty)
+        XCTAssertEqual(
+            latestInboxHealth(),
+            .degraded(reason: "rejected snapshot: account email hash does not match the active account"))
+    }
+
+    func testModSnapshotWithoutEmailHashIsRejected() throws {
+        // Closes the old patch's hole where a missing hash was silently tolerated.
+        try placeSnapshot(source: "balancebar-mod", emailHash: nil)
+        XCTAssertTrue(collect().isEmpty)
+        XCTAssertEqual(
+            latestInboxHealth(),
+            .degraded(reason: "rejected snapshot: missing account email hash"))
+    }
+
+    func testForeignEmailHashIsRejectedForAnySource() throws {
+        try placeSnapshot(source: "some-other-tool", emailHash: "sha256:deadbeef")
+        XCTAssertTrue(collect().isEmpty)
+    }
+
+    func testAccountWithoutEmailCannotAttributeAnySnapshot() throws {
+        let identity = FakeIdentity()
+        identity.accountIdentity = AccountIdentity(stableID: "acct-1", idSource: .accountUUID)
+        try placeSnapshot(source: "balancebar-mod", emailHash: SnapshotInbox.emailHash("user@example.com"))
+        XCTAssertTrue(collect(identity: identity).isEmpty)
+        try placeSnapshot(source: "balancebar-mod", emailHash: nil, as: "no-hash.json")
+        XCTAssertTrue(collect(identity: identity).isEmpty)
+    }
+
+    func testNonModSnapshotWithoutAccountIsStillEmitted() throws {
+        // Generic inbox files without an account block keep their existing behavior.
+        try placeSnapshot(source: "some-other-tool", emailHash: nil)
+        let observations = collect()
+        XCTAssertEqual(observations.map(\.window), [.fiveHour])
+        XCTAssertEqual(observations.map(\.source), ["some-other-tool"])
+    }
+
+    func testEmailHashMatchesTheModContract() {
+        XCTAssertEqual(
+            SnapshotInbox.emailHash("  User@Example.COM "),
+            "sha256:b4c9a289323b21a01c3e940f150eb9b8c542587f1abfd8f0e1cc1ffc5e475514")
+        XCTAssertEqual(SnapshotInbox.emailHash("   "), "")
     }
 
     func testMissingWindowOnlyEmitsExistingWindowWithoutZeroFill() throws {
