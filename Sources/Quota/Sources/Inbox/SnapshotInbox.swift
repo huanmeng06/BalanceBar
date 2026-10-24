@@ -65,10 +65,14 @@ public final class SnapshotInbox: QuotaSource {
     private var handler: ((QuotaObservation) -> Void)?
     private var watchers: [DirectoryWatcher] = []
     private var generation = 0
-    /// Window values of the last emitted snapshot per account and source. A snapshot whose
-    /// windows all repeat the previous emission is a replay: it is not emitted again, so it
-    /// can neither refresh the display nor extend realtime freshness. In-memory only.
-    private var lastEmittedSnapshots: [String: [EmittedWindow]] = [:]
+    /// Fingerprint of the last snapshot the pipeline adopted, per account epoch and source.
+    /// Only adopted evidence becomes the replay baseline: a snapshot the merge engine
+    /// rejected never updates it, so the previously adopted values keep being recognized as
+    /// duplicates and rejected data cannot make a later same-value snapshot look new.
+    /// In-memory only.
+    private var adoptedSnapshots: [String: [EmittedWindow]] = [:]
+    /// Emitted snapshots awaiting adoption feedback from the pipeline (`noteProcessed`).
+    private var pendingAdoptions: [PendingKey: PendingSnapshot] = [:]
     /// Diagnostics counters (inbox-queue confined); tests read them through `queue.sync`.
     private(set) var suppressedReplayCount = 0
     private(set) var unverifiedSnapshotRejections = 0
@@ -77,6 +81,20 @@ public final class SnapshotInbox: QuotaSource {
         let kind: QuotaWindowKind
         let usedPercentage: Double
         let resetsAt: Date?
+    }
+
+    private struct PendingKey: Hashable {
+        let accountID: String
+        let source: String
+        let receivedAt: Date
+    }
+
+    private struct PendingSnapshot {
+        let emissionKey: String
+        let fingerprint: [EmittedWindow]
+        var remaining: Int
+        var acceptedAny = false
+        let createdAt: Date
     }
 
     /// - Parameters:
@@ -129,6 +147,42 @@ public final class SnapshotInbox: QuotaSource {
     /// Safe to call from any thread, including from inside the observation handler.
     public func stop() {
         tearDown().forEach { $0.stop() }
+    }
+
+    /// Adoption feedback for one observation previously handed over by `emit`: the consumer
+    /// reports every observation once, with whether the merge engine adopted it. A snapshot
+    /// becomes the replay baseline only when all of its observations were processed and at
+    /// least one was adopted — a rejected or filtered snapshot never updates the baseline,
+    /// so previously adopted values keep being recognized as duplicates.
+    public func noteProcessed(source: String, accountID: String, receivedAt: Date, accepted: Bool) {
+        queue.async { [weak self] in
+            guard let self else { return }
+            let key = PendingKey(accountID: accountID, source: source, receivedAt: receivedAt)
+            guard var pending = self.pendingAdoptions[key] else { return }
+            pending.remaining -= 1
+            pending.acceptedAny = pending.acceptedAny || accepted
+            if pending.remaining <= 0 {
+                if pending.acceptedAny {
+                    self.adoptedSnapshots[pending.emissionKey] = pending.fingerprint
+                }
+                self.pendingAdoptions[key] = nil
+            } else {
+                self.pendingAdoptions[key] = pending
+            }
+        }
+    }
+
+    /// Drops adoption feedback that can no longer arrive (the consumer stops processing)
+    /// and bounds the pending table.
+    private func pruneStalePendingAdoptions() {
+        let cutoff = now().addingTimeInterval(-60)
+        pendingAdoptions = pendingAdoptions.filter { $0.value.createdAt > cutoff }
+        if pendingAdoptions.count > 32 {
+            let stale = pendingAdoptions
+                .sorted { $0.value.createdAt < $1.value.createdAt }
+                .prefix(pendingAdoptions.count - 32)
+            for key in stale.map(\.key) { pendingAdoptions[key] = nil }
+        }
     }
 
     private func tearDown() -> [DirectoryWatcher] {
@@ -243,6 +297,7 @@ public final class SnapshotInbox: QuotaSource {
         }
         let epoch = identity.accountEpoch
         let source = parsed.source.flatMap { $0 == "unknown" ? nil : $0 } ?? adapter.sourceID
+        let received = now()
         // Snapshot-atomic cycle verification: one window that cannot be tied to the
         // consumer's authoritative cycle rejects the whole snapshot, so a snapshot that
         // cannot be fully attributed is never partially accepted.
@@ -253,18 +308,23 @@ public final class SnapshotInbox: QuotaSource {
                 return
             }
         }
-        // A whole-snapshot replay (every window identical to the previous emission for this
-        // account and source) carries no new quota evidence and is not emitted again.
+        // A whole-snapshot replay (every window identical to the last ADOPTED snapshot for
+        // this account, epoch and source) carries no new quota evidence and is not emitted
+        // again. The baseline is promoted only through adoption feedback, so a snapshot the
+        // pipeline rejected never becomes the measure for later duplicates.
         let fingerprint = parsed.windows.map { EmittedWindow(
             kind: $0.kind, usedPercentage: $0.usedPercentage, resetsAt: $0.resetsAt) }
-        let emissionKey = "\(account.stableID)/\(source)"
-        if lastEmittedSnapshots[emissionKey] == fingerprint {
+        let emissionKey = "\(account.stableID)/\(epoch.rawValue)/\(source)"
+        if adoptedSnapshots[emissionKey] == fingerprint {
             suppressedReplayCount += 1
             adapter.health = .healthy
             return
         }
-        lastEmittedSnapshots[emissionKey] = fingerprint
-        let received = now()
+        pruneStalePendingAdoptions()
+        pendingAdoptions[PendingKey(accountID: account.stableID, source: source, receivedAt: received)] =
+            PendingSnapshot(
+                emissionKey: emissionKey, fingerprint: fingerprint,
+                remaining: parsed.windows.count, createdAt: received)
         for window in parsed.windows {
             guard let observation = QuotaObservation(
                 window: window.kind,

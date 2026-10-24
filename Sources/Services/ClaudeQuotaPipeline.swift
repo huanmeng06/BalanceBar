@@ -425,16 +425,29 @@ final class ClaudeQuotaPipeline {
     }
 
     private func receiveInbox(_ observation: QuotaObservation) {
+        let accepted = receiveInboxObservation(observation)
+        // Adoption feedback drives the inbox's replay baseline: only snapshots whose
+        // observations the merge engine actually adopted may become the baseline a later
+        // duplicate is measured against.
+        snapshotInbox?.noteProcessed(
+            source: observation.source, accountID: observation.accountID,
+            receivedAt: observation.receivedAt, accepted: accepted)
+    }
+
+    /// Returns whether the merge engine adopted the observation; `false` when it was
+    /// filtered (non-Mod source, non-standard window) or rejected.
+    private func receiveInboxObservation(_ observation: QuotaObservation) -> Bool {
         // Only the BalanceBar Mod's standard windows are Claude quota evidence; the Mod's
         // superset windows and unrelated inbox sources never reach the merge engine or card.
         guard observation.source == SnapshotInbox.modSourceID,
-              observation.window == .fiveHour || observation.window == .sevenDay else { return }
+              observation.window == .fiveHour || observation.window == .sevenDay else { return false }
         let accepted = receiveNative(observation)
         if !accepted {
             diagnostics(
                 "claude mod snapshot rejected; reason=not_displayed_by_merge; window=\(observation.window.rawValue)",
                 .debug)
         }
+        return accepted
     }
 
     /// Ingest-time cycle verification handed to the snapshot inbox. The snapshot only

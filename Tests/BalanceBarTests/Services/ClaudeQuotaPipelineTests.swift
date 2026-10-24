@@ -907,6 +907,54 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         _ = try XCTUnwrap(waitForState(pipeline) { $0.display.window(for: .fiveHour)?.usedPercentage == 23 })
     }
 
+    func testRejectedSnapshotDoesNotBecomeTheReplayBaseline() throws {
+        let tracker = ClaudeRealtimeTracker(now: { [clock] in clock!.now })
+        let pipeline = makePipeline(realtimeTracker: tracker, configuration: claudeV1TestConfiguration, withInbox: true)
+        pipeline.start()
+        pipeline.requestFetch(reason: .initial)
+        _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+        let inbox = try XCTUnwrap(lastInbox)
+
+        // A snapshot from a concurrent session that the merge engine rejects (usage would
+        // move backwards) must not overwrite the replay baseline.
+        try placeModSnapshot(five: 25, seven: 42, observedAt: Self.start.addingTimeInterval(5))
+        _ = try XCTUnwrap(waitForState(pipeline) { $0.status == .realtime })
+        clock.advance(by: 305)
+        try placeModSnapshot(five: 24, seven: 41, observedAt: Self.start.addingTimeInterval(310))
+        XCTAssertTrue(pollUntil {
+            self.diagnosticLines.all.contains { $0.contains("reason=usage_decreased_within_cycle") }
+        })
+
+        // The previously adopted values arrive again: they are a replay of the adopted
+        // baseline, not new evidence, and must not re-extend freshness. Had the rejected
+        // snapshot become the baseline, this write would be emitted and adopted again.
+        try placeModSnapshot(five: 25, seven: 42, observedAt: Self.start.addingTimeInterval(315))
+        XCTAssertTrue(pollUntil { inbox.queue.sync { inbox.suppressedReplayCount } >= 1 })
+        clock.advance(by: 75) // start+380; the adopted evidence expired at start+125
+        XCTAssertNil(pipeline.manualRefreshNotice(), "a rejected snapshot must not enable a freshness extension")
+        pipeline.requestFetch(reason: .scheduled)
+        waitForRequests(2)
+    }
+
+    func testSnapshotRejectedBeforeTheOfficialBaselineDoesNotSuppressTheSameValueLater() throws {
+        // Startup race: the inbox scan delivers a snapshot before any official read exists,
+        // so the merge engine rejects it. It must not become the replay baseline either.
+        try placeModSnapshot(five: 25, seven: 42, observedAt: Self.start.addingTimeInterval(1))
+        let tracker = ClaudeRealtimeTracker(now: { [clock] in clock!.now })
+        let pipeline = makePipeline(realtimeTracker: tracker, configuration: claudeV1TestConfiguration, withInbox: true)
+        pipeline.start()
+        pipeline.requestFetch(reason: .initial)
+        _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+        let inbox = try XCTUnwrap(lastInbox)
+        XCTAssertEqual(inbox.queue.sync { inbox.suppressedReplayCount }, 0)
+
+        // The same values measured again, now with the official baseline in place: fresh
+        // evidence, displayed instead of being filtered as a replay of a rejected snapshot.
+        try placeModSnapshot(five: 25, seven: 42, observedAt: Self.start.addingTimeInterval(10))
+        let attributed = try XCTUnwrap(waitForState(pipeline) { $0.status == .realtime })
+        XCTAssertEqual(attributed.display.window(for: .fiveHour)?.usedPercentage, 25)
+    }
+
     func testModSupersetWindowsAndForeignInboxSourcesNeverReachTheClaudeEngine() throws {
         try FileManager.default.createDirectory(at: inboxDirectoryURL, withIntermediateDirectories: true)
         // Mod superset: the extra windows must not create engine state or reset confirmations.
