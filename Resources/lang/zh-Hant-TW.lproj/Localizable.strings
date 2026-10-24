@@ -183,7 +183,7 @@
 "dashboard.general.and.refresh.pages.update_check_failure_suggestion_http_too_many_requests" = "請稍後重試，避免連續點擊。";
 "dashboard.general.and.refresh.pages.update_check_failure_suggestion_invalid_response" = "請稍後重試；若持續出現，請聯絡維護者。";
 "dashboard.general.and.refresh.pages.update_check_failure_suggestion_invalid_release_version" = "請聯絡維護者檢查發佈版本號。";
-"dashboard.general.and.refresh.pages.update_available_revalidating_value_value" = "新版本可用：%1$@ -> %2$@（正在取得更新…）";
+"dashboard.general.and.refresh.pages.update_available_revalidating_value_value" = "新版本可用：%1$@ -> %2$@（正在檢查更新…）";
 "dashboard.general.and.refresh.pages.update_check_failed_update_retained_value_value_value" = "上次發現更新：%1$@；本次取得更新失敗。\n原因：%2$@\n建議：%3$@";
 "dashboard.general.and.refresh.pages.update_check_failure_reason_rate_limited" = "已達到 GitHub API 請求限額";
 "dashboard.general.and.refresh.pages.update_check_failure_suggestion_rate_limited_wait_value" = "GitHub 正在限制更新請求，約 %1$@ 分鐘後可重試。";
