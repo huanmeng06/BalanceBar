@@ -2112,6 +2112,20 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(preferences.codexUsageRefreshInterval, 3)
     }
 
+    func testSettingsSwitchFactoryKeepsTheStockNativeSwitch() {
+        let control = DashboardSettingsComponents.makeSwitch(
+            identifier: "nativeSwitch",
+            isOn: true,
+            target: nil,
+            action: nil
+        )
+        XCTAssertEqual(
+            ObjectIdentifier(type(of: control)),
+            ObjectIdentifier(NSSwitch.self),
+            "settings must use Apple's NSSwitch rendering and animation, never a custom-drawn subclass"
+        )
+    }
+
     func testDecliningTheDisableConfirmationKeepsClaudeNativeSyncOn() {
         let relay = DashboardPreferencePageRelay()
         var toggles: [(String, Bool)] = []
@@ -2122,13 +2136,19 @@ final class DashboardPreferencePagesTests: XCTestCase {
         sync.identifier = NSUserInterfaceItemIdentifier("claudeStatusLineEnabled")
         sync.state = .off
         relay.toggle(sync)
-        XCTAssertEqual(sync.state, .on, "declining leaves the switch on")
+        XCTAssertEqual(sync.state, .off, "the switch stays off until the confirmation is answered")
+        XCTAssertTrue(asked.isEmpty, "confirmation waits for the native turn-off animation")
+        XCTAssertTrue(toggles.isEmpty)
+
+        RunLoop.current.run(until: Date().addingTimeInterval(0.35))
         XCTAssertEqual(asked, ["claudeStatusLineEnabled"])
+        XCTAssertEqual(sync.state, .on, "declining leaves the switch on")
         XCTAssertTrue(toggles.isEmpty)
 
         relay.confirmDisable = { _ in true }
         sync.state = .off
         relay.toggle(sync)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.35))
         XCTAssertEqual(sync.state, .off)
         XCTAssertEqual(toggles.count, 1)
         XCTAssertEqual(toggles.first?.1, false)
@@ -2136,6 +2156,85 @@ final class DashboardPreferencePagesTests: XCTestCase {
         sync.state = .on
         relay.toggle(sync)
         XCTAssertEqual(toggles.count, 2, "turning on never asks")
+        XCTAssertEqual(toggles.last?.1, true)
+    }
+
+    func testRapidOffOnOffOnlyRunsTheLatestDisableConfirmation() {
+        let relay = DashboardPreferencePageRelay()
+        var asked = 0
+        relay.confirmDisable = { _ in
+            asked += 1
+            return true
+        }
+        var toggles: [(String, Bool)] = []
+        relay.onToggle = { toggles.append(($0, $1)) }
+        let sync = NSSwitch()
+        sync.identifier = NSUserInterfaceItemIdentifier("claudeStatusLineEnabled")
+        sync.state = .on
+
+        // OFF -> ON -> OFF inside the 0.2s confirmation window. The first
+        // delayed confirmation was superseded and must never run.
+        sync.state = .off
+        relay.toggle(sync)
+        sync.state = .on
+        relay.toggle(sync)
+        sync.state = .off
+        relay.toggle(sync)
+
+        RunLoop.current.run(until: Date().addingTimeInterval(0.35))
+        XCTAssertEqual(asked, 1, "rapid switching must ask exactly once")
+        XCTAssertEqual(
+            toggles.filter { !$0.1 }.count,
+            1,
+            "rapid switching must request at most one disable"
+        )
+        XCTAssertEqual(toggles.last?.1, false)
+    }
+
+    func testTurningBackOnCancelsThePendingDisableConfirmation() {
+        let relay = DashboardPreferencePageRelay()
+        var asked = 0
+        relay.confirmDisable = { _ in
+            asked += 1
+            return true
+        }
+        var toggles: [(String, Bool)] = []
+        relay.onToggle = { toggles.append(($0, $1)) }
+        let sync = NSSwitch()
+        sync.identifier = NSUserInterfaceItemIdentifier("claudeStatusLineEnabled")
+
+        sync.state = .off
+        relay.toggle(sync)
+        sync.state = .on
+        relay.toggle(sync)
+
+        RunLoop.current.run(until: Date().addingTimeInterval(0.35))
+        XCTAssertEqual(asked, 0, "turning back on invalidates the pending confirmation")
+        XCTAssertEqual(toggles.map { $0.1 }, [true])
+    }
+
+    func testOtherSettingsDoNotCancelAPendingDisableConfirmation() {
+        let relay = DashboardPreferencePageRelay()
+        var asked = 0
+        relay.confirmDisable = { _ in
+            asked += 1
+            return false
+        }
+        let sync = NSSwitch()
+        sync.identifier = NSUserInterfaceItemIdentifier("claudeStatusLineEnabled")
+        sync.state = .off
+        relay.toggle(sync)
+
+        // The generation token is per setting: an unrelated switch must not
+        // silently swallow the Claude confirmation.
+        let other = NSSwitch()
+        other.identifier = NSUserInterfaceItemIdentifier("silentLaunch")
+        other.state = .off
+        relay.toggle(other)
+
+        RunLoop.current.run(until: Date().addingTimeInterval(0.35))
+        XCTAssertEqual(asked, 1)
+        XCTAssertEqual(sync.state, .on, "declining still restores the Claude switch")
     }
 
     func testRefreshIntervalPopupsExpandForLongSpanishAndFrenchTitles() throws {
