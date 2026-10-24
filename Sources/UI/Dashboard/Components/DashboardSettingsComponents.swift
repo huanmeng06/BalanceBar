@@ -542,7 +542,10 @@ enum DashboardSettingsComponents {
     /// Native `NSSwitch` slide duration. Programmatic state restores that
     /// follow a click wait for this before presenting a modal confirmation, so
     /// the alert cannot interrupt (or visually freeze) the system animation.
-    static let switchAnimationDuration: TimeInterval = 0.2
+    /// Reduce Motion removes the slide, so the confirmation need not wait.
+    static var switchAnimationDuration: TimeInterval {
+        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : 0.2
+    }
 
     /// Amount editors (low-balance threshold). Fits `10000.00` at regular cell size.
     static let amountCapacityTemplate = "00000.00"
