@@ -1061,7 +1061,7 @@ final class ResponseParsersTests: XCTestCase {
             date("2026-07-21T17:47:15Z")
         )
         XCTAssertEqual(
-            parsed("Should land over next 30 minutes", at: "2026-07-11T05:54:25Z").officialSignal?.targetAt,
+            parsed("Landing over next 30 minutes", at: "2026-07-11T05:54:25Z").officialSignal?.targetAt,
             date("2026-07-11T06:24:25Z")
         )
         XCTAssertEqual(
@@ -1076,6 +1076,86 @@ final class ResponseParsersTests: XCTestCase {
             parsed("By EOD PST", at: "2026-10-23T04:47:34Z").officialSignal?.targetAt,
             date("2026-10-23T07:00:00Z").addingTimeInterval(-0.001)
         )
+    }
+
+    func testCodexResetSummaryFallbackRejectsAdditionalDatesAndQualifiers() throws {
+        for summary in [
+            "By midnight PST on Oct 30", "By midnight PST on October 30, 2026",
+            "By midnight PST 2026-10-30", "By midnight PST tomorrow",
+            "By midnight PST next Friday", "By midnight PST tonight or tomorrow",
+            "Tomorrow before 10am PT on Oct 30", "By 10am PT tomorrow on Oct 30",
+            "Tomorrow before 10am PT tomorrow", "Within an hour on Oct 30",
+            "Within 30 minutes tomorrow", "Within a few hours on Oct 30",
+            "Later today on Oct 30", "By EOD PST on Oct 30",
+            "On Oct 30, by midnight PST"
+        ] {
+            try assertSummaryHasNoCountdown(summary)
+        }
+    }
+
+    func testCodexResetSummaryFallbackRejectsNegationSpeculationAndQuotes() throws {
+        for summary in [
+            "Not within an hour", "Not within 30 minutes", "Not within a few hours",
+            "Maybe within an hour", "Possibly within 30 minutes", "Maybe later today",
+            "Should land over next 30 minutes", "If ready, within an hour",
+            "Within an hour if ready", "Within an hour?", "Within an hour, maybe",
+            "By midnight PST unless delayed", "By midnight PST or later",
+            "By midnight PST, not a promise", "Not tomorrow before 10am PT",
+            "Perhaps by 10am PT tomorrow", "He said: within an hour",
+            "\"Within an hour\"", "‘By midnight PST’", "“Later today”",
+            "Previously promised within an hour", "Within an hour or within 30 minutes",
+            "Not later today", "By EOD PST?"
+        ] {
+            try assertSummaryHasNoCountdown(summary)
+        }
+    }
+
+    private func assertSummaryHasNoCountdown(
+        _ summary: String, file: StaticString = #filePath, line: UInt = #line
+    ) throws {
+        let data = try JSONSerialization.data(withJSONObject: [
+            "official_signal": ["summary": summary, "at": "2026-10-25T03:40:04Z",
+                                "window": NSNull()],
+            "probabilities": ["signal_percent": 83]
+        ])
+        let result = CodexResetForecastParser.parse(data: data)
+        XCTAssertNil(result.officialSignal?.targetAt, summary, file: file, line: line)
+        XCTAssertNil(result.remainingCountdownSeconds(), summary, file: file, line: line)
+        XCTAssertFalse(result.showsOfficialWindowDeadlineProgress, summary, file: file, line: line)
+        XCTAssertFalse(result.isOfficialResetConfirmed, summary, file: file, line: line)
+        XCTAssertEqual(result.menuPrimaryDisplayText(language: .english), "83%",
+                       summary, file: file, line: line)
+    }
+
+    func testCodexResetSummaryFallbackKeepsStructuredTimingForRejectedText() throws {
+        let now = try XCTUnwrap(ResponseParsingSupport.timestampDate("2026-10-25T05:00:00Z"))
+        let deadlineText = "2026-10-25T08:30:00Z"
+        let deadline = try XCTUnwrap(ResponseParsingSupport.timestampDate(deadlineText))
+        for timing: [String: Any] in [
+            ["window": ["target_kind": "deadline", "target_at": deadlineText]],
+            ["window": ["end_at": deadlineText]],
+            ["deadline": deadlineText], ["target": deadlineText]
+        ] {
+            for summary in ["By midnight PST on Oct 30", "Not within an hour"] {
+                var signal: [String: Any] = ["summary": summary, "at": "2026-10-25T03:40:04Z"]
+                signal.merge(timing) { _, new in new }
+                let data = try JSONSerialization.data(withJSONObject: ["official_signal": signal])
+                let result = CodexResetForecastParser.parse(data: data, now: now)
+                XCTAssertEqual(result.officialSignal?.targetAt, deadline)
+                XCTAssertEqual(result.remainingCountdownSeconds(now: now), 12_600)
+                XCTAssertFalse(result.isOfficialResetConfirmed)
+            }
+        }
+    }
+
+    func testCodexResetSummaryFallbackAcceptsCompletePhrasesWithWhitespaceAndPunctuation() throws {
+        let data = try JSONSerialization.data(withJSONObject: ["official_signal": [
+            "summary": "  BY MIDNIGHT PST!  ", "at": "2026-10-25T03:40:04Z"
+        ]])
+        let result = CodexResetForecastParser.parse(data: data)
+        XCTAssertEqual(result.officialSignal?.targetAt,
+                       ResponseParsingSupport.timestampDate("2026-10-25T07:00:00Z"))
+        XCTAssertEqual(result.officialSignal?.windowKind, .deadline)
     }
 
     func testCodexResetSummaryFallbackNeverOverridesExplicitDeadlineOrGuesses() throws {

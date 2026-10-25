@@ -1005,17 +1005,15 @@ private enum CodexResetSummaryTimeParser {
 
         // "By midnight PST" is the *next* local midnight following the post,
         // not midnight UTC, nor a hard-coded UTC-8 offset.
-        if matches(#"^\s*(?:by|before)\s+midnight\s+(?:pst|pdt|pt)\b"#, in: summary) {
+        if matches(#"(?:by|before)\s+midnight\s+(?:pst|pdt|pt)"#, in: summary) {
             return nextPacificMidnight(after: publishedAt)
         }
 
-        // "Landing tomorrow before 10am PST" / "by 10:30 AM PT tomorrow".
-        // Require both an explicit "tomorrow" and a recognized Pacific zone.
-        if matches(#"\btomorrow\b"#, in: summary),
-           let time = firstMatch(
-                #"\b(?:before|by)\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)\s*(?:pst|pdt|pt)\b"#,
-                in: summary
-           ) {
+        // Only these complete tomorrow forms are supported. Other date
+        // qualifiers (including calendar dates) must remain probability-only.
+        let clockTime = #"(?:before|by)\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)\s*(?:pst|pdt|pt)"#
+        if let time = firstMatch(#"(?:landing\s+)?tomorrow\s+"# + clockTime, in: summary)
+            ?? firstMatch(clockTime + #"\s+tomorrow"#, in: summary) {
             let string = summary as NSString
             guard let hour = capture(time, at: 1, from: string).flatMap(Int.init),
                   (1...12).contains(hour) else { return nil }
@@ -1034,21 +1032,21 @@ private enum CodexResetSummaryTimeParser {
 
         // Short, explicit relative windows are anchored to the source post.
         if let time = firstMatch(
-            #"\b(?:within|over)\s+(?:the\s+)?(?:next\s+)?(\d{1,3})\s+minutes?\b"#,
+            #"(?:landing\s+)?(?:within|over)\s+(?:the\s+)?(?:next\s+)?(\d{1,3})\s+minutes?"#,
             in: summary
         ), let minutes = capture(time, at: 1, from: summary as NSString).flatMap(Int.init),
            (1...360).contains(minutes) {
             return publishedAt.addingTimeInterval(TimeInterval(minutes * 60))
         }
         if matches(
-            #"\b(?:within\s+(?:(?:the\s+)?(?:next\s+)?)?(?:an?|one)\s+hour|within\s+the\s+hour|(?:in|over)\s+the\s+next\s+hour)\b"#,
+            #"(?:landing\s+)?(?:within\s+(?:(?:the\s+)?(?:next\s+)?)?(?:an?|one)\s+hour|within\s+the\s+hour|(?:in|over)\s+the\s+next\s+hour)"#,
             in: summary
         ) {
             return publishedAt.addingTimeInterval(60 * 60)
         }
         // The site's historical API used three hours for "within a few hours".
         if matches(
-            #"\bwithin\s+(?:(?:the\s+)?(?:next\s+)?)?(?:a\s+)?few\s+hours?\b"#,
+            #"(?:full\s+reset\s+)?within\s+(?:(?:the\s+)?(?:next\s+)?)?(?:a\s+)?few\s+hours?"#,
             in: summary
         ) {
             return publishedAt.addingTimeInterval(3 * 60 * 60)
@@ -1056,7 +1054,7 @@ private enum CodexResetSummaryTimeParser {
 
         // "Later today" is a deadline at the end of the post's Pacific day.
         if matches(
-            #"\b(?:later\s+today|by\s+(?:the\s+)?end\s+of\s+(?:the\s+)?day|by\s+eod)\b"#,
+            #"(?:(?:another\s+one\s+will\s+come\s+)?later\s+today|by\s+(?:the\s+)?end\s+of\s+(?:the\s+)?day|by\s+eod)(?:\s+(?:pst|pdt|pt))?"#,
             in: summary
         ) {
             guard let nextMidnight = nextPacificMidnight(after: publishedAt) else {
@@ -1084,8 +1082,12 @@ private enum CodexResetSummaryTimeParser {
     }
 
     private static func firstMatch(_ pattern: String, in text: String) -> NSTextCheckingResult? {
+        // Match the entire announcement, not a timing substring. A small
+        // allowlist safely rejects dates we do not parse, negation, speculation,
+        // quoted promises and conflicting qualifiers without trying to infer intent.
         guard let regex = try? NSRegularExpression(
-            pattern: pattern, options: [.caseInsensitive]
+            pattern: #"\A\s*(?:"# + pattern + #")[.!]?\s*\z"#,
+            options: [.caseInsensitive]
         ) else { return nil }
         return regex.firstMatch(
             in: text, range: NSRange(text.startIndex..<text.endIndex, in: text)
