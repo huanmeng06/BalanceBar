@@ -983,6 +983,138 @@ final class ResponseParsersTests: XCTestCase {
         )
     }
 
+    func testCodexResetSummaryFallbackMatchesOctober25SiteCountdown() throws {
+        // Oct 25 live public API: announced signal with window=null and a
+        // "By midnight PST" summary. The site showed 03:00 EDT (07:00 UTC).
+        let published = "2026-10-25T03:40:04.000Z"
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-10-25T05:00:00Z"))
+        let deadline = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-10-25T07:00:00Z"))
+        let forecast = CodexResetForecastParser.parse(
+            data: Data(#"""
+            {
+              "mode":"announced",
+              "probabilities":{"rounded_24h":39,"rounded_48h":63,"signal_percent":83},
+              "official_signal":{
+                "tweet_id":"2114200291319124163",
+                "summary":"By midnight PST",
+                "at":"2026-10-25T03:40:04.000Z",
+                "window":null
+              }
+            }
+            """#.utf8),
+            now: now
+        )
+        XCTAssertEqual(forecast.officialSignal?.episodeKey, "tweet_id:2114200291319124163")
+        XCTAssertEqual(forecast.officialSignal?.publishedAt, ResponseParsingSupport.timestampDate(published))
+        XCTAssertEqual(forecast.officialSignal?.targetAt, deadline)
+        XCTAssertEqual(forecast.officialSignal?.windowKind, .deadline)
+        XCTAssertEqual(forecast.officialSignal?.probability, .percent(83))
+        XCTAssertEqual(forecast.remainingCountdownSeconds(now: now), 7_200)
+        XCTAssertTrue(forecast.showsOfficialWindowDeadlineProgress)
+        XCTAssertEqual(forecast.menuPrimaryDisplayText(language: .english, now: now), "2h0m")
+        XCTAssertFalse(forecast.isOfficialResetConfirmed)
+
+        let afterDeadline = now.addingTimeInterval(4 * 60 * 60)
+        let expired = CodexResetForecastParser.parse(
+            data: Data(#"""
+            {"official_signal":{"summary":"By midnight PST",
+              "at":"2026-10-25T03:40:04.000Z","window":null},
+              "probabilities":{"signal_percent":83}}
+            """#.utf8),
+            now: afterDeadline
+        )
+        XCTAssertEqual(expired.officialSignal?.targetAt, deadline)
+        XCTAssertEqual(expired.remainingCountdownSeconds(now: afterDeadline), 0)
+        XCTAssertEqual(expired.menuPrimaryDisplayText(language: .english, now: afterDeadline), "0m")
+        XCTAssertFalse(expired.isOfficialResetConfirmed)
+    }
+
+    func testCodexResetSummaryFallbackHandlesHistoricalTimingAndDST() throws {
+        func parsed(_ summary: String, at: String) -> CodexResetForecast {
+            CodexResetForecastParser.parse(
+                data: Data(#"""
+                {"official_signal":{"summary":"\#(summary)","at":"\#(at)","window":null},
+                  "probabilities":{"signal_percent":83}}
+                """#.utf8)
+            )
+        }
+        func date(_ iso: String) -> Date {
+            // Intentionally fail loudly if a test fixture has an invalid date.
+            ResponseParsingSupport.timestampDate(iso)!
+        }
+
+        XCTAssertEqual(
+            parsed("By midnight PST", at: "2026-01-13T03:40:04Z").officialSignal?.targetAt,
+            date("2026-01-13T08:00:00Z"),
+            "PST winter midnight is UTC-8, unlike October's daylight time"
+        )
+        XCTAssertEqual(
+            parsed("Landing tomorrow before 10am PST", at: "2026-10-23T04:47:34Z").officialSignal?.targetAt,
+            date("2026-10-23T17:00:00Z")
+        )
+        XCTAssertEqual(
+            parsed("By 10:30 AM PT tomorrow", at: "2026-10-23T04:47:34Z").officialSignal?.targetAt,
+            date("2026-10-23T17:30:00Z")
+        )
+        XCTAssertEqual(
+            parsed("Landing within an hour", at: "2026-07-21T16:47:15Z").officialSignal?.targetAt,
+            date("2026-07-21T17:47:15Z")
+        )
+        XCTAssertEqual(
+            parsed("Should land over next 30 minutes", at: "2026-07-11T05:54:25Z").officialSignal?.targetAt,
+            date("2026-07-11T06:24:25Z")
+        )
+        XCTAssertEqual(
+            parsed("Full reset within a few hours", at: "2026-06-26T23:39:48Z").officialSignal?.targetAt,
+            date("2026-06-27T02:39:48Z")
+        )
+        XCTAssertEqual(
+            parsed("Another one will come later today", at: "2026-07-10T17:59:43Z").officialSignal?.targetAt,
+            date("2026-07-11T07:00:00Z").addingTimeInterval(-0.001)
+        )
+        XCTAssertEqual(
+            parsed("By EOD PST", at: "2026-10-23T04:47:34Z").officialSignal?.targetAt,
+            date("2026-10-24T07:00:00Z").addingTimeInterval(-0.001)
+        )
+    }
+
+    func testCodexResetSummaryFallbackNeverOverridesExplicitDeadlineOrGuesses() throws {
+        let deadline = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-10-25T08:30:00Z"))
+        let explicit = CodexResetForecastParser.parse(
+            data: Data(#"""
+            {"official_signal":{"summary":"By midnight PST","at":"2026-10-25T03:40:04Z",
+              "window":{"target_kind":"deadline","target_at":"2026-10-25T08:30:00Z"}},
+              "probabilities":{"signal_percent":83}}
+            """#.utf8)
+        )
+        XCTAssertEqual(explicit.officialSignal?.targetAt, deadline)
+        XCTAssertEqual(explicit.officialSignal?.windowKind, .deadline)
+
+        for summary in [
+            "Soon", "Today maybe", "next week", "Perhaps by midnight PST",
+            "By midnight UTC", "Before 13pm PST tomorrow", "By 10 AM tomorrow",
+            "We already reset", "Within an indefinite period"
+        ] {
+            let payload = Data(#"""
+            {"official_signal":{"summary":"\#(summary)","at":"2026-10-25T03:40:04Z","window":null},
+              "probabilities":{"signal_percent":83}}
+            """#.utf8)
+            let result = CodexResetForecastParser.parse(data: payload)
+            XCTAssertNil(result.officialSignal?.targetAt, "must not invent time for: \(summary)")
+            XCTAssertEqual(result.menuPrimaryDisplayText(language: .english), "83%")
+        }
+
+        let missingPublishedAt = CodexResetForecastParser.parse(
+            data: Data(#"{"official_signal":{"summary":"By midnight PST","window":null}}"#.utf8)
+        )
+        XCTAssertNil(missingPublishedAt.officialSignal?.targetAt)
+
+        let noActiveSignal = CodexResetForecastParser.parse(
+            data: Data(#"{"official_signal":null,"probabilities":{"signal_percent":83}}"#.utf8)
+        )
+        XCTAssertNil(noActiveSignal.officialSignal)
+    }
+
     func testCodexResetForecastParserUsesLiveTargetAtAndKeepsExpiredDeadline() throws {
         // Regression for the Oct 23 public /api/forecast schema. The live API
         // uses window.target_at/end_at, not the historical at/deadline/target.
