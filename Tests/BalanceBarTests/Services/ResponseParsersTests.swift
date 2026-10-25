@@ -1074,7 +1074,7 @@ final class ResponseParsersTests: XCTestCase {
         )
         XCTAssertEqual(
             parsed("By EOD PST", at: "2026-10-23T04:47:34Z").officialSignal?.targetAt,
-            date("2026-10-24T07:00:00Z").addingTimeInterval(-0.001)
+            date("2026-10-23T07:00:00Z").addingTimeInterval(-0.001)
         )
     }
 
