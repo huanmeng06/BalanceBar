@@ -1005,15 +1005,15 @@ private enum CodexResetSummaryTimeParser {
 
         // "By midnight PST" is the *next* local midnight following the post,
         // not midnight UTC, nor a hard-coded UTC-8 offset.
-        if matches(#"^\\s*(?:by|before)\\s+midnight\\s+(?:pst|pdt|pt)\\b"#, in: summary) {
+        if matches(#"^\s*(?:by|before)\s+midnight\s+(?:pst|pdt|pt)\b"#, in: summary) {
             return nextPacificMidnight(after: publishedAt)
         }
 
         // "Landing tomorrow before 10am PST" / "by 10:30 AM PT tomorrow".
         // Require both an explicit "tomorrow" and a recognized Pacific zone.
-        if matches(#"\\btomorrow\\b"#, in: summary),
+        if matches(#"\btomorrow\b"#, in: summary),
            let time = firstMatch(
-                #"\\b(?:before|by)\\s+(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)\\s*(?:pst|pdt|pt)\\b"#,
+                #"\b(?:before|by)\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)\s*(?:pst|pdt|pt)\b"#,
                 in: summary
            ) {
             let string = summary as NSString
@@ -1025,7 +1025,7 @@ private enum CodexResetSummaryTimeParser {
                 return nil
             }
             let hour24 = hour % 12 + (marker == "pm" ? 12 : 0)
-            var calendar = pacificCalendar
+            let calendar = pacificCalendar
             guard let day = calendar.date(
                 byAdding: .day, value: 1, to: calendar.startOfDay(for: publishedAt)
             ) else { return nil }
@@ -1034,21 +1034,21 @@ private enum CodexResetSummaryTimeParser {
 
         // Short, explicit relative windows are anchored to the source post.
         if let time = firstMatch(
-            #"\\b(?:within|over)\\s+(?:the\\s+)?(?:next\\s+)?(\\d{1,3})\\s+minutes?\\b"#,
+            #"\b(?:within|over)\s+(?:the\s+)?(?:next\s+)?(\d{1,3})\s+minutes?\b"#,
             in: summary
         ), let minutes = capture(time, at: 1, from: summary as NSString).flatMap(Int.init),
            (1...360).contains(minutes) {
             return publishedAt.addingTimeInterval(TimeInterval(minutes * 60))
         }
         if matches(
-            #"\\b(?:within\\s+(?:(?:the\\s+)?(?:next\\s+)?)?(?:an?|one)\\s+hour|within\\s+the\\s+hour|(?:in|over)\\s+the\\s+next\\s+hour)\\b"#,
+            #"\b(?:within\s+(?:(?:the\s+)?(?:next\s+)?)?(?:an?|one)\s+hour|within\s+the\s+hour|(?:in|over)\s+the\s+next\s+hour)\b"#,
             in: summary
         ) {
             return publishedAt.addingTimeInterval(60 * 60)
         }
         // The site's historical API used three hours for "within a few hours".
         if matches(
-            #"\\bwithin\\s+(?:(?:the\\s+)?(?:next\\s+)?)?(?:a\\s+)?few\\s+hours?\\b"#,
+            #"\bwithin\s+(?:(?:the\s+)?(?:next\s+)?)?(?:a\s+)?few\s+hours?\b"#,
             in: summary
         ) {
             return publishedAt.addingTimeInterval(3 * 60 * 60)
@@ -1056,7 +1056,7 @@ private enum CodexResetSummaryTimeParser {
 
         // "Later today" is a deadline at the end of the post's Pacific day.
         if matches(
-            #"\\b(?:later\\s+today|by\\s+(?:the\\s+)?end\\s+of\\s+(?:the\\s+)?day|by\\s+eod)\\b"#,
+            #"\b(?:later\s+today|by\s+(?:the\s+)?end\s+of\s+(?:the\s+)?day|by\s+eod)\b"#,
             in: summary
         ) {
             guard let nextMidnight = nextPacificMidnight(after: publishedAt) else {
