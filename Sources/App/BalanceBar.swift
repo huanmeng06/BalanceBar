@@ -467,9 +467,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 guard let self else { return nil }
                 return self.modSyncCoordinator.status
             },
-            modPanelState: { [weak self] in self?.modSyncCoordinator.controller.state },
-            modPromptEnabled: { [weak self] in self?.modSyncCoordinator.isPromptEnabled ?? true },
-            setModPromptEnabled: { [weak self] enabled in self?.modSyncCoordinator.setPromptEnabled(enabled) }
+            modPanelState: { [weak self] in self?.modSyncCoordinator.controller.state }
         ),
         actions: DashboardCompositionActions(
             onManualRefresh: { [weak self] in self?.performManualRefresh(source: "dashboard") },
@@ -776,7 +774,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         modSyncCoordinator.onPromptChange = { [weak self] in
             DispatchQueue.main.async { [weak self] in
                 self?.refreshStatusItemMenuInput()
-                self?.dashboardComposition.refreshModSync()
             }
         }
         notificationCoordinator.onPermissionStateChanged = { [weak self] state in

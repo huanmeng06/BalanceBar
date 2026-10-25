@@ -11,6 +11,8 @@ enum ModPanelItem: Equatable {
     case step(label: String, status: StepStatus)
     case code(String)
     case checkbox(title: String, checked: Bool)
+    /// The "don't show this in the menu" preference; toggling it updates the status menu.
+    case menuPromptCheckbox(title: String, checked: Bool)
     case button(title: String, action: ButtonAction)
 
     enum StepStatus: String, Equatable { case pending, running, done }
@@ -29,6 +31,7 @@ enum ModPanelItem: Equatable {
             return "\(mark) \(label)"
         case let .code(c): return "$ " + c.replacingOccurrences(of: "\n", with: "\n$ ")
         case let .checkbox(title, checked): return "(\(checked ? "x" : " ")) \(title)"
+        case let .menuPromptCheckbox(title, checked): return "(\(checked ? "x" : " ")) \(title)"
         case let .button(title, _): return "<\(title)>"
         }
     }
@@ -56,10 +59,14 @@ enum ModPanelContent {
         for state: ModPanelState,
         plan: ModInstallPlan,
         localize: (ModOnboardingText) -> String,
-        sync: ModPanelSyncContext? = nil
+        sync: ModPanelSyncContext? = nil,
+        promptDismissed: Bool = false
     ) -> [ModPanelItem] {
         let t = localize
-        if let sync { return managementItems(for: state, plan: plan, localize: t, sync: sync) }
+        if let sync {
+            return managementItems(for: state, plan: plan, localize: t, sync: sync,
+                                   promptDismissed: promptDismissed)
+        }
         switch state {
         case let .intro(checked):
             var items: [ModPanelItem] = [.title(t(.panelTitle))]
@@ -140,7 +147,8 @@ enum ModPanelContent {
     /// Presentation only: status and snapshot acceptance remain owned by #603.
     private static func managementItems(
         for state: ModPanelState, plan: ModInstallPlan,
-        localize t: (ModOnboardingText) -> String, sync: ModPanelSyncContext
+        localize t: (ModOnboardingText) -> String, sync: ModPanelSyncContext,
+        promptDismissed: Bool
     ) -> [ModPanelItem] {
         let close = ModPanelItem.button(title: t(.closeButton), action: .close)
         let refresh = ModPanelItem.button(title: t(.refresh), action: .refresh)
@@ -166,6 +174,7 @@ enum ModPanelContent {
                     .feature(symbol: "terminal", title: t(.feature2Title), detail: t(.coverageNote)),
                     .feature(symbol: "gauge.with.dots.needle.33percent", title: t(.benefitFallback), detail: t(.fallbackNote)),
                     .feature(symbol: "lock.shield", title: t(.feature4Title), detail: t(.feature4Detail)),
+                    .menuPromptCheckbox(title: t(.dismissCheckbox), checked: promptDismissed),
                     .button(title: t(.copyCommands), action: .copyCommands),
                     .button(title: t(.laterButton), action: .close),
                     .button(title: t(.installButton), action: .install)]
@@ -401,6 +410,8 @@ final class ModOnboardingPanelView: NSView {
     var syncProvider: (() -> ModPanelSyncContext?)?
     var onRequestClose: () -> Void = {}
     var onRequestRefresh: () -> Void = {}
+    /// The "don't show this in the menu" checkbox changed; refresh the status menu.
+    var onPromptPreferenceChange: (() -> Void)?
     var onContentSizeChange: ((NSSize) -> Void)?
     private(set) var items: [ModPanelItem] = []
     var snapshotLines: [String] { items.map(\.snapshotLine) }
@@ -487,7 +498,8 @@ final class ModOnboardingPanelView: NSView {
                        .button(title: localize(.cancel), action: .cancelUninstall)]
         } else {
             content = ModPanelContent.items(for: controller.state, plan: controller.plan,
-                                            localize: localize, sync: syncProvider?())
+                                            localize: localize, sync: syncProvider?(),
+                                            promptDismissed: controller.isPromptDismissed)
         }
         render(content)
         // The original success animation closes after two seconds, but only after
@@ -713,6 +725,11 @@ final class ModOnboardingPanelView: NSView {
             let box = NSButton(checkboxWithTitle: title, target: self, action: #selector(checkboxToggled(_:)))
             box.state = checked ? .on : .off
             return box
+        case let .menuPromptCheckbox(title, checked):
+            let box = NSButton(checkboxWithTitle: title, target: self, action: #selector(menuPromptToggled(_:)))
+            box.state = checked ? .on : .off
+            box.setAccessibilityLabel(title)
+            return box
         case let .button(title, action): return makeButton(title: title, action: action)
         }
     }
@@ -762,6 +779,12 @@ final class ModOnboardingPanelView: NSView {
         return button
     }
     @objc private func checkboxToggled(_ sender: NSButton) { controller.setDismissChecked(sender.state == .on) }
+
+    @objc private func menuPromptToggled(_ sender: NSButton) {
+        // Checked means "do not show this in the menu", so the preference is inverted.
+        controller.setPromptEnabled(sender.state == .off)
+        onPromptPreferenceChange?()
+    }
     @objc private func buttonPressed(_ sender: NSButton) {
         guard let id = sender.identifier?.rawValue,
               let action = [ModPanelItem.ButtonAction.install, .close, .copyCommands, .copyReload, .undoDismiss,

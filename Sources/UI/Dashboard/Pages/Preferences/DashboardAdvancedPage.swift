@@ -14,8 +14,6 @@ final class DashboardAdvancedPage {
 
         let modSyncStatus: ModSyncStatus
         let modPanelState: ModPanelState
-        let modPromptEnabled: Bool
-        let onToggleModPrompt: (Bool) -> Void
         let includeLogViewer: Bool
 
         init(
@@ -23,17 +21,13 @@ final class DashboardAdvancedPage {
             logViewer: NSView?,
             includeLogViewer: Bool = true,
             modSyncStatus: ModSyncStatus = .detecting,
-            modPanelState: ModPanelState = .intro(dismissChecked: false),
-            modPromptEnabled: Bool = true,
-            onToggleModPrompt: @escaping (Bool) -> Void = { _ in }
+            modPanelState: ModPanelState = .intro(dismissChecked: false)
         ) {
             self.relay = relay
             self.logViewer = logViewer
             self.includeLogViewer = includeLogViewer
             self.modSyncStatus = modSyncStatus
             self.modPanelState = modPanelState
-            self.modPromptEnabled = modPromptEnabled
-            self.onToggleModPrompt = onToggleModPrompt
         }
     }
 
@@ -75,19 +69,16 @@ final class DashboardAdvancedPage {
             contentViews: contentViews
         )
         let rows = RealtimeBoostSettingsRows(
-            status: input.modSyncStatus, promptEnabled: input.modPromptEnabled,
-            operation: input.modPanelState,
+            status: input.modSyncStatus, operation: input.modPanelState,
             onInstall: { [weak relay = input.relay] button in relay?.installModSync(button) },
-            onShowDescription: { [weak relay = input.relay] button in relay?.manageModSync(button) },
-            onTogglePrompt: input.onToggleModPrompt)
+            onShowDescription: { [weak relay = input.relay] button in relay?.manageModSync(button) })
         realtimeBoostRows = rows
         let realtime = rows.makeSection()
         return DashboardSettingsComponents.makeSettingsPageContent([realtime, logs])
     }
 
-    func refreshModSync(_ status: ModSyncStatus?, operation: ModPanelState?, promptEnabled: Bool = true) {
-        realtimeBoostRows?.update(status: status ?? .detecting, operation: operation ?? .intro(dismissChecked: false),
-                                  promptEnabled: promptEnabled)
+    func refreshModSync(_ status: ModSyncStatus?, operation: ModPanelState?) {
+        realtimeBoostRows?.update(status: status ?? .detecting, operation: operation ?? .intro(dismissChecked: false))
     }
 
     /// Keeps the Diagnostics log pane at the historical 190pt slot. The real

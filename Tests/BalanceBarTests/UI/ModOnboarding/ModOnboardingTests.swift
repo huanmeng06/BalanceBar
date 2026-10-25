@@ -714,21 +714,6 @@ final class ModSyncCoordinatorTests: XCTestCase {
         return (coordinator, runner)
     }
 
-    func testPromptPreferenceTogglesAndNotifies() {
-        let (coordinator, _) = makeCoordinator(locator: nil, results: [])
-        var notifications = 0
-        coordinator.onPromptChange = { notifications += 1 }
-        XCTAssertTrue(coordinator.isPromptEnabled)
-        coordinator.setPromptEnabled(false)
-        XCTAssertFalse(coordinator.isPromptEnabled)
-        XCTAssertEqual(notifications, 1)
-        coordinator.setPromptEnabled(false)
-        XCTAssertEqual(notifications, 1, "an unchanged preference must not rebuild the menu")
-        coordinator.setPromptEnabled(true)
-        XCTAssertTrue(coordinator.isPromptEnabled)
-        XCTAssertEqual(notifications, 2)
-    }
-
     func testDetectionDrivesWaitingForDataAndSnapshotEvidenceDrivesActive() {
         let (coordinator, runner) = makeCoordinator(
             locator: "/bin/claude",
@@ -1275,22 +1260,6 @@ final class RealtimeBoostAdvancedCardTests: XCTestCase {
             onInstall: install, onShowDescription: describe)
     }
 
-    func testPromptSwitchReflectsAndReportsPreference() {
-        var changes: [Bool] = []
-        let rows = RealtimeBoostSettingsRows(
-            status: .notInstalled(hasOtherScopeInstall: false), promptEnabled: false,
-            localize: { realtimeBoostLocalize($0, language: .english) },
-            modLocalize: { tr(LocalizationKey.key(for: $0), language: .english) },
-            onInstall: { _ in }, onShowDescription: { _ in },
-            onTogglePrompt: { changes.append($0) })
-        XCTAssertEqual(rows.promptToggle.state, .off)
-        rows.promptToggle.performClick(nil)
-        XCTAssertEqual(changes, [true])
-        rows.update(status: .notInstalled(hasOtherScopeInstall: false),
-                    operation: .intro(dismissChecked: false), promptEnabled: true)
-        XCTAssertEqual(rows.promptToggle.state, .on)
-    }
-
     func testHistoricalStatusTitleAndLatestDataUseSeparateLines() {
         let card = rows(.active(lastAcceptedAt: Date()))
         XCTAssertEqual(card.statusRow.titleLabel.stringValue, "BalanceBar Mod status: Enabled")
@@ -1510,7 +1479,29 @@ final class ModInt2WindowRestorationTests: XCTestCase {
         XCTAssertEqual(frames[0].midY, frames[2].midY, accuracy: 1)
         XCTAssertLessThan(frames[0].maxX, frames[1].minX)
         XCTAssertLessThan(frames[1].maxX, frames[2].minX)
-        XCTAssertTrue(buttons.allSatisfy { $0.controlSize == .large })
+        XCTAssertTrue([copy, later, install].allSatisfy { $0.controlSize == .large })
+        // The menu-prompt preference sits above the footer as a regular checkbox.
+        let promptCheckbox = try XCTUnwrap(buttons.first {
+            $0.title == ModOnboardingText.dismissCheckbox.defaultText
+        })
+        XCTAssertEqual(promptCheckbox.state, .off)
+    }
+
+    func testMenuPromptCheckboxDisablesTheStatusMenuPrompt() throws {
+        let pref = MemoryPreference()
+        let c = ModOnboardingController(preference: pref)
+        let view = ModOnboardingPanelView(controller: c,
+            syncProvider: { self.context(.notInstalled(hasOtherScopeInstall: false)) })
+        var changes = 0
+        view.onPromptPreferenceChange = { changes += 1 }
+        let box = try XCTUnwrap(descendants(view).compactMap { $0 as? NSButton }.first {
+            $0.title == ModOnboardingText.dismissCheckbox.defaultText
+        })
+        XCTAssertEqual(box.state, .off)
+        box.performClick(nil)
+        XCTAssertEqual(box.state, .on)
+        XCTAssertTrue(c.isPromptDismissed)
+        XCTAssertEqual(changes, 1)
     }
 
     func testInlineReloadCopyHasOriginalCheckmarkFeedback() throws {
