@@ -500,7 +500,8 @@ final class ModOnboardingPanelView: NSView {
         } else {
             content = ModPanelContent.items(for: controller.state, plan: controller.plan,
                                             localize: localize, sync: syncProvider?(),
-                                            promptDismissed: controller.isPromptDismissed)
+                                            promptDismissed: controller.isPromptDismissed
+                                                || controller.isDismissCheckboxChecked)
         }
         render(content)
         // The original success animation closes after two seconds, but only after
@@ -798,6 +799,8 @@ final class ModOnboardingPanelView: NSView {
         // user leaves with "Later", which also shows the confirmation page.
         let dismissed = sender.state == .on
         controller.setDismissChecked(dismissed)
+        sender.state = dismissed ? .on : .off
+        sender.needsDisplay = true
         if !dismissed {
             // Re-enabling is immediate so a previously hidden prompt comes back at once.
             controller.setPromptEnabled(true)
@@ -924,6 +927,13 @@ private final class ModManagementPanel: NSPanel {
     weak var managementView: ModOnboardingPanelView?
     override var canBecomeKey: Bool { true }
     override func cancelOperation(_ sender: Any?) { managementView?.perform(.close) }
+
+    /// A floating panel can be frontmost without being key. Make it key before the
+    /// click is dispatched so the control under the pointer acts on the first press.
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .leftMouseDown, !isKeyWindow { makeKey() }
+        super.sendEvent(event)
+    }
 }
 
 /// One reusable window. Normally a child of the settings window (no app activation or
@@ -1017,6 +1027,7 @@ final class ModOnboardingWindowController: NSObject, NSWindowDelegate {
         } else {
             panel.makeKeyAndOrderFront(nil)
             panel.orderFrontRegardless()
+            panel.makeKey()
         }
     }
 

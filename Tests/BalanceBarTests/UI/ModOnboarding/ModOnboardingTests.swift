@@ -1531,6 +1531,23 @@ final class ModInt2WindowRestorationTests: XCTestCase {
         XCTAssertLessThan(view.frame.height, 400)
     }
 
+    func testDismissCheckSurvivesPanelReloadBeforeLater() throws {
+        let c = ModOnboardingController(preference: MemoryPreference())
+        let view = ModOnboardingPanelView(controller: c,
+            syncProvider: { self.context(.notInstalled(hasOtherScopeInstall: false)) })
+        func checkbox() throws -> NSButton {
+            try XCTUnwrap(descendants(view).compactMap { $0 as? NSButton }.first {
+                $0.title == ModOnboardingText.dismissCheckbox.defaultText
+            })
+        }
+        let box = try checkbox()
+        box.performClick(nil)
+        XCTAssertTrue(c.isDismissCheckboxChecked)
+        XCTAssertFalse(c.isPromptDismissed, "the preference is written on Later, not on check")
+        view.reload()
+        XCTAssertEqual(try checkbox().state, .on, "a reload must not visually clear the checked box")
+    }
+
     func testLaterAfterDismissShowsAdvancedGuidanceAndUndoRestores() throws {
         let pref = MemoryPreference()
         let c = ModOnboardingController(preference: pref)

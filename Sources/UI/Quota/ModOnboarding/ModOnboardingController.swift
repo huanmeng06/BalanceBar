@@ -219,6 +219,13 @@ final class ModOnboardingController {
         state = .intro(dismissChecked: checked)
     }
 
+    /// The panel's "don't show in the menu" box. Before "Later" the preference is not
+    /// written yet, so the intro flag is the visible source of truth.
+    var isDismissCheckboxChecked: Bool {
+        if case .intro(true) = state { return true }
+        return false
+    }
+
     func startInstall() {
         guard !installInFlight, !uninstallInFlight else { return }
         installInFlight = true
