@@ -1,19 +1,20 @@
 # PR #603：main 同步与测试包记录
 
 - 同步前远程 #603：`adf511088770a72bf26651545ad480d15f9e5117`（已包含 #605）。
-- 本轮最新 main：`8afa79864a67c84bfb3cc6abda0c0456a1cc1442`（#606）。
-- 正常 merge：`79a6fdfd93c1808886e2d34213a3fcabd739519f`，两父提交正是上述两个提交，**无冲突**，未 rebase/force-push。
-- main 的7个文件改动完整保留；未手动覆盖 Mod 或 #606 的实现。`git merge-base --is-ancestor origin/main HEAD` 通过，落后 main 的提交数为0。
-- 版本继承 main 的 `1.7.39 / 208`；未另做版本提升。#603 仍保持 Draft，未合入 main、未发布。
+- 已合入 main：`285fab11dffd585c64f2f32fa82d6bd3c744cff2`（#608；其祖先包含 #606 `8afa7986`）。
+- 正常 merge：`b7123abbc005b77d2c4f4d52937b310940aaa8ec`，**无冲突**，未 rebase/force-push。合并前也曾经由 `79a6fdfd` 合入 #606。
+- main 的 #606/#608 改动完整保留；未手动覆盖 Mod 或 main 服务。`git merge-base --is-ancestor origin/main HEAD` 通过，落后 main 的提交数为0。
+- 版本继承当前 main 的 `1.7.40 / 209`；未另做版本提升。#603 仍保持 Draft，未合入 main、未发布。
 
 ## 测试 App
 
 在 #603 原工作树运行 `./scripts/build.sh dev`，产物 `build/dev/BalanceBar-dev.app`。
 
 - Bundle ID：`com.huanmeng06.BalanceBar.dev`
-- Short version/build：`1.7.39 / 208`
+- Short version/build：`1.7.40 / 209`
 - `codesign --verify --deep --strict build/dev/BalanceBar-dev.app`：PASS
 - `localization-resource-probe.sh build/dev/BalanceBar-dev.app`：PASS（676 keys，12 languages，已检查bundle打包）
+- 修复版可执行文件 SHA-256：`bc559d80221ee49db46ddde5c4d1c2fde9cd9212de2bbc999cb851f5712e418a`。
 
 ## 自动验证
 
@@ -31,6 +32,7 @@
 - 修复：刷新门槛改为 Advanced，并在 Advanced 激活时同步当前 Mod 状态与操作进度。
 - 新增三个回归，分别覆盖可见 Advanced、切页返回缓存 Advanced、全局搜索投影。修复前执行 3 tests，得到 6 failures；修复后 **3 tests，0 failures**。
 - 随后运行完整 `DashboardPageSearchTests` 和 Mod UI/协调器相关类：**128 tests，0 failures**。修复后重新执行 `build.sh dev`，签名验证 PASS。
+- 合入 main #608 后再次运行这三个回归：**3 tests，0 failures**；随后从最终分支重建 dev App，版本 `1.7.40 / 209`，签名验证 PASS。
 - 修复应用源码对应本轮 #603 修复提交；本记录所在提交之前，构建产物由该源码生成。仍待用户用修复版重新执行一次卸载人工验收。
 
 Xcode 实际命令共用参数：
