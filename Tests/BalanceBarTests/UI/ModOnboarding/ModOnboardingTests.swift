@@ -526,7 +526,7 @@ final class ModPanelSyncContextTests: XCTestCase {
     func testIntroWithSyncStatusShowsStatusAndSkipsMenuPromptCheckbox() {
         // An installed-but-waiting status offers the uninstall action, not install.
         let lines = self.lines(.intro(dismissChecked: false), sync: context(.waitingForData))
-        XCTAssertTrue(lines[1].contains("已安装，等待新会话的数据"))
+        XCTAssertTrue(lines.contains { $0.contains("已安装，等待新会话的数据") })
         XCTAssertFalse(lines.contains { $0.contains("不再在菜单中提示") })
         XCTAssertTrue(lines.contains("<卸载实时同步>"))
         XCTAssertFalse(lines.contains("<一键安装>"))
@@ -912,6 +912,8 @@ final class ModManagementUITests: XCTestCase {
             ("installing", .installing(current: .installPlugin), .notInstalled(hasOtherScopeInstall: false)),
             ("install-finish", .installing(current: .finish), .waitingForData),
             ("waiting", .succeeded, .waitingForData),
+            ("waiting-management", .intro(dismissChecked: false), .waitingForData),
+            ("trusted-success", .succeeded, .active(lastAcceptedAt: Date(timeIntervalSince1970: 1_792_872_000))),
             ("normal", .intro(dismissChecked: false), .active(lastAcceptedAt: Date(timeIntervalSince1970: 1_792_872_000))),
             ("silent", .intro(dismissChecked: false), .silent),
             ("disabled", .intro(dismissChecked: false), .disabled),
@@ -961,7 +963,9 @@ final class ModManagementUITests: XCTestCase {
         XCTAssertFalse(waiting.contains(.step(label: tr(.modUIWaitingStep, language: .english), status: .done)))
         XCTAssertTrue(waiting.map(\.snapshotLine).joined().contains("trusted"))
         let active = content(.succeeded, status: .active(lastAcceptedAt: Date()))
-        XCTAssertTrue(active.contains(.step(label: tr(.modUIWaitingStep, language: .english), status: .done)))
+        XCTAssertTrue(active.contains { item in
+            if case let .hero(symbol, _, _) = item { return symbol == "checkmark.circle.fill" }; return false
+        }, "only a trusted active status gets the original compact success hero")
         let missing = content(.succeeded, status: .notInstalled(hasOtherScopeInstall: false))
         XCTAssertTrue(missing.map(\.snapshotLine).contains(context(.notInstalled(hasOtherScopeInstall: false)).statusText),
                       "a detection result must not be replaced with a fabricated installed state")
@@ -1105,15 +1109,18 @@ final class ModManagementUITests: XCTestCase {
         let output = FileManager.default.temporaryDirectory.appendingPathComponent("BalanceBar-Issue604-UI")
         try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
         for appearance in [NSAppearance.Name.aqua, .darkAqua] {
-            for (name, state, status) in fixtures {
-                let view = ModOnboardingPanelView(controller: controller(), localize: {
-                    tr(LocalizationKey.key(for: $0), language: .english)
-                })
-                view.appearance = try XCTUnwrap(NSAppearance(named: appearance))
-                view.render(content(state, status: status))
-                view.layoutSubtreeIfNeeded()
-                let suffix = appearance == .aqua ? "light" : "dark"
-                try export(view, name: "after-\(name)-\(suffix)")
+            for language in [AppLanguage.english, .simplifiedChinese] {
+                for (name, state, status) in fixtures {
+                    let view = ModOnboardingPanelView(controller: controller(), localize: {
+                        tr(LocalizationKey.key(for: $0), language: language)
+                    })
+                    view.appearance = try XCTUnwrap(NSAppearance(named: appearance))
+                    view.render(content(state, status: status, language: language))
+                    view.layoutSubtreeIfNeeded()
+                    let suffix = appearance == .aqua ? "light" : "dark"
+                    let prefix = language == .english ? "after" : "int2-zh"
+                    try export(view, name: "\(prefix)-\(name)-\(suffix)")
+                }
             }
         }
         print("Offline UI fixtures: \(output.path)")
@@ -1394,4 +1401,129 @@ final class RealtimeBoostAdvancedCardTests: XCTestCase {
 private final class AdvancedCardRenderHost: NSView {
     override var isFlipped: Bool { true }
     override func draw(_ dirtyRect: NSRect) { NSColor.windowBackgroundColor.setFill(); dirtyRect.fill() }
+}
+
+// MARK: - INT-2 window appearance, connected to the current safe controller
+final class ModInt2WindowRestorationTests: XCTestCase {
+    private func context(_ status: ModSyncStatus) -> ModPanelSyncContext {
+        .init(status: status, statusText: RealtimeBoostPresentation.make(status: status).statusText)
+    }
+    private func controller(copied: @escaping (String) -> Void = { _ in }) -> ModOnboardingController {
+        ModOnboardingController(preference: MemoryPreference(), copyToPasteboard: copied)
+    }
+    private func descendants(_ view: NSView) -> [NSView] { view.subviews.flatMap { [$0] + descendants($0) } }
+
+    func testPitchUsesOriginalHeroFourPointsAndFooterWithoutStatusCard() throws {
+        let items = ModPanelContent.items(for: .intro(dismissChecked: false), plan: .standard,
+            localize: ModOnboardingText.defaultLocalize, sync: context(.notInstalled(hasOtherScopeInstall: false)))
+        XCTAssertEqual(items.first, .hero(symbol: nil, title: ModOnboardingText.pitchTitle.defaultText,
+                                         subtitle: ModOnboardingText.pitchSubtitle.defaultText))
+        let symbols = items.compactMap { item -> String? in
+            if case let .feature(symbol, _, _) = item { return symbol }; return nil
+        }
+        XCTAssertEqual(symbols, ["bolt.fill", "terminal", "gauge.with.dots.needle.33percent", "lock.shield"])
+        XCTAssertFalse(items.contains { if case .text = $0 { return true }; return false }, "the pitch has no separate status panel between its hero and points")
+        let view = ModOnboardingPanelView(controller: controller(), syncProvider: { self.context(.notInstalled(hasOtherScopeInstall: false)) })
+        let buttons = descendants(view).compactMap { $0 as? NSButton }
+        let copy = try XCTUnwrap(buttons.first { $0.identifier?.rawValue == "copyCommands" })
+        let later = try XCTUnwrap(buttons.first { $0.identifier?.rawValue == "close" })
+        let install = try XCTUnwrap(buttons.first { $0.identifier?.rawValue == "install" })
+        XCTAssertEqual(later.title, "稍后")
+        XCTAssertEqual(view.defaultButton?.identifier?.rawValue, "install")
+        let frames = [copy, later, install].map { view.convert($0.bounds, from: $0) }
+        XCTAssertEqual(frames[0].midY, frames[2].midY, accuracy: 1)
+        XCTAssertLessThan(frames[0].maxX, frames[1].minX)
+        XCTAssertLessThan(frames[1].maxX, frames[2].minX)
+        XCTAssertTrue(buttons.allSatisfy { $0.controlSize == .large })
+    }
+
+    func testInlineReloadCopyHasOriginalCheckmarkFeedback() throws {
+        var copied = ""
+        let view = ModOnboardingPanelView(controller: controller(copied: { copied = $0 }),
+            syncProvider: { self.context(.waitingForData) })
+        let copy = try XCTUnwrap(descendants(view).compactMap { $0 as? ModCopyButton }.first)
+        XCTAssertEqual(copy.identifier?.rawValue, "copyReload")
+        let rect = view.convert(copy.bounds, from: copy)
+        XCTAssertEqual(rect.maxX, view.bounds.maxX - 30, accuracy: 1, "copy stays pinned to the right edge of the code block")
+        copy.performClick(nil)
+        XCTAssertEqual(copied, ModInstallPlan.reloadCommand)
+        XCTAssertTrue(copy.isShowingFeedback)
+        XCTAssertEqual(descendants(view).compactMap { $0 as? NSButton }.filter {
+            $0.identifier?.rawValue == "copyReload"
+        }.count, 1, "the code block replaces the duplicate footer copy button")
+    }
+
+    func testFailureAndInstalledPagesUseTheirOriginalDedicatedLayouts() {
+        let failed = ModPanelContent.items(for: .failed(.commandFailed(step: .installPlugin, exitCode: 1, detail: "one\ntwo\nthree")),
+            plan: .standard, localize: ModOnboardingText.defaultLocalize, sync: context(.notInstalled(hasOtherScopeInstall: false)))
+        XCTAssertTrue(failed.contains(.detail("one\ntwo")))
+        XCTAssertTrue(failed.contains { if case .codeBlock = $0 { return true }; return false })
+        let installed = ModPanelContent.items(for: .intro(dismissChecked: false), plan: .standard,
+            localize: ModOnboardingText.defaultLocalize, sync: context(.active(lastAcceptedAt: Date())))
+        XCTAssertTrue(installed.contains { item in
+            if case let .hero(_, title, _) = item { return title == ModOnboardingText.manageTitle.defaultText }; return false
+        })
+        XCTAssertFalse(installed.contains { if case .feature = $0 { return true }; return false },
+                       "installed users see management, not the install pitch")
+        let silent = ModPanelContent.items(for: .intro(dismissChecked: false), plan: .standard,
+            localize: ModOnboardingText.defaultLocalize, sync: context(.silent))
+        XCTAssertEqual(silent.filter { if case let .text(text) = $0 { return text.hasPrefix("•") }; return false }.count, 3)
+    }
+
+    func testOriginalDelayedSuccessCloseRequiresTrustedDataAndAnOpenWindow() throws {
+        let c = ModOnboardingController(installer: ModInstaller(locator: FakeLocator(path: "/fake/claude"),
+            runner: ScriptedRunner([ok, ok]), prepareInbox: { true }), preference: MemoryPreference())
+        var status = ModSyncStatus.waitingForData
+        let windows = ModOnboardingWindowController {
+            ModOnboardingPanelView(controller: c, syncProvider: { self.context(status) })
+        }
+        let owner = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 900, height: 800),
+            styleMask: [.titled], backing: .buffered, defer: false)
+        let panel = windows.prepare(owner: owner)
+        defer { windows.close() }
+        ApplicationWindowPresentation.presentInBackground(panel)
+        let view = try XCTUnwrap(windows.panelView)
+        let installed = expectation(description: "commands finish")
+        let render = c.onChange
+        c.onChange = { render?(); if c.state == .succeeded { installed.fulfill() } }
+        var closes = 0
+        let closed = expectation(description: "trusted success closes after original delay")
+        view.onRequestClose = { closes += 1; closed.fulfill() }
+        c.startInstall()
+        wait(for: [installed], timeout: 5)
+        XCTAssertEqual(closes, 0, "command success never closes the waiting page")
+        XCTAssertTrue(view.snapshotLines.contains { $0.contains("等待可信数据") })
+        status = .active(lastAcceptedAt: Date())
+        view.reload()
+        XCTAssertEqual(closes, 0, "success remains visible briefly")
+        wait(for: [closed], timeout: 4)
+        XCTAssertEqual(closes, 1)
+        windows.close()
+        view.reload()
+        XCTAssertEqual(closes, 1, "a closed window must not be brought back")
+    }
+
+    func testNativeWindowChromeAndLocalizedWidthMatchTheReference() throws {
+        let previous = AppLanguage.selected
+        defer { AppLanguage.selected = previous }
+        for language in AppLanguage.allCases where language != .system {
+            AppLanguage.selected = language
+            let owner = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 900, height: 800),
+                styleMask: [.titled], backing: .buffered, defer: false)
+            let windows = ModOnboardingWindowController {
+                ModOnboardingPanelView(controller: self.controller(), localize: modOnboardingLocalize,
+                    syncProvider: { self.context(.notInstalled(hasOtherScopeInstall: false)) })
+            }
+            let panel = windows.prepare(owner: owner)
+            let view = try XCTUnwrap(windows.panelView)
+            XCTAssertEqual(panel.titleVisibility, .hidden)
+            XCTAssertTrue(panel.titlebarAppearsTransparent)
+            XCTAssertTrue(panel.isMovableByWindowBackground)
+            XCTAssertEqual(panel.standardWindowButton(.zoomButton)?.isHidden, true)
+            XCTAssertGreaterThanOrEqual(panel.contentView?.bounds.width ?? 0, 380)
+            XCTAssertLessThanOrEqual(panel.contentView?.bounds.width ?? 1000, 640)
+            XCTAssertEqual(view.defaultButton?.identifier?.rawValue, "install")
+            windows.close()
+        }
+    }
 }

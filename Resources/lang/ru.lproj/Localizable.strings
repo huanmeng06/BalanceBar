@@ -687,3 +687,20 @@
 "mod.settings.action.view_error" = "Показать ошибку";
 "mod.settings.status.silent_short" = "Установлено, но данных нет уже 10 минут";
 "mod.settings.status.silent_hint" = "Начните новую сессию или выполните /reload-plugins в открытой";
+
+// INT-2 Mod window presentation
+"mod.ui.int2.pitch_title" = "Квота Claude в реальном времени";
+"mod.ui.int2.pitch_subtitle" = "BalanceBar Mod — небольшой плагин внутри Claude Code: после каждого ответа он передаёт BalanceBar официальную квоту.";
+"mod.ui.int2.later_button" = "Позже";
+"mod.ui.int2.feature1_title" = "Актуальные официальные данные";
+"mod.ui.int2.feature1_detail" = "Обновляются сразу после каждого ответа, это не оценка";
+"mod.ui.int2.feature2_title" = "Работает и с агентами";
+"mod.ui.int2.feature4_title" = "Только чтение, можно удалить в любой момент";
+"mod.ui.int2.feature4_detail" = "Диалоги не читает; удаление через /plugin";
+"mod.ui.int2.manage_title" = "BalanceBar Mod установлен";
+"mod.ui.int2.remove_note" = "Больше не нужен? После удаления новые сессии перестанут присылать данные, а квота снова будет запрашиваться по расписанию.";
+"mod.ui.int2.silent_title" = "Установлено, но данных пока нет";
+"mod.ui.int2.uninstalled_title" = "Удалено";
+"mod.ui.int2.silent_check_version" = "Claude Code версии 2.1.287 или новее";
+"mod.ui.int2.silent_check_session" = "Это новая сессия или в ней выполнен /reload-plugins";
+"mod.ui.int2.silent_check_policy" = "Не разрешает ли политика организации только управляемые плагины";

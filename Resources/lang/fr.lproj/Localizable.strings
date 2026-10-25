@@ -687,3 +687,20 @@
 "mod.settings.action.view_error" = "Voir l’erreur";
 "mod.settings.status.silent_short" = "Installé, mais aucune donnée depuis 10 minutes";
 "mod.settings.status.silent_hint" = "Démarrez une nouvelle session ou exécutez /reload-plugins dans une session ouverte";
+
+// INT-2 Mod window presentation
+"mod.ui.int2.pitch_title" = "Mettre à jour le quota de Claude en temps réel";
+"mod.ui.int2.pitch_subtitle" = "BalanceBar Mod est un petit plugin qui s’exécute dans Claude Code et transmet le quota officiel à BalanceBar après chaque réponse.";
+"mod.ui.int2.later_button" = "Plus tard";
+"mod.ui.int2.feature1_title" = "Données officielles en direct";
+"mod.ui.int2.feature1_detail" = "Mise à jour juste après chaque réponse, pas une estimation";
+"mod.ui.int2.feature2_title" = "Couvre les scénarios d’agents";
+"mod.ui.int2.feature4_title" = "Lecture seule, retirable à tout moment";
+"mod.ui.int2.feature4_detail" = "Ne lit pas les conversations ; se désinstalle avec /plugin";
+"mod.ui.int2.manage_title" = "BalanceBar Mod est installé";
+"mod.ui.int2.remove_note" = "Plus besoin ? Une fois désinstallé, les nouvelles sessions n’envoient plus de données et le quota revient aux interrogations planifiées.";
+"mod.ui.int2.silent_title" = "Installé, mais pas encore de données";
+"mod.ui.int2.uninstalled_title" = "Désinstallé";
+"mod.ui.int2.silent_check_version" = "Claude Code est en v2.1.287 ou ultérieure";
+"mod.ui.int2.silent_check_session" = "C’est une nouvelle session, ou /reload-plugins y a été exécuté";
+"mod.ui.int2.silent_check_policy" = "Si la politique de votre organisation n’autorise que les plugins gérés";

@@ -687,3 +687,20 @@
 "mod.settings.action.view_error" = "エラーを表示";
 "mod.settings.status.silent_short" = "インストール済みですが、10 分間データがありません";
 "mod.settings.status.silent_hint" = "新しいセッションを開くか、開いているセッションで /reload-plugins を実行してください";
+
+// INT-2 Mod window presentation
+"mod.ui.int2.pitch_title" = "Claude の残量をリアルタイムで更新";
+"mod.ui.int2.pitch_subtitle" = "BalanceBar Mod は Claude Code 内で動く小さなプラグインで、返信のたびに公式の残量を BalanceBar に伝えます。";
+"mod.ui.int2.later_button" = "あとで";
+"mod.ui.int2.feature1_title" = "リアルタイムの公式データ";
+"mod.ui.int2.feature1_detail" = "返信のたびにすぐ更新され、推定ではありません";
+"mod.ui.int2.feature2_title" = "エージェント利用にも対応";
+"mod.ui.int2.feature4_title" = "読み取り専用でいつでも削除可能";
+"mod.ui.int2.feature4_detail" = "会話の内容は読まず、/plugin で削除できます";
+"mod.ui.int2.manage_title" = "BalanceBar Mod はインストール済みです";
+"mod.ui.int2.remove_note" = "不要になりましたか？アンインストールすると、新しいセッションはデータを送らなくなり、残量は定期取得に戻ります。";
+"mod.ui.int2.silent_title" = "インストール済みですが、まだデータがありません";
+"mod.ui.int2.uninstalled_title" = "アンインストールしました";
+"mod.ui.int2.silent_check_version" = "Claude Code が v2.1.287 以降であること";
+"mod.ui.int2.silent_check_session" = "新しいセッションであること、またはその中で /reload-plugins を実行したこと";
+"mod.ui.int2.silent_check_policy" = "組織のポリシーが管理対象プラグインのみを許可していないか";

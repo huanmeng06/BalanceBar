@@ -687,3 +687,20 @@
 "mod.settings.action.view_error" = "檢視原因";
 "mod.settings.status.silent_short" = "已安裝，但 10 分鐘內沒有收到資料";
 "mod.settings.status.silent_hint" = "請開啟新工作階段，或在已開啟的工作階段執行 /reload-plugins";
+
+// INT-2 Mod window presentation
+"mod.ui.int2.pitch_title" = "讓 Claude 額度即時更新";
+"mod.ui.int2.pitch_subtitle" = "BalanceBar Mod 是在 Claude Code 內執行的小外掛程式，每輪回覆後把官方額度告訴 BalanceBar。";
+"mod.ui.int2.later_button" = "稍後";
+"mod.ui.int2.feature1_title" = "即時、官方資料";
+"mod.ui.int2.feature1_detail" = "每輪回覆後立即更新，不是估算";
+"mod.ui.int2.feature2_title" = "涵蓋 Agent 情境";
+"mod.ui.int2.feature4_title" = "唯讀，可隨時移除";
+"mod.ui.int2.feature4_detail" = "不讀取對話內容；在 /plugin 中即可解除安裝";
+"mod.ui.int2.manage_title" = "BalanceBar Mod 已安裝";
+"mod.ui.int2.remove_note" = "不想用了？解除安裝後，新工作階段不再向 BalanceBar 寫入資料，額度回到定時查詢。";
+"mod.ui.int2.silent_title" = "已安裝，但還沒收到資料";
+"mod.ui.int2.uninstalled_title" = "已解除安裝";
+"mod.ui.int2.silent_check_version" = "Claude Code 版本是否為 v2.1.287 或更新";
+"mod.ui.int2.silent_check_session" = "是否為新工作階段，或已在其中執行 /reload-plugins";
+"mod.ui.int2.silent_check_policy" = "組織政策是否只允許受管理的外掛程式";

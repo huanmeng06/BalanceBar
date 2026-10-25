@@ -1,5 +1,16 @@
 # Verification — Issue #604
 
+## Current INT-2 window restoration
+
+- Latest UI/localization run: **108 tests, 0 failures** (5 original-window restoration, 11 management UI, 8 panel, 7 context, 7 coordinator, 9 Advanced-card, 61 localization).
+- The preceding 47-test final UI run had **zero unsatisfiable-constraint diagnostics**. New acceptance includes the original single footer row, localized 380–640pt sizing/chrome, right-pinned inline copy/check feedback, dedicated management/failure/silent layouts and the two-second success close gated by a real waiting→active transition.
+- Layout fixtures now include **22 states**, with English/Chinese state exports plus all 12 languages, light/dark and three stress widths.
+- Debug build, final dev package/signature, diff-check and all three localization probes: PASS (**676 keys × 12 languages**). Full CI/GUI/VoiceOver/real CLI remain pending under the Draft handoff.
+- Targeted classes use the same serial Xcode command and task DerivedData below: `ModInt2WindowRestorationTests`, `ModManagementUITests`, `ModOnboardingPanelTests`, `ModPanelSyncContextTests`, `ModSyncCoordinatorTests`, `RealtimeBoostAdvancedCardTests`, `LocalizationTests`.
+- The changed product files are Mod presentation, text enums/mapping and localization. Installer/Detector/Status/Pipeline/Inbox/MergeEngine/Info.plist and the prior Advanced/App wiring have no diff from the preceding delivery.
+- See [restored items, retained differences and current screenshots](restoration.md).
+
+
 ## Current Advanced-card restoration (2026-10-25)
 
 - User requested the dedicated INT-2 Advanced card. The only Mod settings entry now lives in Advanced, with status dot, separate state/time copy and install/details/manage controls.

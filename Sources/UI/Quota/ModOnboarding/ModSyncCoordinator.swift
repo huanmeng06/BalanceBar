@@ -179,6 +179,21 @@ func realtimeBoostLocalize(_ text: RealtimeBoostText, language: AppLanguage) -> 
 extension LocalizationKey {
     static func key(for text: ModOnboardingText) -> LocalizationKey {
         switch text {
+        case .pitchTitle: return .modInt2PitchTitle
+        case .pitchSubtitle: return .modInt2PitchSubtitle
+        case .laterButton: return .modInt2LaterButton
+        case .feature1Title: return .modInt2Feature1Title
+        case .feature1Detail: return .modInt2Feature1Detail
+        case .feature2Title: return .modInt2Feature2Title
+        case .feature4Title: return .modInt2Feature4Title
+        case .feature4Detail: return .modInt2Feature4Detail
+        case .manageTitle: return .modInt2ManageTitle
+        case .removeNote: return .modInt2RemoveNote
+        case .silentTitle: return .modInt2SilentTitle
+        case .uninstalledTitle: return .modInt2UninstalledTitle
+        case .silentCheckVersion: return .modInt2SilentCheckVersion
+        case .silentCheckSession: return .modInt2SilentCheckSession
+        case .silentCheckPolicy: return .modInt2SilentCheckPolicy
         case .subtitle: return .modUISubtitle
         case .benefitRealtime: return .modUIBenefitRealtime
         case .benefitFallback: return .modUIBenefitFallback

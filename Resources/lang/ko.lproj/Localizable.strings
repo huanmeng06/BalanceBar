@@ -687,3 +687,20 @@
 "mod.settings.action.view_error" = "오류 보기";
 "mod.settings.status.silent_short" = "설치되었지만 10분 동안 데이터가 없습니다";
 "mod.settings.status.silent_hint" = "새 세션을 시작하거나 열려 있는 세션에서 /reload-plugins 를 실행하세요";
+
+// INT-2 Mod window presentation
+"mod.ui.int2.pitch_title" = "Claude 할당량을 실시간으로 업데이트";
+"mod.ui.int2.pitch_subtitle" = "BalanceBar Mod는 Claude Code 안에서 동작하는 작은 플러그인으로, 답변이 끝날 때마다 공식 할당량을 BalanceBar에 알려 줍니다.";
+"mod.ui.int2.later_button" = "나중에";
+"mod.ui.int2.feature1_title" = "실시간 공식 데이터";
+"mod.ui.int2.feature1_detail" = "답변이 끝나는 즉시 갱신되며 추정치가 아닙니다";
+"mod.ui.int2.feature2_title" = "에이전트 시나리오 지원";
+"mod.ui.int2.feature4_title" = "읽기 전용, 언제든 제거 가능";
+"mod.ui.int2.feature4_detail" = "대화 내용은 읽지 않으며 /plugin 으로 제거할 수 있습니다";
+"mod.ui.int2.manage_title" = "BalanceBar Mod가 설치되어 있습니다";
+"mod.ui.int2.remove_note" = "더 이상 필요 없나요? 제거하면 새 세션은 데이터를 보내지 않고 할당량은 정기 조회로 돌아갑니다.";
+"mod.ui.int2.silent_title" = "설치되었지만 아직 데이터가 없습니다";
+"mod.ui.int2.uninstalled_title" = "제거되었습니다";
+"mod.ui.int2.silent_check_version" = "Claude Code가 v2.1.287 이상인지";
+"mod.ui.int2.silent_check_session" = "새 세션이거나 그 안에서 /reload-plugins 를 실행했는지";
+"mod.ui.int2.silent_check_policy" = "조직 정책이 관리되는 플러그인만 허용하는지";
