@@ -26,8 +26,10 @@ final class ModSyncCoordinator {
     private weak var presentedPanel: ModOnboardingPanelView?
     private lazy var managementWindow = ModOnboardingWindowController { [unowned self] in self.attachPanel() }
 
-    /// Fired on the main thread whenever the status changes; the owner refreshes the row.
+    /// Fired on the main thread whenever sync status changes.
     var onStatusChange: ((ModSyncStatus) -> Void)?
+    /// Operation progress only; does not change sync facts or status notifications.
+    var onPresentationChange: (() -> Void)?
 
     init(
         controller: ModOnboardingController,
@@ -41,6 +43,9 @@ final class ModSyncCoordinator {
         self.activityProvider = activityProvider
         self.localizePanel = localizePanel
         self.localizeSync = localizeSync
+        controller.onPresentationChange = { [weak self] in
+            self?.onPresentationChange?()
+        }
         controller.onInstallCompleted = { [weak self] result in
             // A (re)install invalidates the previous plugin's snapshot evidence: until a
             // new trusted snapshot arrives the status is "waiting for data", never active.
@@ -111,7 +116,12 @@ final class ModSyncCoordinator {
     /// the management intro (running operations keep their progress) and registers the
     /// panel so later status changes refresh it live.
     func attachPanel() -> ModOnboardingPanelView {
-        controller.resetToIntro()
+        // "View error" in Advanced must retain the actual CLI failure and retry.
+        // Successful pages still reset to the current management state on reopen.
+        switch controller.state {
+        case .failed, .uninstallFailed: break
+        default: controller.resetToIntro()
+        }
         let panel = ModOnboardingPanelView(
             controller: controller,
             localize: localizePanel,
@@ -159,7 +169,7 @@ func realtimeBoostLocalize(_ text: RealtimeBoostText) -> String {
 /// as a literal placeholder here, then let Presentation insert the actual value.
 func realtimeBoostLocalize(_ text: RealtimeBoostText, language: AppLanguage) -> String {
     switch text {
-    case .statusActive, .statusUnsupported, .statusVersionTooOld:
+    case .statusActive, .statusUnsupported, .statusVersionTooOld, .statusTitleFormat, .lastData:
         return tr(LocalizationKey.key(for: text), arguments: ["%@"], language: language)
     default:
         return tr(LocalizationKey.key(for: text), language: language)
@@ -221,6 +231,14 @@ extension LocalizationKey {
 
     static func key(for text: RealtimeBoostText) -> LocalizationKey {
         switch text {
+        case .statusTitleFormat: return .modSettingsStatusTitleFormat
+        case .statusEnabledShort: return .modSettingsStatusEnabledShort
+        case .lastData: return .modSettingsLastData
+        case .viewNote: return .modSettingsViewNote
+        case .manage: return .modSettingsManage
+        case .viewError: return .modSettingsViewError
+        case .statusSilentShort: return .modSettingsStatusSilentShort
+        case .silentHint: return .modSettingsSilentHint
         case .title: return .modSettingsTitle
         case .statusNotInstalled: return .modSettingsStatusNotInstalled
         case .statusWaiting: return .modSettingsStatusWaiting

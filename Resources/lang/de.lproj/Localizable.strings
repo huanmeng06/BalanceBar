@@ -642,7 +642,7 @@
 "mod.failure.uninstall_command" = "Die Deinstallation ist nicht abgeschlossen. Führe die folgenden Befehle im Terminal aus:";
 "mod.failure.copy_enable" = "Aktivierungsbefehl kopieren";
 "mod.failure.inbox" = "Der Snapshot-Eingang konnte nicht erstellt werden (unzureichende Berechtigungen oder falscher Besitzer). Prüfe ~/Library/Application Support/BalanceBar/inbox und versuche es erneut.";
-"mod.settings.title" = "Echtzeit-Boost";
+"mod.settings.title" = "Claude-Echtzeit-Boost";
 "mod.settings.status.not_installed" = "Nicht aktiviert";
 "mod.settings.status.waiting" = "Installiert, wartet auf Daten aus einer neuen Sitzung";
 "mod.settings.status.active" = "Aktiviert, letzte Daten %1$@";
@@ -677,3 +677,13 @@
 "mod.ui.uninstall_failure_title" = "Deinstallation unvollständig";
 "mod.ui.account_advice" = "Claude Code und BalanceBar müssen dasselbe Konto verwenden. Danach eine neue Sitzung starten.";
 "mod.ui.cycle_advice" = "Offizielles Kontingent weiterverwenden. Neue Sitzungsdaten prüfen, sobald die offizielle Quelle den neuen Zyklus bestätigt.";
+
+// INT-2 settings card restored for Issue #604
+"mod.settings.status.title_format" = "BalanceBar-Mod-Status: %1$@";
+"mod.settings.status.enabled_short" = "Aktiv";
+"mod.settings.status.last_data" = "Letzte Daten: %1$@";
+"mod.settings.action.view_note" = "Details";
+"mod.settings.action.manage" = "Verwalten";
+"mod.settings.action.view_error" = "Fehler ansehen";
+"mod.settings.status.silent_short" = "Installiert, aber seit 10 Minuten keine Daten";
+"mod.settings.status.silent_hint" = "Starte eine neue Sitzung oder führe in einer offenen /reload-plugins aus";

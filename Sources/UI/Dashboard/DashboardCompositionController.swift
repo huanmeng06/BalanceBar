@@ -24,6 +24,7 @@ struct DashboardCompositionState {
     let setStatusLinks: ([StatusLink]) -> Void
     let notificationConfiguration: DashboardNotificationPageConfiguration?
     let modSyncStatus: () -> ModSyncStatus?
+    let modPanelState: () -> ModPanelState?
 
     init(
         preferences: AppPreferences,
@@ -46,7 +47,8 @@ struct DashboardCompositionState {
         snapshotProviderID: @escaping () -> String? = { nil },
         aggregationSnapshots: @escaping () -> [String: Snapshot] = { [:] },
         isAggregationMode: @escaping () -> Bool = { false },
-        modSyncStatus: @escaping () -> ModSyncStatus? = { nil }
+        modSyncStatus: @escaping () -> ModSyncStatus? = { nil },
+        modPanelState: @escaping () -> ModPanelState? = { nil }
     ) {
         self.preferences = preferences
         self.devBundleIdentifier = devBundleIdentifier
@@ -69,6 +71,7 @@ struct DashboardCompositionState {
         self.setStatusLinks = setStatusLinks
         self.notificationConfiguration = notificationConfiguration
         self.modSyncStatus = modSyncStatus
+        self.modPanelState = modPanelState
     }
 }
 
@@ -212,6 +215,7 @@ struct DashboardCompositionActions {
     let onDidShowPage: () -> Void
     let onDidClose: () -> Void
     let onDidResize: () -> Void
+    var onInstallModSync: ((NSView) -> Void)? = nil
 }
 
 /// Owns Dashboard shell, page composition, page lifecycle, and Status Links
@@ -283,7 +287,9 @@ final class DashboardCompositionController {
                 self?.makeStatusLinksEditor()
                     ?? StatusLinksEditorHostingView(links: [], onChange: { _, _, _ in }, onAdd: { _ in }, onRemove: { _ in }, onReset: {})
             },
-            onClamp: actions.onClamp
+            onClamp: actions.onClamp,
+            onInstallModSync: actions.onInstallModSync,
+            modPanelStateProvider: state.modPanelState
         ),
         launchAtLoginController: launchAtLoginController,
         launchWithChatGPTController: launchWithChatGPTController,

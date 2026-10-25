@@ -466,7 +466,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             modSyncStatus: { [weak self] in
                 guard let self else { return nil }
                 return self.modSyncCoordinator.status
-            }
+            },
+            modPanelState: { [weak self] in self?.modSyncCoordinator.controller.state }
         ),
         actions: DashboardCompositionActions(
             onManualRefresh: { [weak self] in self?.performManualRefresh(source: "dashboard") },
@@ -571,6 +572,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             },
             onDidResize: { [weak self] in
                 DispatchQueue.main.async { [weak self] in self?.clampDashboardScrollViewBounds() }
+            },
+            onInstallModSync: { [weak self] anchor in
+                guard let self else { return }
+                self.modSyncCoordinator.presentPanel(from: anchor)
+                self.modSyncCoordinator.controller.startInstall()
             }
         ),
         launchAtLoginController: launchAtLoginController
@@ -755,6 +761,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             self?.modSyncCoordinator.ingest(event)
         }
         modSyncCoordinator.onStatusChange = { [weak self] _ in
+            DispatchQueue.main.async { [weak self] in
+                self?.dashboardComposition.refreshModSync()
+            }
+        }
+        modSyncCoordinator.onPresentationChange = { [weak self] in
             DispatchQueue.main.async { [weak self] in
                 self?.dashboardComposition.refreshModSync()
             }

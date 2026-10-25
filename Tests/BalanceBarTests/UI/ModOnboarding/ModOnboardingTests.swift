@@ -1196,3 +1196,202 @@ final class ModManagementUITests: XCTestCase {
         view.subviews.flatMap { [$0] + descendants($0) }
     }
 }
+
+// MARK: - INT-2 Advanced settings card restoration
+final class RealtimeBoostAdvancedCardTests: XCTestCase {
+    private func rows(_ status: ModSyncStatus, operation: ModPanelState = .intro(dismissChecked: false),
+                      install: @escaping (NSButton) -> Void = { _ in },
+                      describe: @escaping (NSButton) -> Void = { _ in }) -> RealtimeBoostSettingsRows {
+        RealtimeBoostSettingsRows(status: status, operation: operation,
+            localize: { realtimeBoostLocalize($0, language: .english) },
+            modLocalize: { tr(LocalizationKey.key(for: $0), language: .english) },
+            onInstall: install, onShowDescription: describe)
+    }
+
+    func testHistoricalStatusTitleAndLatestDataUseSeparateLines() {
+        let card = rows(.active(lastAcceptedAt: Date()))
+        XCTAssertEqual(card.statusRow.titleLabel.stringValue, "BalanceBar Mod status: Enabled")
+        XCTAssertTrue(card.statusRow.detailLabel.stringValue.hasPrefix("Latest data: "))
+        XCTAssertTrue(card.installButton.isHidden)
+        XCTAssertEqual(card.descriptionButton.title, "Manage")
+        card.update(status: .silent, operation: .intro(dismissChecked: false))
+        XCTAssertTrue(card.statusRow.titleLabel.stringValue.contains("10 minutes"))
+        XCTAssertTrue(card.statusRow.detailLabel.stringValue.contains("/reload-plugins"))
+    }
+
+    func testInstallAndDescriptionCallbacksKeepTheirOriginalSender() {
+        var installed: NSButton?
+        var described: NSButton?
+        let card = rows(.notInstalled(hasOtherScopeInstall: false), install: { installed = $0 }, describe: { described = $0 })
+        XCTAssertFalse(card.installButton.isHidden)
+        XCTAssertEqual(card.descriptionButton.title, "Details")
+        card.installButton.performClick(nil)
+        card.descriptionButton.performClick(nil)
+        XCTAssertTrue(installed === card.installButton)
+        XCTAssertTrue(described === card.descriptionButton)
+    }
+
+    func testOperationProgressAndFailuresDoNotBecomeRealtimeSuccess() {
+        let card = rows(.notInstalled(hasOtherScopeInstall: false), operation: .installing(current: .installPlugin))
+        XCTAssertTrue(card.installButton.isHidden)
+        XCTAssertEqual(card.descriptionButton.title, "Manage")
+        XCTAssertTrue(card.statusRow.detailLabel.stringValue.contains("Install Mod"))
+        card.update(status: .waitingForData, operation: .succeeded)
+        XCTAssertTrue(card.statusRow.titleLabel.stringValue.contains("waiting"))
+        XCTAssertFalse(card.statusRow.titleLabel.stringValue.contains("Enabled"))
+        card.update(status: .notInstalled(hasOtherScopeInstall: false), operation: .failed(.inboxNotReady))
+        XCTAssertFalse(card.installButton.isHidden)
+        XCTAssertEqual(card.descriptionButton.title, "View error")
+        card.update(status: .waitingForData, operation: .uninstalling(current: .removeMarketplace))
+        XCTAssertTrue(card.statusRow.detailLabel.stringValue.contains("Remove"))
+        XCTAssertTrue(card.installButton.isHidden)
+    }
+
+    func testDetectingAndUnsupportedEnvironmentsDoNotOfferDirectInstall() {
+        for status in [ModSyncStatus.detecting, .claudeMissing, .claudeVersionTooOld(.init(major: 2, minor: 0, patch: 0))] {
+            XCTAssertTrue(rows(status).installButton.isHidden)
+        }
+        XCTAssertFalse(rows(.inboxNotReady).installButton.isHidden)
+        XCTAssertEqual(rows(.disabled).descriptionButton.title, "Manage")
+    }
+
+    func testAdvancedOwnsTheOnlyModSectionAndRefreshesItInPlace() throws {
+        let old = AppLanguage.selected
+        AppLanguage.selected = .english
+        defer { AppLanguage.selected = old }
+        let page = DashboardAdvancedPage()
+        let advanced = page.make(.init(relay: DashboardPreferencePageRelay(), logViewer: nil,
+                                      modSyncStatus: .notInstalled(hasOtherScopeInstall: false)))
+        let sections = descendants(advanced).compactMap { $0 as? SettingsSectionView }
+        XCTAssertEqual(sections.map { $0.headingLabel.stringValue }, ["Claude real-time boost", "Diagnostics"])
+        let card = try XCTUnwrap(sections.first?.contentViews.first as? SettingsRowView)
+        XCTAssertEqual(card.identifier, DashboardPageSearch.rowIdentifier)
+        page.refreshModSync(.active(lastAcceptedAt: Date()), operation: .succeeded)
+        XCTAssertEqual(card.titleLabel.stringValue, "BalanceBar Mod status: Enabled")
+        let general = DashboardGeneralPage().make(.init(preferences: AppPreferences(), relay: DashboardPreferencePageRelay(),
+            updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6")))))
+        XCTAssertFalse(descendants(general).compactMap { $0 as? NSTextField }.contains {
+            $0.stringValue.contains("Claude Code Mod") || $0.stringValue.contains("BalanceBar Mod")
+        })
+    }
+
+    func testSearchFindsTheAdvancedCardFromAnotherSettingsPage() {
+        let old = AppLanguage.selected
+        defer { AppLanguage.selected = old }
+        for language in AppLanguage.allCases where language != .system {
+            AppLanguage.selected = language
+            for key in [LocalizationKey.modSettingsTitle, .modSettingsViewNote, .modSettingsManage, .modSyncStatusDetecting] {
+                let query = tr(key)
+                XCTAssertTrue(DashboardSettingsSearchCatalog.matchingSections(query: query).contains(.advanced))
+            }
+            XCTAssertFalse(DashboardSettingsSearchCatalog.keys(for: .general).contains(.keyClaudeModSyncTitle))
+        }
+    }
+
+    func testSettingsProgressObserverDoesNotReplacePanelOrChangeSyncFacts() {
+        let controller = ModOnboardingController(preference: MemoryPreference())
+        let coordinator = ModSyncCoordinator(controller: controller, detector: ModSyncDetector(), activityProvider: { false })
+        let panel = coordinator.attachPanel()
+        var presentations = 0
+        var statusChanges = 0
+        coordinator.onPresentationChange = { presentations += 1 }
+        coordinator.onStatusChange = { _ in statusChanges += 1 }
+        controller.setDismissChecked(true)
+        XCTAssertEqual(presentations, 1)
+        XCTAssertEqual(statusChanges, 0)
+        XCTAssertEqual(coordinator.status, .detecting)
+        XCTAssertEqual(panel.snapshotLines, ModPanelContent.items(for: controller.state, plan: .standard,
+            localize: ModOnboardingText.defaultLocalize, sync: coordinator.syncContext).map(\.snapshotLine))
+    }
+
+    func testViewErrorRetainsTheActualFailureWhenOpeningManagement() {
+        let controller = ModOnboardingController(installer: ModInstaller(
+            locator: FakeLocator(path: nil), runner: ScriptedRunner([]), prepareInbox: { true }),
+            preference: MemoryPreference())
+        let coordinator = ModSyncCoordinator(controller: controller,
+            detector: ModSyncDetector(locator: FakeLocator(path: nil)), activityProvider: { false })
+        let failed = expectation(description: "installation fails without CLI")
+        controller.onChange = { if controller.state == .failed(.claudeNotFound) { failed.fulfill() } }
+        controller.startInstall()
+        wait(for: [failed], timeout: 5)
+        let panel = coordinator.attachPanel()
+        XCTAssertEqual(controller.state, .failed(.claudeNotFound))
+        XCTAssertTrue(panel.snapshotLines.contains { $0.contains(ModOnboardingText.failureClaudeMissing.defaultText) })
+        // The underlying explicit reset behavior is unchanged.
+        controller.resetToIntro()
+        XCTAssertEqual(controller.state, .intro(dismissChecked: false))
+    }
+
+    func testExportAdvancedCardsInBothAppearancesAndAllLanguages() throws {
+        let previous = AppLanguage.selected
+        let originalAppearance = NSApp.appearance
+        defer { AppLanguage.selected = previous; NSApp.appearance = originalAppearance }
+        let output = FileManager.default.temporaryDirectory.appendingPathComponent("BalanceBar-Issue604-Advanced")
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        let states: [(String, ModSyncStatus, ModPanelState)] = [
+            ("not-installed", .notInstalled(hasOtherScopeInstall: false), .intro(dismissChecked: false)),
+            ("installing", .notInstalled(hasOtherScopeInstall: false), .installing(current: .installPlugin)),
+            ("waiting", .waitingForData, .succeeded),
+            ("active", .active(lastAcceptedAt: Date(timeIntervalSince1970: 1_792_872_000)), .intro(dismissChecked: false)),
+            ("silent", .silent, .intro(dismissChecked: false)),
+            ("failed", .inboxNotReady, .failed(.inboxNotReady)),
+            ("uninstalling", .waitingForData, .uninstalling(current: .removeMarketplace))]
+        for language in AppLanguage.allCases where language != .system {
+            AppLanguage.selected = language
+            for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+                // Dashboard chrome follows the application's effective appearance.
+                NSApp.appearance = NSAppearance(named: appearance)
+                for width: CGFloat in [420, 760] {
+                    for (name, status, operation) in states {
+                        let page = DashboardAdvancedPage()
+                        let narrowCard = RealtimeBoostSettingsRows(status: status, operation: operation,
+                            onInstall: { _ in }, onShowDescription: { _ in })
+                        // 420pt stress-tests the new card alone. The full Advanced page
+                        // also contains the existing diagnostics toolbar; its supported
+                        // window width starts at 800pt, including the sidebar.
+                        let content: NSView = width == 420 ? narrowCard.makeSection()
+                            : page.make(.init(relay: DashboardPreferencePageRelay(), logViewer: nil,
+                                              modSyncStatus: status, modPanelState: operation))
+                        let host = AdvancedCardRenderHost(frame: NSRect(x: 0, y: 0, width: width, height: 1000))
+                        host.appearance = try XCTUnwrap(NSAppearance(named: appearance))
+                        content.translatesAutoresizingMaskIntoConstraints = false
+                        host.addSubview(content)
+                        NSLayoutConstraint.activate([
+                            content.leadingAnchor.constraint(equalTo: host.leadingAnchor, constant: 24),
+                            content.trailingAnchor.constraint(equalTo: host.trailingAnchor, constant: -24),
+                            content.topAnchor.constraint(equalTo: host.topAnchor, constant: 24)])
+                        host.layoutSubtreeIfNeeded()
+                        RunLoop.current.run(until: Date().addingTimeInterval(0.001))
+                        host.layoutSubtreeIfNeeded()
+                        host.setFrameSize(NSSize(width: width, height: content.fittingSize.height + 48))
+                        host.layoutSubtreeIfNeeded()
+                        for field in descendants(content).compactMap({ $0 as? NSTextField }) where !field.isHidden {
+                            let rect = host.convert(field.bounds, from: field)
+                            XCTAssertGreaterThanOrEqual(rect.minX, -1, "\(language) \(width) \(name)")
+                            XCTAssertLessThanOrEqual(rect.maxX, width + 1, "\(language) \(width) \(name)")
+                        }
+                        if width == 760 && (language == .simplifiedChinese || language == .english)
+                            || width == 420 && name == "not-installed" {
+                            let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+                            host.cacheDisplay(in: host.bounds, to: bitmap)
+                            let suffix = appearance == .aqua ? "light" : "dark"
+                            let path = output.appendingPathComponent("\(language.rawValue)-\(name)-\(Int(width))-\(suffix).png")
+                            try XCTUnwrap(bitmap.representation(using: .png, properties: [:])).write(to: path)
+                            let attachment = XCTAttachment(contentsOfFile: path)
+                            attachment.lifetime = .keepAlways
+                            add(attachment)
+                        }
+                    }
+                }
+            }
+        }
+        print("Advanced card offline renders: \(output.path)")
+    }
+
+    private func descendants(_ view: NSView) -> [NSView] { view.subviews.flatMap { [$0] + descendants($0) } }
+}
+
+private final class AdvancedCardRenderHost: NSView {
+    override var isFlipped: Bool { true }
+    override func draw(_ dirtyRect: NSRect) { NSColor.windowBackgroundColor.setFill(); dirtyRect.fill() }
+}

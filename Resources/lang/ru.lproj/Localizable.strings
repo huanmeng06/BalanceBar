@@ -642,7 +642,7 @@
 "mod.failure.uninstall_command" = "Удаление не завершено. Выполните следующие команды в Терминале:";
 "mod.failure.copy_enable" = "Копировать команду включения";
 "mod.failure.inbox" = "Не удалось создать почтовый ящик снимков (недостаточно прав или другой владелец). Проверьте ~/Library/Application Support/BalanceBar/inbox и повторите попытку.";
-"mod.settings.title" = "Ускорение реального времени";
+"mod.settings.title" = "Данные Claude в реальном времени";
 "mod.settings.status.not_installed" = "Не включено";
 "mod.settings.status.waiting" = "Установлено, ожидание данных нового сеанса";
 "mod.settings.status.active" = "Включено, последние данные %1$@";
@@ -677,3 +677,13 @@
 "mod.ui.uninstall_failure_title" = "Удаление не завершено";
 "mod.ui.account_advice" = "Убедитесь, что Claude Code и BalanceBar используют одну учётную запись, затем начните новый сеанс.";
 "mod.ui.cycle_advice" = "Продолжайте использовать официальные квоты. Проверьте данные нового сеанса после официального подтверждения нового цикла.";
+
+// INT-2 settings card restored for Issue #604
+"mod.settings.status.title_format" = "Состояние BalanceBar Mod: %1$@";
+"mod.settings.status.enabled_short" = "Включено";
+"mod.settings.status.last_data" = "Последние данные: %1$@";
+"mod.settings.action.view_note" = "Подробнее";
+"mod.settings.action.manage" = "Управление";
+"mod.settings.action.view_error" = "Показать ошибку";
+"mod.settings.status.silent_short" = "Установлено, но данных нет уже 10 минут";
+"mod.settings.status.silent_hint" = "Начните новую сессию или выполните /reload-plugins в открытой";

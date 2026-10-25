@@ -642,7 +642,7 @@
 "mod.failure.uninstall_command" = "La désinstallation n'est pas terminée. Exécutez les commandes suivantes dans le Terminal :";
 "mod.failure.copy_enable" = "Copier la commande d'activation";
 "mod.failure.inbox" = "La boîte de réception des instantanés n'a pas pu être créée (permissions insuffisantes ou propriétaire incorrect). Vérifiez ~/Library/Application Support/BalanceBar/inbox puis réessayez.";
-"mod.settings.title" = "Boost temps réel";
+"mod.settings.title" = "Boost en temps réel de Claude";
 "mod.settings.status.not_installed" = "Non activé";
 "mod.settings.status.waiting" = "Installé, en attente des données d'une nouvelle session";
 "mod.settings.status.active" = "Activé, dernières données %1$@";
@@ -677,3 +677,13 @@
 "mod.ui.uninstall_failure_title" = "Désinstallation incomplète";
 "mod.ui.account_advice" = "Vérifiez que Claude Code et BalanceBar utilisent le même compte, puis ouvrez une nouvelle session.";
 "mod.ui.cycle_advice" = "Continuez avec les quotas officiels. Vérifiez les données d’une nouvelle session après confirmation du nouveau cycle par la source officielle.";
+
+// INT-2 settings card restored for Issue #604
+"mod.settings.status.title_format" = "État de BalanceBar Mod : %1$@";
+"mod.settings.status.enabled_short" = "Activé";
+"mod.settings.status.last_data" = "Dernières données : %1$@";
+"mod.settings.action.view_note" = "Détails";
+"mod.settings.action.manage" = "Gérer";
+"mod.settings.action.view_error" = "Voir l’erreur";
+"mod.settings.status.silent_short" = "Installé, mais aucune donnée depuis 10 minutes";
+"mod.settings.status.silent_hint" = "Démarrez une nouvelle session ou exécutez /reload-plugins dans une session ouverte";

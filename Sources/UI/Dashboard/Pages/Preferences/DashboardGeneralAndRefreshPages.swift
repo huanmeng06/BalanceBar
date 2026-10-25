@@ -354,7 +354,6 @@ final class DashboardGeneralPage {
         let updateState: UpdateCheckState
         let launchAtLoginState: LaunchAtLoginState
         let launchWithChatGPTState: LaunchWithChatGPTState
-        var modSyncStatus: ModSyncStatus?
 
         init(
             preferences: AppPreferences,
@@ -362,8 +361,7 @@ final class DashboardGeneralPage {
             relay: DashboardPreferencePageRelay,
             updateState: UpdateCheckState,
             launchAtLoginState: LaunchAtLoginState = LaunchAtLoginState(status: .notRegistered),
-            launchWithChatGPTState: LaunchWithChatGPTState = LaunchWithChatGPTState(status: .notRegistered),
-            modSyncStatus: ModSyncStatus? = nil
+            launchWithChatGPTState: LaunchWithChatGPTState = LaunchWithChatGPTState(status: .notRegistered)
         ) {
             self.preferences = preferences
             self.connectionSummaries = connectionSummaries
@@ -371,7 +369,6 @@ final class DashboardGeneralPage {
             self.updateState = updateState
             self.launchAtLoginState = launchAtLoginState
             self.launchWithChatGPTState = launchWithChatGPTState
-            self.modSyncStatus = modSyncStatus
         }
     }
 
@@ -383,7 +380,6 @@ final class DashboardGeneralPage {
     private var updateNotesButton: NSButton?
     private var updateBadge: NSView?
     private weak var currentProviderDetailLabel: NSTextField?
-    private weak var modSyncDetailLabel: NSTextField?
     private var connectionSummaries: CCSwitchConnectionSummaries = .unknown
     private var launchAtLoginSwitch: NSSwitch?
     private var launchAtLoginSubtitleLabel: NSTextField?
@@ -534,25 +530,6 @@ final class DashboardGeneralPage {
             target: input.relay,
             action: #selector(DashboardPreferencePageRelay.toggle(_:))
         )
-        // Rows follow the order Codex/Grok, Claude calibration, Claude native sync, Claude Mod
-        // realtime sync, API providers. Each row's accessory is its current value or control,
-        // and agent rows carry their icons.
-        let modSyncManageButton = NSButton(
-            title: tr(.keyClaudeModSyncManage),
-            target: input.relay,
-            action: #selector(DashboardPreferencePageRelay.manageModSync(_:))
-        )
-        modSyncManageButton.bezelStyle = .rounded
-        let modSyncStatusText = input.modSyncStatus.map {
-            RealtimeBoostPresentation.make(status: $0, localize: realtimeBoostLocalize).statusText
-        } ?? tr(.modSyncStatusDetecting)
-        let modSyncRow = SettingsRowView(
-            title: tr(.keyClaudeModSyncTitle),
-            detail: modSyncStatusText,
-            titleAccessory: DashboardRefreshPage.agentIconStrip(["Claude"]),
-            accessoryView: modSyncManageButton
-        )
-        modSyncDetailLabel = modSyncRow.detailLabel
         let refreshing = SettingsSectionView(
             title: tr(.keyDashboardGeneralAndRefreshPagesRefresh),
             contentViews: [
@@ -574,7 +551,6 @@ final class DashboardGeneralPage {
                     titleAccessory: DashboardRefreshPage.agentIconStrip(["Claude"]),
                     accessoryView: claudeStatusLineSwitch
                 ),
-                modSyncRow,
                 SettingsRowView(
                     title: tr(.keyDashboardGeneralAndRefreshPagesBalanceUpdatesDuringTasks),
                     detail: tr(.keyDashboardRefreshAPIScope),
@@ -708,14 +684,6 @@ final class DashboardGeneralPage {
     func refreshDisplayTimeZone(_ selection: AppTimeZoneSelection) {
         systemTimeZoneSwitch?.state = selection == .system ? .on : .off
         timeZoneComboBox?.apply(selection)
-    }
-
-    /// Live status text for the Claude Mod realtime sync row.
-    func refreshModSync(_ status: ModSyncStatus?) {
-        guard let modSyncDetailLabel else { return }
-        modSyncDetailLabel.stringValue = status.map {
-            RealtimeBoostPresentation.make(status: $0, localize: realtimeBoostLocalize).statusText
-        } ?? tr(.modSyncStatusDetecting)
     }
 
     func refreshLaunchAtLogin(_ state: LaunchAtLoginState) {

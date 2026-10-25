@@ -642,7 +642,7 @@
 "mod.failure.uninstall_command" = "Uninstall did not finish. Run the following commands in Terminal:";
 "mod.failure.copy_enable" = "Copy enable command";
 "mod.failure.inbox" = "The snapshot inbox could not be created (insufficient permissions or wrong owner). Check ~/Library/Application Support/BalanceBar/inbox and try again.";
-"mod.settings.title" = "Realtime boost";
+"mod.settings.title" = "Claude real-time boost";
 "mod.settings.status.not_installed" = "Not enabled";
 "mod.settings.status.waiting" = "Installed, waiting for data from a new session";
 "mod.settings.status.active" = "Enabled, last data %1$@";
@@ -677,3 +677,13 @@
 "mod.ui.uninstall_failure_title" = "Uninstall incomplete";
 "mod.ui.account_advice" = "Check that Claude Code and BalanceBar use the same account, then start a new session.";
 "mod.ui.cycle_advice" = "Keep using official quota. Check new session data after the official source confirms the new cycle.";
+
+// INT-2 settings card restored for Issue #604
+"mod.settings.status.title_format" = "BalanceBar Mod status: %1$@";
+"mod.settings.status.enabled_short" = "Enabled";
+"mod.settings.status.last_data" = "Latest data: %1$@";
+"mod.settings.action.view_note" = "Details";
+"mod.settings.action.manage" = "Manage";
+"mod.settings.action.view_error" = "View error";
+"mod.settings.status.silent_short" = "Installed, but no data for 10 minutes";
+"mod.settings.status.silent_hint" = "Start a new session, or run /reload-plugins in an open one";

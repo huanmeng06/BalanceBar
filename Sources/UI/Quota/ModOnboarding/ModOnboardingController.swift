@@ -135,9 +135,13 @@ enum ModPanelState: Equatable {
 /// Drives the panel and the settings page. Main-thread only; installation work runs on the installer's queue.
 final class ModOnboardingController {
     private(set) var state: ModPanelState = .intro(dismissChecked: false) {
-        didSet { if state != oldValue { onChange?() } }
+        didSet {
+            if state != oldValue { onChange?(); onPresentationChange?() }
+        }
     }
     var onChange: (() -> Void)?
+    /// Settings presentation observer, independent of the management window observer.
+    var onPresentationChange: (() -> Void)?
 
     let plan: ModInstallPlan
     private let installer: ModInstaller

@@ -642,7 +642,7 @@
 "mod.failure.uninstall_command" = "제거가 완료되지 않았습니다. 터미널에서 다음 명령을 실행하세요:";
 "mod.failure.copy_enable" = "활성화 명령 복사";
 "mod.failure.inbox" = "스냅샷 수신함을 만들 수 없습니다(권한 부족 또는 소유자 불일치). ~/Library/Application Support/BalanceBar/inbox 를 확인한 후 다시 시도하세요.";
-"mod.settings.title" = "실시간 부스트";
+"mod.settings.title" = "Claude 실시간 강화";
 "mod.settings.status.not_installed" = "꺼짐";
 "mod.settings.status.waiting" = "설치됨, 새 세션의 데이터 대기 중";
 "mod.settings.status.active" = "켜짐, 최근 데이터 %1$@";
@@ -677,3 +677,13 @@
 "mod.ui.uninstall_failure_title" = "제거 미완료";
 "mod.ui.account_advice" = "Claude Code와 BalanceBar가 같은 계정을 사용하는지 확인한 후 새 세션을 시작하세요.";
 "mod.ui.cycle_advice" = "공식 할당량을 계속 사용합니다. 공식 소스에서 새 주기를 확인한 후 새 세션의 데이터를 확인하세요.";
+
+// INT-2 settings card restored for Issue #604
+"mod.settings.status.title_format" = "BalanceBar Mod 상태: %1$@";
+"mod.settings.status.enabled_short" = "사용 중";
+"mod.settings.status.last_data" = "최근 데이터: %1$@";
+"mod.settings.action.view_note" = "자세히";
+"mod.settings.action.manage" = "관리";
+"mod.settings.action.view_error" = "오류 보기";
+"mod.settings.status.silent_short" = "설치되었지만 10분 동안 데이터가 없습니다";
+"mod.settings.status.silent_hint" = "새 세션을 시작하거나 열려 있는 세션에서 /reload-plugins 를 실행하세요";

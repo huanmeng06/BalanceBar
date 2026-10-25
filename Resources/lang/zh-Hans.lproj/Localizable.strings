@@ -642,7 +642,7 @@
 "mod.failure.uninstall_command" = "卸载未完成。请在终端中运行下面的命令：";
 "mod.failure.copy_enable" = "复制启用命令";
 "mod.failure.inbox" = "快照收件箱无法创建（权限不足或所有者不符）。请检查 ~/Library/Application Support/BalanceBar/inbox 后重试。";
-"mod.settings.title" = "实时增强";
+"mod.settings.title" = "Claude 实时增强";
 "mod.settings.status.not_installed" = "未开启";
 "mod.settings.status.waiting" = "已安装，等待新会话的数据";
 "mod.settings.status.active" = "已开启，最近数据 %1$@";
@@ -677,3 +677,13 @@
 "mod.ui.uninstall_failure_title" = "卸载未完成";
 "mod.ui.account_advice" = "请确认 Claude Code 与 BalanceBar 使用同一账号，再新开会话。";
 "mod.ui.cycle_advice" = "继续使用官方额度；新周期经官方确认后，再检查新会话的数据。";
+
+// INT-2 settings card restored for Issue #604
+"mod.settings.status.title_format" = "BalanceBar Mod 状态：%1$@";
+"mod.settings.status.enabled_short" = "已启用";
+"mod.settings.status.last_data" = "最新数据：%1$@";
+"mod.settings.action.view_note" = "查看说明";
+"mod.settings.action.manage" = "管理";
+"mod.settings.action.view_error" = "查看原因";
+"mod.settings.status.silent_short" = "已安装，但 10 分钟内没有收到数据";
+"mod.settings.status.silent_hint" = "请新开会话，或在已有会话运行 /reload-plugins";

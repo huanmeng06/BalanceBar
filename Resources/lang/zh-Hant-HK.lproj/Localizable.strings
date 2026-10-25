@@ -642,7 +642,7 @@
 "mod.failure.uninstall_command" = "解除安裝未完成。請在終端機中執行下面的指令：";
 "mod.failure.copy_enable" = "複製啟用指令";
 "mod.failure.inbox" = "快照收件匣無法建立（權限不足或擁有者不符）。請檢查 ~/Library/Application Support/BalanceBar/inbox 後重試。";
-"mod.settings.title" = "即時增強";
+"mod.settings.title" = "Claude 即時增強";
 "mod.settings.status.not_installed" = "未開啟";
 "mod.settings.status.waiting" = "已安裝，等待新會話的資料";
 "mod.settings.status.active" = "已開啟，最近資料 %1$@";
@@ -677,3 +677,13 @@
 "mod.ui.uninstall_failure_title" = "解除安裝未完成";
 "mod.ui.account_advice" = "請確認 Claude Code 與 BalanceBar 使用同一帳戶，再開啟新工作階段。";
 "mod.ui.cycle_advice" = "繼續使用官方額度；新週期經官方確認後，再檢查新工作階段的資料。";
+
+// INT-2 settings card restored for Issue #604
+"mod.settings.status.title_format" = "BalanceBar Mod 狀態：%1$@";
+"mod.settings.status.enabled_short" = "已啟用";
+"mod.settings.status.last_data" = "最新資料：%1$@";
+"mod.settings.action.view_note" = "檢視說明";
+"mod.settings.action.manage" = "管理";
+"mod.settings.action.view_error" = "檢視原因";
+"mod.settings.status.silent_short" = "已安裝，但 10 分鐘內沒有收到資料";
+"mod.settings.status.silent_hint" = "請開啟新工作階段，或在已開啟的工作階段執行 /reload-plugins";

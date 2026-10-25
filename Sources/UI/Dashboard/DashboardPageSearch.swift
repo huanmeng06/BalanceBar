@@ -485,18 +485,6 @@ enum DashboardSettingsSearchCatalog {
                 .keyClaudeStatusLineCalibrationDetail,
                 .keyClaudeStatusLineEnabled,
                 .keyClaudeStatusLineDescription,
-                .keyClaudeModSyncTitle,
-                .keyClaudeModSyncManage,
-                .modSyncStatusDetecting,
-                .modSyncStatusClaudeMissing,
-                .modSyncStatusInboxNotReady,
-                .modSyncStatusOtherScope,
-                .modSyncStatusDisabled,
-                .modSyncStatusRejectedAccount,
-                .modSyncStatusRejectedCycle,
-                .modSettingsStatusNotInstalled,
-                .modSettingsStatusWaiting,
-                .modSettingsStatusSilent,
                 .keyDashboardOfficialQuotaRefreshFrequency,
                 .keyDashboardRefreshOfficialScope,
                 .keyDashboardRefreshAPIScope,
@@ -558,6 +546,26 @@ enum DashboardSettingsSearchCatalog {
         case .advanced:
             return [
                 .keyDashboardAdvancedPageDiagnostics,
+                .keyClaudeModSyncTitle,
+                .keyClaudeModSyncManage,
+                .modSyncStatusDetecting,
+                .modSyncStatusClaudeMissing,
+                .modSyncStatusInboxNotReady,
+                .modSyncStatusOtherScope,
+                .modSyncStatusDisabled,
+                .modSyncStatusRejectedAccount,
+                .modSyncStatusRejectedCycle,
+                .modSettingsStatusNotInstalled,
+                .modSettingsStatusWaiting,
+                .modSettingsStatusSilent,
+                .modSettingsTitle,
+                .modSettingsViewNote,
+                .modSettingsManage,
+                .modSettingsViewError,
+                .modSettingsActionInstall,
+                .modSettingsStatusEnabledShort,
+                .modSettingsStatusSilentShort,
+                .modSettingsSilentHint,
                 .keyDashboardAdvancedPageDebugLog
             ]
         case .about:
@@ -586,6 +594,12 @@ enum DashboardSettingsSearchCatalog {
             ]
         case .general, .menu, .advanced:
             var texts = DashboardSettingsFormattedCopy.sharedVisibleTexts(for: section)
+            if section == .advanced {
+                let states: [RealtimeBoostText] = [.statusNotInstalled, .statusWaiting, .statusEnabledShort,
+                    .statusSilentShort, .statusDetecting, .statusClaudeMissing, .statusInboxNotReady,
+                    .statusOtherScope, .statusDisabled, .statusRejectedAccount, .statusRejectedCycle]
+                texts += states.map { RealtimeBoostSettingsRows.title(for: realtimeBoostLocalize($0)) }
+            }
             if section == .general {
                 texts.append(contentsOf: DashboardSettingsFormattedCopy.languageMenuTitles())
                 texts.append(contentsOf: Set(TimeZoneCityCatalog.all.map {
