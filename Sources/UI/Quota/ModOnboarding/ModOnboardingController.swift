@@ -268,6 +268,7 @@ final class ModOnboardingController {
     func copyUninstallCommands() { copyToPasteboard(plan.copyableUninstallCommands) }
     func copyEnableCommand() { copyToPasteboard(plan.copyableEnableCommand) }
     func copyReloadCommand() { copyToPasteboard(ModInstallPlan.reloadCommand) }
+    func copyListCommand() { copyToPasteboard(plan.copyableListCommand) }
 
     /// Closing the panel. With "do not prompt again" checked this enters the confirmation state.
     func close() -> Bool {

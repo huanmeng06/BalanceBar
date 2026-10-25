@@ -16,7 +16,7 @@ enum ModPanelItem: Equatable {
     case button(title: String, action: ButtonAction)
 
     enum StepStatus: String, Equatable { case pending, running, done }
-    enum ButtonAction: Equatable { case install, close, copyCommands, copyReload, undoDismiss, uninstall, copyUninstall, copyEnable, refresh, confirmUninstall, cancelUninstall }
+    enum ButtonAction: Equatable { case install, close, copyCommands, copyReload, copyList, undoDismiss, uninstall, copyUninstall, copyEnable, refresh, confirmUninstall, cancelUninstall }
 
     var snapshotLine: String {
         switch self {
@@ -185,8 +185,8 @@ enum ModPanelContent {
             case .installationUnknown:
                 return [.hero(symbol: "exclamationmark.triangle.fill", title: t(.failureTitle), subtitle: nil),
                         .text(sync.statusText),
-                        .codeBlock(plan.copyableListCommand, copyAction: .copyCommands),
-                        .button(title: t(.copyCommands), action: .copyCommands),
+                        .codeBlock(plan.copyableListCommand, copyAction: .copyList),
+                        .button(title: t(.copyCommands), action: .copyList),
                         refresh, close]
             case .claudeMissing, .claudeVersionTooOld, .inboxNotReady:
                 var result: [ModPanelItem] = [.hero(symbol: "exclamationmark.triangle.fill", title: t(.failureTitle), subtitle: nil),
@@ -627,6 +627,7 @@ final class ModOnboardingPanelView: NSView {
         case .install: controller.startInstall()
         case .copyCommands: controller.copyInstallCommands()
         case .copyReload: controller.copyReloadCommand()
+        case .copyList: controller.copyListCommand()
         case .copyUninstall: controller.copyUninstallCommands()
         case .copyEnable: controller.copyEnableCommand()
         case .undoDismiss:
@@ -827,11 +828,11 @@ final class ModOnboardingPanelView: NSView {
     }
     @objc private func buttonPressed(_ sender: NSButton) {
         guard let id = sender.identifier?.rawValue,
-              let action = [ModPanelItem.ButtonAction.install, .close, .copyCommands, .copyReload, .undoDismiss,
+              let action = [ModPanelItem.ButtonAction.install, .close, .copyCommands, .copyReload, .copyList, .undoDismiss,
                             .uninstall, .copyUninstall, .copyEnable, .refresh, .confirmUninstall, .cancelUninstall]
                 .first(where: { String(describing: $0) == id }) else { return }
         perform(action)
-        if [.copyCommands, .copyReload, .copyUninstall, .copyEnable].contains(action) {
+        if [.copyCommands, .copyReload, .copyList, .copyUninstall, .copyEnable].contains(action) {
             if let copy = sender as? ModCopyButton { copy.flashCopied(); return }
             let title = sender.title
             sender.title = localize(.copied)

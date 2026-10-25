@@ -1549,6 +1549,19 @@ final class ModInt2WindowRestorationTests: XCTestCase {
     }
     private func descendants(_ view: NSView) -> [NSView] { view.subviews.flatMap { [$0] + descendants($0) } }
 
+    func testInstallationUnknownCopyCopiesTheListCommand() throws {
+        var copied = ""
+        let c = controller(copied: { copied = $0 })
+        let view = ModOnboardingPanelView(controller: c,
+            syncProvider: { self.context(.installationUnknown) })
+        let copy = try XCTUnwrap(descendants(view).compactMap { $0 as? ModCopyButton }.first)
+        XCTAssertEqual(copy.identifier?.rawValue, "copyList")
+        copy.performClick(nil)
+        XCTAssertEqual(copied, ModInstallPlan.standard.copyableListCommand,
+                       "the read-only probe must copy the list command, never the install commands")
+        XCTAssertTrue(view.snapshotLines.contains { $0.contains("claude plugin list --json") })
+    }
+
     func testPitchUsesOriginalHeroFourPointsAndFooterWithoutStatusCard() throws {
         let items = ModPanelContent.items(for: .intro(dismissChecked: false), plan: .standard,
             localize: ModOnboardingText.defaultLocalize, sync: context(.notInstalled(hasOtherScopeInstall: false)))
