@@ -33,6 +33,7 @@
 - 新增三个回归，分别覆盖可见 Advanced、切页返回缓存 Advanced、全局搜索投影。修复前执行 3 tests，得到 6 failures；修复后 **3 tests，0 failures**。
 - 随后运行完整 `DashboardPageSearchTests` 和 Mod UI/协调器相关类：**128 tests，0 failures**。修复后重新执行 `build.sh dev`，签名验证 PASS。
 - 合入 main #608 后再次运行这三个回归：**3 tests，0 failures**；随后从最终分支重建 dev App，版本 `1.7.40 / 209`，签名验证 PASS。
+- 用户使用该测试包完成人工回归：在 General 页期间卸载，返回 Advanced 后卡片立即变为“未开启”且旧时间消失；页面往返和全局搜索结果一致。随后 CLI 查询插件与 marketplace，均无 BalanceBar 条目。**人工回归 PASS**。
 - 修复应用源码对应本轮 #603 修复提交；本记录所在提交之前，构建产物由该源码生成。仍待用户用修复版重新执行一次卸载人工验收。
 
 Xcode 实际命令共用参数：
