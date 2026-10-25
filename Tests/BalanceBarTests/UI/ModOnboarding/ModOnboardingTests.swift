@@ -928,6 +928,9 @@ final class ModManagementUITests: XCTestCase {
         // The test host parks windows at a background level; the production level is
         // asserted only outside it.
         if !AutomatedTestHost.isRunning { XCTAssertEqual(panel.level, .floating) }
+        let scroll = panel.contentView as? NSScrollView
+        XCTAssertEqual(scroll?.verticalScrollElasticity, NSScrollView.Elasticity.none)
+        XCTAssertEqual(scroll?.horizontalScrollElasticity, NSScrollView.Elasticity.none)
         windows.show()
         XCTAssertNil(panel.parent, "the menu prompt must never attach to the dashboard")
         XCTAssertTrue(panel.isVisible)
@@ -1508,6 +1511,24 @@ final class ModInt2WindowRestorationTests: XCTestCase {
         XCTAssertTrue(c.isPromptDismissed)
         XCTAssertEqual(c.state, .dismissConfirmed)
         XCTAssertEqual(changes, 1)
+    }
+
+    func testPanelChromeAvoidsAccidentalScrollingSelectionAndSecondClick() throws {
+        let c = ModOnboardingController(preference: MemoryPreference())
+        let view = ModOnboardingPanelView(controller: c,
+            syncProvider: { self.context(.notInstalled(hasOtherScopeInstall: false)) })
+        XCTAssertTrue(descendants(view).compactMap { $0 as? NSTextField }.allSatisfy { !$0.isSelectable },
+                      "panel copy must not be selectable")
+        let box = try XCTUnwrap(descendants(view).compactMap { $0 as? NSButton }.first {
+            $0.title == ModOnboardingText.dismissCheckbox.defaultText
+        })
+        XCTAssertTrue(box.acceptsFirstMouse(for: nil), "the checkbox must react to the first click")
+        let heroHeight = view.frame.height
+        view.render(ModPanelContent.items(for: .dismissConfirmed, plan: .standard,
+            localize: ModOnboardingText.defaultLocalize,
+            sync: self.context(.notInstalled(hasOtherScopeInstall: false))))
+        XCTAssertLessThan(view.frame.height, heroHeight, "a short page must shrink the window")
+        XCTAssertLessThan(view.frame.height, 400)
     }
 
     func testLaterAfterDismissShowsAdvancedGuidanceAndUndoRestores() throws {

@@ -554,6 +554,8 @@ final class ModOnboardingPanelView: NSView {
         defaultButton = defaultButton ?? allButtons.first { ["close", "cancelUninstall"].contains($0.identifier?.rawValue ?? "") }
         defaultButton?.keyEquivalent = "\r"
         window?.defaultButtonCell = defaultButton?.cell as? NSButtonCell
+        stack.needsLayout = true
+        stack.layoutSubtreeIfNeeded()
         let height = stack.fittingSize.height
         if abs(frame.height - height) > 0.5 {
             super.setFrameSize(NSSize(width: bounds.width, height: height))
@@ -644,6 +646,7 @@ final class ModOnboardingPanelView: NSView {
         field.backgroundColor = .clear
         field.preferredMaxLayoutWidth = width ?? contentWidth
         field.setContentCompressionResistancePriority(.required, for: .vertical)
+        field.isSelectable = false
         return field
     }
 
@@ -732,11 +735,11 @@ final class ModOnboardingPanelView: NSView {
             field.preferredMaxLayoutWidth = contentWidth - 24
             return surface(field, color: .quaternaryLabelColor, padding: NSSize(width: 12, height: 10))
         case let .checkbox(title, checked):
-            let box = NSButton(checkboxWithTitle: title, target: self, action: #selector(checkboxToggled(_:)))
+            let box = FirstMouseButton(checkboxWithTitle: title, target: self, action: #selector(checkboxToggled(_:)))
             box.state = checked ? .on : .off
             return box
         case let .menuPromptCheckbox(title, checked):
-            let box = NSButton(checkboxWithTitle: title, target: self, action: #selector(menuPromptToggled(_:)))
+            let box = FirstMouseButton(checkboxWithTitle: title, target: self, action: #selector(menuPromptToggled(_:)))
             box.state = checked ? .on : .off
             box.setAccessibilityLabel(title)
             return box
@@ -779,7 +782,7 @@ final class ModOnboardingPanelView: NSView {
     }
 
     private func makeButton(title: String, action: ModPanelItem.ButtonAction) -> NSButton {
-        let button = NSButton(title: title, target: self, action: #selector(buttonPressed(_:)))
+        let button = FirstMouseButton(title: title, target: self, action: #selector(buttonPressed(_:)))
         button.bezelStyle = .push
         button.controlSize = .large
         button.identifier = NSUserInterfaceItemIdentifier(String(describing: action))
@@ -849,6 +852,8 @@ final class ModCopyButton: NSButton {
 
     required init?(coder: NSCoder) { nil }
 
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
     /// A plain NSButton pads its frame beyond the aligned rect, which made the 22x22 constraints a taller frame.
     override var alignmentRectInsets: NSEdgeInsets { NSEdgeInsetsZero }
 
@@ -907,6 +912,12 @@ private final class ModSurfaceView: NSView {
         color.setFill()
         NSBezierPath(roundedRect: bounds, xRadius: radius, yRadius: radius).fill()
     }
+}
+
+/// A nonactivating panel's first click normally only makes the window key. Controls in
+/// the Mod panel must act on that first click.
+private final class FirstMouseButton: NSButton {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
 
 private final class ModManagementPanel: NSPanel {
@@ -970,6 +981,10 @@ final class ModOnboardingWindowController: NSObject, NSWindowDelegate {
         let scroll = NSScrollView()
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
+        // The window is sized to its content; without this a page that fits still
+        // rubber-bands under the pointer, which reads as a broken scroll area.
+        scroll.verticalScrollElasticity = .none
+        scroll.horizontalScrollElasticity = .none
         scroll.drawsBackground = false
         scroll.documentView = view
         panel.contentView = scroll
