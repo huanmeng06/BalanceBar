@@ -647,7 +647,7 @@
 "mod.settings.title" = "Claude 실시간 강화";
 "mod.settings.status.not_installed" = "꺼짐";
 "mod.settings.status.waiting" = "설치됨, 새 세션의 데이터 대기 중";
-"mod.settings.status.active" = "켜짐, 최근 데이터 %1$@";
+"mod.settings.status.active" = "켜짐, 최근 신뢰된 데이터 %1$@";
 "mod.settings.status.silent" = "설치되었지만 10 분 동안 데이터가 없습니다. 새 세션을 시작하거나 기존 세션에서 /reload-plugins 를 실행하세요";
 "mod.settings.status.unsupported" = "Claude Code %1$@ 은(는) 너무 오래되어 v2.1.287 이상이 필요합니다";
 "mod.settings.action.install" = "원클릭 설치";
@@ -684,7 +684,7 @@
 // INT-2 settings card restored for Issue #604
 "mod.settings.status.title_format" = "BalanceBar Mod 상태: %1$@";
 "mod.settings.status.enabled_short" = "사용 중";
-"mod.settings.status.last_data" = "최근 데이터: %1$@";
+"mod.settings.status.last_data" = "최근 신뢰된 데이터(같은 값의 스냅샷은 시간을 갱신하지 않음): %1$@";
 "mod.settings.action.view_note" = "자세히";
 "mod.settings.action.manage" = "관리";
 "mod.settings.action.view_error" = "오류 보기";

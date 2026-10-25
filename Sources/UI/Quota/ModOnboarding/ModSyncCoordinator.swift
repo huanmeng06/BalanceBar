@@ -25,6 +25,9 @@ final class ModSyncCoordinator {
     private var lastDetectionStartedAt = Date.distantPast
     /// Guards one-shot silence rechecks against a later status/evidence change.
     private var silenceScheduleGeneration: UInt64 = 0
+    /// Invalidates queued card polls when Advanced/search stops showing Mod status.
+    private var visibleRefreshGeneration: UInt64 = 0
+    private var advancedStatusCardVisible = false
     /// The currently presented management panel; refreshed on every status change so an
     /// open panel never keeps showing "detecting" or a finished operation's page.
     private weak var presentedPanel: ModOnboardingPanelView?
@@ -100,6 +103,29 @@ final class ModSyncCoordinator {
             self.detectionInFlight = false
             self.environment = environment
             self.recomputeStatus()
+        }
+    }
+
+    /// Polls for external CLI changes only while the Advanced Mod card or its global
+    /// search projection is visible. Each probe still uses the existing 30-second
+    /// throttle, and `detectionInFlight` prevents overlapping CLI commands.
+    func setAdvancedStatusCardVisible(_ visible: Bool) {
+        guard advancedStatusCardVisible != visible else { return }
+        advancedStatusCardVisible = visible
+        visibleRefreshGeneration &+= 1
+        guard visible else { return }
+        let generation = visibleRefreshGeneration
+        startDetectionIfNeeded()
+        scheduleVisibleRefresh(generation: generation)
+    }
+
+    private func scheduleVisibleRefresh(generation: UInt64) {
+        schedule(Self.detectionThrottle) { [weak self] in
+            guard let self,
+                  self.advancedStatusCardVisible,
+                  self.visibleRefreshGeneration == generation else { return }
+            self.startDetectionIfNeeded()
+            self.scheduleVisibleRefresh(generation: generation)
         }
     }
 

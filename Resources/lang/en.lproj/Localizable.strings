@@ -647,7 +647,7 @@
 "mod.settings.title" = "Claude real-time boost";
 "mod.settings.status.not_installed" = "Not enabled";
 "mod.settings.status.waiting" = "Installed, waiting for data from a new session";
-"mod.settings.status.active" = "Enabled, last data %1$@";
+"mod.settings.status.active" = "Enabled, last trusted data %1$@";
 "mod.settings.status.silent" = "Installed, but no data for 10 minutes. Start a new session, or run /reload-plugins in an existing one";
 "mod.settings.status.unsupported" = "Claude Code %1$@ is too old; v2.1.287 or newer is required";
 "mod.settings.action.install" = "Install";
@@ -684,7 +684,7 @@
 // INT-2 settings card restored for Issue #604
 "mod.settings.status.title_format" = "BalanceBar Mod status: %1$@";
 "mod.settings.status.enabled_short" = "Enabled";
-"mod.settings.status.last_data" = "Latest data: %1$@";
+"mod.settings.status.last_data" = "Last trusted data (unchanged snapshots don't refresh it): %1$@";
 "mod.settings.action.view_note" = "Details";
 "mod.settings.action.manage" = "Manage";
 "mod.settings.action.view_error" = "View error";

@@ -10,10 +10,12 @@ private struct FakeLocator: ClaudeExecutableLocating { var path: String?; func l
 
 private final class ScriptedRunner: ModCommandRunning {
     var results: [ModCommandResult?]
+    var onRun: (([String]) -> Void)?
     private(set) var calls: [[String]] = []
     init(_ results: [ModCommandResult?]) { self.results = results }
     func run(executablePath: String, arguments: [String]) -> ModCommandResult? {
         calls.append(arguments)
+        onRun?(arguments)
         return results.isEmpty ? nil : results.removeFirst()
     }
 }
@@ -235,7 +237,7 @@ final class ModOnboardingPanelTests: XCTestCase {
         XCTAssertTrue(silent.statusText.contains("10 分钟")); XCTAssertTrue(silent.showsCopyAction); XCTAssertFalse(silent.showsInstallAction)
         XCTAssertTrue(RealtimeBoostPresentation.make(status: .notInstalled).showsInstallAction)
         let utc = TimeZone(identifier: "UTC")!
-        XCTAssertEqual(RealtimeBoostPresentation.make(status: .active(lastDataAt: Date(timeIntervalSince1970: 1_767_274_800)), timeZone: utc).statusText, "已开启，最近数据 13:40:00")
+        XCTAssertEqual(RealtimeBoostPresentation.make(status: .active(lastDataAt: Date(timeIntervalSince1970: 1_767_274_800)), timeZone: utc).statusText, "已开启，最近可信数据 13:40:00")
         XCTAssertTrue(RealtimeBoostPresentation.make(status: .unsupportedClaudeCode(.init(major: 2, minor: 1, patch: 100))).statusText.contains("2.1.100"))
 
         let pref = MemoryPreference()
@@ -687,7 +689,7 @@ final class ModSyncPresentationTests: XCTestCase {
         XCTAssertTrue(RealtimeBoostPresentation.make(status: ModSyncStatus.waitingForData, timeZone: utc).statusText.contains("等待新会话"))
         XCTAssertEqual(
             RealtimeBoostPresentation.make(status: .active(lastAcceptedAt: Date(timeIntervalSince1970: 1_767_274_800)), timeZone: utc).statusText,
-            "已开启，最近数据 13:40:00")
+            "已开启，最近可信数据 13:40:00")
         XCTAssertTrue(RealtimeBoostPresentation.make(status: .silent, timeZone: utc).statusText.contains("/reload-plugins"))
         XCTAssertTrue(RealtimeBoostPresentation.make(status: .snapshotRejected(.init(rejection: .accountMismatch, at: Date())), timeZone: utc).statusText.contains("账号"))
         XCTAssertTrue(RealtimeBoostPresentation.make(status: .snapshotRejected(.init(rejection: .unverifiedCycle, at: Date())), timeZone: utc).statusText.contains("官方"))
@@ -860,6 +862,107 @@ final class ModSyncCoordinatorTests: XCTestCase {
         wait(for: [settled], timeout: 5)
         // No scripted `plugin list` result means the probe failed: unknown, not absent.
         XCTAssertEqual(coordinator.status, .installationUnknown)
+    }
+
+    func testVisibleAdvancedCardDetectsExternalInstallAndDisableThenStopsWhenHidden() {
+        var clock = Date(timeIntervalSince1970: 1_800_000_000)
+        var scheduled: [(TimeInterval, () -> Void)] = []
+        let (coordinator, runner) = makeCoordinator(
+            locator: "/bin/claude",
+            results: [
+                probeVersion, ModCommandResult(exitCode: 0, stdout: "[]", stderr: ""),
+                probeVersion, listResult(),
+                probeVersion, listResult(enabled: false),
+                probeVersion, listResult(),
+            ],
+            now: { clock },
+            schedule: { delay, block in scheduled.append((delay, block)) })
+
+        let absent = expectation(description: "visible card detects the Mod is absent")
+        coordinator.onStatusChange = { if $0 == .notInstalled(hasOtherScopeInstall: false) { absent.fulfill() } }
+        coordinator.setAdvancedStatusCardVisible(true)
+        wait(for: [absent], timeout: 5)
+        XCTAssertEqual(runner.calls.count, 2)
+        XCTAssertEqual(scheduled.first?.0, ModSyncCoordinator.detectionThrottle)
+
+        clock = clock.addingTimeInterval(ModSyncCoordinator.detectionThrottle)
+        let installed = expectation(description: "visible card detects an external install")
+        coordinator.onStatusChange = { if $0 == .waitingForData { installed.fulfill() } }
+        let firstPoll = scheduled[0].1
+        let firstPollRan = expectation(description: "first visible poll ran")
+        DispatchQueue.main.async { firstPoll(); firstPollRan.fulfill() }
+        wait(for: [firstPollRan], timeout: 5)
+        wait(for: [installed], timeout: 5)
+        XCTAssertEqual(runner.calls.count, 4)
+
+        clock = clock.addingTimeInterval(ModSyncCoordinator.detectionThrottle)
+        let disabled = expectation(description: "visible card detects an external disable")
+        coordinator.onStatusChange = { if $0 == .disabled { disabled.fulfill() } }
+        let secondPoll = scheduled[1].1
+        let secondPollRan = expectation(description: "second visible poll ran")
+        DispatchQueue.main.async { secondPoll(); secondPollRan.fulfill() }
+        wait(for: [secondPollRan], timeout: 5)
+        wait(for: [disabled], timeout: 5)
+        XCTAssertEqual(runner.calls.count, 6)
+
+        coordinator.setAdvancedStatusCardVisible(false)
+        clock = clock.addingTimeInterval(ModSyncCoordinator.detectionThrottle)
+        let callsWhenHidden = runner.calls.count
+        let stalePoll = scheduled.last!.1
+        let stalePollRan = expectation(description: "stale poll ran")
+        DispatchQueue.main.async { stalePoll(); stalePollRan.fulfill() }
+        wait(for: [stalePollRan], timeout: 5)
+        XCTAssertEqual(runner.calls.count, callsWhenHidden, "hidden Advanced/search must stop environment probes")
+
+        let reinstalled = expectation(description: "returning to Advanced refreshes after the throttle")
+        coordinator.onStatusChange = { if $0 == .waitingForData { reinstalled.fulfill() } }
+        coordinator.setAdvancedStatusCardVisible(true)
+        wait(for: [reinstalled], timeout: 5)
+        XCTAssertEqual(runner.calls.count, 8)
+        coordinator.setAdvancedStatusCardVisible(false)
+    }
+
+    func testVisiblePollingDoesNotQueueDuplicateSlowDetection() {
+        var clock = Date(timeIntervalSince1970: 1_800_000_000)
+        var scheduled: [(TimeInterval, () -> Void)] = []
+        let (coordinator, runner) = makeCoordinator(
+            locator: "/bin/claude",
+            results: [probeVersion, listResult()],
+            now: { clock },
+            schedule: { delay, block in scheduled.append((delay, block)) })
+        let listStarted = expectation(description: "slow plugin-list probe started")
+        let releaseList = DispatchSemaphore(value: 0)
+        let noQueuedProbe = expectation(description: "no duplicate probe is queued")
+        noQueuedProbe.isInverted = true
+        var callsSeen = 0
+        runner.onRun = { arguments in
+            callsSeen += 1
+            if arguments == ModInstallPlan.listArguments {
+                if callsSeen == 2 { listStarted.fulfill() }
+                if callsSeen > 2 { noQueuedProbe.fulfill() }
+                releaseList.wait()
+            }
+        }
+
+        coordinator.setAdvancedStatusCardVisible(true)
+        wait(for: [listStarted], timeout: 5)
+        clock = clock.addingTimeInterval(ModSyncCoordinator.detectionThrottle)
+        let firstPoll = expectation(description: "first poll skips in-flight detection")
+        DispatchQueue.main.async { scheduled[0].1(); firstPoll.fulfill() }
+        wait(for: [firstPoll], timeout: 5)
+        clock = clock.addingTimeInterval(ModSyncCoordinator.detectionThrottle)
+        let secondPoll = expectation(description: "second poll skips in-flight detection")
+        DispatchQueue.main.async { scheduled[1].1(); secondPoll.fulfill() }
+        wait(for: [secondPoll], timeout: 5)
+
+        coordinator.setAdvancedStatusCardVisible(false)
+        let firstDetectionFinished = expectation(description: "slow detection finished")
+        coordinator.onStatusChange = { if $0 == .waitingForData { firstDetectionFinished.fulfill() } }
+        releaseList.signal()
+        releaseList.signal()
+        wait(for: [firstDetectionFinished], timeout: 5)
+        wait(for: [noQueuedProbe], timeout: 0.25)
+        XCTAssertEqual(callsSeen, 2, "a slow detection must not leave a duplicate CLI probe queued")
     }
 
     func testSyncContextCarriesLocalizedStatusText() {
@@ -1354,7 +1457,7 @@ final class RealtimeBoostAdvancedCardTests: XCTestCase {
     func testHistoricalStatusTitleAndLatestDataUseSeparateLines() {
         let card = rows(.active(lastAcceptedAt: Date()))
         XCTAssertEqual(card.statusRow.titleLabel.stringValue, "BalanceBar Mod status: Enabled")
-        XCTAssertTrue(card.statusRow.detailLabel.stringValue.hasPrefix("Latest data: "))
+        XCTAssertTrue(card.statusRow.detailLabel.stringValue.hasPrefix("Last trusted data (unchanged snapshots don't refresh it): "))
         XCTAssertTrue(card.installButton.isHidden)
         XCTAssertEqual(card.descriptionButton.title, "Manage")
         card.update(status: .silent, operation: .intro(dismissChecked: false))

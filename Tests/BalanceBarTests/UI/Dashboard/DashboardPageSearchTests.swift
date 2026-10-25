@@ -3951,7 +3951,11 @@ extension DashboardPageSearchTests {
         var operation: ModPanelState = .intro(dismissChecked: false)
     }
 
-    private func modCardComposition(_ value: ModCardRefreshState, defaults: UserDefaults) -> DashboardCompositionController {
+    private func modCardComposition(
+        _ value: ModCardRefreshState,
+        defaults: UserDefaults,
+        visibilityChanged: @escaping (Bool) -> Void = { _ in }
+    ) -> DashboardCompositionController {
         DashboardCompositionController(state: DashboardCompositionState(
             preferences: AppPreferences(defaults: defaults), devBundleIdentifier: "com.huanmeng06.BalanceBar.dev",
             providerPollInterval: 3, currentProviderIsOfficial: { true }, providerChoices: { [] },
@@ -3975,7 +3979,8 @@ extension DashboardPageSearchTests {
                 onLunaReserveDisplayModeChanged: { _ in }, onBankedResetDisplayModeChanged: { _ in },
                 onUpdateChannelChanged: { _ in }, onOpenCCSwitch: {}, onOpenSystemMenuBarSettings: {},
                 onManageModSync: { _ in }, onCheckForUpdates: {}, onInstallUpdate: {}, onOpenUpdateNotes: {},
-                onClamp: {}, onStatusLinksChanged: {}, onDidShowPage: {}, onDidClose: {}, onDidResize: {}))
+                onClamp: {}, onStatusLinksChanged: {}, onDidShowPage: {}, onDidClose: {}, onDidResize: {},
+                onModSyncVisibilityChanged: visibilityChanged))
     }
 
     private func modCardRow(_ composition: DashboardCompositionController) throws -> SettingsRowView {
@@ -4065,5 +4070,26 @@ extension DashboardPageSearchTests {
         composition.refreshModSync()
         window.layoutIfNeeded()
         XCTAssertTrue(try modCardRow(composition).titleLabel.stringValue.contains("Not enabled"))
+    }
+
+    func testModCardVisibilityTracksAdvancedAndGlobalSearchProjection() throws {
+        let suite = "ModCardVisibility.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        var visibilityChanges: [Bool] = []
+        let composition = modCardComposition(
+            ModCardRefreshState(), defaults: defaults,
+            visibilityChanged: { visibilityChanges.append($0) })
+        defer { composition.teardownForTesting() }
+
+        _ = try XCTUnwrap(composition.makeWindowForTesting(showing: .advanced))
+        XCTAssertEqual(visibilityChanges, [true], "opening Advanced makes the card visible")
+        composition.showSection(.menu)
+        XCTAssertEqual(visibilityChanges.last, false, "leaving Advanced stops visible polling")
+
+        composition.applySearchQueryForTesting("BalanceBar Mod")
+        XCTAssertEqual(visibilityChanges.last, true, "global search projection enables polling")
+        composition.applySearchQueryForTesting("")
+        XCTAssertEqual(visibilityChanges.last, false, "clearing search disables polling when Advanced is hidden")
     }
 }

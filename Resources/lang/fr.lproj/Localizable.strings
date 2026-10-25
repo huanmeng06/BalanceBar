@@ -647,7 +647,7 @@
 "mod.settings.title" = "Boost en temps réel de Claude";
 "mod.settings.status.not_installed" = "Non activé";
 "mod.settings.status.waiting" = "Installé, en attente des données d'une nouvelle session";
-"mod.settings.status.active" = "Activé, dernières données %1$@";
+"mod.settings.status.active" = "Activé, dernières données fiables %1$@";
 "mod.settings.status.silent" = "Installé, mais aucune donnée depuis 10 minutes. Ouvrez une nouvelle session ou exécutez /reload-plugins dans une session existante";
 "mod.settings.status.unsupported" = "Claude Code %1$@ est trop ancien ; v2.1.287 ou ultérieur requis";
 "mod.settings.action.install" = "Installer en un clic";
@@ -684,7 +684,7 @@
 // INT-2 settings card restored for Issue #604
 "mod.settings.status.title_format" = "État de BalanceBar Mod : %1$@";
 "mod.settings.status.enabled_short" = "Activé";
-"mod.settings.status.last_data" = "Dernières données : %1$@";
+"mod.settings.status.last_data" = "Dernières données fiables (les instantanés identiques ne mettent pas l’heure à jour) : %1$@";
 "mod.settings.action.view_note" = "Détails";
 "mod.settings.action.manage" = "Gérer";
 "mod.settings.action.view_error" = "Voir l’erreur";

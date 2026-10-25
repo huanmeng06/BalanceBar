@@ -647,7 +647,7 @@
 "mod.settings.title" = "Данные Claude в реальном времени";
 "mod.settings.status.not_installed" = "Не включено";
 "mod.settings.status.waiting" = "Установлено, ожидание данных нового сеанса";
-"mod.settings.status.active" = "Включено, последние данные %1$@";
+"mod.settings.status.active" = "Включено, последние достоверные данные %1$@";
 "mod.settings.status.silent" = "Установлено, но 10 минут нет данных. Откройте новый сеанс или выполните /reload-plugins в существующем";
 "mod.settings.status.unsupported" = "Claude Code %1$@ слишком стар; требуется v2.1.287 или новее";
 "mod.settings.action.install" = "Установить в один клик";
@@ -684,7 +684,7 @@
 // INT-2 settings card restored for Issue #604
 "mod.settings.status.title_format" = "Состояние BalanceBar Mod: %1$@";
 "mod.settings.status.enabled_short" = "Включено";
-"mod.settings.status.last_data" = "Последние данные: %1$@";
+"mod.settings.status.last_data" = "Последние достоверные данные (одинаковые снимки не обновляют время): %1$@";
 "mod.settings.action.view_note" = "Подробнее";
 "mod.settings.action.manage" = "Управление";
 "mod.settings.action.view_error" = "Показать ошибку";

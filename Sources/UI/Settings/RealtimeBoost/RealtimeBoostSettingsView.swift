@@ -35,7 +35,7 @@ enum RealtimeBoostText: String, CaseIterable {
         case .title: return "Claude 实时增强"
         case .statusTitleFormat: return "BalanceBar Mod 状态：%1$@"
         case .statusEnabledShort: return "已启用"
-        case .lastData: return "最新数据：%1$@"
+        case .lastData: return "最近可信数据（同值快照不会刷新）：%1$@"
         case .viewNote: return "查看说明"
         case .manage: return "管理"
         case .viewError: return "查看原因"
@@ -44,7 +44,7 @@ enum RealtimeBoostText: String, CaseIterable {
 
         case .statusNotInstalled: return "未开启"
         case .statusWaiting: return "已安装，等待新会话的数据"
-        case .statusActive: return "已开启，最近数据 %@"
+        case .statusActive: return "已开启，最近可信数据 %@"
         case .statusSilent: return "已安装，但 10 分钟内没有收到数据。请新开会话，或在已有会话运行 /reload-plugins"
         case .statusUnsupported: return "Claude Code %@ 过旧，需要 v2.1.287 或更高版本"
         case .install: return "一键安装"
