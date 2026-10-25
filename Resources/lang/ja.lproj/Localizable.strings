@@ -634,7 +634,7 @@
 "mod.failure.copy" = "コマンドをコピー";
 "mod.failure.copied" = "コピーしました";
 "mod.dismissed.title" = "表示をオフにしました";
-"mod.dismissed.note" = "メニューの下部に「データソース」が表示されます。設定 › 詳細 › リアルタイム強化 で再度有効にできます。";
+"mod.dismissed.note" = "設定 › 詳細 › リアルタイム強化 で再度有効にできます。";
 "mod.dismissed.undo" = "取り消す";
 "mod.panel.uninstall" = "リアルタイム同期をアンインストール";
 "mod.uninstall.step1" = "Mod をアンインストール";

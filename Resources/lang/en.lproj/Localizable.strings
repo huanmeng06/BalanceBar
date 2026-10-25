@@ -634,7 +634,7 @@
 "mod.failure.copy" = "Copy commands";
 "mod.failure.copied" = "Copied";
 "mod.dismissed.title" = "Prompt disabled";
-"mod.dismissed.note" = "The menu now shows “Data source” at the bottom. Re-enable it in Settings › Advanced › Realtime boost.";
+"mod.dismissed.note" = "Re-enable it in Settings › Advanced › Realtime boost.";
 "mod.dismissed.undo" = "Undo";
 "mod.panel.uninstall" = "Uninstall realtime sync";
 "mod.uninstall.step1" = "Uninstall Mod";

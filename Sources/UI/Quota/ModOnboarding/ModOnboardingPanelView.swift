@@ -249,7 +249,8 @@ enum ModPanelContent {
                              .button(title: t(.copyCommands), action: .copyUninstall),
                              .button(title: t(.retry), action: .uninstall), close]
         case .dismissConfirmed:
-            return [.hero(symbol: nil, title: t(.dismissedTitle), subtitle: t(.dismissedNote)), close]
+            return [.hero(symbol: nil, title: t(.dismissedTitle), subtitle: t(.dismissedNote)),
+                    .button(title: t(.undoDismiss), action: .undoDismiss), close]
         }
     }
 
@@ -607,7 +608,9 @@ final class ModOnboardingPanelView: NSView {
         case .copyReload: controller.copyReloadCommand()
         case .copyUninstall: controller.copyUninstallCommands()
         case .copyEnable: controller.copyEnableCommand()
-        case .undoDismiss: controller.setPromptEnabled(true)
+        case .undoDismiss:
+            controller.setPromptEnabled(true)
+            onPromptPreferenceChange?()
         case .refresh: onRequestRefresh()
         case .uninstall:
             isConfirmingUninstall = true
@@ -621,7 +624,14 @@ final class ModOnboardingPanelView: NSView {
             reload()
         case .close:
             isConfirmingUninstall = false
-            if controller.close() { onRequestClose() }
+            if controller.close() {
+                onRequestClose()
+            } else {
+                // "Later" with "don't show in the menu" checked turns into the
+                // confirmation page that points back to Advanced.
+                onPromptPreferenceChange?()
+                reload()
+            }
         }
     }
 
@@ -781,8 +791,11 @@ final class ModOnboardingPanelView: NSView {
     @objc private func checkboxToggled(_ sender: NSButton) { controller.setDismissChecked(sender.state == .on) }
 
     @objc private func menuPromptToggled(_ sender: NSButton) {
-        // Checked means "do not show this in the menu", so the preference is inverted.
-        controller.setPromptEnabled(sender.state == .off)
+        // Checked means "do not show this in the menu". Keep the intro's dismiss flag in
+        // sync so "Later" lands on the confirmation page that points back to Advanced.
+        let dismissed = sender.state == .on
+        controller.setDismissChecked(dismissed)
+        controller.setPromptEnabled(!dismissed)
         onPromptPreferenceChange?()
     }
     @objc private func buttonPressed(_ sender: NSButton) {

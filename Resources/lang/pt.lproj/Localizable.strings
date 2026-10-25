@@ -634,7 +634,7 @@
 "mod.failure.copy" = "Copiar comandos";
 "mod.failure.copied" = "Copiado";
 "mod.dismissed.title" = "Aviso desativado";
-"mod.dismissed.note" = "O menu passa a mostrar «Fonte de dados» na parte inferior. Reative em Definições › Avançadas › Impulso em tempo real.";
+"mod.dismissed.note" = "Reative em Definições › Avançadas › Impulso em tempo real.";
 "mod.dismissed.undo" = "Desfazer";
 "mod.panel.uninstall" = "Desinstalar sincronização em tempo real";
 "mod.uninstall.step1" = "Desinstalar Mod";

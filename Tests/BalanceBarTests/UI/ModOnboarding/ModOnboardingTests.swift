@@ -1504,6 +1504,23 @@ final class ModInt2WindowRestorationTests: XCTestCase {
         XCTAssertEqual(changes, 1)
     }
 
+    func testLaterAfterDismissShowsAdvancedGuidanceAndUndoRestores() throws {
+        let pref = MemoryPreference()
+        let c = ModOnboardingController(preference: pref)
+        let view = ModOnboardingPanelView(controller: c,
+            syncProvider: { self.context(.notInstalled(hasOtherScopeInstall: false)) })
+        let box = try XCTUnwrap(descendants(view).compactMap { $0 as? NSButton }.first {
+            $0.title == ModOnboardingText.dismissCheckbox.defaultText
+        })
+        box.performClick(nil)
+        view.perform(.close)
+        XCTAssertEqual(c.state, .dismissConfirmed, "Later must show the guidance page, not close")
+        XCTAssertTrue(view.snapshotLines.contains { $0.contains("可在 设置 › 高级 › 实时增强 中重新开启。") })
+        view.perform(.undoDismiss)
+        XCTAssertFalse(c.isPromptDismissed)
+        XCTAssertEqual(c.state, .intro(dismissChecked: false))
+    }
+
     func testInlineReloadCopyHasOriginalCheckmarkFeedback() throws {
         var copied = ""
         let view = ModOnboardingPanelView(controller: controller(copied: { copied = $0 }),

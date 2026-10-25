@@ -634,7 +634,7 @@
 "mod.failure.copy" = "Copia comandi";
 "mod.failure.copied" = "Copiato";
 "mod.dismissed.title" = "Suggerimento disattivato";
-"mod.dismissed.note" = "Il menu mostra ora «Sorgente dati» in basso. Riattiva in Impostazioni › Avanzate › Potenziamento in tempo reale.";
+"mod.dismissed.note" = "Riattiva in Impostazioni › Avanzate › Potenziamento in tempo reale.";
 "mod.dismissed.undo" = "Annulla";
 "mod.panel.uninstall" = "Disinstalla sincronizzazione in tempo reale";
 "mod.uninstall.step1" = "Disinstalla Mod";

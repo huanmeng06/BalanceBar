@@ -634,7 +634,7 @@
 "mod.failure.copy" = "Copier les commandes";
 "mod.failure.copied" = "Copié";
 "mod.dismissed.title" = "Invitation désactivée";
-"mod.dismissed.note" = "Le menu affiche désormais « Source de données » en bas. Réactivez dans Réglages › Avancé › Boost temps réel.";
+"mod.dismissed.note" = "Réactivez dans Réglages › Avancé › Boost temps réel.";
 "mod.dismissed.undo" = "Annuler";
 "mod.panel.uninstall" = "Désinstaller la synchronisation temps réel";
 "mod.uninstall.step1" = "Désinstaller le Mod";

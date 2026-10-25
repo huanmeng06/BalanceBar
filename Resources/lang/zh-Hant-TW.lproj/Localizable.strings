@@ -634,7 +634,7 @@
 "mod.failure.copy" = "複製指令";
 "mod.failure.copied" = "已複製";
 "mod.dismissed.title" = "已關閉提示";
-"mod.dismissed.note" = "選單底部改為顯示「資料來源」。可在 設定 › 進階 › 即時增強 中重新開啟。";
+"mod.dismissed.note" = "可在 設定 › 進階 › 即時增強 中重新開啟。";
 "mod.dismissed.undo" = "復原";
 "mod.panel.uninstall" = "解除安裝即時同步";
 "mod.uninstall.step1" = "解除安裝 Mod";

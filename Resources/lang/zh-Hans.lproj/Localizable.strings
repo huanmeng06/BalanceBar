@@ -634,7 +634,7 @@
 "mod.failure.copy" = "复制命令";
 "mod.failure.copied" = "已复制";
 "mod.dismissed.title" = "已关闭提示";
-"mod.dismissed.note" = "菜单底部改为显示“数据来源”。可在 设置 › 高级 › 实时增强 中重新开启。";
+"mod.dismissed.note" = "可在 设置 › 高级 › 实时增强 中重新开启。";
 "mod.dismissed.undo" = "撤销";
 "mod.panel.uninstall" = "卸载实时同步";
 "mod.uninstall.step1" = "卸载 Mod";

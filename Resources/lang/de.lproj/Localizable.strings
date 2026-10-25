@@ -634,7 +634,7 @@
 "mod.failure.copy" = "Befehle kopieren";
 "mod.failure.copied" = "Kopiert";
 "mod.dismissed.title" = "Hinweis deaktiviert";
-"mod.dismissed.note" = "Im Menü wird unten jetzt „Datenquelle“ angezeigt. Reaktivieren unter Einstellungen › Erweitert › Echtzeit-Boost.";
+"mod.dismissed.note" = "Reaktivieren unter Einstellungen › Erweitert › Echtzeit-Boost.";
 "mod.dismissed.undo" = "Widerrufen";
 "mod.panel.uninstall" = "Echtzeitsynchronisierung deinstallieren";
 "mod.uninstall.step1" = "Mod deinstallieren";
