@@ -827,6 +827,15 @@ enum CodexResetForecastParser {
         if let target = ResponseParsingSupport.resetDate(official["target"], now: now) {
             return (target, nil)
         }
+        // The public API sometimes identifies an active announcement but omits
+        // its structured window. Parse only unambiguous, documented timing
+        // phrases as a fallback; never mistake a publication time for a target.
+        if let deadline = CodexResetSummaryTimeParser.deadline(
+            summary: official["summary"] as? String,
+            publishedAt: officialSignalPublishedAt(from: object)
+        ) {
+            return (deadline, .deadline)
+        }
         return (nil, nil)
     }
 
@@ -978,5 +987,119 @@ enum CodexResetForecastParser {
         default:
             return .unknown(trimmed)
         }
+    }
+}
+
+
+/// Conservative fallback for English announcements when the public forecast
+/// contains `official_signal` but omits `window`. This is an observation
+/// deadline, NOT proof or a guaranteed instant of a user's quota reset.
+///
+/// Site convention: PST/PT in natural-language promises refers to Pacific
+/// civil time (including daylight saving), as observed on Oct 25, 2026.
+private enum CodexResetSummaryTimeParser {
+    private static let pacificTimeZone = TimeZone(identifier: "America/Los_Angeles")!
+
+    static func deadline(summary: String?, publishedAt: Date?) -> Date? {
+        guard let publishedAt, let summary, !summary.isEmpty else { return nil }
+
+        // "By midnight PST" is the *next* local midnight following the post,
+        // not midnight UTC, nor a hard-coded UTC-8 offset.
+        if matches(#"^\\s*(?:by|before)\\s+midnight\\s+(?:pst|pdt|pt)\\b"#, in: summary) {
+            return nextPacificMidnight(after: publishedAt)
+        }
+
+        // "Landing tomorrow before 10am PST" / "by 10:30 AM PT tomorrow".
+        // Require both an explicit "tomorrow" and a recognized Pacific zone.
+        if matches(#"\\btomorrow\\b"#, in: summary),
+           let time = firstMatch(
+                #"\\b(?:before|by)\\s+(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)\\s*(?:pst|pdt|pt)\\b"#,
+                in: summary
+           ) {
+            let string = summary as NSString
+            guard let hour = capture(time, at: 1, from: string).flatMap(Int.init),
+                  (1...12).contains(hour) else { return nil }
+            let minute = capture(time, at: 2, from: string).flatMap(Int.init) ?? 0
+            guard (0...59).contains(minute),
+                  let marker = capture(time, at: 3, from: string)?.lowercased() else {
+                return nil
+            }
+            let hour24 = hour % 12 + (marker == "pm" ? 12 : 0)
+            var calendar = pacificCalendar
+            guard let day = calendar.date(
+                byAdding: .day, value: 1, to: calendar.startOfDay(for: publishedAt)
+            ) else { return nil }
+            return calendar.date(bySettingHour: hour24, minute: minute, second: 0, of: day)
+        }
+
+        // Short, explicit relative windows are anchored to the source post.
+        if let time = firstMatch(
+            #"\\b(?:within|over)\\s+(?:the\\s+)?(?:next\\s+)?(\\d{1,3})\\s+minutes?\\b"#,
+            in: summary
+        ), let minutes = capture(time, at: 1, from: summary as NSString).flatMap(Int.init),
+           (1...360).contains(minutes) {
+            return publishedAt.addingTimeInterval(TimeInterval(minutes * 60))
+        }
+        if matches(
+            #"\\b(?:within\\s+(?:(?:the\\s+)?(?:next\\s+)?)?(?:an?|one)\\s+hour|within\\s+the\\s+hour|(?:in|over)\\s+the\\s+next\\s+hour)\\b"#,
+            in: summary
+        ) {
+            return publishedAt.addingTimeInterval(60 * 60)
+        }
+        // The site's historical API used three hours for "within a few hours".
+        if matches(
+            #"\\bwithin\\s+(?:(?:the\\s+)?(?:next\\s+)?)?(?:a\\s+)?few\\s+hours?\\b"#,
+            in: summary
+        ) {
+            return publishedAt.addingTimeInterval(3 * 60 * 60)
+        }
+
+        // "Later today" is a deadline at the end of the post's Pacific day.
+        if matches(
+            #"\\b(?:later\\s+today|by\\s+(?:the\\s+)?end\\s+of\\s+(?:the\\s+)?day|by\\s+eod)\\b"#,
+            in: summary
+        ) {
+            guard let nextMidnight = nextPacificMidnight(after: publishedAt) else {
+                return nil
+            }
+            return nextMidnight.addingTimeInterval(-0.001)
+        }
+
+        return nil
+    }
+
+    private static var pacificCalendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = pacificTimeZone
+        return calendar
+    }
+
+    private static func nextPacificMidnight(after date: Date) -> Date? {
+        let calendar = pacificCalendar
+        return calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: date))
+    }
+
+    private static func matches(_ pattern: String, in text: String) -> Bool {
+        firstMatch(pattern, in: text) != nil
+    }
+
+    private static func firstMatch(_ pattern: String, in text: String) -> NSTextCheckingResult? {
+        guard let regex = try? NSRegularExpression(
+            pattern: pattern, options: [.caseInsensitive]
+        ) else { return nil }
+        return regex.firstMatch(
+            in: text, range: NSRange(text.startIndex..<text.endIndex, in: text)
+        )
+    }
+
+    private static func capture(
+        _ match: NSTextCheckingResult,
+        at index: Int,
+        from text: NSString
+    ) -> String? {
+        guard index < match.numberOfRanges else { return nil }
+        let range = match.range(at: index)
+        guard range.location != NSNotFound else { return nil }
+        return text.substring(with: range)
     }
 }
