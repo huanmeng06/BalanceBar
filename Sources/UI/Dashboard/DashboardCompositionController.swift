@@ -693,9 +693,10 @@ final class DashboardCompositionController {
     }
 
     /// Live Claude Mod realtime sync status from the coordinator's detection and the
-    /// pipeline's snapshot evidence. Covers an already-visible General page.
+    /// pipeline's snapshot evidence. Covers an already-visible Advanced page and an
+    /// active global search projection.
     func refreshModSync() {
-        guard canUpdateSettingsPage(.general) else { return }
+        guard canUpdateSettingsPage(.advanced) else { return }
         dashboardPreferencePages.refreshModSync()
         invalidateSearchData()
     }
@@ -1336,7 +1337,11 @@ final class DashboardCompositionController {
             )
         case .menu:
             dashboardPreferencePages.refreshMenu()
-        case .advanced, .about, .notifications:
+        case .advanced:
+            // The Advanced page is cached. Apply changes that arrived while another
+            // page was mounted before showing its Mod card again.
+            dashboardPreferencePages.refreshModSync()
+        case .about, .notifications:
             break
         }
     }

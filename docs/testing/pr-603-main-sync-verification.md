@@ -8,7 +8,7 @@
 
 ## 测试 App
 
-在 #603 原工作树运行 `./scripts/build.sh dev`，产物 `build/dev/BalanceBar-dev.app`。构建源为 `79a6fdfd`；后续手测文档提交不改变应用源码。
+在 #603 原工作树运行 `./scripts/build.sh dev`，产物 `build/dev/BalanceBar-dev.app`。
 
 - Bundle ID：`com.huanmeng06.BalanceBar.dev`
 - Short version/build：`1.7.39 / 208`
@@ -23,6 +23,15 @@
 - 三项本地化 probes：PASS。
 - `git diff --check`：PASS。
 - 没有执行 Full CI/完整 XCTest，没有真实安装/卸载 Mod 或代替用户进行 GUI/CLI会话测试。
+
+### 卸载后高级卡片状态回归
+
+- 用户手测确认：CLI 的插件与 marketplace 均已移除，管理窗恢复安装说明，但高级卡片仍保留“已启用”和旧时间。
+- 根因：Mod 卡片迁到 Advanced 后，`DashboardCompositionController.refreshModSync()` 仍以 General 可见作为刷新门槛；缓存的 Advanced 页重新激活时也未拉取最新状态。
+- 修复：刷新门槛改为 Advanced，并在 Advanced 激活时同步当前 Mod 状态与操作进度。
+- 新增三个回归，分别覆盖可见 Advanced、切页返回缓存 Advanced、全局搜索投影。修复前执行 3 tests，得到 6 failures；修复后 **3 tests，0 failures**。
+- 随后运行完整 `DashboardPageSearchTests` 和 Mod UI/协调器相关类：**128 tests，0 failures**。修复后重新执行 `build.sh dev`，签名验证 PASS。
+- 修复应用源码对应本轮 #603 修复提交；本记录所在提交之前，构建产物由该源码生成。仍待用户用修复版重新执行一次卸载人工验收。
 
 Xcode 实际命令共用参数：
 

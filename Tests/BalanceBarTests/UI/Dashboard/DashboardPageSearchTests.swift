@@ -3944,3 +3944,126 @@ extension DashboardPageSearchTests {
         XCTAssertEqual(searchCombo.stringValue, TimeZoneCityCatalog.displayTitle(for: .system))
     }
 }
+
+extension DashboardPageSearchTests {
+    private final class ModCardRefreshState {
+        var status: ModSyncStatus = .active(lastAcceptedAt: Date(timeIntervalSince1970: 1_792_870_000))
+        var operation: ModPanelState = .intro(dismissChecked: false)
+    }
+
+    private func modCardComposition(_ value: ModCardRefreshState, defaults: UserDefaults) -> DashboardCompositionController {
+        DashboardCompositionController(state: DashboardCompositionState(
+            preferences: AppPreferences(defaults: defaults), devBundleIdentifier: "com.huanmeng06.BalanceBar.dev",
+            providerPollInterval: 3, currentProviderIsOfficial: { true }, providerChoices: { [] },
+            snapshot: { .placeholder }, quickSwitchSummaries: { [:] }, refreshDate: { nil },
+            menuBarSnapshot: { $0 }, iconImage: { nil }, statusItemVisibility: { .unknown },
+            updateState: { .idle(current: AppSemanticVersion("1.7.39")!) }, statusLinks: { [] },
+            defaultStatusLinks: { [] }, setStatusLinks: { _ in },
+            modSyncStatus: { value.status }, modPanelState: { value.operation }),
+            actions: DashboardCompositionActions(
+                onManualRefresh: {}, onSwitchProvider: { _ in }, onOpenProvider: { _ in }, onSelectProvider: { _ in },
+                isSortAlphabetically: { false }, setSortAlphabetically: { _ in }, onToggle: { _, _ in },
+                onLaunchAtLogin: { _ in }, onLaunchWithChatGPT: { _ in }, onOpenLaunchWithChatGPTSettings: {},
+                onInterval: { _, _ in }, onBalanceDisplayThresholdChanged: { _ in },
+                onQuotaProgressColorConfigurationChanged: { _ in }, onOffsetAdjust: { _, _ in },
+                onOffsetValue: { _, _ in }, onOffsetValueEnded: { _, _ in }, onOffsetReset: { _ in },
+                onLanguage: { _ in }, onMenuBarFontSizePreset: { _ in }, onMenuBarIconSizePreset: { _ in },
+                onMenuBarIconDisplayModeChanged: { _ in }, onMenuBarIconDisplayDelayChanged: { _ in },
+                onMenuBarRightClickActionChanged: { _ in }, onMenuBarAnimationModeChanged: { _ in },
+                onMenuBarAnimationFrameRateChanged: { _ in }, onMenuBarQuotaWindowPreferenceChanged: { _ in },
+                onMenuBarQuotaResetDisplayModeChanged: { _ in }, onMenuBarLunaReserveResetTimeModeChanged: { _ in },
+                onLunaReserveDisplayModeChanged: { _ in }, onBankedResetDisplayModeChanged: { _ in },
+                onUpdateChannelChanged: { _ in }, onOpenCCSwitch: {}, onOpenSystemMenuBarSettings: {},
+                onManageModSync: { _ in }, onCheckForUpdates: {}, onInstallUpdate: {}, onOpenUpdateNotes: {},
+                onClamp: {}, onStatusLinksChanged: {}, onDidShowPage: {}, onDidClose: {}, onDidResize: {}))
+    }
+
+    private func modCardRow(_ composition: DashboardCompositionController) throws -> SettingsRowView {
+        try XCTUnwrap(firstDescendant(of: composition.currentHostedPageContentForTesting()) { view in
+            guard let row = view as? SettingsRowView else { return false }
+            return row.titleLabel.stringValue.contains("BalanceBar Mod")
+        } as? SettingsRowView)
+    }
+
+    func testVisibleAdvancedModCardUpdatesAfterUninstallAndNewEvidence() throws {
+        let language = AppLanguage.selected
+        AppLanguage.selected = .english
+        defer { AppLanguage.selected = language }
+        let suite = "ModCardVisible.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let value = ModCardRefreshState()
+        let composition = modCardComposition(value, defaults: defaults)
+        defer { composition.teardownForTesting() }
+        let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .advanced))
+        window.layoutIfNeeded()
+        XCTAssertTrue(window.isVisible)
+        let row = try modCardRow(composition)
+        XCTAssertTrue(row.titleLabel.stringValue.contains("Enabled"))
+        value.status = .notInstalled(hasOtherScopeInstall: false)
+        value.operation = .uninstallSucceeded
+        composition.refreshModSync()
+        window.layoutIfNeeded()
+        XCTAssertTrue(row.titleLabel.stringValue.contains("Not enabled"), "uninstalled card must not retain Enabled")
+        XCTAssertTrue(row.detailLabel.isHidden, "old accepted timestamp must disappear after uninstall")
+        value.operation = .installing(current: .installPlugin)
+        composition.refreshModSync()
+        window.layoutIfNeeded()
+        XCTAssertTrue(row.detailLabel.stringValue.contains("Install Mod"), "operation progress must refresh in Advanced")
+        value.status = .active(lastAcceptedAt: Date(timeIntervalSince1970: 1_792_871_234))
+        value.operation = .succeeded
+        composition.refreshModSync()
+        window.layoutIfNeeded()
+        XCTAssertTrue(try modCardRow(composition) === row, "refresh keeps the mounted card")
+        let updatedDetail = row.detailLabel.stringValue
+        value.status = .active(lastAcceptedAt: Date(timeIntervalSince1970: 1_792_872_345))
+        composition.refreshModSync()
+        window.layoutIfNeeded()
+        XCTAssertNotEqual(row.detailLabel.stringValue, updatedDetail, "new accepted evidence updates the visible timestamp")
+    }
+
+    func testCachedAdvancedModCardRefreshesWhenReturningFromAnotherPage() throws {
+        let language = AppLanguage.selected
+        AppLanguage.selected = .english
+        defer { AppLanguage.selected = language }
+        let suite = "ModCardCached.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let value = ModCardRefreshState()
+        let composition = modCardComposition(value, defaults: defaults)
+        defer { composition.teardownForTesting() }
+        let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .advanced))
+        window.layoutIfNeeded()
+        let row = try modCardRow(composition)
+        composition.showSection(.menu)
+        value.status = .notInstalled(hasOtherScopeInstall: false)
+        value.operation = .uninstallSucceeded
+        composition.refreshModSync()
+        composition.showSection(.advanced)
+        window.layoutIfNeeded()
+        XCTAssertTrue(try modCardRow(composition) === row)
+        XCTAssertTrue(row.titleLabel.stringValue.contains("Not enabled"), "cached Advanced must pick up the latest status on activation")
+        XCTAssertTrue(row.detailLabel.isHidden)
+    }
+
+    func testGlobalSearchModCardReceivesLiveStatusUpdates() throws {
+        let language = AppLanguage.selected
+        AppLanguage.selected = .english
+        defer { AppLanguage.selected = language }
+        let suite = "ModCardSearch.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let value = ModCardRefreshState()
+        let composition = modCardComposition(value, defaults: defaults)
+        defer { composition.teardownForTesting() }
+        let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .general))
+        composition.applySearchQueryForTesting("BalanceBar Mod")
+        window.layoutIfNeeded()
+        XCTAssertTrue(composition.isSearchProjectionActiveForTesting)
+        value.status = .notInstalled(hasOtherScopeInstall: false)
+        value.operation = .uninstallSucceeded
+        composition.refreshModSync()
+        window.layoutIfNeeded()
+        XCTAssertTrue(try modCardRow(composition).titleLabel.stringValue.contains("Not enabled"))
+    }
+}
