@@ -574,6 +574,33 @@ final class OverviewNumericTransitionTests: XCTestCase {
         XCTAssertFalse(view.hasPendingAnimationForTesting)
     }
 
+    func testCountdownUsesQuotaDigitRollingAcrossHourBoundaryAndRespectsReducedMotion() {
+        let identity = OverviewNumericIdentity.bankedResetProbabilityCountdown(provider: "OpenAI")
+        let before = OverviewNumericSample(identity: identity, format: .remainingMinutes,
+                                           value: 60, progressPercentage: nil)
+        let after = OverviewNumericSample(identity: identity, format: .remainingMinutes,
+                                          value: 59, progressPercentage: nil)
+        let plan = OverviewNumericTransition.plan(previous: before, current: after, reduceMotion: false)
+        let view = OverviewNumericTextView(text: before.displayText,
+            font: .monospacedDigitSystemFont(ofSize: 31, weight: .semibold), value: before.value)
+        view.configure(plan: plan, sample: after)
+        XCTAssertEqual(view.textField.stringValue, "1h0m")
+        XCTAssertTrue(view.hasPendingAnimationForTesting)
+        view.playPendingIfNeeded()
+        XCTAssertTrue(view.isDigitRollingForTesting)
+        XCTAssertTrue(view.isHostingVisibleForTesting)
+        XCTAssertEqual(view.currentValue, 59)
+        XCTAssertEqual(view.textField.stringValue, "59m")
+
+        let expired = OverviewNumericSample(identity: identity, format: .remainingMinutes,
+                                            value: 0, progressPercentage: nil)
+        let reduced = OverviewNumericTransition.plan(previous: after, current: expired, reduceMotion: true)
+        view.apply(plan: reduced, sample: expired)
+        XCTAssertFalse(view.isDigitRollingForTesting)
+        XCTAssertFalse(view.hasPendingAnimationForTesting)
+        XCTAssertEqual(view.textField.stringValue, "0m")
+    }
+
     private var fiveHour: OverviewNumericIdentity {
         .officialWindow(provider: "OpenAI Official", kind: .fiveHour)
     }
@@ -656,7 +683,7 @@ final class OverviewNumericPresentationControllerTests: XCTestCase {
         window.contentView = host
         ApplicationWindowPresentation.presentInBackground(window)
         defer { window.orderOut(nil); host.finishMenuDismissal() }
-        let countdown = try XCTUnwrap(descendants(host).compactMap { $0 as? OverviewNumericHoverLinkTextField }
+        let countdown = try XCTUnwrap(descendants(host).compactMap { $0 as? OverviewNumericTextView }
             .first { $0.sample?.format == .remainingMinutes })
         let countdownValue = countdown.sample?.value
         let timer = try XCTUnwrap(controller.bankedResetCountdownTimerForTesting)
@@ -719,7 +746,7 @@ final class OverviewNumericPresentationControllerTests: XCTestCase {
         XCTAssertEqual(latest.paceViews.count, 1)
         XCTAssertEqual(latest.paceViews.first?.quotaWindow.kind, .sevenDay)
         XCTAssertEqual(latest.paceViews.first?.progress.percentage, 10)
-        let latestCountdown = try XCTUnwrap(descendants(latest).compactMap { $0 as? OverviewNumericHoverLinkTextField }
+        let latestCountdown = try XCTUnwrap(descendants(latest).compactMap { $0 as? OverviewNumericTextView }
             .first { $0.sample?.format == .remainingMinutes })
         XCTAssertEqual(latestCountdown.sample?.value, 59)
         controller.menuDidClose(controller.statusMenuForTesting)

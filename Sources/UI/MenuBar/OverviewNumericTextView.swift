@@ -184,13 +184,15 @@ private struct OverviewNumericTextRoot: View {
         let total = max(0, Int(model.amount.rounded(.down)))
         let hours = total / 60
         let minutes = total % 60
-        return HStack(spacing: 0) {
+        return HStack(alignment: .firstTextBaseline, spacing: 0) {
             if hours > 0 {
                 rollingInteger(hours, minDigits: 1)
                 Text("h")
+                    .font(Font(OverviewNumericTextView.currencySymbolFont(for: font)))
             }
             rollingInteger(minutes, minDigits: 1)
             Text("m")
+                .font(Font(OverviewNumericTextView.currencySymbolFont(for: font)))
         }
     }
 
