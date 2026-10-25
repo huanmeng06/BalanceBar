@@ -462,7 +462,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 guard let self, self.activeClient == .codex else { return [:] }
                 return Dictionary(uniqueKeysWithValues: self.aggregationDisplays.map { ($0.identity.providerID, $0.snapshot) })
             },
-            isAggregationMode: { [weak self] in self?.activeClient == .codex && self?.aggregationDisplays.isEmpty == false }
+            isAggregationMode: { [weak self] in self?.activeClient == .codex && self?.aggregationDisplays.isEmpty == false },
+            modSyncStatus: { [weak self] in
+                guard let self else { return nil }
+                return self.modSyncCoordinator.status
+            },
+            modPanelState: { [weak self] in self?.modSyncCoordinator.controller.state }
         ),
         actions: DashboardCompositionActions(
             onManualRefresh: { [weak self] in self?.performManualRefresh(source: "dashboard") },
@@ -538,6 +543,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             onOpenSystemMenuBarSettings: { [weak self] in
                 self?.openSystemMenuBarSettings()
             },
+            onManageModSync: { [weak self] anchor in
+                guard let self else { return }
+                self.modSyncCoordinator.presentPanel(from: anchor)
+            },
             onCheckForUpdates: { [weak self] in self?.updateService.checkForUpdates() },
             onInstallUpdate: { [weak self] in self?.updateService.installAvailableUpdate() },
             onOpenUpdateNotes: { [weak self] in self?.showUpdateNotes() },
@@ -563,6 +572,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             },
             onDidResize: { [weak self] in
                 DispatchQueue.main.async { [weak self] in self?.clampDashboardScrollViewBounds() }
+            },
+            onInstallModSync: { [weak self] anchor in
+                guard let self else { return }
+                self.modSyncCoordinator.presentPanel(from: anchor)
+                self.modSyncCoordinator.controller.startInstall()
             }
         ),
         launchAtLoginController: launchAtLoginController
@@ -618,6 +632,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private let ccSwitchRepository: CCSwitchRepository
     private let officialQuotaClient: OfficialQuotaClient
     private let claudeQuota: ClaudeQuotaPipeline
+    /// Owns the Claude Code Mod realtime sync settings entry: detection, panel, status.
+    private lazy var modSyncCoordinator = ModSyncCoordinator(
+        controller: ModOnboardingController(),
+        detector: ModSyncDetector(),
+        activityProvider: { [weak self] in self?.isClaudeProcessAvailable ?? false },
+        localizePanel: modOnboardingLocalize,
+        localizeSync: realtimeBoostLocalize
+    )
     private let balanceAPIClient = BalanceAPIClient()
     private let balanceProgressStore = ProviderBalanceProgressStore()
     private lazy var notificationCoordinator = BalanceNotificationCoordinator()
@@ -733,6 +755,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             ignoredVersionStore: UserDefaultsUpdateVersionIgnoreStore()
         )
         super.init()
+        // The settings entry's status reflects what the M1 pipeline actually accepted:
+        // every Mod snapshot outcome and inbox rejection is forwarded to the coordinator.
+        self.claudeQuota.modSnapshotEventSink = { [weak self] event in
+            self?.modSyncCoordinator.ingest(event)
+        }
+        modSyncCoordinator.onStatusChange = { [weak self] _ in
+            DispatchQueue.main.async { [weak self] in
+                self?.dashboardComposition.refreshModSync()
+                self?.refreshStatusItemMenuInput()
+            }
+        }
+        modSyncCoordinator.onPresentationChange = { [weak self] in
+            DispatchQueue.main.async { [weak self] in
+                self?.dashboardComposition.refreshModSync()
+            }
+        }
+        modSyncCoordinator.onPromptChange = { [weak self] in
+            DispatchQueue.main.async { [weak self] in
+                self?.refreshStatusItemMenuInput()
+            }
+        }
         notificationCoordinator.onPermissionStateChanged = { [weak self] state in
             guard let self else { return }
             let previous = self.lastNotificationPermissionState
@@ -968,6 +1011,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 manualRefreshNotice: { [weak self] in
                     guard let self, self.activeClient == .claude, self.currentProviderIsOfficialCache else { return nil }
                     return self.claudeQuota.manualRefreshNotice()
+                },
+                showModOnboarding: { [weak self] in
+                    self?.showModOnboardingFromMenu()
                 }
             ),
             codexAnimationBackend: MenuBarCodexAnimationBackend(
@@ -1013,6 +1059,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 && preferences.menuLunaReserveHideExhaustedQuota,
             bankedResetDisplayMode: preferences.menuBankedResetDisplayMode,
             showsAvailableUpdateBadge: showsAvailableUpdateBadge,
+            modRow: modSyncCoordinator.menuRow(isOfficialDirect: isOfficialClaude),
             aggregatedProviders: activeClient == .codex ? aggregationDisplays : [],
             aggregationQuickSwitchBlocked: activeClient == .codex && aggregationQuickSwitchBlocked,
             quickSwitchSafety: quickSwitchSafety
@@ -1245,6 +1292,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         configureApplicationMenu()
         NSApp.appearance = nil
         dashboardComposition.start()
+        // Read-only detection for the Claude Code Mod sync entry; the probes run on a
+        // background queue and only the settings row consumes the result.
+        modSyncCoordinator.startDetectionIfNeeded()
         let harnessPresented = dashboardAccessoryHarness.presentIfRequested()
         let pendingRestore = DashboardRestoreStore.peek()
         let initialPresentation = InitialLaunchPresentation.resolve(
@@ -2022,6 +2072,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
 
     private func showDashboardSection(_ section: DashboardSection) {
         dashboardComposition.showSection(section)
+    }
+
+    /// Opens the Mod explanation window on its own from the status-menu prompt. The
+    /// dashboard is intentionally not opened or raised; only the small panel appears.
+    private func showModOnboardingFromMenu() {
+        modSyncCoordinator.presentPanelStandalone()
     }
 
     private func clampDashboardScrollViewBounds() {

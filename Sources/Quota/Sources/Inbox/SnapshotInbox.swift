@@ -25,6 +25,19 @@ public struct SnapshotInboxConfiguration: Equatable {
     public static let `default` = Self()
 }
 
+/// Why the inbox refused to emit a Mod snapshot. Never carries the email, the hash
+/// or any snapshot content; the settings entry maps these to actionable copy.
+public enum SnapshotRejectionReason: Equatable {
+    /// The snapshot names an account that is not the active one (`account.email_hash`
+    /// does not match), so it can never be attributed to the displayed account.
+    case accountEmailHashMismatch
+    /// A Mod snapshot without `account.email_hash` cannot be attributed to anyone.
+    case missingAccountEmailHash
+    /// A window's reset time does not match the latest official reading, so the whole
+    /// snapshot cannot be tied to this account's quota cycle.
+    case cycleUnverified
+}
+
 /// Watches the snapshot inbox (and adapter-discovered paths) and emits `QuotaObservation`s.
 ///
 /// All file access and callbacks run on a private serial background queue. Every file is
@@ -47,6 +60,11 @@ public final class SnapshotInbox: QuotaSource {
     /// there is no baseline to check against. The check is snapshot atomic: a snapshot in
     /// which one window fails is never partially attributed.
     public var cycleVerification: ((QuotaWindowKind, Date?) -> Bool?)?
+
+    /// Read-only rejection reporting for the settings entry: invoked on the inbox queue
+    /// whenever a Mod snapshot is rejected before emission. Pure notification; the
+    /// rejection decisions themselves are unchanged.
+    public var rejectionObserver: ((SnapshotRejectionReason) -> Void)?
 
     public let sourceID = "snapshot-inbox"
 
@@ -280,6 +298,10 @@ public final class SnapshotInbox: QuotaSource {
             adapter.health = .degraded(reason: "no active account")
             return
         }
+        // Only the BalanceBar Mod's rejections may change the Mod status entry. Other
+        // inbox producers keep their validation and rejection behavior, but must not be
+        // reported as a Mod failure.
+        let isModSnapshot = parsed.source == Self.modSourceID
         // Account attribution is fail closed: this inbox stamps every observation with the
         // active account's identity, so a snapshot that cannot prove it belongs to that
         // account must never reach the merge engine. Reasons never quote the email or hash.
@@ -287,12 +309,14 @@ public final class SnapshotInbox: QuotaSource {
             guard let expected = account.email.map(Self.emailHash), !expected.isEmpty,
                   provided == expected else {
                 adapter.health = .degraded(reason: "rejected snapshot: account email hash does not match the active account")
+                if isModSnapshot { rejectionObserver?(.accountEmailHashMismatch) }
                 return
             }
         } else if parsed.source == Self.modSourceID {
             // The Mod hashes the account it runs under; a snapshot without the hash cannot
             // be attributed to anyone and falls back to the official reading.
             adapter.health = .degraded(reason: "rejected snapshot: missing account email hash")
+            rejectionObserver?(.missingAccountEmailHash)
             return
         }
         let epoch = identity.accountEpoch
@@ -305,6 +329,7 @@ public final class SnapshotInbox: QuotaSource {
             for window in parsed.windows where verify(window.kind, window.resetsAt) == false {
                 unverifiedSnapshotRejections += 1
                 adapter.health = .degraded(reason: "rejected snapshot: cycle_unverified_against_official")
+                if isModSnapshot { rejectionObserver?(.cycleUnverified) }
                 return
             }
         }

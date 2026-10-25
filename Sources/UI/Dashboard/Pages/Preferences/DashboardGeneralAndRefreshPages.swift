@@ -530,8 +530,6 @@ final class DashboardGeneralPage {
             target: input.relay,
             action: #selector(DashboardPreferencePageRelay.toggle(_:))
         )
-        // Rows follow the order Codex/Grok, Claude calibration, Claude native sync, API providers.
-        // Each row's accessory is its current value or control, and agent rows carry their icons.
         let refreshing = SettingsSectionView(
             title: tr(.keyDashboardGeneralAndRefreshPagesRefresh),
             contentViews: [

@@ -79,6 +79,8 @@ final class DashboardPreferencePageRelay: NSObject {
     var onOpenCCSwitch: (() -> Void)?
     var onOpenSystemMenuBarSettings: (() -> Void)?
     var onManualRefresh: (() -> Void)?
+    var onInstallModSync: ((NSView) -> Void)?
+    var onManageModSync: ((NSView) -> Void)?
     var onCheckForUpdates: (() -> Void)?
     var onInstallUpdate: (() -> Void)?
     var onOpenUpdateNotes: (() -> Void)?
@@ -278,6 +280,15 @@ final class DashboardPreferencePageRelay: NSObject {
 
     @objc func manualRefresh(_ sender: NSButton) {
         onManualRefresh?()
+    }
+
+    /// Opens the Claude Code Mod realtime sync management panel anchored to the row.
+    @objc func installModSync(_ sender: NSButton) {
+        onInstallModSync?(sender)
+    }
+
+    @objc func manageModSync(_ sender: NSButton) {
+        onManageModSync?(sender)
     }
 
     @objc func update(_ sender: NSButton) {

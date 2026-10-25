@@ -23,6 +23,8 @@ struct DashboardCompositionState {
     let defaultStatusLinks: () -> [StatusLink]
     let setStatusLinks: ([StatusLink]) -> Void
     let notificationConfiguration: DashboardNotificationPageConfiguration?
+    let modSyncStatus: () -> ModSyncStatus?
+    let modPanelState: () -> ModPanelState?
 
     init(
         preferences: AppPreferences,
@@ -44,7 +46,9 @@ struct DashboardCompositionState {
         notificationConfiguration: DashboardNotificationPageConfiguration? = nil,
         snapshotProviderID: @escaping () -> String? = { nil },
         aggregationSnapshots: @escaping () -> [String: Snapshot] = { [:] },
-        isAggregationMode: @escaping () -> Bool = { false }
+        isAggregationMode: @escaping () -> Bool = { false },
+        modSyncStatus: @escaping () -> ModSyncStatus? = { nil },
+        modPanelState: @escaping () -> ModPanelState? = { nil }
     ) {
         self.preferences = preferences
         self.devBundleIdentifier = devBundleIdentifier
@@ -66,6 +70,8 @@ struct DashboardCompositionState {
         self.defaultStatusLinks = defaultStatusLinks
         self.setStatusLinks = setStatusLinks
         self.notificationConfiguration = notificationConfiguration
+        self.modSyncStatus = modSyncStatus
+        self.modPanelState = modPanelState
     }
 }
 
@@ -200,6 +206,7 @@ struct DashboardCompositionActions {
     let onUpdateChannelChanged: (UpdateChannel) -> Void
     let onOpenCCSwitch: () -> Void
     let onOpenSystemMenuBarSettings: () -> Void
+    let onManageModSync: (NSView) -> Void
     let onCheckForUpdates: () -> Void
     let onInstallUpdate: () -> Void
     let onOpenUpdateNotes: () -> Void
@@ -208,6 +215,7 @@ struct DashboardCompositionActions {
     let onDidShowPage: () -> Void
     let onDidClose: () -> Void
     let onDidResize: () -> Void
+    var onInstallModSync: ((NSView) -> Void)? = nil
 }
 
 /// Owns Dashboard shell, page composition, page lifecycle, and Status Links
@@ -270,6 +278,8 @@ final class DashboardCompositionController {
             onOpenCCSwitch: actions.onOpenCCSwitch,
             onOpenSystemMenuBarSettings: actions.onOpenSystemMenuBarSettings,
             onManualRefresh: actions.onManualRefresh,
+            onManageModSync: actions.onManageModSync,
+            modSyncStatusProvider: state.modSyncStatus,
             onCheckForUpdates: actions.onCheckForUpdates,
             onInstallUpdate: actions.onInstallUpdate,
             onOpenUpdateNotes: actions.onOpenUpdateNotes,
@@ -277,7 +287,9 @@ final class DashboardCompositionController {
                 self?.makeStatusLinksEditor()
                     ?? StatusLinksEditorHostingView(links: [], onChange: { _, _, _ in }, onAdd: { _ in }, onRemove: { _ in }, onReset: {})
             },
-            onClamp: actions.onClamp
+            onClamp: actions.onClamp,
+            onInstallModSync: actions.onInstallModSync,
+            modPanelStateProvider: state.modPanelState
         ),
         launchAtLoginController: launchAtLoginController,
         launchWithChatGPTController: launchWithChatGPTController,
@@ -677,6 +689,15 @@ final class DashboardCompositionController {
     func refreshCCSwitchConnectionSummaries() {
         guard canUpdateSettingsPage(.general) else { return }
         dashboardPreferencePages.refreshConnectionSummaries(state.ccSwitchConnectionSummaries())
+        invalidateSearchData()
+    }
+
+    /// Live Claude Mod realtime sync status from the coordinator's detection and the
+    /// pipeline's snapshot evidence. Covers an already-visible Advanced page and an
+    /// active global search projection.
+    func refreshModSync() {
+        guard canUpdateSettingsPage(.advanced) else { return }
+        dashboardPreferencePages.refreshModSync()
         invalidateSearchData()
     }
 
@@ -1316,7 +1337,11 @@ final class DashboardCompositionController {
             )
         case .menu:
             dashboardPreferencePages.refreshMenu()
-        case .advanced, .about, .notifications:
+        case .advanced:
+            // The Advanced page is cached. Apply changes that arrived while another
+            // page was mounted before showing its Mod card again.
+            dashboardPreferencePages.refreshModSync()
+        case .about, .notifications:
             break
         }
     }
