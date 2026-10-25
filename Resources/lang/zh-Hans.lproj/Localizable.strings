@@ -612,6 +612,7 @@
 "claude.mod_sync.title" = "Claude Code Mod 实时同步";
 "claude.mod_sync.manage" = "管理…";
 "mod.prompt.row" = "启用实时增强 ›";
+"mod.prompt.menu" = "为 Claude 安装 Mod，额度实时更新";
 "mod.prompt.why" = "为什么这么做？";
 "mod.panel.title" = "实时增强";
 "mod.panel.point1" = "只读取额度数据（5 小时 / 7 天用量），不读取对话内容。";

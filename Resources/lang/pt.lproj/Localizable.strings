@@ -612,6 +612,7 @@
 "claude.mod_sync.title" = "Sincronização em tempo real do Mod do Claude Code";
 "claude.mod_sync.manage" = "Gerir…";
 "mod.prompt.row" = "Ativar o impulso em tempo real ›";
+"mod.prompt.menu" = "Instalar o Mod do Claude: cota em tempo real";
 "mod.prompt.why" = "Porquê?";
 "mod.panel.title" = "Impulso em tempo real";
 "mod.panel.point1" = "Lê apenas dados de quota (utilização de 5 horas / 7 dias); nunca lê o conteúdo das conversas.";

@@ -221,6 +221,7 @@ extension LocalizationKey {
         case .cycleAdvice: return .modUICycleAdvice
         case .promptRow: return .modPromptRow
         case .promptWhy: return .modPromptWhy
+        case .promptMenu: return .modPromptMenu
         case .panelTitle: return .modPanelTitle
         case .point1: return .modPanelPoint1
         case .point2: return .modPanelPoint2

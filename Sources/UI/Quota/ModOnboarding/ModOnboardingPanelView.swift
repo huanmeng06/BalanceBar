@@ -280,7 +280,7 @@ final class ModPromptRowView: NSView {
     }
 
     init(localize: (ModOnboardingText) -> String = ModOnboardingText.defaultLocalize) {
-        mainLabel = NSTextField(wrappingLabelWithString: localize(.promptRow))
+        mainLabel = NSTextField(wrappingLabelWithString: localize(.promptMenu))
         whyLabel = NSTextField(labelWithString: localize(.promptWhy))
         super.init(frame: NSRect(x: 0, y: 0, width: Self.width, height: Self.rowHeight))
         autoresizingMask = [.width]

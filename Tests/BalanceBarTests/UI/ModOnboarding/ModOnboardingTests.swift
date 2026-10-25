@@ -251,7 +251,7 @@ final class ModOnboardingPanelTests: XCTestCase {
         let row = ModPromptRowView()
         var clicks = 0
         row.onClick = { clicks += 1 }
-        XCTAssertEqual(row.mainText, "启用实时增强 ›")
+        XCTAssertEqual(row.mainText, "为 Claude 安装 Mod，额度实时更新")
         XCTAssertEqual(row.whyText, "为什么这么做？")
         XCTAssertTrue(row.accessibilityPerformPress())
         XCTAssertEqual(clicks, 1)

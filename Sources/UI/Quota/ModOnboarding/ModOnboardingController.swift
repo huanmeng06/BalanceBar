@@ -4,6 +4,7 @@ import AppKit
 enum ModOnboardingText: String, CaseIterable {
     case promptRow = "mod.prompt.row"
     case promptWhy = "mod.prompt.why"
+    case promptMenu = "mod.prompt.menu"
     case panelTitle = "mod.panel.title"
     case point1 = "mod.panel.point1"
     case point2 = "mod.panel.point2"
@@ -103,6 +104,7 @@ enum ModOnboardingText: String, CaseIterable {
         case .cycleAdvice: return "继续使用官方额度；新周期经官方确认后，再检查新会话的数据。"
         case .promptRow: return "启用实时增强 ›"
         case .promptWhy: return "为什么这么做？"
+        case .promptMenu: return "为 Claude 安装 Mod，额度实时更新"
         case .panelTitle: return "实时增强"
         case .point1: return "只读取额度数据（5 小时 / 7 天用量），不读取对话内容。"
         case .point2: return "插件以你的用户权限在 Claude Code 内运行，可随时用 /plugin 卸载。"

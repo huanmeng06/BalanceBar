@@ -612,6 +612,7 @@
 "claude.mod_sync.title" = "Claude Code Mod realtime sync";
 "claude.mod_sync.manage" = "Manage…";
 "mod.prompt.row" = "Enable realtime boost ›";
+"mod.prompt.menu" = "Install the Claude Mod for live quota updates";
 "mod.prompt.why" = "Why this?";
 "mod.panel.title" = "Realtime boost";
 "mod.panel.point1" = "Reads quota data only (5-hour / 7-day usage); never reads conversation content.";

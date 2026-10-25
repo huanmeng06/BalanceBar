@@ -612,6 +612,7 @@
 "claude.mod_sync.title" = "Claude Code Mod 실시간 동기화";
 "claude.mod_sync.manage" = "관리…";
 "mod.prompt.row" = "실시간 부스트 활성화 ›";
+"mod.prompt.menu" = "Claude용 Mod 설치로 할당량 실시간 업데이트";
 "mod.prompt.why" = "왜 필요한가요?";
 "mod.panel.title" = "실시간 부스트";
 "mod.panel.point1" = "쿼터 데이터(5시간 / 7일 사용량)만 읽고 대화 내용은 읽지 않습니다.";

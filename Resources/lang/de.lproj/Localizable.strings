@@ -612,6 +612,7 @@
 "claude.mod_sync.title" = "Claude-Code-Mod-Echtzeitsynchronisierung";
 "claude.mod_sync.manage" = "Verwalten…";
 "mod.prompt.row" = "Echtzeit-Boost aktivieren ›";
+"mod.prompt.menu" = "Claude-Mod installieren – Kontingent in Echtzeit";
 "mod.prompt.why" = "Warum?";
 "mod.panel.title" = "Echtzeit-Boost";
 "mod.panel.point1" = "Liest nur Kontingentdaten (5-Stunden-/7-Tage-Nutzung), nie Unterhaltungsinhalte.";
