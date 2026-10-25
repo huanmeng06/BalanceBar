@@ -30,7 +30,9 @@ struct DashboardPreferencePageActions {
     let onOpenSystemMenuBarSettings: () -> Void
     let onManualRefresh: () -> Void
     let onManageModSync: (NSView) -> Void
-    let modSyncStatusProvider: () -> ModSyncStatus?
+    var modSyncStatusProvider: () -> ModSyncStatus? = { nil }
+    var modPromptEnabledProvider: () -> Bool = { true }
+    var onSetModPromptEnabled: ((Bool) -> Void)? = nil
     let onCheckForUpdates: () -> Void
     let onInstallUpdate: () -> Void
     let onOpenUpdateNotes: () -> Void
@@ -109,6 +111,7 @@ final class DashboardPreferencePages {
         relay.onManualRefresh = actions.onManualRefresh
         relay.onManageModSync = actions.onManageModSync
         relay.onInstallModSync = actions.onInstallModSync
+        relay.onSetModPromptEnabled = actions.onSetModPromptEnabled
         relay.onCheckForUpdates = actions.onCheckForUpdates
         relay.onInstallUpdate = actions.onInstallUpdate
         relay.onOpenUpdateNotes = actions.onOpenUpdateNotes
@@ -175,7 +178,9 @@ final class DashboardPreferencePages {
                 logViewer: forSearch ? nil : logsPage.makeViewer(),
                 includeLogViewer: !forSearch,
                 modSyncStatus: actions.modSyncStatusProvider() ?? .detecting,
-                modPanelState: actions.modPanelStateProvider() ?? .intro(dismissChecked: false)
+                modPanelState: actions.modPanelStateProvider() ?? .intro(dismissChecked: false),
+                modPromptEnabled: actions.modPromptEnabledProvider(),
+                onToggleModPrompt: { [weak self] enabled in self?.relay.setModPromptEnabled(enabled) }
             ))
         case .notifications:
             notificationsPage?.showRoot()
@@ -399,9 +404,10 @@ final class DashboardPreferencePages {
 
     func refreshModSync() {
         let status = actions.modSyncStatusProvider()
-        advancedPage.refreshModSync(status, operation: actions.modPanelStateProvider())
+        let promptEnabled = actions.modPromptEnabledProvider()
+        advancedPage.refreshModSync(status, operation: actions.modPanelStateProvider(), promptEnabled: promptEnabled)
         if isSearchProjectionActive {
-            searchAdvancedPage.refreshModSync(status, operation: actions.modPanelStateProvider())
+            searchAdvancedPage.refreshModSync(status, operation: actions.modPanelStateProvider(), promptEnabled: promptEnabled)
         }
     }
 

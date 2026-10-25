@@ -563,6 +563,7 @@ enum DashboardSettingsSearchCatalog {
                 .modSettingsManage,
                 .modSettingsViewError,
                 .modSettingsActionInstall,
+                .modSettingsPromptToggle,
                 .modSettingsStatusEnabledShort,
                 .modSettingsStatusSilentShort,
                 .modSettingsSilentHint,

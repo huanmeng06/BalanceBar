@@ -198,6 +198,8 @@ final class RealtimeBoostSettingsView: NSView {
 /// It owns no controller or extra state machine; actions return to composition.
 final class RealtimeBoostSettingsRows {
     let statusRow: SettingsRowView
+    let promptRow: SettingsRowView
+    let promptToggle: NSSwitch
     let installButton: NSButton
     let descriptionButton: NSButton
     let spinner = NSProgressIndicator()
@@ -206,21 +208,28 @@ final class RealtimeBoostSettingsRows {
     private let modLocalize: (ModOnboardingText) -> String
     private let onInstall: (NSButton) -> Void
     private let onShowDescription: (NSButton) -> Void
+    private let onTogglePrompt: (Bool) -> Void
+    private var promptEnabled: Bool
 
     init(
         status: ModSyncStatus,
+        promptEnabled: Bool = true,
         operation: ModPanelState = .intro(dismissChecked: false),
         localize: @escaping (RealtimeBoostText) -> String = realtimeBoostLocalize,
         modLocalize: @escaping (ModOnboardingText) -> String = modOnboardingLocalize,
         onInstall: @escaping (NSButton) -> Void,
-        onShowDescription: @escaping (NSButton) -> Void
+        onShowDescription: @escaping (NSButton) -> Void,
+        onTogglePrompt: @escaping (Bool) -> Void = { _ in }
     ) {
         self.localize = localize
         self.modLocalize = modLocalize
         self.onInstall = onInstall
         self.onShowDescription = onShowDescription
+        self.onTogglePrompt = onTogglePrompt
+        self.promptEnabled = promptEnabled
         installButton = NSButton(title: localize(.install), target: nil, action: nil)
         descriptionButton = NSButton(title: localize(.viewNote), target: nil, action: nil)
+        promptToggle = NSSwitch()
         spinner.style = .spinning
         spinner.controlSize = .small
         spinner.isDisplayedWhenStopped = false
@@ -233,13 +242,16 @@ final class RealtimeBoostSettingsRows {
         actions.spacing = 8
         statusRow = SettingsRowView(title: Self.title(for: Self.stateText(for: status, localize: localize), localize: localize),
                                     detail: nil, titleAccessory: dot, accessoryView: actions)
+        promptRow = SettingsRowView(title: localize(.promptToggle), detail: nil, accessoryView: promptToggle)
         installButton.target = self; installButton.action = #selector(install(_:))
         descriptionButton.target = self; descriptionButton.action = #selector(showDescription(_:))
+        promptToggle.target = self; promptToggle.action = #selector(togglePrompt)
+        promptToggle.setAccessibilityLabel(localize(.promptToggle))
         update(status: status, operation: operation)
     }
 
     func makeSection() -> SettingsSectionView {
-        let section = SettingsSectionView(title: localize(.title), contentViews: [statusRow])
+        let section = SettingsSectionView(title: localize(.title), contentViews: [statusRow, promptRow])
         let heading = section.headingLabel
         heading.usesSingleLineMode = false
         heading.lineBreakMode = .byWordWrapping
@@ -250,7 +262,9 @@ final class RealtimeBoostSettingsRows {
         return section
     }
 
-    func update(status: ModSyncStatus, operation: ModPanelState) {
+    func update(status: ModSyncStatus, operation: ModPanelState, promptEnabled: Bool? = nil) {
+        if let promptEnabled { self.promptEnabled = promptEnabled }
+        promptToggle.state = self.promptEnabled ? .on : .off
         let stateText = Self.stateText(for: status, localize: localize)
         var detail: String? = nil
         switch status {
@@ -310,6 +324,8 @@ final class RealtimeBoostSettingsRows {
     }
     @objc private func install(_ sender: NSButton) { onInstall(sender) }
     @objc private func showDescription(_ sender: NSButton) { onShowDescription(sender) }
+
+    @objc private func togglePrompt() { onTogglePrompt(promptToggle.state == .on) }
 }
 
 private final class RealtimeBoostStatusDot: NSView {

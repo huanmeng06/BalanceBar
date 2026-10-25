@@ -714,6 +714,21 @@ final class ModSyncCoordinatorTests: XCTestCase {
         return (coordinator, runner)
     }
 
+    func testPromptPreferenceTogglesAndNotifies() {
+        let (coordinator, _) = makeCoordinator(locator: nil, results: [])
+        var notifications = 0
+        coordinator.onPromptChange = { notifications += 1 }
+        XCTAssertTrue(coordinator.isPromptEnabled)
+        coordinator.setPromptEnabled(false)
+        XCTAssertFalse(coordinator.isPromptEnabled)
+        XCTAssertEqual(notifications, 1)
+        coordinator.setPromptEnabled(false)
+        XCTAssertEqual(notifications, 1, "an unchanged preference must not rebuild the menu")
+        coordinator.setPromptEnabled(true)
+        XCTAssertTrue(coordinator.isPromptEnabled)
+        XCTAssertEqual(notifications, 2)
+    }
+
     func testDetectionDrivesWaitingForDataAndSnapshotEvidenceDrivesActive() {
         let (coordinator, runner) = makeCoordinator(
             locator: "/bin/claude",
@@ -1258,6 +1273,22 @@ final class RealtimeBoostAdvancedCardTests: XCTestCase {
             localize: { realtimeBoostLocalize($0, language: .english) },
             modLocalize: { tr(LocalizationKey.key(for: $0), language: .english) },
             onInstall: install, onShowDescription: describe)
+    }
+
+    func testPromptSwitchReflectsAndReportsPreference() {
+        var changes: [Bool] = []
+        let rows = RealtimeBoostSettingsRows(
+            status: .notInstalled(hasOtherScopeInstall: false), promptEnabled: false,
+            localize: { realtimeBoostLocalize($0, language: .english) },
+            modLocalize: { tr(LocalizationKey.key(for: $0), language: .english) },
+            onInstall: { _ in }, onShowDescription: { _ in },
+            onTogglePrompt: { changes.append($0) })
+        XCTAssertEqual(rows.promptToggle.state, .off)
+        rows.promptToggle.performClick(nil)
+        XCTAssertEqual(changes, [true])
+        rows.update(status: .notInstalled(hasOtherScopeInstall: false),
+                    operation: .intro(dismissChecked: false), promptEnabled: true)
+        XCTAssertEqual(rows.promptToggle.state, .on)
     }
 
     func testHistoricalStatusTitleAndLatestDataUseSeparateLines() {

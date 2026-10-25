@@ -467,7 +467,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 guard let self else { return nil }
                 return self.modSyncCoordinator.status
             },
-            modPanelState: { [weak self] in self?.modSyncCoordinator.controller.state }
+            modPanelState: { [weak self] in self?.modSyncCoordinator.controller.state },
+            modPromptEnabled: { [weak self] in self?.modSyncCoordinator.isPromptEnabled ?? true },
+            setModPromptEnabled: { [weak self] enabled in self?.modSyncCoordinator.setPromptEnabled(enabled) }
         ),
         actions: DashboardCompositionActions(
             onManualRefresh: { [weak self] in self?.performManualRefresh(source: "dashboard") },
@@ -768,6 +770,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         }
         modSyncCoordinator.onPresentationChange = { [weak self] in
             DispatchQueue.main.async { [weak self] in
+                self?.dashboardComposition.refreshModSync()
+            }
+        }
+        modSyncCoordinator.onPromptChange = { [weak self] in
+            DispatchQueue.main.async { [weak self] in
+                self?.refreshStatusItemMenuInput()
                 self?.dashboardComposition.refreshModSync()
             }
         }

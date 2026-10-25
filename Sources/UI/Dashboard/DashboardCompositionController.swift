@@ -25,6 +25,9 @@ struct DashboardCompositionState {
     let notificationConfiguration: DashboardNotificationPageConfiguration?
     let modSyncStatus: () -> ModSyncStatus?
     let modPanelState: () -> ModPanelState?
+    /// The "prompt for realtime boost in the menu" preference.
+    let modPromptEnabled: () -> Bool
+    let setModPromptEnabled: (Bool) -> Void
 
     init(
         preferences: AppPreferences,
@@ -48,7 +51,9 @@ struct DashboardCompositionState {
         aggregationSnapshots: @escaping () -> [String: Snapshot] = { [:] },
         isAggregationMode: @escaping () -> Bool = { false },
         modSyncStatus: @escaping () -> ModSyncStatus? = { nil },
-        modPanelState: @escaping () -> ModPanelState? = { nil }
+        modPanelState: @escaping () -> ModPanelState? = { nil },
+        modPromptEnabled: @escaping () -> Bool = { true },
+        setModPromptEnabled: @escaping (Bool) -> Void = { _ in }
     ) {
         self.preferences = preferences
         self.devBundleIdentifier = devBundleIdentifier
@@ -72,6 +77,8 @@ struct DashboardCompositionState {
         self.notificationConfiguration = notificationConfiguration
         self.modSyncStatus = modSyncStatus
         self.modPanelState = modPanelState
+        self.modPromptEnabled = modPromptEnabled
+        self.setModPromptEnabled = setModPromptEnabled
     }
 }
 
@@ -280,6 +287,8 @@ final class DashboardCompositionController {
             onManualRefresh: actions.onManualRefresh,
             onManageModSync: actions.onManageModSync,
             modSyncStatusProvider: state.modSyncStatus,
+            modPromptEnabledProvider: state.modPromptEnabled,
+            onSetModPromptEnabled: state.setModPromptEnabled,
             onCheckForUpdates: actions.onCheckForUpdates,
             onInstallUpdate: actions.onInstallUpdate,
             onOpenUpdateNotes: actions.onOpenUpdateNotes,

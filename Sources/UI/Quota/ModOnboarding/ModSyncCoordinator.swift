@@ -30,6 +30,8 @@ final class ModSyncCoordinator {
     var onStatusChange: ((ModSyncStatus) -> Void)?
     /// Operation progress only; does not change sync facts or status notifications.
     var onPresentationChange: (() -> Void)?
+    /// The "prompt for realtime boost in the menu" preference changed.
+    var onPromptChange: (() -> Void)?
 
     init(
         controller: ModOnboardingController,
@@ -65,6 +67,16 @@ final class ModSyncCoordinator {
             isOfficialDirect: isOfficialDirect,
             status: status,
             promptDismissed: controller.isPromptDismissed)
+    }
+
+    /// Whether the status-menu prompt is allowed to appear.
+    var isPromptEnabled: Bool { !controller.isPromptDismissed }
+
+    /// Applies the settings switch; the preference lives in the onboarding controller.
+    func setPromptEnabled(_ enabled: Bool) {
+        guard enabled != isPromptEnabled else { return }
+        controller.setPromptEnabled(enabled)
+        onPromptChange?()
     }
 
     /// Status plus its localized text, for the settings row and the panel header.

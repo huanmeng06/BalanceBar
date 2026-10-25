@@ -81,6 +81,7 @@ final class DashboardPreferencePageRelay: NSObject {
     var onManualRefresh: (() -> Void)?
     var onInstallModSync: ((NSView) -> Void)?
     var onManageModSync: ((NSView) -> Void)?
+    var onSetModPromptEnabled: ((Bool) -> Void)?
     var onCheckForUpdates: (() -> Void)?
     var onInstallUpdate: (() -> Void)?
     var onOpenUpdateNotes: (() -> Void)?
@@ -289,6 +290,11 @@ final class DashboardPreferencePageRelay: NSObject {
 
     @objc func manageModSync(_ sender: NSButton) {
         onManageModSync?(sender)
+    }
+
+    /// Applies the "prompt for realtime boost in the menu" switch.
+    func setModPromptEnabled(_ enabled: Bool) {
+        onSetModPromptEnabled?(enabled)
     }
 
     @objc func update(_ sender: NSButton) {
