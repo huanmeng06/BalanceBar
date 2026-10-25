@@ -1,0 +1,13 @@
+{
+  "source": "https://codex-reset.com/api/feed",
+  "captured_at": "2026-10-25T06:07:12Z",
+  "tweets": [
+    {"id":"2114200291319124163","text":"By midnight PST","at":"2026-10-25T03:40:04Z","url":"https://x.com/thsottiaux/status/2114200291319124163","is_reply":true,"in_reply_to_tweet_id":"2114200152701575656"},
+    {"id":"2114200152701575656","text":"Day 20/ Rest and reset","at":"2026-10-25T03:39:31Z","url":"https://x.com/thsottiaux/status/2114200152701575656","is_reply":false},
+    {"id":"2113492502355562875","text":"Landing tomorrow before 10am PST together with a small ship.","at":"2026-10-23T04:47:34Z","url":"https://x.com/thsottiaux/status/2113492502355562875","is_reply":true,"in_reply_to_tweet_id":"2113492187770175603"},
+    {"id":"2113492187770175603","text":"Day 18/ Decisions API is GA, OpenResponses joined the Linux Foundation, we shipped some performance improvements and Uber is going all-in on codex &amp; work.\nBut yes… that’s a reset!","at":"2026-10-23T04:46:19Z","url":"https://x.com/thsottiaux/status/2113492187770175603","is_reply":false},
+    {"id":"2113162413008884099","text":"Lands tomorrow before 10am PST.","at":"2026-10-22T06:55:54Z","url":"https://x.com/thsottiaux/status/2113162413008884099","is_reply":true,"in_reply_to_tweet_id":"2113162277688070445"},
+    {"id":"2113162277688070445","text":"Day 17/ Bet you thought we forgot, but no, it’s reset day today.\n\nAlso good time to remind you to get Daybreak Blue access, it only takes 15 mins and you don’t want to have to do it in the middle of an incident.","at":"2026-10-22T06:55:22Z","url":"https://x.com/thsottiaux/status/2113162277688070445","is_reply":false},
+    {"id":"2112798407928713717","text":"I demand a reset","at":"2026-10-21T06:49:29Z","url":"https://x.com/thsottiaux/status/2112798407928713717","is_reply":true,"in_reply_to_tweet_id":"2112359232595165185","kind":"other","tibo_lane":"reset_related"}
+  ]
+}
