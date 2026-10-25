@@ -684,7 +684,7 @@
 // INT-2 settings card restored for Issue #604
 "mod.settings.status.title_format" = "BalanceBar Mod 상태: %1$@";
 "mod.settings.status.enabled_short" = "사용 중";
-"mod.settings.status.last_data" = "최근 신뢰된 데이터(같은 값의 스냅샷은 시간을 갱신하지 않음): %1$@";
+"mod.settings.status.last_data" = "최근 신뢰된 데이터: %1$@";
 "mod.settings.action.view_note" = "자세히";
 "mod.settings.action.manage" = "관리";
 "mod.settings.action.view_error" = "오류 보기";

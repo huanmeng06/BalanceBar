@@ -35,7 +35,7 @@ enum RealtimeBoostText: String, CaseIterable {
         case .title: return "Claude 实时增强"
         case .statusTitleFormat: return "BalanceBar Mod 状态：%1$@"
         case .statusEnabledShort: return "已启用"
-        case .lastData: return "最近可信数据（同值快照不会刷新）：%1$@"
+        case .lastData: return "最近可信数据：%1$@"
         case .viewNote: return "查看说明"
         case .manage: return "管理"
         case .viewError: return "查看原因"

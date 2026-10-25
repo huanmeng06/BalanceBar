@@ -684,7 +684,7 @@
 // INT-2 settings card restored for Issue #604
 "mod.settings.status.title_format" = "BalanceBar-Mod-Status: %1$@";
 "mod.settings.status.enabled_short" = "Aktiv";
-"mod.settings.status.last_data" = "Letzte vertrauenswürdige Daten (identische Snapshots aktualisieren die Zeit nicht): %1$@";
+"mod.settings.status.last_data" = "Letzte vertrauenswürdige Daten: %1$@";
 "mod.settings.action.view_note" = "Details";
 "mod.settings.action.manage" = "Verwalten";
 "mod.settings.action.view_error" = "Fehler ansehen";

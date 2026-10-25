@@ -684,7 +684,7 @@
 // INT-2 settings card restored for Issue #604
 "mod.settings.status.title_format" = "BalanceBar Mod 状态：%1$@";
 "mod.settings.status.enabled_short" = "已启用";
-"mod.settings.status.last_data" = "最近可信数据（同值快照不会刷新）：%1$@";
+"mod.settings.status.last_data" = "最近可信数据：%1$@";
 "mod.settings.action.view_note" = "查看说明";
 "mod.settings.action.manage" = "管理";
 "mod.settings.action.view_error" = "查看原因";

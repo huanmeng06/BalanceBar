@@ -1457,7 +1457,7 @@ final class RealtimeBoostAdvancedCardTests: XCTestCase {
     func testHistoricalStatusTitleAndLatestDataUseSeparateLines() {
         let card = rows(.active(lastAcceptedAt: Date()))
         XCTAssertEqual(card.statusRow.titleLabel.stringValue, "BalanceBar Mod status: Enabled")
-        XCTAssertTrue(card.statusRow.detailLabel.stringValue.hasPrefix("Last trusted data (unchanged snapshots don't refresh it): "))
+        XCTAssertTrue(card.statusRow.detailLabel.stringValue.hasPrefix("Last trusted data: "))
         XCTAssertTrue(card.installButton.isHidden)
         XCTAssertEqual(card.descriptionButton.title, "Manage")
         card.update(status: .silent, operation: .intro(dismissChecked: false))

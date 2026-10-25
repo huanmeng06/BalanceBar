@@ -684,7 +684,7 @@
 // INT-2 settings card restored for Issue #604
 "mod.settings.status.title_format" = "BalanceBar Mod の状態：%1$@";
 "mod.settings.status.enabled_short" = "有効";
-"mod.settings.status.last_data" = "最後に信頼されたデータ（同じ値のスナップショットでは時刻は更新されません）：%1$@";
+"mod.settings.status.last_data" = "最後に信頼されたデータ：%1$@";
 "mod.settings.action.view_note" = "詳細";
 "mod.settings.action.manage" = "管理";
 "mod.settings.action.view_error" = "エラーを表示";

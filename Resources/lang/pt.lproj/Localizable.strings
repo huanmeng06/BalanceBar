@@ -684,7 +684,7 @@
 // INT-2 settings card restored for Issue #604
 "mod.settings.status.title_format" = "Estado do BalanceBar Mod: %1$@";
 "mod.settings.status.enabled_short" = "Ativado";
-"mod.settings.status.last_data" = "Últimos dados confiáveis (instantâneos iguais não atualizam o horário): %1$@";
+"mod.settings.status.last_data" = "Últimos dados confiáveis: %1$@";
 "mod.settings.action.view_note" = "Detalhes";
 "mod.settings.action.manage" = "Gerir";
 "mod.settings.action.view_error" = "Ver erro";

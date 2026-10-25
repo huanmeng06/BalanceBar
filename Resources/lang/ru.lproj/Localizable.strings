@@ -684,7 +684,7 @@
 // INT-2 settings card restored for Issue #604
 "mod.settings.status.title_format" = "Состояние BalanceBar Mod: %1$@";
 "mod.settings.status.enabled_short" = "Включено";
-"mod.settings.status.last_data" = "Последние достоверные данные (одинаковые снимки не обновляют время): %1$@";
+"mod.settings.status.last_data" = "Последние достоверные данные: %1$@";
 "mod.settings.action.view_note" = "Подробнее";
 "mod.settings.action.manage" = "Управление";
 "mod.settings.action.view_error" = "Показать ошибку";
