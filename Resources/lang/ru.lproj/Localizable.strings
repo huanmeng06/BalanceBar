@@ -633,8 +633,8 @@
 "mod.failure.command_failed" = "Команда не завершилась. Выполните следующие команды в Терминале:";
 "mod.failure.copy" = "Копировать команды";
 "mod.failure.copied" = "Скопировано";
-"mod.dismissed.title" = "Подсказка отключена";
-"mod.dismissed.note" = "Включить снова можно в Настройки › Дополнительно › Ускорение реального времени.";
+"mod.dismissed.title" = "Подсказка скрыта";
+"mod.dismissed.note" = "Позже Mod можно установить в Настройки › Дополнительно › Данные Claude в реальном времени.";
 "mod.dismissed.undo" = "Отменить";
 "mod.panel.uninstall" = "Удалить синхронизацию реального времени";
 "mod.uninstall.step1" = "Удалить Mod";

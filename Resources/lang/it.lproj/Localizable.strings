@@ -633,8 +633,8 @@
 "mod.failure.command_failed" = "Il comando non è stato completato. Esegui i seguenti comandi nel Terminale:";
 "mod.failure.copy" = "Copia comandi";
 "mod.failure.copied" = "Copiato";
-"mod.dismissed.title" = "Suggerimento disattivato";
-"mod.dismissed.note" = "Riattiva in Impostazioni › Avanzate › Potenziamento in tempo reale.";
+"mod.dismissed.title" = "Suggerimento nascosto";
+"mod.dismissed.note" = "Potrai installare il Mod più tardi in Impostazioni › Avanzate › Potenziamento in tempo reale di Claude.";
 "mod.dismissed.undo" = "Annulla";
 "mod.panel.uninstall" = "Disinstalla sincronizzazione in tempo reale";
 "mod.uninstall.step1" = "Disinstalla Mod";

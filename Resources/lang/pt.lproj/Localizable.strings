@@ -633,8 +633,8 @@
 "mod.failure.command_failed" = "O comando não foi concluído. Execute os seguintes comandos no Terminal:";
 "mod.failure.copy" = "Copiar comandos";
 "mod.failure.copied" = "Copiado";
-"mod.dismissed.title" = "Aviso desativado";
-"mod.dismissed.note" = "Reative em Definições › Avançadas › Impulso em tempo real.";
+"mod.dismissed.title" = "Aviso ocultado";
+"mod.dismissed.note" = "Pode instalar o Mod mais tarde em Definições › Avançadas › Reforço em tempo real do Claude.";
 "mod.dismissed.undo" = "Desfazer";
 "mod.panel.uninstall" = "Desinstalar sincronização em tempo real";
 "mod.uninstall.step1" = "Desinstalar Mod";

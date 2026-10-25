@@ -633,8 +633,8 @@
 "mod.failure.command_failed" = "コマンドが完了しませんでした。ターミナルで次のコマンドを実行してください：";
 "mod.failure.copy" = "コマンドをコピー";
 "mod.failure.copied" = "コピーしました";
-"mod.dismissed.title" = "表示をオフにしました";
-"mod.dismissed.note" = "設定 › 詳細 › リアルタイム強化 で再度有効にできます。";
+"mod.dismissed.title" = "ヒントを非表示にしました";
+"mod.dismissed.note" = "Mod は後から 設定 › 詳細 › Claude リアルタイム強化 でインストールできます。";
 "mod.dismissed.undo" = "取り消す";
 "mod.panel.uninstall" = "リアルタイム同期をアンインストール";
 "mod.uninstall.step1" = "Mod をアンインストール";

@@ -633,8 +633,8 @@
 "mod.failure.command_failed" = "The command did not complete. Run the following commands in Terminal:";
 "mod.failure.copy" = "Copy commands";
 "mod.failure.copied" = "Copied";
-"mod.dismissed.title" = "Prompt disabled";
-"mod.dismissed.note" = "Re-enable it in Settings › Advanced › Realtime boost.";
+"mod.dismissed.title" = "Prompt hidden";
+"mod.dismissed.note" = "You can install the Mod later in Settings › Advanced › Claude real-time boost.";
 "mod.dismissed.undo" = "Undo";
 "mod.panel.uninstall" = "Uninstall realtime sync";
 "mod.uninstall.step1" = "Uninstall Mod";

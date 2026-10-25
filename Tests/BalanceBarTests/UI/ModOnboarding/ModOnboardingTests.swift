@@ -170,7 +170,7 @@ final class ModOnboardingPanelTests: XCTestCase {
         let commands = ModInstallPlan.standard.copyableCommands.replacingOccurrences(of: "\n", with: "\n$ ")
         XCTAssertEqual(lines(.failed(.claudeNotFound)), ["# 无法自动安装", "没有找到 claude 命令。请在终端中运行下面的命令：", "$ " + commands, "<复制命令>", "<关闭>"])
         XCTAssertEqual(lines(.failed(.commandFailed(step: .installPlugin, exitCode: 1, detail: "x")))[1], "命令未成功完成。请在终端中运行下面的命令：")
-        XCTAssertEqual(lines(.dismissConfirmed), ["# 已关闭提示", "菜单底部改为显示“数据来源”。可在 设置 › 高级 › 实时增强 中重新开启。", "<撤销>", "<关闭>"])
+        XCTAssertEqual(lines(.dismissConfirmed), ["# 已隐藏提示", "之后可以在 设置 › 高级 › Claude 实时增强 中安装 Mod。", "<撤销>", "<关闭>"])
     }
 
     func testPanelViewRendersEveryStateInBothAppearances() throws {
@@ -1500,7 +1500,13 @@ final class ModInt2WindowRestorationTests: XCTestCase {
         XCTAssertEqual(box.state, .off)
         box.performClick(nil)
         XCTAssertEqual(box.state, .on)
+        // INT-2 timing: checking marks the box; the prompt is hidden on "Later".
+        XCTAssertFalse(c.isPromptDismissed)
+        XCTAssertEqual(c.state, .intro(dismissChecked: true))
+        XCTAssertEqual(changes, 0)
+        view.perform(.close)
         XCTAssertTrue(c.isPromptDismissed)
+        XCTAssertEqual(c.state, .dismissConfirmed)
         XCTAssertEqual(changes, 1)
     }
 
@@ -1515,7 +1521,7 @@ final class ModInt2WindowRestorationTests: XCTestCase {
         box.performClick(nil)
         view.perform(.close)
         XCTAssertEqual(c.state, .dismissConfirmed, "Later must show the guidance page, not close")
-        XCTAssertTrue(view.snapshotLines.contains { $0.contains("可在 设置 › 高级 › 实时增强 中重新开启。") })
+        XCTAssertTrue(view.snapshotLines.contains { $0.contains("之后可以在 设置 › 高级 › Claude 实时增强 中安装 Mod。") })
         view.perform(.undoDismiss)
         XCTAssertFalse(c.isPromptDismissed)
         XCTAssertEqual(c.state, .intro(dismissChecked: false))

@@ -633,8 +633,8 @@
 "mod.failure.command_failed" = "La commande ne s'est pas terminée. Exécutez les commandes suivantes dans le Terminal :";
 "mod.failure.copy" = "Copier les commandes";
 "mod.failure.copied" = "Copié";
-"mod.dismissed.title" = "Invitation désactivée";
-"mod.dismissed.note" = "Réactivez dans Réglages › Avancé › Boost temps réel.";
+"mod.dismissed.title" = "Invite masquée";
+"mod.dismissed.note" = "Vous pourrez installer le Mod plus tard dans Réglages › Avancé › Boost en temps réel de Claude.";
 "mod.dismissed.undo" = "Annuler";
 "mod.panel.uninstall" = "Désinstaller la synchronisation temps réel";
 "mod.uninstall.step1" = "Désinstaller le Mod";

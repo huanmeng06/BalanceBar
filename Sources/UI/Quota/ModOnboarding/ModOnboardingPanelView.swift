@@ -791,12 +791,15 @@ final class ModOnboardingPanelView: NSView {
     @objc private func checkboxToggled(_ sender: NSButton) { controller.setDismissChecked(sender.state == .on) }
 
     @objc private func menuPromptToggled(_ sender: NSButton) {
-        // Checked means "do not show this in the menu". Keep the intro's dismiss flag in
-        // sync so "Later" lands on the confirmation page that points back to Advanced.
+        // INT-2 timing: checking only marks the box. The menu prompt is hidden when the
+        // user leaves with "Later", which also shows the confirmation page.
         let dismissed = sender.state == .on
         controller.setDismissChecked(dismissed)
-        controller.setPromptEnabled(!dismissed)
-        onPromptPreferenceChange?()
+        if !dismissed {
+            // Re-enabling is immediate so a previously hidden prompt comes back at once.
+            controller.setPromptEnabled(true)
+            onPromptPreferenceChange?()
+        }
     }
     @objc private func buttonPressed(_ sender: NSButton) {
         guard let id = sender.identifier?.rawValue,
