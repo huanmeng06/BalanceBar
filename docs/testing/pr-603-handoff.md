@@ -10,7 +10,8 @@
 - PR 状态：Open / Draft
 - Head 分支：`codex/issue-597-mod-user-install`
 - Base 分支：`main`
-- 当前远程/本地 HEAD：`9a655f1d712ddca57b2d4256778f5c2068a3a354`
+- 已验证应用源码 HEAD：`9a655f1d712ddca57b2d4256778f5c2068a3a354`
+- 交接文档本身会在该源码 HEAD 之后增加 docs-only 提交；接手时以 `git rev-parse origin/codex/issue-597-mod-user-install` 和 PR 实时 HEAD 为准。
 - 已合入的最新 main：`285fab11dffd585c64f2f32fa82d6bd3c744cff2`（#608）
 - main 合入提交：`b7123abbc005b77d2c4f4d52937b310940aaa8ec`
 - 工作树：`/Users/huan_meeng/Documents/GitHub/BalanceBar/.claude/worktrees/issue-597-mod-user-install`
@@ -241,7 +242,7 @@ docs/issue-604-ui/restoration.md
 - 使用已有工作树：/Users/huan_meeng/Documents/GitHub/BalanceBar/.claude/worktrees/issue-597-mod-user-install
 - 分支：codex/issue-597-mod-user-install
 - PR：https://github.com/huanmeng06/BalanceBar/pull/603
-- 交接时 HEAD：9a655f1d712ddca57b2d4256778f5c2068a3a354
+- 已验证应用源码 HEAD：9a655f1d712ddca57b2d4256778f5c2068a3a354（交接文档可能随后增加 docs-only 提交，需以远程实时 HEAD 核对）
 - 交接时已合入 main：285fab11dffd585c64f2f32fa82d6bd3c744cff2
 - PR 必须保持 Draft、base=main，除非用户之后明确授权转 Ready、合并或发布。
 
