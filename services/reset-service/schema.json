@@ -1,0 +1,257 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "BalanceBar reset observation v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "generated_at",
+    "last_verified_at",
+    "valid_until",
+    "status",
+    "source",
+    "signal",
+    "observation",
+    "diagnostics"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\dZ$"
+    },
+    "last_verified_at": {
+      "anyOf": [
+        {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\dZ$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "valid_until": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\dZ$"
+    },
+    "status": {
+      "enum": [
+        "deadline",
+        "uncertain",
+        "none",
+        "error"
+      ]
+    },
+    "source": {
+      "const": "https://codex-reset.com/"
+    },
+    "signal": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "required": [
+        "post_id",
+        "version",
+        "published_at",
+        "source_url",
+        "source_provider",
+        "text",
+        "context_complete",
+        "parent",
+        "conversation_id"
+      ],
+      "properties": {
+        "post_id": {
+          "type": "string",
+          "pattern": "^[0-9]{1,24}$"
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "published_at": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\dZ$"
+        },
+        "source_url": {
+          "type": "string",
+          "pattern": "^https://x\\.com/thsottiaux/status/[0-9]{1,24}$"
+        },
+        "source_provider": {
+          "const": "codex-reset.com"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 6000
+        },
+        "context_complete": {
+          "type": "boolean"
+        },
+        "parent": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "required": [
+            "post_id",
+            "text",
+            "published_at"
+          ],
+          "properties": {
+            "post_id": {
+              "type": "string",
+              "pattern": "^[0-9]{1,24}$"
+            },
+            "text": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 6000
+            },
+            "published_at": {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\dZ$"
+            }
+          }
+        },
+        "conversation_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 24
+        }
+      }
+    },
+    "observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "deadline_at",
+        "evidence",
+        "method",
+        "diagnostic",
+        "timezone_policy"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "explicit_deadline",
+            "approximate_window",
+            "uncertain",
+            "not_reset_related"
+          ]
+        },
+        "deadline_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\dZ$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evidence": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 1000
+        },
+        "method": {
+          "enum": [
+            "upstream_structured",
+            "ai_interpreted",
+            null
+          ]
+        },
+        "diagnostic": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "timezone_policy": {
+          "const": "pacific-local-v1"
+        }
+      }
+    },
+    "diagnostics": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "string",
+        "maxLength": 100
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "deadline"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "signal": {
+            "type": "object"
+          },
+          "last_verified_at": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\dZ$"
+          },
+          "observation": {
+            "properties": {
+              "kind": {
+                "const": "explicit_deadline"
+              },
+              "deadline_at": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\dZ$"
+              },
+              "method": {
+                "enum": [
+                  "upstream_structured",
+                  "ai_interpreted"
+                ]
+              },
+              "evidence": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "observation": {
+            "properties": {
+              "deadline_at": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

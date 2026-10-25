@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-10-25T05:50:00Z",
+  "last_verified_at": "2026-10-25T05:50:00Z",
+  "valid_until": "2026-10-25T06:20:00Z",
+  "status": "deadline",
+  "source": "https://codex-reset.com/",
+  "signal": {
+    "post_id": "2114200291319124163",
+    "published_at": "2026-10-25T03:40:04Z",
+    "source_url": "https://x.com/thsottiaux/status/2114200291319124163",
+    "source_provider": "codex-reset.com",
+    "text": "By midnight PST",
+    "context_complete": true,
+    "parent": {
+      "post_id": "2114200152701575656",
+      "text": "Day 20/ Rest and reset",
+      "published_at": "2026-10-25T03:39:31Z"
+    },
+    "conversation_id": null,
+    "version": "134d0001ebec6c81287edcc2aced6daed5b8e07590f98e607f39b2c430810dae"
+  },
+  "observation": {
+    "kind": "explicit_deadline",
+    "deadline_at": "2026-10-25T07:00:00Z",
+    "evidence": "By midnight PST",
+    "method": "ai_interpreted",
+    "diagnostic": "validated",
+    "timezone_policy": "pacific-local-v1"
+  },
+  "diagnostics": []
+}
