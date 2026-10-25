@@ -2694,7 +2694,7 @@ final class DashboardPageSearchTests: XCTestCase {
         let firstTitle = tr(.keyDashboardOfficialQuotaRefreshFrequency, language: .english)
         let secondTitle = tr(.keyDashboardGeneralAndRefreshPagesBalanceUpdatesDuringTasks, language: .english)
         let section = try XCTUnwrap(firstSection(titled: refreshHeading, in: page) as? SettingsSectionView)
-        // Codex/Grok official, Claude calibration, Claude Code native sync, API providers.
+        // Mod management has its own Advanced card; General retains its four refresh rows.
         XCTAssertEqual(section.contentViews.count, 4)
         XCTAssertEqual(section.separators.count, 3)
         XCTAssertTrue(section.separators.allSatisfy { !$0.isHidden })

@@ -20,9 +20,27 @@ enum RealtimeBoostText: String, CaseIterable {
     case statusRejectedAccount = "mod.sync.status.rejected_account"
     case statusRejectedCycle = "mod.sync.status.rejected_cycle"
 
+    case statusTitleFormat = "mod.settings.status.title_format"
+    case statusEnabledShort = "mod.settings.status.enabled_short"
+    case lastData = "mod.settings.status.last_data"
+    case viewNote = "mod.settings.action.view_note"
+    case manage = "mod.settings.action.manage"
+    case viewError = "mod.settings.action.view_error"
+    case statusSilentShort = "mod.settings.status.silent_short"
+    case silentHint = "mod.settings.status.silent_hint"
+
     var defaultText: String {
         switch self {
-        case .title: return "实时增强"
+        case .title: return "Claude 实时增强"
+        case .statusTitleFormat: return "BalanceBar Mod 状态：%1$@"
+        case .statusEnabledShort: return "已启用"
+        case .lastData: return "最新数据：%1$@"
+        case .viewNote: return "查看说明"
+        case .manage: return "管理"
+        case .viewError: return "查看原因"
+        case .statusSilentShort: return "已安装，但 10 分钟内没有收到数据"
+        case .silentHint: return "请新开会话，或在已有会话运行 /reload-plugins"
+
         case .statusNotInstalled: return "未开启"
         case .statusWaiting: return "已安装，等待新会话的数据"
         case .statusActive: return "已开启，最近数据 %@"
@@ -174,4 +192,138 @@ final class RealtimeBoostSettingsView: NSView {
     @objc private func install() { controller.startInstall() }
     @objc private func copyCommands() { controller.copyInstallCommands() }
     @objc private func togglePrompt() { controller.setPromptEnabled(promptToggle.state == .on) }
+}
+
+/// The INT-2 Advanced card, rendered from the current sync facts and operation.
+/// It owns no controller or extra state machine; actions return to composition.
+final class RealtimeBoostSettingsRows {
+    let statusRow: SettingsRowView
+    let installButton: NSButton
+    let descriptionButton: NSButton
+    let spinner = NSProgressIndicator()
+    private let dot = RealtimeBoostStatusDot()
+    private let localize: (RealtimeBoostText) -> String
+    private let modLocalize: (ModOnboardingText) -> String
+    private let onInstall: (NSButton) -> Void
+    private let onShowDescription: (NSButton) -> Void
+
+    init(
+        status: ModSyncStatus,
+        operation: ModPanelState = .intro(dismissChecked: false),
+        localize: @escaping (RealtimeBoostText) -> String = realtimeBoostLocalize,
+        modLocalize: @escaping (ModOnboardingText) -> String = modOnboardingLocalize,
+        onInstall: @escaping (NSButton) -> Void,
+        onShowDescription: @escaping (NSButton) -> Void
+    ) {
+        self.localize = localize
+        self.modLocalize = modLocalize
+        self.onInstall = onInstall
+        self.onShowDescription = onShowDescription
+        installButton = NSButton(title: localize(.install), target: nil, action: nil)
+        descriptionButton = NSButton(title: localize(.viewNote), target: nil, action: nil)
+        spinner.style = .spinning
+        spinner.controlSize = .small
+        spinner.isDisplayedWhenStopped = false
+        installButton.bezelStyle = .rounded
+        installButton.bezelColor = .controlAccentColor
+        descriptionButton.bezelStyle = .rounded
+        installButton.identifier = NSUserInterfaceItemIdentifier("realtimeBoost.install")
+        descriptionButton.identifier = NSUserInterfaceItemIdentifier("realtimeBoost.description")
+        let actions = NSStackView(views: [spinner, installButton, descriptionButton])
+        actions.spacing = 8
+        statusRow = SettingsRowView(title: Self.title(for: Self.stateText(for: status, localize: localize), localize: localize),
+                                    detail: nil, titleAccessory: dot, accessoryView: actions)
+        installButton.target = self; installButton.action = #selector(install(_:))
+        descriptionButton.target = self; descriptionButton.action = #selector(showDescription(_:))
+        update(status: status, operation: operation)
+    }
+
+    func makeSection() -> SettingsSectionView {
+        let section = SettingsSectionView(title: localize(.title), contentViews: [statusRow])
+        let heading = section.headingLabel
+        heading.usesSingleLineMode = false
+        heading.lineBreakMode = .byWordWrapping
+        heading.maximumNumberOfLines = 0
+        heading.cell?.wraps = true
+        heading.cell?.isScrollable = false
+        heading.widthAnchor.constraint(equalTo: section.widthAnchor).isActive = true
+        return section
+    }
+
+    func update(status: ModSyncStatus, operation: ModPanelState) {
+        let stateText = Self.stateText(for: status, localize: localize)
+        var detail: String? = nil
+        switch status {
+        case let .active(at):
+            detail = String(format: localize(.lastData), StatusSlotAppearance.timeText(at, timeZone: .current))
+        case .silent:
+            detail = localize(.silentHint)
+        default: break
+        }
+        var busy = false
+        var failed = false
+        switch operation {
+        case let .installing(step):
+            busy = true
+            detail = modLocalize([.step1, .step2, .waitingStep][step.rawValue]) + "…"
+        case let .uninstalling(step):
+            busy = true
+            detail = modLocalize([.uninstallStep1, .uninstallStep2, .step3][step.rawValue]) + "…"
+        case .failed: failed = true; detail = modLocalize(.failureTitle)
+        case .uninstallFailed: failed = true; detail = modLocalize(.uninstallFailureTitle)
+        default: break
+        }
+        let canInstall: Bool
+        switch status {
+        case .notInstalled, .inboxNotReady: canInstall = true
+        default: canInstall = false
+        }
+        statusRow.titleLabel.stringValue = Self.title(for: stateText, localize: localize)
+        statusRow.updateDetail(detail)
+        installButton.isHidden = !canInstall || busy
+        descriptionButton.title = failed ? localize(.viewError)
+            : busy || ModPanelContent.isInstalled(status) ? localize(.manage) : localize(.viewNote)
+        if busy { spinner.startAnimation(nil) } else { spinner.stopAnimation(nil) }
+        dot.color = failed ? .systemRed : Self.color(for: status)
+        statusRow.invalidateAfterContentChange()
+    }
+
+    private static func stateText(for status: ModSyncStatus, localize: (RealtimeBoostText) -> String) -> String {
+        switch status {
+        case .active: return localize(.statusEnabledShort)
+        case .silent: return localize(.statusSilentShort)
+        default: return RealtimeBoostPresentation.make(status: status, localize: localize).statusText
+        }
+    }
+
+    static func title(for stateText: String, localize: (RealtimeBoostText) -> String = realtimeBoostLocalize) -> String {
+        String(format: localize(.statusTitleFormat), stateText)
+    }
+
+    private static func color(for status: ModSyncStatus) -> NSColor {
+        switch status {
+        case .active: return .systemGreen
+        case .detecting, .notInstalled: return .tertiaryLabelColor
+        case .waitingForData, .silent, .disabled: return .systemOrange
+        default: return .systemRed
+        }
+    }
+    @objc private func install(_ sender: NSButton) { onInstall(sender) }
+    @objc private func showDescription(_ sender: NSButton) { onShowDescription(sender) }
+}
+
+private final class RealtimeBoostStatusDot: NSView {
+    var color: NSColor = .tertiaryLabelColor { didSet { needsDisplay = true } }
+    init() {
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+        widthAnchor.constraint(equalToConstant: 8).isActive = true
+        heightAnchor.constraint(equalToConstant: 8).isActive = true
+        setAccessibilityElement(false)
+    }
+    required init?(coder: NSCoder) { nil }
+    override func draw(_ dirtyRect: NSRect) {
+        color.setFill()
+        NSBezierPath(ovalIn: bounds).fill()
+    }
 }

@@ -24,11 +24,12 @@ final class ModSyncCoordinator {
     /// The currently presented management panel; refreshed on every status change so an
     /// open panel never keeps showing "detecting" or a finished operation's page.
     private weak var presentedPanel: ModOnboardingPanelView?
-    /// Strong reference: the system does not guarantee an NSPopover survives without one.
-    private var popover: NSPopover?
+    private lazy var managementWindow = ModOnboardingWindowController { [unowned self] in self.attachPanel() }
 
-    /// Fired on the main thread whenever the status changes; the owner refreshes the row.
+    /// Fired on the main thread whenever sync status changes.
     var onStatusChange: ((ModSyncStatus) -> Void)?
+    /// Operation progress only; does not change sync facts or status notifications.
+    var onPresentationChange: (() -> Void)?
 
     init(
         controller: ModOnboardingController,
@@ -42,6 +43,9 @@ final class ModSyncCoordinator {
         self.activityProvider = activityProvider
         self.localizePanel = localizePanel
         self.localizeSync = localizeSync
+        controller.onPresentationChange = { [weak self] in
+            self?.onPresentationChange?()
+        }
         controller.onInstallCompleted = { [weak self] result in
             // A (re)install invalidates the previous plugin's snapshot evidence: until a
             // new trusted snapshot arrives the status is "waiting for data", never active.
@@ -101,31 +105,28 @@ final class ModSyncCoordinator {
         }
     }
 
-    /// Opens the management panel anchored to the settings row's button. Detection runs
-    /// (throttled) so the panel opens with current facts.
+    /// Open from the single settings entry, with a parent that owns its lifetime.
     func presentPanel(from anchor: NSView) {
-        let panel = attachPanel()
+        guard let owner = anchor.window else { return }
+        managementWindow.show(owner: owner)
         startDetectionIfNeeded()
-        popover?.performClose(nil)
-        let newPopover = NSPopover()
-        newPopover.behavior = .transient
-        let viewController = NSViewController()
-        viewController.view = panel
-        newPopover.contentViewController = viewController
-        newPopover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .minY)
-        popover = newPopover
     }
 
     /// Builds the management panel for presentation: resets finished operation pages to
     /// the management intro (running operations keep their progress) and registers the
     /// panel so later status changes refresh it live.
     func attachPanel() -> ModOnboardingPanelView {
-        controller.resetToIntro()
+        // "View error" in Advanced must retain the actual CLI failure and retry.
+        // Successful pages still reset to the current management state on reopen.
+        switch controller.state {
+        case .failed, .uninstallFailed: break
+        default: controller.resetToIntro()
+        }
         let panel = ModOnboardingPanelView(
             controller: controller,
             localize: localizePanel,
             syncProvider: { [weak self] in self.map { $0.syncContext } })
-        panel.onRequestClose = { [weak self] in self?.popover?.performClose(nil) }
+        panel.onRequestRefresh = { [weak self] in self?.startDetectionIfNeeded(force: true) }
         presentedPanel = panel
         return panel
     }
@@ -161,12 +162,54 @@ func modOnboardingLocalize(_ text: ModOnboardingText) -> String {
 }
 
 func realtimeBoostLocalize(_ text: RealtimeBoostText) -> String {
-    tr(LocalizationKey.key(for: text))
+    realtimeBoostLocalize(text, language: .selected)
+}
+
+/// Presentation accepts a format template; render the localized positional argument
+/// as a literal placeholder here, then let Presentation insert the actual value.
+func realtimeBoostLocalize(_ text: RealtimeBoostText, language: AppLanguage) -> String {
+    switch text {
+    case .statusActive, .statusUnsupported, .statusVersionTooOld, .statusTitleFormat, .lastData:
+        return tr(LocalizationKey.key(for: text), arguments: ["%@"], language: language)
+    default:
+        return tr(LocalizationKey.key(for: text), language: language)
+    }
 }
 
 extension LocalizationKey {
     static func key(for text: ModOnboardingText) -> LocalizationKey {
         switch text {
+        case .pitchTitle: return .modInt2PitchTitle
+        case .pitchSubtitle: return .modInt2PitchSubtitle
+        case .laterButton: return .modInt2LaterButton
+        case .feature1Title: return .modInt2Feature1Title
+        case .feature1Detail: return .modInt2Feature1Detail
+        case .feature2Title: return .modInt2Feature2Title
+        case .feature4Title: return .modInt2Feature4Title
+        case .feature4Detail: return .modInt2Feature4Detail
+        case .manageTitle: return .modInt2ManageTitle
+        case .removeNote: return .modInt2RemoveNote
+        case .silentTitle: return .modInt2SilentTitle
+        case .uninstalledTitle: return .modInt2UninstalledTitle
+        case .silentCheckVersion: return .modInt2SilentCheckVersion
+        case .silentCheckSession: return .modInt2SilentCheckSession
+        case .silentCheckPolicy: return .modInt2SilentCheckPolicy
+        case .subtitle: return .modUISubtitle
+        case .benefitRealtime: return .modUIBenefitRealtime
+        case .benefitFallback: return .modUIBenefitFallback
+        case .benefitPrivacy: return .modUIBenefitPrivacy
+        case .coverageNote: return .modUICoverageNote
+        case .fallbackNote: return .modUIFallbackNote
+        case .waitingTitle: return .modUIWaitingTitle
+        case .waitingStep: return .modUIWaitingStep
+        case .backgroundNote: return .modUIBackgroundNote
+        case .refresh: return .modUIRefresh
+        case .retry: return .modUIRetry
+        case .confirmUninstall: return .modUIConfirmUninstall
+        case .cancel: return .modUICancel
+        case .uninstallFailureTitle: return .modUIUninstallFailureTitle
+        case .accountAdvice: return .modUIAccountAdvice
+        case .cycleAdvice: return .modUICycleAdvice
         case .promptRow: return .modPromptRow
         case .panelTitle: return .modPanelTitle
         case .point1: return .modPanelPoint1
@@ -203,6 +246,14 @@ extension LocalizationKey {
 
     static func key(for text: RealtimeBoostText) -> LocalizationKey {
         switch text {
+        case .statusTitleFormat: return .modSettingsStatusTitleFormat
+        case .statusEnabledShort: return .modSettingsStatusEnabledShort
+        case .lastData: return .modSettingsLastData
+        case .viewNote: return .modSettingsViewNote
+        case .manage: return .modSettingsManage
+        case .viewError: return .modSettingsViewError
+        case .statusSilentShort: return .modSettingsStatusSilentShort
+        case .silentHint: return .modSettingsSilentHint
         case .title: return .modSettingsTitle
         case .statusNotInstalled: return .modSettingsStatusNotInstalled
         case .statusWaiting: return .modSettingsStatusWaiting

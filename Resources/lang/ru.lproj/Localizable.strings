@@ -642,20 +642,65 @@
 "mod.failure.uninstall_command" = "Удаление не завершено. Выполните следующие команды в Терминале:";
 "mod.failure.copy_enable" = "Копировать команду включения";
 "mod.failure.inbox" = "Не удалось создать почтовый ящик снимков (недостаточно прав или другой владелец). Проверьте ~/Library/Application Support/BalanceBar/inbox и повторите попытку.";
-"mod.settings.title" = "Ускорение реального времени";
+"mod.settings.title" = "Данные Claude в реальном времени";
 "mod.settings.status.not_installed" = "Не включено";
 "mod.settings.status.waiting" = "Установлено, ожидание данных нового сеанса";
-"mod.settings.status.active" = "Включено, последние данные %@";
+"mod.settings.status.active" = "Включено, последние данные %1$@";
 "mod.settings.status.silent" = "Установлено, но 10 минут нет данных. Откройте новый сеанс или выполните /reload-plugins в существующем";
-"mod.settings.status.unsupported" = "Claude Code %@ слишком стар; требуется v2.1.287 или новее";
+"mod.settings.status.unsupported" = "Claude Code %1$@ слишком стар; требуется v2.1.287 или новее";
 "mod.settings.action.install" = "Установить в один клик";
 "mod.settings.action.copy" = "Копировать команды";
 "mod.settings.prompt_toggle" = "Показывать ускорение реального времени в меню";
 "mod.sync.status.detecting" = "Проверка…";
 "mod.sync.status.claude_missing" = "Команда claude не найдена. Установите Claude Code и повторите попытку";
-"mod.sync.status.version_too_old" = "Claude Code %@ слишком стар; требуется v2.1.287 или новее";
+"mod.sync.status.version_too_old" = "Claude Code %1$@ слишком стар; требуется v2.1.287 или новее";
 "mod.sync.status.inbox_not_ready" = "Почтовый ящик снимков недоступен (недостаточно прав или другой владелец). «Установить» создаст его заново";
 "mod.sync.status.other_scope" = "Не установлено на уровне пользователя (обнаружена установка на уровне проекта; действует только для него)";
 "mod.sync.status.disabled" = "Установлено, но отключено; синхронизация реального времени работать не будет";
 "mod.sync.status.rejected_account" = "Снимок отклонён: учётная запись Claude не совпадает с текущей учётной записью BalanceBar";
 "mod.sync.status.rejected_cycle" = "Снимок отклонён: цикл не совпадает с официальными данными; используется официальный путь";
+
+// Mod management window (Issue #604)
+"mod.ui.subtitle" = "Актуальные квоты Claude Code";
+"mod.ui.benefit_realtime" = "Квоты в реальном времени";
+"mod.ui.benefit_fallback" = "Официальный резерв";
+"mod.ui.benefit_privacy" = "Локально и конфиденциально";
+"mod.ui.coverage_note" = "Для сеансов Claude Code CLI и Desktop Code.";
+"mod.ui.fallback_note" = "Если локальные данные отсутствуют или недостоверны, используются официальные квоты.";
+"mod.ui.waiting_title" = "Установлено; ожидание первых достоверных данных";
+"mod.ui.waiting_step" = "Ожидание достоверных данных";
+"mod.ui.background_note" = "Закрытие окна не прерывает операцию. Откройте его снова, чтобы проверить ход выполнения.";
+"mod.ui.refresh" = "Проверить снова";
+"mod.ui.retry" = "Повторить";
+"mod.ui.confirm_uninstall" = "Удалить синхронизацию в реальном времени?";
+"mod.ui.cancel" = "Отмена";
+"mod.ui.uninstall_failure_title" = "Удаление не завершено";
+"mod.ui.account_advice" = "Убедитесь, что Claude Code и BalanceBar используют одну учётную запись, затем начните новый сеанс.";
+"mod.ui.cycle_advice" = "Продолжайте использовать официальные квоты. Проверьте данные нового сеанса после официального подтверждения нового цикла.";
+
+// INT-2 settings card restored for Issue #604
+"mod.settings.status.title_format" = "Состояние BalanceBar Mod: %1$@";
+"mod.settings.status.enabled_short" = "Включено";
+"mod.settings.status.last_data" = "Последние данные: %1$@";
+"mod.settings.action.view_note" = "Подробнее";
+"mod.settings.action.manage" = "Управление";
+"mod.settings.action.view_error" = "Показать ошибку";
+"mod.settings.status.silent_short" = "Установлено, но данных нет уже 10 минут";
+"mod.settings.status.silent_hint" = "Начните новую сессию или выполните /reload-plugins в открытой";
+
+// INT-2 Mod window presentation
+"mod.ui.int2.pitch_title" = "Квота Claude в реальном времени";
+"mod.ui.int2.pitch_subtitle" = "BalanceBar Mod — небольшой плагин внутри Claude Code: после каждого ответа он передаёт BalanceBar официальную квоту.";
+"mod.ui.int2.later_button" = "Позже";
+"mod.ui.int2.feature1_title" = "Актуальные официальные данные";
+"mod.ui.int2.feature1_detail" = "Обновляются сразу после каждого ответа, это не оценка";
+"mod.ui.int2.feature2_title" = "Работает и с агентами";
+"mod.ui.int2.feature4_title" = "Только чтение, можно удалить в любой момент";
+"mod.ui.int2.feature4_detail" = "Диалоги не читает; удаление через /plugin";
+"mod.ui.int2.manage_title" = "BalanceBar Mod установлен";
+"mod.ui.int2.remove_note" = "Больше не нужен? После удаления новые сессии перестанут присылать данные, а квота снова будет запрашиваться по расписанию.";
+"mod.ui.int2.silent_title" = "Установлено, но данных пока нет";
+"mod.ui.int2.uninstalled_title" = "Удалено";
+"mod.ui.int2.silent_check_version" = "Claude Code версии 2.1.287 или новее";
+"mod.ui.int2.silent_check_session" = "Это новая сессия или в ней выполнен /reload-plugins";
+"mod.ui.int2.silent_check_policy" = "Не разрешает ли политика организации только управляемые плагины";

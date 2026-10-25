@@ -642,20 +642,65 @@
 "mod.failure.uninstall_command" = "卸载未完成。请在终端中运行下面的命令：";
 "mod.failure.copy_enable" = "复制启用命令";
 "mod.failure.inbox" = "快照收件箱无法创建（权限不足或所有者不符）。请检查 ~/Library/Application Support/BalanceBar/inbox 后重试。";
-"mod.settings.title" = "实时增强";
+"mod.settings.title" = "Claude 实时增强";
 "mod.settings.status.not_installed" = "未开启";
 "mod.settings.status.waiting" = "已安装，等待新会话的数据";
-"mod.settings.status.active" = "已开启，最近数据 %@";
+"mod.settings.status.active" = "已开启，最近数据 %1$@";
 "mod.settings.status.silent" = "已安装，但 10 分钟内没有收到数据。请新开会话，或在已有会话运行 /reload-plugins";
-"mod.settings.status.unsupported" = "Claude Code %@ 过旧，需要 v2.1.287 或更高版本";
+"mod.settings.status.unsupported" = "Claude Code %1$@ 过旧，需要 v2.1.287 或更高版本";
 "mod.settings.action.install" = "一键安装";
 "mod.settings.action.copy" = "复制命令";
 "mod.settings.prompt_toggle" = "在菜单中提示实时增强";
 "mod.sync.status.detecting" = "正在检测…";
 "mod.sync.status.claude_missing" = "未找到 claude 命令。请安装 Claude Code 后重试";
-"mod.sync.status.version_too_old" = "Claude Code %@ 过旧，需要 v2.1.287 或更高版本";
+"mod.sync.status.version_too_old" = "Claude Code %1$@ 过旧，需要 v2.1.287 或更高版本";
 "mod.sync.status.inbox_not_ready" = "快照收件箱不可用（权限不足或所有者不符）。点击安装可重建";
 "mod.sync.status.other_scope" = "用户级未安装（检测到项目级安装，仅该项目生效）";
 "mod.sync.status.disabled" = "已安装但已停用，实时同步不会运行";
 "mod.sync.status.rejected_account" = "快照被拒：Claude 登录账号与 BalanceBar 当前账号不一致";
 "mod.sync.status.rejected_cycle" = "快照被拒：周期与官方数据不一致，已回退官方额度";
+
+// Mod management window (Issue #604)
+"mod.ui.subtitle" = "让 Claude Code 额度更新更及时";
+"mod.ui.benefit_realtime" = "实时额度";
+"mod.ui.benefit_fallback" = "官方兜底";
+"mod.ui.benefit_privacy" = "本地与隐私";
+"mod.ui.coverage_note" = "覆盖 Claude Code CLI 与 Desktop Code 会话。";
+"mod.ui.fallback_note" = "数据不可用或不可信时，继续使用官方额度。";
+"mod.ui.waiting_title" = "已安装，等待首份可信数据";
+"mod.ui.waiting_step" = "等待可信数据";
+"mod.ui.background_note" = "关闭窗口不会中断操作，可随时重新打开查看进度。";
+"mod.ui.refresh" = "重新检测";
+"mod.ui.retry" = "重试";
+"mod.ui.confirm_uninstall" = "确认卸载实时同步？";
+"mod.ui.cancel" = "取消";
+"mod.ui.uninstall_failure_title" = "卸载未完成";
+"mod.ui.account_advice" = "请确认 Claude Code 与 BalanceBar 使用同一账号，再新开会话。";
+"mod.ui.cycle_advice" = "继续使用官方额度；新周期经官方确认后，再检查新会话的数据。";
+
+// INT-2 settings card restored for Issue #604
+"mod.settings.status.title_format" = "BalanceBar Mod 状态：%1$@";
+"mod.settings.status.enabled_short" = "已启用";
+"mod.settings.status.last_data" = "最新数据：%1$@";
+"mod.settings.action.view_note" = "查看说明";
+"mod.settings.action.manage" = "管理";
+"mod.settings.action.view_error" = "查看原因";
+"mod.settings.status.silent_short" = "已安装，但 10 分钟内没有收到数据";
+"mod.settings.status.silent_hint" = "请新开会话，或在已有会话运行 /reload-plugins";
+
+// INT-2 Mod window presentation
+"mod.ui.int2.pitch_title" = "让 Claude 额度实时更新";
+"mod.ui.int2.pitch_subtitle" = "BalanceBar Mod 是运行在 Claude Code 里的小插件，每轮回复后把官方额度告诉 BalanceBar。";
+"mod.ui.int2.later_button" = "稍后";
+"mod.ui.int2.feature1_title" = "实时、官方数据";
+"mod.ui.int2.feature1_detail" = "每轮回复后立即更新，不是估算";
+"mod.ui.int2.feature2_title" = "覆盖 Agent 场景";
+"mod.ui.int2.feature4_title" = "只读，可随时移除";
+"mod.ui.int2.feature4_detail" = "不读对话内容；在 /plugin 中即可卸载";
+"mod.ui.int2.manage_title" = "BalanceBar Mod 已安装";
+"mod.ui.int2.remove_note" = "不想用了？卸载后，新会话不再向 BalanceBar 写入数据，额度回到定时查询。";
+"mod.ui.int2.silent_title" = "已安装，但还没收到数据";
+"mod.ui.int2.uninstalled_title" = "已卸载";
+"mod.ui.int2.silent_check_version" = "Claude Code 版本是否为 v2.1.287 或更高";
+"mod.ui.int2.silent_check_session" = "是否是新会话，或已在会话中运行 /reload-plugins";
+"mod.ui.int2.silent_check_policy" = "组织策略是否只允许托管插件";

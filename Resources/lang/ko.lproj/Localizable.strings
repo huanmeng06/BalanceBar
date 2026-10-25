@@ -642,20 +642,65 @@
 "mod.failure.uninstall_command" = "제거가 완료되지 않았습니다. 터미널에서 다음 명령을 실행하세요:";
 "mod.failure.copy_enable" = "활성화 명령 복사";
 "mod.failure.inbox" = "스냅샷 수신함을 만들 수 없습니다(권한 부족 또는 소유자 불일치). ~/Library/Application Support/BalanceBar/inbox 를 확인한 후 다시 시도하세요.";
-"mod.settings.title" = "실시간 부스트";
+"mod.settings.title" = "Claude 실시간 강화";
 "mod.settings.status.not_installed" = "꺼짐";
 "mod.settings.status.waiting" = "설치됨, 새 세션의 데이터 대기 중";
-"mod.settings.status.active" = "켜짐, 최근 데이터 %@";
+"mod.settings.status.active" = "켜짐, 최근 데이터 %1$@";
 "mod.settings.status.silent" = "설치되었지만 10 분 동안 데이터가 없습니다. 새 세션을 시작하거나 기존 세션에서 /reload-plugins 를 실행하세요";
-"mod.settings.status.unsupported" = "Claude Code %@ 은(는) 너무 오래되어 v2.1.287 이상이 필요합니다";
+"mod.settings.status.unsupported" = "Claude Code %1$@ 은(는) 너무 오래되어 v2.1.287 이상이 필요합니다";
 "mod.settings.action.install" = "원클릭 설치";
 "mod.settings.action.copy" = "명령 복사";
 "mod.settings.prompt_toggle" = "메뉴에 실시간 부스트 표시";
 "mod.sync.status.detecting" = "확인 중…";
 "mod.sync.status.claude_missing" = "claude 명령을 찾을 수 없습니다. Claude Code 를 설치한 후 다시 시도하세요";
-"mod.sync.status.version_too_old" = "Claude Code %@ 은(는) 너무 오래되어 v2.1.287 이상이 필요합니다";
+"mod.sync.status.version_too_old" = "Claude Code %1$@ 은(는) 너무 오래되어 v2.1.287 이상이 필요합니다";
 "mod.sync.status.inbox_not_ready" = "스냅샷 수신함을 사용할 수 없습니다(권한 부족 또는 소유자 불일치). 설치를 누르면 다시 만들 수 있습니다";
 "mod.sync.status.other_scope" = "사용자 범위에 설치되지 않음(프로젝트 범위 설치가 감지됨. 해당 프로젝트에만 적용)";
 "mod.sync.status.disabled" = "설치되었지만 비활성화되어 실시간 동기화가 실행되지 않습니다";
 "mod.sync.status.rejected_account" = "스냅샷 거부됨: Claude 로그인 계정이 BalanceBar 의 현재 계정과 일치하지 않습니다";
 "mod.sync.status.rejected_cycle" = "스냅샷 거부됨: 주기가 공식 데이터와 일치하지 않아 공식 경로로 되돌아갑니다";
+
+// Mod management window (Issue #604)
+"mod.ui.subtitle" = "Claude Code 할당량을 최신 상태로 유지";
+"mod.ui.benefit_realtime" = "실시간 할당량";
+"mod.ui.benefit_fallback" = "공식 데이터 대체 경로";
+"mod.ui.benefit_privacy" = "로컬 및 개인정보 보호";
+"mod.ui.coverage_note" = "Claude Code CLI 및 Desktop Code 세션을 지원합니다.";
+"mod.ui.fallback_note" = "로컬 데이터가 없거나 신뢰할 수 없으면 공식 할당량을 사용합니다.";
+"mod.ui.waiting_title" = "설치됨. 첫 번째 신뢰할 수 있는 데이터 대기 중";
+"mod.ui.waiting_step" = "신뢰할 수 있는 데이터 대기";
+"mod.ui.background_note" = "창을 닫아도 작업은 계속됩니다. 다시 열어 진행 상황을 확인하세요.";
+"mod.ui.refresh" = "다시 확인";
+"mod.ui.retry" = "재시도";
+"mod.ui.confirm_uninstall" = "실시간 동기화를 제거할까요?";
+"mod.ui.cancel" = "취소";
+"mod.ui.uninstall_failure_title" = "제거 미완료";
+"mod.ui.account_advice" = "Claude Code와 BalanceBar가 같은 계정을 사용하는지 확인한 후 새 세션을 시작하세요.";
+"mod.ui.cycle_advice" = "공식 할당량을 계속 사용합니다. 공식 소스에서 새 주기를 확인한 후 새 세션의 데이터를 확인하세요.";
+
+// INT-2 settings card restored for Issue #604
+"mod.settings.status.title_format" = "BalanceBar Mod 상태: %1$@";
+"mod.settings.status.enabled_short" = "사용 중";
+"mod.settings.status.last_data" = "최근 데이터: %1$@";
+"mod.settings.action.view_note" = "자세히";
+"mod.settings.action.manage" = "관리";
+"mod.settings.action.view_error" = "오류 보기";
+"mod.settings.status.silent_short" = "설치되었지만 10분 동안 데이터가 없습니다";
+"mod.settings.status.silent_hint" = "새 세션을 시작하거나 열려 있는 세션에서 /reload-plugins 를 실행하세요";
+
+// INT-2 Mod window presentation
+"mod.ui.int2.pitch_title" = "Claude 할당량을 실시간으로 업데이트";
+"mod.ui.int2.pitch_subtitle" = "BalanceBar Mod는 Claude Code 안에서 동작하는 작은 플러그인으로, 답변이 끝날 때마다 공식 할당량을 BalanceBar에 알려 줍니다.";
+"mod.ui.int2.later_button" = "나중에";
+"mod.ui.int2.feature1_title" = "실시간 공식 데이터";
+"mod.ui.int2.feature1_detail" = "답변이 끝나는 즉시 갱신되며 추정치가 아닙니다";
+"mod.ui.int2.feature2_title" = "에이전트 시나리오 지원";
+"mod.ui.int2.feature4_title" = "읽기 전용, 언제든 제거 가능";
+"mod.ui.int2.feature4_detail" = "대화 내용은 읽지 않으며 /plugin 으로 제거할 수 있습니다";
+"mod.ui.int2.manage_title" = "BalanceBar Mod가 설치되어 있습니다";
+"mod.ui.int2.remove_note" = "더 이상 필요 없나요? 제거하면 새 세션은 데이터를 보내지 않고 할당량은 정기 조회로 돌아갑니다.";
+"mod.ui.int2.silent_title" = "설치되었지만 아직 데이터가 없습니다";
+"mod.ui.int2.uninstalled_title" = "제거되었습니다";
+"mod.ui.int2.silent_check_version" = "Claude Code가 v2.1.287 이상인지";
+"mod.ui.int2.silent_check_session" = "새 세션이거나 그 안에서 /reload-plugins 를 실행했는지";
+"mod.ui.int2.silent_check_policy" = "조직 정책이 관리되는 플러그인만 허용하는지";

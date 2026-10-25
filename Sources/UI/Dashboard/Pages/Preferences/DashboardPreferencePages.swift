@@ -36,6 +36,8 @@ struct DashboardPreferencePageActions {
     let onOpenUpdateNotes: () -> Void
     let makeStatusLinksEditor: () -> StatusLinksEditorHostingView
     let onClamp: () -> Void
+    var onInstallModSync: ((NSView) -> Void)? = nil
+    var modPanelStateProvider: () -> ModPanelState? = { nil }
 }
 
 final class DashboardPreferencePages {
@@ -106,6 +108,7 @@ final class DashboardPreferencePages {
         relay.onOpenSystemMenuBarSettings = actions.onOpenSystemMenuBarSettings
         relay.onManualRefresh = actions.onManualRefresh
         relay.onManageModSync = actions.onManageModSync
+        relay.onInstallModSync = actions.onInstallModSync
         relay.onCheckForUpdates = actions.onCheckForUpdates
         relay.onInstallUpdate = actions.onInstallUpdate
         relay.onOpenUpdateNotes = actions.onOpenUpdateNotes
@@ -142,8 +145,7 @@ final class DashboardPreferencePages {
                 relay: relay,
                 updateState: updateState,
                 launchAtLoginState: launchAtLoginController.currentState(),
-                launchWithChatGPTState: launchWithChatGPTController.currentState(),
-                modSyncStatus: actions.modSyncStatusProvider()
+                launchWithChatGPTState: launchWithChatGPTController.currentState()
             ))
         case .menuBar:
             return menuBarPage.make(.init(
@@ -171,7 +173,9 @@ final class DashboardPreferencePages {
             return advancedPage.make(.init(
                 relay: relay,
                 logViewer: forSearch ? nil : logsPage.makeViewer(),
-                includeLogViewer: !forSearch
+                includeLogViewer: !forSearch,
+                modSyncStatus: actions.modSyncStatusProvider() ?? .detecting,
+                modPanelState: actions.modPanelStateProvider() ?? .intro(dismissChecked: false)
             ))
         case .notifications:
             notificationsPage?.showRoot()
@@ -395,9 +399,9 @@ final class DashboardPreferencePages {
 
     func refreshModSync() {
         let status = actions.modSyncStatusProvider()
-        generalPage.refreshModSync(status)
+        advancedPage.refreshModSync(status, operation: actions.modPanelStateProvider())
         if isSearchProjectionActive {
-            searchGeneralPage.refreshModSync(status)
+            searchAdvancedPage.refreshModSync(status, operation: actions.modPanelStateProvider())
         }
     }
 
