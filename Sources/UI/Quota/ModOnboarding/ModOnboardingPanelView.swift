@@ -275,7 +275,7 @@ final class ModPromptRowView: NSView {
     private let whyLabel: NSTextField
     /// The row's height: one line of copy fits `rowHeight`; more lines add their height.
     private(set) var height: CGFloat = ModPromptRowView.rowHeight
-    private var isHovering = false { didSet { updateBackground() } }
+    private(set) var isHovering = false { didSet { updateBackground() } }
     var onClick: () -> Void = {}
 
     var mainText: String { mainLabel.stringValue }
@@ -366,6 +366,17 @@ final class ModPromptRowView: NSView {
 
     override func mouseEntered(with event: NSEvent) { isHovering = true }
     override func mouseExited(with event: NSEvent) { isHovering = false }
+
+    /// Clicking the row closes the menu before AppKit sends mouseExited, so the hover
+    /// tint can survive into the next presentation. Reset it explicitly.
+    func resetHoverState() { isHovering = false }
+
+    func setHoveringForTesting(_ hovering: Bool) { isHovering = hovering }
+
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        super.viewWillMove(toWindow: newWindow)
+        if newWindow == nil { isHovering = false }
+    }
 
     override func mouseUp(with event: NSEvent) {
         guard bounds.contains(convert(event.locationInWindow, from: nil)) else { return }

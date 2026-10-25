@@ -278,6 +278,14 @@ final class ModMenuRowTests: XCTestCase {
         }
     }
 
+    func testPromptRowHoverResetsBetweenPresentations() {
+        let row = ModPromptRowView()
+        row.setHoveringForTesting(true)
+        XCTAssertTrue(row.isHovering)
+        row.resetHoverState()
+        XCTAssertFalse(row.isHovering)
+    }
+
     func testNonOfficialAndDismissedHideThePrompt() {
         let notInstalled = ModSyncStatus.notInstalled(hasOtherScopeInstall: false)
         XCTAssertEqual(ModMenuRow.resolve(isOfficialDirect: false, status: notInstalled, promptDismissed: false), .none)

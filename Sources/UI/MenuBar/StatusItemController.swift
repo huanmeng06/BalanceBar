@@ -3365,6 +3365,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     func menuWillOpen(_ menu: NSMenu) {
         guard menu === statusMenu else { return }
+        // A row clicked in the previous presentation can still think it is hovered.
+        statusMenu.items.compactMap { $0.view as? ModPromptRowView }.forEach { $0.resetHoverState() }
         let previousView = statusMenu.items.first?.view
         let previousWindowVisible = previousView?.window?.isVisible == true
         let previousViewDismissing = previousView.map {
