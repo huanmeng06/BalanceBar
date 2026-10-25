@@ -4082,8 +4082,25 @@ extension DashboardPageSearchTests {
             visibilityChanged: { visibilityChanges.append($0) })
         defer { composition.teardownForTesting() }
 
-        _ = try XCTUnwrap(composition.makeWindowForTesting(showing: .advanced))
+        let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .advanced))
         XCTAssertEqual(visibilityChanges, [true], "opening Advanced makes the card visible")
+
+        func postAndDrain(_ name: Notification.Name, object: Any?) {
+            NotificationCenter.default.post(name: name, object: object)
+            let drained = expectation(description: "visibility notification handled")
+            DispatchQueue.main.async { drained.fulfill() }
+            wait(for: [drained], timeout: 2)
+        }
+
+        postAndDrain(NSWindow.didMiniaturizeNotification, object: window)
+        XCTAssertEqual(visibilityChanges.last, false, "minimizing the Dashboard stops visible polling")
+        postAndDrain(NSWindow.didDeminiaturizeNotification, object: window)
+        XCTAssertEqual(visibilityChanges.last, true, "restoring the Dashboard resumes polling")
+        postAndDrain(NSApplication.didHideNotification, object: NSApp)
+        XCTAssertEqual(visibilityChanges.last, false, "hiding the app stops visible polling")
+        postAndDrain(NSApplication.didUnhideNotification, object: NSApp)
+        XCTAssertEqual(visibilityChanges.last, true, "unhiding the app resumes polling")
+
         composition.showSection(.menu)
         XCTAssertEqual(visibilityChanges.last, false, "leaving Advanced stops visible polling")
 
