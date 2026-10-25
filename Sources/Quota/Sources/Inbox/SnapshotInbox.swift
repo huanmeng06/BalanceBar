@@ -298,6 +298,10 @@ public final class SnapshotInbox: QuotaSource {
             adapter.health = .degraded(reason: "no active account")
             return
         }
+        // Only the BalanceBar Mod's rejections may change the Mod status entry. Other
+        // inbox producers keep their validation and rejection behavior, but must not be
+        // reported as a Mod failure.
+        let isModSnapshot = parsed.source == Self.modSourceID
         // Account attribution is fail closed: this inbox stamps every observation with the
         // active account's identity, so a snapshot that cannot prove it belongs to that
         // account must never reach the merge engine. Reasons never quote the email or hash.
@@ -305,7 +309,7 @@ public final class SnapshotInbox: QuotaSource {
             guard let expected = account.email.map(Self.emailHash), !expected.isEmpty,
                   provided == expected else {
                 adapter.health = .degraded(reason: "rejected snapshot: account email hash does not match the active account")
-                rejectionObserver?(.accountEmailHashMismatch)
+                if isModSnapshot { rejectionObserver?(.accountEmailHashMismatch) }
                 return
             }
         } else if parsed.source == Self.modSourceID {
@@ -325,7 +329,7 @@ public final class SnapshotInbox: QuotaSource {
             for window in parsed.windows where verify(window.kind, window.resetsAt) == false {
                 unverifiedSnapshotRejections += 1
                 adapter.health = .degraded(reason: "rejected snapshot: cycle_unverified_against_official")
-                rejectionObserver?(.cycleUnverified)
+                if isModSnapshot { rejectionObserver?(.cycleUnverified) }
                 return
             }
         }

@@ -661,6 +661,7 @@
 "mod.sync.status.disabled" = "Installed but disabled; realtime sync will not run";
 "mod.sync.status.rejected_account" = "Snapshot rejected: the Claude login account differs from BalanceBar's current account";
 "mod.sync.status.rejected_cycle" = "Snapshot rejected: the cycle does not match official data; the official path is used";
+"mod.sync.status.installation_unknown" = "Can't confirm whether the Mod is installed (plugin list failed)";
 
 // Mod management window (Issue #604)
 "mod.ui.subtitle" = "Keep Claude Code quota up to date";

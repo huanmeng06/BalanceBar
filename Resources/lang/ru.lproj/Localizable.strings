@@ -661,6 +661,7 @@
 "mod.sync.status.disabled" = "Установлено, но отключено; синхронизация реального времени работать не будет";
 "mod.sync.status.rejected_account" = "Снимок отклонён: учётная запись Claude не совпадает с текущей учётной записью BalanceBar";
 "mod.sync.status.rejected_cycle" = "Снимок отклонён: цикл не совпадает с официальными данными; используется официальный путь";
+"mod.sync.status.installation_unknown" = "Не удаётся подтвердить установку Mod (список плагинов недоступен)";
 
 // Mod management window (Issue #604)
 "mod.ui.subtitle" = "Актуальные квоты Claude Code";

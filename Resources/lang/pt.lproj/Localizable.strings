@@ -661,6 +661,7 @@
 "mod.sync.status.disabled" = "Instalado mas desativado; a sincronização em tempo real não será executada";
 "mod.sync.status.rejected_account" = "Instantâneo recusado: a conta de login do Claude não coincide com a conta atual do BalanceBar";
 "mod.sync.status.rejected_cycle" = "Instantâneo recusado: o ciclo não coincide com os dados oficiais; é usado o caminho oficial";
+"mod.sync.status.installation_unknown" = "Não é possível confirmar se o Mod está instalado (falha na lista de plugins)";
 
 // Mod management window (Issue #604)
 "mod.ui.subtitle" = "Mantenha a cota do Claude Code atualizada";

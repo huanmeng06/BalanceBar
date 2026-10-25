@@ -39,6 +39,10 @@ struct ModInstallPlan: Equatable {
             + "claude " + installArguments.joined(separator: " ")
     }
 
+    var copyableListCommand: String {
+        "claude " + Self.listArguments.joined(separator: " ")
+    }
+
     var copyableUninstallCommands: String {
         "claude " + uninstallArguments.joined(separator: " ") + "\n"
             + "claude " + removeMarketplaceArguments.joined(separator: " ")

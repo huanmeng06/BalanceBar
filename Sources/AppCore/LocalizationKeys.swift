@@ -682,6 +682,7 @@
     case modSyncStatusDisabled = "mod.sync.status.disabled"
     case modSyncStatusRejectedAccount = "mod.sync.status.rejected_account"
     case modSyncStatusRejectedCycle = "mod.sync.status.rejected_cycle"
+    case modSyncStatusInstallationUnknown = "mod.sync.status.installation_unknown"
 
     var rawKey: String { rawValue }
 }

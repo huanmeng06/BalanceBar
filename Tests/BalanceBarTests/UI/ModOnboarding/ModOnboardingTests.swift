@@ -381,11 +381,13 @@ final class ModSyncStatusTests: XCTestCase {
     private func env(
         claudeFound: Bool = true, version: ClaudeCodeVersion? = nil,
         installation: ModPluginInstallation? = nil, otherScope: Bool = false,
-        inboxReady: Bool = true, processRunning: Bool = false
+        inboxReady: Bool = true, processRunning: Bool = false,
+        installationCheck: ModInstallationCheck = .ok
     ) -> ModEnvironment {
         ModEnvironment(
             claudeFound: claudeFound, claudeVersion: version, installation: installation,
-            hasNonUserScopeInstall: otherScope, inboxReady: inboxReady, claudeProcessRunning: processRunning)
+            hasNonUserScopeInstall: otherScope, installationCheck: installationCheck,
+            inboxReady: inboxReady, claudeProcessRunning: processRunning)
     }
 
     private var installed: ModPluginInstallation {
@@ -413,6 +415,16 @@ final class ModSyncStatusTests: XCTestCase {
         XCTAssertEqual(
             ModSyncStatus.resolve(environment: env(otherScope: true), evidence: .init(), now: now),
             .notInstalled(hasOtherScopeInstall: true))
+    }
+
+    func testFailedPluginListIsUnknownNotNotInstalled() {
+        XCTAssertEqual(
+            ModSyncStatus.resolve(environment: env(installationCheck: .failed(reason: "exit 1")), evidence: .init(), now: now),
+            .installationUnknown)
+        // A list we could not read is unknown even if some installation was cached earlier.
+        XCTAssertEqual(
+            ModSyncStatus.resolve(environment: env(installation: installed, installationCheck: .failed(reason: "unreadable")), evidence: .init(), now: now),
+            .installationUnknown)
     }
 
     func testDisabledBeatsSnapshotEvidence() {
@@ -496,24 +508,26 @@ final class ModSyncDetectorTests: XCTestCase {
         ["id": id, "scope": scope, "enabled": enabled, "version": "1.0.0", "installedAt": installedAt]
     }
 
-    func testParsePluginListPicksOnlyTheMatchingUserScopeEntry() {
+    func testParsePluginListPicksOnlyTheMatchingUserScopeEntry() throws {
         let data = listJSON([
             entry(),
             entry(id: "claude-hud@claude-hud"),
             entry(scope: "local"),
         ])
-        let parsed = ModSyncDetector.parsePluginList(data, plan: plan)
+        let parsed = try XCTUnwrap(ModSyncDetector.parsePluginList(data, plan: plan))
         XCTAssertEqual(parsed.installation, ModPluginInstallation(
             scope: "user", isEnabled: true, version: "1.0.0",
             installedAt: ModSyncDetector.parseTimestamp("2026-10-20T08:00:00.000Z")))
         XCTAssertTrue(parsed.hasNonUserScopeInstall)
     }
 
-    func testParsePluginListMissingAndMalformed() {
-        XCTAssertEqual(ModSyncDetector.parsePluginList(listJSON([]), plan: plan).installation, nil)
-        XCTAssertFalse(ModSyncDetector.parsePluginList(listJSON([]), plan: plan).hasNonUserScopeInstall)
-        XCTAssertNil(ModSyncDetector.parsePluginList(Data("not json".utf8), plan: plan).installation)
-        XCTAssertNil(ModSyncDetector.parsePluginList(Data(), plan: plan).installation)
+    func testParsePluginListMissingAndMalformed() throws {
+        let empty = try XCTUnwrap(ModSyncDetector.parsePluginList(listJSON([]), plan: plan))
+        XCTAssertNil(empty.installation)
+        XCTAssertFalse(empty.hasNonUserScopeInstall)
+        // Unreadable output is a failed probe, not a confirmed absence.
+        XCTAssertNil(ModSyncDetector.parsePluginList(Data("not json".utf8), plan: plan))
+        XCTAssertNil(ModSyncDetector.parsePluginList(Data(), plan: plan))
     }
 
     func testParseTimestampAcceptsFractionalAndPlainISO8601() {
@@ -677,6 +691,9 @@ final class ModSyncPresentationTests: XCTestCase {
         XCTAssertTrue(RealtimeBoostPresentation.make(status: .silent, timeZone: utc).statusText.contains("/reload-plugins"))
         XCTAssertTrue(RealtimeBoostPresentation.make(status: .snapshotRejected(.init(rejection: .accountMismatch, at: Date())), timeZone: utc).statusText.contains("账号"))
         XCTAssertTrue(RealtimeBoostPresentation.make(status: .snapshotRejected(.init(rejection: .unverifiedCycle, at: Date())), timeZone: utc).statusText.contains("官方"))
+        let unknown = RealtimeBoostPresentation.make(status: .installationUnknown, timeZone: utc)
+        XCTAssertTrue(unknown.statusText.contains("无法确认"))
+        XCTAssertFalse(unknown.showsInstallAction, "a failed probe must not offer a reinstall")
     }
 }
 
@@ -705,7 +722,12 @@ final class ModSyncCoordinatorTests: XCTestCase {
     }
 
     private func makeCoordinator(
-        locator: String?, results: [ModCommandResult?]
+        locator: String?, results: [ModCommandResult?],
+        activityProvider: @escaping () -> Bool = { false },
+        now: @escaping () -> Date = Date.init,
+        schedule: @escaping (TimeInterval, @escaping () -> Void) -> Void = { delay, block in
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: block)
+        }
     ) -> (ModSyncCoordinator, ScriptedRunner) {
         let runner = ScriptedRunner(results)
         let q = DispatchQueue(label: "test.coordinator")
@@ -718,7 +740,8 @@ final class ModSyncCoordinatorTests: XCTestCase {
             locator: FakeLocator(path: locator), runner: runner,
             inboxDirectory: inboxDirectory, workQueue: q, callbackQueue: .main)
         let coordinator = ModSyncCoordinator(
-            controller: controller, detector: detector, activityProvider: { false })
+            controller: controller, detector: detector, activityProvider: activityProvider,
+            now: now, schedule: schedule)
         return (coordinator, runner)
     }
 
@@ -762,6 +785,61 @@ final class ModSyncCoordinatorTests: XCTestCase {
         XCTAssertEqual(event.rejection, .accountMismatch)
     }
 
+    func testPluginListFailureIsUnknownNotNotInstalled() {
+        let (coordinator, _) = makeCoordinator(
+            locator: "/bin/claude",
+            results: [
+                ModCommandResult(exitCode: 0, stdout: "2.1.291 (Claude Code)", stderr: ""),
+                ModCommandResult(exitCode: 1, stdout: "", stderr: "permission denied"),
+            ])
+        let unknown = expectation(description: "installation unknown")
+        coordinator.onStatusChange = { status in
+            if status == .installationUnknown { unknown.fulfill() }
+        }
+        coordinator.startDetectionIfNeeded(force: true)
+        wait(for: [unknown], timeout: 5)
+        XCTAssertEqual(coordinator.status, .installationUnknown)
+    }
+
+    func testSilenceRecheckFlipsActiveToSilentWhenGraceExpires() throws {
+        var clock = Date(timeIntervalSince1970: 1_800_000_000)
+        var scheduled: [(TimeInterval, () -> Void)] = []
+        let version = ModCommandResult(exitCode: 0, stdout: "2.1.291 (Claude Code)", stderr: "")
+        let list = ModCommandResult(exitCode: 0, stdout: String(decoding: listJSON(), as: UTF8.self), stderr: "")
+        let (coordinator, _) = makeCoordinator(
+            locator: "/bin/claude",
+            results: [version, list, version, list],
+            activityProvider: { true },
+            now: { clock },
+            schedule: { delay, block in scheduled.append((delay, block)) })
+
+        let detected = expectation(description: "initial detection")
+        coordinator.onStatusChange = { _ in detected.fulfill() }
+        coordinator.startDetectionIfNeeded(force: true)
+        wait(for: [detected], timeout: 5)
+
+        let active = expectation(description: "active after a trusted snapshot")
+        coordinator.onStatusChange = { status in
+            if case .active = status { active.fulfill() }
+        }
+        coordinator.ingest(.init(kind: .processed(accepted: true), window: .fiveHour,
+                                 observedAt: clock, receivedAt: clock))
+        wait(for: [active], timeout: 5)
+        let delay = try XCTUnwrap(scheduled.last?.0)
+        XCTAssertEqual(delay, ModOnboardingConfig.noDataWithActivityGrace, accuracy: 1)
+
+        // Time passes with the page open and no new snapshot: the one-shot recheck must
+        // resample activity and turn "active" into "silent".
+        clock = clock.addingTimeInterval(ModOnboardingConfig.noDataWithActivityGrace + 1)
+        let silent = expectation(description: "silent after the grace period")
+        coordinator.onStatusChange = { status in
+            if status == .silent { silent.fulfill() }
+        }
+        DispatchQueue.main.async { scheduled.last?.1() }
+        wait(for: [silent], timeout: 5)
+        XCTAssertEqual(coordinator.status, .silent)
+    }
+
     func testDetectionThrottlesUnlessForced() {
         let (coordinator, runner) = makeCoordinator(locator: "/bin/claude", results: [])
         let first = expectation(description: "first")
@@ -780,7 +858,8 @@ final class ModSyncCoordinatorTests: XCTestCase {
         let settled = expectation(description: "settled")
         DispatchQueue.main.async { settled.fulfill() }
         wait(for: [settled], timeout: 5)
-        XCTAssertEqual(coordinator.status, .notInstalled(hasOtherScopeInstall: false))
+        // No scripted `plugin list` result means the probe failed: unknown, not absent.
+        XCTAssertEqual(coordinator.status, .installationUnknown)
     }
 
     func testSyncContextCarriesLocalizedStatusText() {
@@ -963,6 +1042,7 @@ final class ModManagementUITests: XCTestCase {
         return [
             ("detecting", .intro(dismissChecked: false), .detecting),
             ("not-installed", .intro(dismissChecked: false), .notInstalled(hasOtherScopeInstall: false)),
+            ("installation-unknown", .intro(dismissChecked: false), .installationUnknown),
             ("project-scope", .intro(dismissChecked: false), .notInstalled(hasOtherScopeInstall: true)),
             ("install-source", .installing(current: .addMarketplace), .notInstalled(hasOtherScopeInstall: false)),
             ("installing", .installing(current: .installPlugin), .notInstalled(hasOtherScopeInstall: false)),

@@ -421,4 +421,22 @@ final class SnapshotInboxTests: XCTestCase {
         source.stop()
         XCTAssertEqual(reasons.all, [], "a whole-snapshot replay is healthy, not a rejection")
     }
+
+    func testNonModRejectionsAreNotReportedAsModFailures() throws {
+        let reasons = LockedReasons()
+        let source = SnapshotInbox(
+            inboxDirectory: inbox, identity: FakeIdentity(),
+            configuration: SnapshotInboxConfiguration(halfWriteRetryDelay: 0.05))
+        source.rejectionObserver = { reasons.append($0) }
+        source.cycleVerification = { _, _ in false }
+        inboxes.append(source)
+        source.start { _ in }
+        // Wrong hash on a non-Mod producer: rejected, but not a Mod failure.
+        try placeSnapshot(source: "some-other-tool", emailHash: "sha256:deadbeef", as: "wrong.json")
+        // Cycle mismatch on a non-Mod producer: rejected, but not a Mod failure.
+        try placeSnapshot(source: "some-other-tool", emailHash: SnapshotInbox.emailHash("user@example.com"), as: "cycle.json")
+        Thread.sleep(forTimeInterval: 0.5)
+        source.stop()
+        XCTAssertEqual(reasons.all, [], "non-Mod rejections must not change the Mod status entry")
+    }
 }

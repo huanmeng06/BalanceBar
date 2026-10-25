@@ -661,6 +661,7 @@
 "mod.sync.status.disabled" = "インストール済みですが無効のため、リアルタイム同期は動作しません";
 "mod.sync.status.rejected_account" = "スナップショットが拒否されました：Claude のログインアカウントが BalanceBar の現在のアカウントと一致しません";
 "mod.sync.status.rejected_cycle" = "スナップショットが拒否されました：サイクルが公式データと一致しないため、公式パスに戻ります";
+"mod.sync.status.installation_unknown" = "Mod がインストール済みか確認できません（プラグイン一覧の取得に失敗）";
 
 // Mod management window (Issue #604)
 "mod.ui.subtitle" = "Claude Code の使用枠を最新に保つ";

@@ -661,6 +661,7 @@
 "mod.sync.status.disabled" = "Installé mais désactivé ; la synchronisation temps réel ne fonctionnera pas";
 "mod.sync.status.rejected_account" = "Instantané refusé : le compte Claude ne correspond pas au compte BalanceBar actuel";
 "mod.sync.status.rejected_cycle" = "Instantané refusé : le cycle ne correspond pas aux données officielles ; le chemin officiel est utilisé";
+"mod.sync.status.installation_unknown" = "Impossible de confirmer l’installation du Mod (liste des plugins en échec)";
 
 // Mod management window (Issue #604)
 "mod.ui.subtitle" = "Gardez les quotas Claude Code à jour";

@@ -51,7 +51,8 @@ enum ModPanelContent {
     static func isInstalled(_ status: ModSyncStatus) -> Bool {
         switch status {
         case .waitingForData, .active, .silent, .disabled, .snapshotRejected: return true
-        case .detecting, .claudeMissing, .claudeVersionTooOld, .inboxNotReady, .notInstalled: return false
+        case .detecting, .claudeMissing, .claudeVersionTooOld, .inboxNotReady, .notInstalled,
+             .installationUnknown: return false
         }
     }
 
@@ -181,6 +182,12 @@ enum ModPanelContent {
                 return result
             case .detecting:
                 return [.hero(symbol: nil, title: t(.pitchTitle), subtitle: sync.statusText), close]
+            case .installationUnknown:
+                return [.hero(symbol: "exclamationmark.triangle.fill", title: t(.failureTitle), subtitle: nil),
+                        .text(sync.statusText),
+                        .codeBlock(plan.copyableListCommand, copyAction: .copyCommands),
+                        .button(title: t(.copyCommands), action: .copyCommands),
+                        refresh, close]
             case .claudeMissing, .claudeVersionTooOld, .inboxNotReady:
                 var result: [ModPanelItem] = [.hero(symbol: "exclamationmark.triangle.fill", title: t(.failureTitle), subtitle: nil),
                     .text(sync.statusText), .codeBlock(plan.copyableCommands, copyAction: .copyCommands),

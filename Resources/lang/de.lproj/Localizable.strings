@@ -661,6 +661,7 @@
 "mod.sync.status.disabled" = "Installiert, aber deaktiviert; die Echtzeitsynchronisierung läuft nicht";
 "mod.sync.status.rejected_account" = "Snapshot abgelehnt: das Claude-Login-Konto weicht vom aktuellen BalanceBar-Konto ab";
 "mod.sync.status.rejected_cycle" = "Snapshot abgelehnt: der Zyklus passt nicht zu den offiziellen Daten; der offizielle Pfad wird verwendet";
+"mod.sync.status.installation_unknown" = "Mod-Installation kann nicht bestätigt werden (Plugin-Liste fehlgeschlagen)";
 
 // Mod management window (Issue #604)
 "mod.ui.subtitle" = "Claude Code Kontingente aktuell halten";

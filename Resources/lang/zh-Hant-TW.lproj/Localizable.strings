@@ -661,6 +661,7 @@
 "mod.sync.status.disabled" = "已安裝但已停用，即時同步不會執行";
 "mod.sync.status.rejected_account" = "快照被拒：Claude 登入帳號與 BalanceBar 目前帳號不一致";
 "mod.sync.status.rejected_cycle" = "快照被拒：週期與官方資料不一致，已回退官方額度";
+"mod.sync.status.installation_unknown" = "無法確認 Mod 是否已安裝（外掛清單讀取失敗）";
 
 // Mod management window (Issue #604)
 "mod.ui.subtitle" = "讓 Claude Code 額度更新更即時";

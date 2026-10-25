@@ -10,6 +10,13 @@ struct ModPluginInstallation: Equatable {
     var installedAt: Date?
 }
 
+/// Whether `claude plugin list --json` actually produced a usable answer. A failed
+/// probe must never be presented as "not installed".
+enum ModInstallationCheck: Equatable {
+    case ok
+    case failed(reason: String)
+}
+
 /// Read-only environment facts gathered off the main thread by `ModSyncDetector`.
 struct ModEnvironment: Equatable {
     var claudeFound: Bool
@@ -18,6 +25,7 @@ struct ModEnvironment: Equatable {
     /// only a user-scope install counts as the cross-project installation this flow manages.
     var installation: ModPluginInstallation?
     var hasNonUserScopeInstall: Bool
+    var installationCheck: ModInstallationCheck = .ok
     /// The default inbox exists, is writable and owned by the current user.
     var inboxReady: Bool
     /// Sampled on the main thread when detection starts, from the activity coordinator.
@@ -52,6 +60,8 @@ enum ModSyncStatus: Equatable {
     /// No user-scope install. `hasOtherScopeInstall` distinguishes a project/local
     /// install, which never counts as the cross-project installation.
     case notInstalled(hasOtherScopeInstall: Bool)
+    /// `claude plugin list` failed, so the installation state is unknown, not "absent".
+    case installationUnknown
     /// Installed but disabled: the Mod writes nothing until enabled again.
     case disabled
     /// Installed and enabled, no trusted snapshot accepted yet.
@@ -76,6 +86,7 @@ enum ModSyncStatus: Equatable {
             return .claudeVersionTooOld(version)
         }
         guard environment.inboxReady else { return .inboxNotReady }
+        if case .failed = environment.installationCheck { return .installationUnknown }
         guard let installation = environment.installation else {
             return .notInstalled(hasOtherScopeInstall: environment.hasNonUserScopeInstall)
         }

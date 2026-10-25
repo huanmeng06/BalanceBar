@@ -49,11 +49,21 @@ final class ModSyncDetector {
                     ? ClaudeCodeVersion.parse(versionResult.stdout)
                     : nil
             }
-            if let listResult = runner.run(executablePath: claudePath, arguments: ModInstallPlan.listArguments),
-               listResult.exitCode == 0, let data = listResult.stdout.data(using: .utf8) {
-                let parsed = Self.parsePluginList(data, plan: plan)
-                environment.installation = parsed.installation
-                environment.hasNonUserScopeInstall = parsed.hasNonUserScopeInstall
+            if let listResult = runner.run(executablePath: claudePath, arguments: ModInstallPlan.listArguments) {
+                if listResult.exitCode != 0 {
+                    environment.installationCheck = .failed(
+                        reason: "claude plugin list exited \(listResult.exitCode)")
+                } else if let data = listResult.stdout.data(using: .utf8),
+                          let parsed = Self.parsePluginList(data, plan: plan) {
+                    environment.installation = parsed.installation
+                    environment.hasNonUserScopeInstall = parsed.hasNonUserScopeInstall
+                } else {
+                    environment.installationCheck = .failed(
+                        reason: "claude plugin list output could not be read")
+                }
+            } else {
+                environment.installationCheck = .failed(
+                    reason: "claude plugin list could not run")
             }
             callbackQueue.async { completion(environment) }
         }
@@ -96,10 +106,9 @@ final class ModSyncDetector {
     /// separately so a project/local install is never shown as the global one.
     static func parsePluginList(
         _ data: Data, plan: ModInstallPlan
-    ) -> (installation: ModPluginInstallation?, hasNonUserScopeInstall: Bool) {
-        guard let entries = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
-            return (nil, false)
-        }
+    ) -> (installation: ModPluginInstallation?, hasNonUserScopeInstall: Bool)? {
+        guard let object = try? JSONSerialization.jsonObject(with: data),
+              let entries = object as? [[String: Any]] else { return nil }
         var installation: ModPluginInstallation?
         var hasNonUserScopeInstall = false
         for entry in entries where (entry["id"] as? String) == plan.pluginID {

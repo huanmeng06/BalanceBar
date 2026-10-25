@@ -15,12 +15,16 @@ final class ModSyncCoordinator {
     private let activityProvider: () -> Bool
     private let localizePanel: (ModOnboardingText) -> String
     private let localizeSync: (RealtimeBoostText) -> String
+    private let now: () -> Date
+    private let schedule: (TimeInterval, @escaping () -> Void) -> Void
 
     private(set) var status: ModSyncStatus = .detecting
     private var environment: ModEnvironment?
     private var evidence = ModSnapshotEvidence()
     private var detectionInFlight = false
     private var lastDetectionStartedAt = Date.distantPast
+    /// Guards one-shot silence rechecks against a later status/evidence change.
+    private var silenceScheduleGeneration: UInt64 = 0
     /// The currently presented management panel; refreshed on every status change so an
     /// open panel never keeps showing "detecting" or a finished operation's page.
     private weak var presentedPanel: ModOnboardingPanelView?
@@ -38,13 +42,19 @@ final class ModSyncCoordinator {
         detector: ModSyncDetector,
         activityProvider: @escaping () -> Bool,
         localizePanel: @escaping (ModOnboardingText) -> String = ModOnboardingText.defaultLocalize,
-        localizeSync: @escaping (RealtimeBoostText) -> String = RealtimeBoostText.defaultLocalize
+        localizeSync: @escaping (RealtimeBoostText) -> String = RealtimeBoostText.defaultLocalize,
+        now: @escaping () -> Date = Date.init,
+        schedule: @escaping (TimeInterval, @escaping () -> Void) -> Void = { delay, block in
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: block)
+        }
     ) {
         self.controller = controller
         self.detector = detector
         self.activityProvider = activityProvider
         self.localizePanel = localizePanel
         self.localizeSync = localizeSync
+        self.now = now
+        self.schedule = schedule
         controller.onPresentationChange = { [weak self] in
             self?.onPresentationChange?()
         }
@@ -79,7 +89,7 @@ final class ModSyncCoordinator {
     /// Runs detection at most once per throttle window unless forced (install/uninstall
     /// completions force it). The activity sample is taken here, on the main thread.
     func startDetectionIfNeeded(force: Bool = false) {
-        let now = Date()
+        let now = now()
         guard !detectionInFlight,
               force || now.timeIntervalSince(lastDetectionStartedAt) >= Self.detectionThrottle else { return }
         lastDetectionStartedAt = now
@@ -157,11 +167,43 @@ final class ModSyncCoordinator {
     }
 
     private func recomputeStatus() {
-        let newStatus = ModSyncStatus.resolve(environment: environment, evidence: evidence, now: Date())
+        let newStatus = ModSyncStatus.resolve(environment: environment, evidence: evidence, now: now())
+        // Even when the status string is unchanged a new accepted snapshot moves the
+        // silence deadline, so the recheck is scheduled before the equality guard.
+        scheduleSilenceRecheck(for: newStatus)
         guard newStatus != status else { return }
         status = newStatus
         presentedPanel?.reload()
         onStatusChange?(status)
+    }
+
+    /// The status only changes when something recomputes it; time passing is not an
+    /// event. Schedule one detection at the grace deadline so "active" can become
+    /// "silent" even while the user keeps the Advanced page open.
+    private func scheduleSilenceRecheck(for status: ModSyncStatus) {
+        silenceScheduleGeneration &+= 1
+        let generation = silenceScheduleGeneration
+        guard let deadline = silenceDeadline(for: status) else { return }
+        let delay = deadline.timeIntervalSince(now())
+        guard delay > 0 else { return }
+        schedule(delay) { [weak self] in
+            guard let self, self.silenceScheduleGeneration == generation else { return }
+            self.startDetectionIfNeeded(force: true)
+        }
+    }
+
+    private func silenceDeadline(for status: ModSyncStatus) -> Date? {
+        guard let environment, environment.inboxReady,
+              environment.installation?.isEnabled == true else { return nil }
+        switch status {
+        case let .active(lastAcceptedAt):
+            return lastAcceptedAt.addingTimeInterval(ModOnboardingConfig.noDataWithActivityGrace)
+        case .waitingForData:
+            return environment.installation?.installedAt?
+                .addingTimeInterval(ModOnboardingConfig.noDataWithActivityGrace)
+        default:
+            return nil
+        }
     }
 
     private static func uiRejection(_ reason: SnapshotRejectionReason) -> ModSnapshotRejection {
@@ -292,6 +334,7 @@ extension LocalizationKey {
         case .statusDisabled: return .modSyncStatusDisabled
         case .statusRejectedAccount: return .modSyncStatusRejectedAccount
         case .statusRejectedCycle: return .modSyncStatusRejectedCycle
+        case .statusInstallationUnknown: return .modSyncStatusInstallationUnknown
         }
     }
 }

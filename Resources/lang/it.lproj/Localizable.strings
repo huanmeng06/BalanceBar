@@ -661,6 +661,7 @@
 "mod.sync.status.disabled" = "Installato ma disattivato; la sincronizzazione in tempo reale non verrà eseguita";
 "mod.sync.status.rejected_account" = "Snapshot rifiutato: l'account Claude non corrisponde all'account BalanceBar corrente";
 "mod.sync.status.rejected_cycle" = "Snapshot rifiutato: il ciclo non corrisponde ai dati ufficiali; viene usato il percorso ufficiale";
+"mod.sync.status.installation_unknown" = "Impossibile confermare se il Mod è installato (elenco plugin non riuscito)";
 
 // Mod management window (Issue #604)
 "mod.ui.subtitle" = "Mantieni aggiornate le quote Claude Code";

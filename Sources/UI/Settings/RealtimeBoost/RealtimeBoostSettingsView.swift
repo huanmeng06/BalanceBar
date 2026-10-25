@@ -19,6 +19,7 @@ enum RealtimeBoostText: String, CaseIterable {
     case statusDisabled = "mod.sync.status.disabled"
     case statusRejectedAccount = "mod.sync.status.rejected_account"
     case statusRejectedCycle = "mod.sync.status.rejected_cycle"
+    case statusInstallationUnknown = "mod.sync.status.installation_unknown"
 
     case statusTitleFormat = "mod.settings.status.title_format"
     case statusEnabledShort = "mod.settings.status.enabled_short"
@@ -57,6 +58,7 @@ enum RealtimeBoostText: String, CaseIterable {
         case .statusDisabled: return "已安装但已停用，实时同步不会运行"
         case .statusRejectedAccount: return "快照被拒：Claude 登录账号与 BalanceBar 当前账号不一致"
         case .statusRejectedCycle: return "快照被拒：周期与官方数据不一致，已回退官方额度"
+        case .statusInstallationUnknown: return "无法确认 Mod 是否已安装（插件列表读取失败）"
         }
     }
 
@@ -126,6 +128,9 @@ struct RealtimeBoostPresentation: Equatable {
         case let .snapshotRejected(event):
             let text: RealtimeBoostText = event.rejection == .accountMismatch ? .statusRejectedAccount : .statusRejectedCycle
             return .init(statusText: localize(text), showsInstallAction: false, showsCopyAction: false)
+        case .installationUnknown:
+            // A failed probe is not "not installed": do not offer a reinstall.
+            return .init(statusText: localize(.statusInstallationUnknown), showsInstallAction: false, showsCopyAction: false)
         }
     }
 }
