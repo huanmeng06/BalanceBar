@@ -58,6 +58,15 @@ final class ModSyncCoordinator {
         }
     }
 
+    /// The status menu's prompt row: official Claude provider only, and only while the
+    /// Mod is confirmed not installed and the user has not dismissed the prompt.
+    func menuRow(isOfficialDirect: Bool) -> ModMenuRow {
+        ModMenuRow.resolve(
+            isOfficialDirect: isOfficialDirect,
+            status: status,
+            promptDismissed: controller.isPromptDismissed)
+    }
+
     /// Status plus its localized text, for the settings row and the panel header.
     var syncContext: ModPanelSyncContext {
         ModPanelSyncContext(
@@ -211,6 +220,7 @@ extension LocalizationKey {
         case .accountAdvice: return .modUIAccountAdvice
         case .cycleAdvice: return .modUICycleAdvice
         case .promptRow: return .modPromptRow
+        case .promptWhy: return .modPromptWhy
         case .panelTitle: return .modPanelTitle
         case .point1: return .modPanelPoint1
         case .point2: return .modPanelPoint2

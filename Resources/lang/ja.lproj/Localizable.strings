@@ -612,6 +612,7 @@
 "claude.mod_sync.title" = "Claude Code Mod リアルタイム同期";
 "claude.mod_sync.manage" = "管理…";
 "mod.prompt.row" = "リアルタイム強化を有効にする ›";
+"mod.prompt.why" = "なぜ必要？";
 "mod.panel.title" = "リアルタイム強化";
 "mod.panel.point1" = "クォータデータ（5時間 / 7日間の使用量）のみを読み取ります。会話の内容は読み取りません。";
 "mod.panel.point2" = "プラグインはあなたのユーザー権限で Claude Code 内で動作し、いつでも /plugin でアンインストールできます。";

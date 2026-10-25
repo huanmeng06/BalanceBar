@@ -612,6 +612,7 @@
 "claude.mod_sync.title" = "Sincronizzazione in tempo reale del Mod Claude Code";
 "claude.mod_sync.manage" = "Gestisci…";
 "mod.prompt.row" = "Attiva il potenziamento in tempo reale ›";
+"mod.prompt.why" = "Perché?";
 "mod.panel.title" = "Potenziamento in tempo reale";
 "mod.panel.point1" = "Legge solo i dati di quota (utilizzo 5 ore / 7 giorni); non legge mai il contenuto delle conversazioni.";
 "mod.panel.point2" = "Il plugin viene eseguito in Claude Code con le tue autorizzazioni utente e può essere disinstallato in qualsiasi momento con /plugin.";

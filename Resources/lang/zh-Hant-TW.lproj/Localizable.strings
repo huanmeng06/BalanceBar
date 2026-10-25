@@ -612,6 +612,7 @@
 "claude.mod_sync.title" = "Claude Code Mod 即時同步";
 "claude.mod_sync.manage" = "管理…";
 "mod.prompt.row" = "啟用即時增強 ›";
+"mod.prompt.why" = "為什麼這麼做？";
 "mod.panel.title" = "即時增強";
 "mod.panel.point1" = "只讀取額度資料（5 小時 / 7 天用量），不讀取對話內容。";
 "mod.panel.point2" = "外掛以你的使用者權限在 Claude Code 內執行，可隨時用 /plugin 解除安裝。";

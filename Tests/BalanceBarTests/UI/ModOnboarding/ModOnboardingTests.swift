@@ -251,8 +251,37 @@ final class ModOnboardingPanelTests: XCTestCase {
         let row = ModPromptRowView()
         var clicks = 0
         row.onClick = { clicks += 1 }
-        row.button.performClick(nil)
-        XCTAssertEqual(clicks, 1); XCTAssertEqual(row.button.title, "启用实时增强 ›")
+        XCTAssertEqual(row.mainText, "启用实时增强 ›")
+        XCTAssertEqual(row.whyText, "为什么这么做？")
+        XCTAssertTrue(row.accessibilityPerformPress())
+        XCTAssertEqual(clicks, 1)
+    }
+}
+
+// MARK: - Status-menu prompt row (INT-2)
+
+final class ModMenuRowTests: XCTestCase {
+    func testPromptOnlyForConfirmedNotInstalledOfficialDirect() {
+        XCTAssertEqual(
+            ModMenuRow.resolve(isOfficialDirect: true, status: .notInstalled(hasOtherScopeInstall: false), promptDismissed: false),
+            .prompt)
+        XCTAssertEqual(
+            ModMenuRow.resolve(isOfficialDirect: true, status: .notInstalled(hasOtherScopeInstall: true), promptDismissed: false),
+            .prompt)
+    }
+
+    func testInstalledOrUndetectedStatesHaveNoPrompt() {
+        for status: ModSyncStatus in [.detecting, .waitingForData, .disabled, .silent, .active(lastAcceptedAt: Date())] {
+            XCTAssertEqual(
+                ModMenuRow.resolve(isOfficialDirect: true, status: status, promptDismissed: false), .none,
+                "\(status) must not show the install prompt")
+        }
+    }
+
+    func testNonOfficialAndDismissedHideThePrompt() {
+        let notInstalled = ModSyncStatus.notInstalled(hasOtherScopeInstall: false)
+        XCTAssertEqual(ModMenuRow.resolve(isOfficialDirect: false, status: notInstalled, promptDismissed: false), .none)
+        XCTAssertEqual(ModMenuRow.resolve(isOfficialDirect: true, status: notInstalled, promptDismissed: true), .none)
     }
 }
 

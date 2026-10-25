@@ -612,6 +612,7 @@
 "claude.mod_sync.title" = "Claude-Code-Mod-Echtzeitsynchronisierung";
 "claude.mod_sync.manage" = "Verwalten…";
 "mod.prompt.row" = "Echtzeit-Boost aktivieren ›";
+"mod.prompt.why" = "Warum?";
 "mod.panel.title" = "Echtzeit-Boost";
 "mod.panel.point1" = "Liest nur Kontingentdaten (5-Stunden-/7-Tage-Nutzung), nie Unterhaltungsinhalte.";
 "mod.panel.point2" = "Das Plugin läuft mit deinen Benutzerrechten in Claude Code und lässt sich jederzeit mit /plugin deinstallieren.";

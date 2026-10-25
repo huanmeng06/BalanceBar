@@ -247,34 +247,139 @@ enum ModPanelContent {
 
 }
 
-/// Menu prompt row. Plain button so it can sit in a menu item's custom view.
+/// Menu prompt row: the INT-2 accent-tinted block with a bolt icon, the main copy and
+/// the "why" line. It sits in a menu item's custom view; a click anywhere closes the
+/// menu and opens the explanation panel.
 final class ModPromptRowView: NSView {
-    let button: NSButton
+    /// Height for a one-line prompt; longer wording grows the row (see `height`).
+    static let rowHeight: CGFloat = 52
+    /// The row is exactly as wide as the quota card, whatever the language.
+    static let width: CGFloat = OpenCodexCardLayout.cardWidth
+    static let maximumMainLines = 2
+    static let contentPadding: CGFloat = 10
+    static let blockInset: CGFloat = OpenCodexCardLayout.horizontalInset
+
+    private let block = NSView()
+    let iconView = NSImageView()
+    private let mainLabel: NSTextField
+    private let whyLabel: NSTextField
+    /// The row's height: one line of copy fits `rowHeight`; more lines add their height.
+    private(set) var height: CGFloat = ModPromptRowView.rowHeight
+    private var isHovering = false { didSet { updateBackground() } }
     var onClick: () -> Void = {}
 
+    var mainText: String { mainLabel.stringValue }
+    var whyText: String { whyLabel.stringValue }
+
+    override var intrinsicContentSize: NSSize { NSSize(width: Self.width, height: height) }
+
+    private static let iconWidth: CGFloat = 15
+    private static let iconTextSpacing: CGFloat = 10
+    private static var textWidth: CGFloat {
+        width - 2 * blockInset - 2 * contentPadding - iconWidth - iconTextSpacing
+    }
+
     init(localize: (ModOnboardingText) -> String = ModOnboardingText.defaultLocalize) {
-        button = NSButton(title: localize(.promptRow), target: nil, action: nil)
-        super.init(frame: .zero)
-        button.isBordered = false
-        button.alignment = .left
-        button.font = .systemFont(ofSize: NSFont.systemFontSize)
-        button.contentTintColor = .controlAccentColor
-        button.target = self
-        button.action = #selector(clicked)
-        button.setAccessibilityLabel(localize(.promptRow))
-        button.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(button)
+        mainLabel = NSTextField(wrappingLabelWithString: localize(.promptRow))
+        whyLabel = NSTextField(labelWithString: localize(.promptWhy))
+        super.init(frame: NSRect(x: 0, y: 0, width: Self.width, height: Self.rowHeight))
+        autoresizingMask = [.width]
+        setAccessibilityRole(.button)
+        setAccessibilityLabel(mainLabel.stringValue + ", " + whyLabel.stringValue)
+
+        block.wantsLayer = true
+        block.layer?.cornerRadius = 8
+        block.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(block)
+
+        iconView.image = Self.symbol("bolt.fill", size: 15)
+        iconView.contentTintColor = .controlAccentColor
+        iconView.setContentHuggingPriority(.required, for: .horizontal)
+
+        mainLabel.font = .systemFont(ofSize: 13, weight: .medium)
+        mainLabel.textColor = .controlAccentColor
+        mainLabel.lineBreakMode = .byWordWrapping
+        mainLabel.cell?.truncatesLastVisibleLine = true
+        mainLabel.maximumNumberOfLines = Self.maximumMainLines
+        mainLabel.preferredMaxLayoutWidth = Self.textWidth
+        mainLabel.isSelectable = false
+
+        whyLabel.font = .systemFont(ofSize: 11)
+        whyLabel.textColor = .controlAccentColor
+        whyLabel.lineBreakMode = .byTruncatingTail
+        whyLabel.preferredMaxLayoutWidth = Self.textWidth
+
+        // Size the row to the wording (other languages are longer than Chinese).
+        let mainHeight = mainLabel.cell?.cellSize(forBounds: NSRect(x: 0, y: 0, width: Self.textWidth, height: .greatestFiniteMagnitude)).height ?? 16
+        let whyHeight = whyLabel.cell?.cellSize.height ?? 14
+        height = max(Self.rowHeight, ceil(mainHeight + 1 + whyHeight) + 20)
+        setFrameSize(NSSize(width: Self.width, height: height))
+
+        let texts = NSStackView(views: [mainLabel, whyLabel])
+        texts.orientation = .vertical
+        texts.alignment = .leading
+        texts.spacing = 1
+        texts.setContentHuggingPriority(.init(1), for: .horizontal)
+        mainLabel.setContentHuggingPriority(.init(1), for: .horizontal)
+        whyLabel.setContentHuggingPriority(.init(1), for: .horizontal)
+        let row = NSStackView(views: [iconView, texts])
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = Self.iconTextSpacing
+        row.translatesAutoresizingMaskIntoConstraints = false
+        block.addSubview(row)
         NSLayoutConstraint.activate([
-            button.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
-            button.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -14),
-            button.topAnchor.constraint(equalTo: topAnchor, constant: 4),
-            button.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -4),
+            block.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Self.blockInset),
+            block.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Self.blockInset),
+            block.topAnchor.constraint(equalTo: topAnchor, constant: 3),
+            block.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -3),
+            row.leadingAnchor.constraint(equalTo: block.leadingAnchor, constant: Self.contentPadding),
+            row.trailingAnchor.constraint(equalTo: block.trailingAnchor, constant: -Self.contentPadding),
+            row.centerYAnchor.constraint(equalTo: block.centerYAnchor),
         ])
+        updateBackground()
     }
 
     required init?(coder: NSCoder) { nil }
 
-    @objc private func clicked() { onClick() }
+    private static func symbol(_ name: String, size: CGFloat) -> NSImage? {
+        NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: size, weight: .semibold))
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                                       owner: self, userInfo: nil))
+    }
+
+    override func mouseEntered(with event: NSEvent) { isHovering = true }
+    override func mouseExited(with event: NSEvent) { isHovering = false }
+
+    override func mouseUp(with event: NSEvent) {
+        guard bounds.contains(convert(event.locationInWindow, from: nil)) else { return }
+        enclosingMenuItem?.menu?.cancelTracking()
+        let handler = onClick
+        DispatchQueue.main.async { handler() }
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateBackground()
+    }
+
+    override func accessibilityPerformPress() -> Bool {
+        onClick()
+        return true
+    }
+
+    private func updateBackground() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            block.layer?.backgroundColor = NSColor.controlAccentColor
+                .withAlphaComponent(isHovering ? 0.20 : 0.12).cgColor
+        }
+    }
 }
 
 /// Native management content. The model describes visible content; this view owns

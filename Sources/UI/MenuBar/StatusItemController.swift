@@ -2206,6 +2206,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let switchProvider: (String) -> Void
         let openProviderWebsite: () -> Void
         let openStatusLink: (URL) -> Void
+        /// Opens the Mod explanation/manage panel from the menu prompt.
+        let showModOnboarding: () -> Void
         let iconChanged: (NSImage?) -> Void
         let frameImageChanged: (NSImage?) -> Void
         let animationStateChanged: (Bool) -> Void
@@ -2237,7 +2239,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             animationFallbackChanged: @escaping (Bool) -> Void = { _ in },
             visibilityChanged: @escaping (StatusItemVisibility) -> Void = { _ in },
             manualRefreshBlockedUntil: @escaping () -> Date? = { nil },
-            manualRefreshNotice: @escaping () -> ClaudeManualRefreshNotice? = { nil }
+            manualRefreshNotice: @escaping () -> ClaudeManualRefreshNotice? = { nil },
+            showModOnboarding: @escaping () -> Void = {}
         ) {
             self.manualRefreshBlockedUntil = manualRefreshBlockedUntil
             self.manualRefreshNotice = manualRefreshNotice
@@ -2249,6 +2252,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             self.switchProvider = switchProvider
             self.openProviderWebsite = openProviderWebsite
             self.openStatusLink = openStatusLink
+            self.showModOnboarding = showModOnboarding
             self.iconChanged = iconChanged
             self.frameImageChanged = frameImageChanged
             self.animationStateChanged = animationStateChanged
@@ -2371,6 +2375,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let lunaReserveHideExhaustedQuota: Bool
         let bankedResetDisplayMode: CodexBankedResetDisplayMode
         let showsAvailableUpdateBadge: Bool
+        /// The realtime-boost prompt row under the quota card.
+        let modRow: ModMenuRow
 
         init(
             choices: [ProviderChoice],
@@ -2389,6 +2395,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             lunaReserveHideExhaustedQuota: Bool = false,
             bankedResetDisplayMode: CodexBankedResetDisplayMode = .defaultValue,
             showsAvailableUpdateBadge: Bool = false,
+            modRow: ModMenuRow = .none,
             aggregatedProviders: [AggregatedProviderDisplay] = [],
             aggregationQuickSwitchBlocked: Bool = false,
             quickSwitchSafety: CCSwitchQuickSwitchSafety? = nil
@@ -2413,6 +2420,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             self.lunaReserveHideExhaustedQuota = lunaReserveHideExhaustedQuota
             self.bankedResetDisplayMode = bankedResetDisplayMode
             self.showsAvailableUpdateBadge = showsAvailableUpdateBadge
+            self.modRow = modRow
         }
 
         static func == (lhs: Self, rhs: Self) -> Bool {
@@ -2438,13 +2446,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 && lhs.lunaReserveHideExhaustedQuota == rhs.lunaReserveHideExhaustedQuota
                 && lhs.bankedResetDisplayMode == rhs.bankedResetDisplayMode
                 && lhs.showsAvailableUpdateBadge == rhs.showsAvailableUpdateBadge
+                && lhs.modRow == rhs.modRow
         }
         func hasSameNativeItems(as other: Self) -> Bool {
             activeClient == other.activeClient
                 && statusLinks == other.statusLinks && showQuickSwitchMenu == other.showQuickSwitchMenu
                 && showOpenChatGPTMenu == other.showOpenChatGPTMenu && showOpenCCSwitchMenu == other.showOpenCCSwitchMenu
                 && showStatusMenu == other.showStatusMenu && showsAvailableUpdateBadge == other.showsAvailableUpdateBadge
-                && language == other.language
+                && language == other.language && modRow == other.modRow
         }
     }
 
@@ -6205,6 +6214,21 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         actions.openStatusLink(url)
     }
 
+    /// The accent-tinted realtime-boost prompt row under the quota card.
+    private func makeModPromptItem() -> NSMenuItem? {
+        guard menuInput.modRow == .prompt else { return nil }
+        let view = ModPromptRowView(localize: modOnboardingLocalize)
+        view.onClick = { [weak self] in self?.openModOnboarding() }
+        let item = NSMenuItem()
+        item.view = view
+        return item
+    }
+
+    private func openModOnboarding() {
+        // The menu is closing; open the window once it is gone.
+        DispatchQueue.main.async { [weak self] in self?.actions.showModOnboarding() }
+    }
+
     private func makeOpenDashboardMenuItem() -> NSMenuItem {
         let item = NSMenuItem(
             title: tr(.keyStatusItemControllerOpenMainWindow),
@@ -6276,6 +6300,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             item.view = viewport
             menu.addItem(item)
         }
+        // The realtime-boost prompt sits right under the quota card, above Quick Switch.
+        if let prompt = makeModPromptItem() { menu.addItem(prompt) }
         menu.addItem(.separator())
         if menuInput.showQuickSwitchMenu {
             menu.addItem(makeQuickSwitchMenuItem())

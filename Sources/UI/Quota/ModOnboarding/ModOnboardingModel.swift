@@ -40,6 +40,26 @@ protocol ModHeadlessSignalProviding {
     var isSatisfied: Bool { get }
 }
 
+/// What the status menu shows for the realtime boost.
+enum ModMenuRow: Equatable {
+    case none
+    /// The accent-tinted prompt under the quota card; opens the explanation window.
+    case prompt
+
+    /// The prompt belongs to the official Claude provider and only while the Mod is
+    /// confirmed not installed. An installed-but-waiting Mod is not an install prompt,
+    /// and a dismissed prompt stays hidden for every state.
+    static func resolve(
+        isOfficialDirect: Bool,
+        status: ModSyncStatus,
+        promptDismissed: Bool
+    ) -> ModMenuRow {
+        guard isOfficialDirect, !promptDismissed else { return .none }
+        guard case .notInstalled = status else { return .none }
+        return .prompt
+    }
+}
+
 struct ModPromptInputs: Equatable {
     /// Quota is read straight from the official endpoint (not a third-party relay).
     var isOfficialDirect: Bool

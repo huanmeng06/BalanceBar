@@ -763,6 +763,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         modSyncCoordinator.onStatusChange = { [weak self] _ in
             DispatchQueue.main.async { [weak self] in
                 self?.dashboardComposition.refreshModSync()
+                self?.refreshStatusItemMenuInput()
             }
         }
         modSyncCoordinator.onPresentationChange = { [weak self] in
@@ -1005,6 +1006,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 manualRefreshNotice: { [weak self] in
                     guard let self, self.activeClient == .claude, self.currentProviderIsOfficialCache else { return nil }
                     return self.claudeQuota.manualRefreshNotice()
+                },
+                showModOnboarding: { [weak self] in
+                    self?.showModOnboardingFromMenu()
                 }
             ),
             codexAnimationBackend: MenuBarCodexAnimationBackend(
@@ -1050,6 +1054,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 && preferences.menuLunaReserveHideExhaustedQuota,
             bankedResetDisplayMode: preferences.menuBankedResetDisplayMode,
             showsAvailableUpdateBadge: showsAvailableUpdateBadge,
+            modRow: modSyncCoordinator.menuRow(isOfficialDirect: isOfficialClaude),
             aggregatedProviders: activeClient == .codex ? aggregationDisplays : [],
             aggregationQuickSwitchBlocked: activeClient == .codex && aggregationQuickSwitchBlocked,
             quickSwitchSafety: quickSwitchSafety
@@ -2062,6 +2067,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
 
     private func showDashboardSection(_ section: DashboardSection) {
         dashboardComposition.showSection(section)
+    }
+
+    /// Opens the Mod explanation/manage panel from the status-menu prompt: bring the
+    /// dashboard forward on Advanced, then present the panel with it as the owner.
+    private func showModOnboardingFromMenu() {
+        dashboardComposition.open(initialSection: .advanced)
+        updateDashboard(for: snapshot, refreshDate: refreshDate(for: snapshot))
+        DispatchQueue.main.async { [weak self] in
+            guard let self,
+                  let window = self.dashboardComposition.window,
+                  let content = window.contentView else { return }
+            self.modSyncCoordinator.presentPanel(from: content)
+        }
     }
 
     private func clampDashboardScrollViewBounds() {

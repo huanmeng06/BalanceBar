@@ -625,6 +625,7 @@
     case modUIAccountAdvice = "mod.ui.account_advice"
     case modUICycleAdvice = "mod.ui.cycle_advice"
     case modPromptRow = "mod.prompt.row"
+    case modPromptWhy = "mod.prompt.why"
     case modPanelTitle = "mod.panel.title"
     case modPanelPoint1 = "mod.panel.point1"
     case modPanelPoint2 = "mod.panel.point2"
