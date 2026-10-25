@@ -2069,17 +2069,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         dashboardComposition.showSection(section)
     }
 
-    /// Opens the Mod explanation/manage panel from the status-menu prompt: bring the
-    /// dashboard forward on Advanced, then present the panel with it as the owner.
+    /// Opens the Mod explanation window on its own from the status-menu prompt. The
+    /// dashboard is intentionally not opened or raised; only the small panel appears.
     private func showModOnboardingFromMenu() {
-        dashboardComposition.open(initialSection: .advanced)
-        updateDashboard(for: snapshot, refreshDate: refreshDate(for: snapshot))
-        DispatchQueue.main.async { [weak self] in
-            guard let self,
-                  let window = self.dashboardComposition.window,
-                  let content = window.contentView else { return }
-            self.modSyncCoordinator.presentPanel(from: content)
-        }
+        modSyncCoordinator.presentPanelStandalone()
     }
 
     private func clampDashboardScrollViewBounds() {

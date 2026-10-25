@@ -121,6 +121,13 @@ final class ModSyncCoordinator {
         startDetectionIfNeeded()
     }
 
+    /// Open the explanation panel on its own (status-menu prompt). Deliberately does not
+    /// touch the dashboard: the reminder must show the small window only.
+    func presentPanelStandalone() {
+        managementWindow.show()
+        startDetectionIfNeeded()
+    }
+
     /// Builds the management panel for presentation: resets finished operation pages to
     /// the management intro (running operations keep their progress) and registers the
     /// panel so later status changes refresh it live.

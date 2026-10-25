@@ -876,8 +876,9 @@ private final class ModManagementPanel: NSPanel {
     override func cancelOperation(_ sender: Any?) { managementView?.perform(.close) }
 }
 
-/// One reusable child window, owned by the settings window. No app activation or
-/// floating level; closing either window never cancels the shared background task.
+/// One reusable window. Normally a child of the settings window (no app activation or
+/// floating level); the status-menu prompt shows it standalone so the dashboard never
+/// rises with it. Closing never cancels the shared background task.
 final class ModOnboardingWindowController: NSObject, NSWindowDelegate {
     private let makeView: () -> ModOnboardingPanelView
     private(set) var panelView: ModOnboardingPanelView?
@@ -893,7 +894,7 @@ final class ModOnboardingWindowController: NSObject, NSWindowDelegate {
     }
 
     @discardableResult
-    func prepare(owner: NSWindow) -> NSPanel {
+    func prepare(owner: NSWindow?) -> NSPanel {
         close()
         self.owner = owner
         let panel = window as? ModManagementPanel ?? ModManagementPanel(
@@ -907,8 +908,17 @@ final class ModOnboardingWindowController: NSObject, NSWindowDelegate {
         panel.standardWindowButton(.zoomButton)?.isHidden = true
         panel.isReleasedWhenClosed = false
         panel.hidesOnDeactivate = false
-        panel.isFloatingPanel = false
-        panel.level = .normal
+        if let owner {
+            panel.styleMask.remove(.nonactivatingPanel)
+            panel.isFloatingPanel = false
+            panel.level = .normal
+        } else {
+            // Standalone prompt: take the keyboard and stay above other apps without
+            // activating BalanceBar, so the dashboard never rises with the panel.
+            panel.styleMask.insert(.nonactivatingPanel)
+            panel.isFloatingPanel = true
+            panel.level = .floating
+        }
         panel.minSize = NSSize(width: ModOnboardingPanelView.minimumWidth, height: 220)
         panel.delegate = self
         window = panel
@@ -929,11 +939,31 @@ final class ModOnboardingWindowController: NSObject, NSWindowDelegate {
         view.onContentSizeChange = { [weak self] size in self?.fitInitialContent(size) }
         fitInitialContent(view.frame.size)
         panel.defaultButtonCell = view.defaultButton?.cell as? NSButtonCell
-        ownerCloseObserver = NotificationCenter.default.addObserver(
-            forName: NSWindow.willCloseNotification, object: owner, queue: .main
-        ) { [weak self] _ in self?.close() }
+        if let owner {
+            ownerCloseObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.willCloseNotification, object: owner, queue: .main
+            ) { [weak self] _ in self?.close() }
+        }
         ApplicationWindowPresentation.prepare(panel)
         return panel
+    }
+
+    /// Opens the panel on its own, with no dashboard owner. The status-menu prompt uses
+    /// this so clicking the reminder never raises the main window.
+    func show() {
+        if window?.isVisible == true, owner == nil {
+            window?.makeKeyAndOrderFront(nil)
+            window?.orderFrontRegardless()
+            return
+        }
+        let panel = prepare(owner: nil)
+        panel.center()
+        if AutomatedTestHost.isRunning {
+            ApplicationWindowPresentation.presentInBackground(panel)
+        } else {
+            panel.makeKeyAndOrderFront(nil)
+            panel.orderFrontRegardless()
+        }
     }
 
     func show(owner: NSWindow) {

@@ -917,6 +917,22 @@ final class ModManagementUITests: XCTestCase {
             preference: MemoryPreference(), copyToPasteboard: copied)
     }
 
+    func testStandalonePromptWindowHasNoOwnerAndFloats() {
+        let c = controller()
+        let windows = ModOnboardingWindowController { ModOnboardingPanelView(controller: c) }
+        defer { windows.close() }
+        let panel = windows.prepare(owner: nil)
+        XCTAssertNil(panel.parent)
+        XCTAssertTrue(panel.styleMask.contains(.nonactivatingPanel))
+        XCTAssertTrue(panel.isFloatingPanel)
+        // The test host parks windows at a background level; the production level is
+        // asserted only outside it.
+        if !AutomatedTestHost.isRunning { XCTAssertEqual(panel.level, .floating) }
+        windows.show()
+        XCTAssertNil(panel.parent, "the menu prompt must never attach to the dashboard")
+        XCTAssertTrue(panel.isVisible)
+    }
+
     private func context(_ status: ModSyncStatus, language: AppLanguage = .english) -> ModPanelSyncContext {
         .init(status: status, statusText: RealtimeBoostPresentation.make(status: status, localize: {
             realtimeBoostLocalize($0, language: language)
