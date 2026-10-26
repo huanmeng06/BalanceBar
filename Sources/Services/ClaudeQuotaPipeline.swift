@@ -324,7 +324,10 @@ final class ClaudeQuotaPipeline {
         }
         if let readyAt = status.manualTokensReadyAt, readyAt > status.at { return .outOfTokens(until: readyAt) }
         if pending != nil { return .awaitingResetConfirmation }
-        if realtimeTracker?.lastTrustedRealtimeObservationAt != nil { return .localFresh }
+        // A manual refresh is only skipped for local data inside the manual window (the scheduler's
+        // free-path rule), however long the user's validity keeps the source "live".
+        if let observedAt = realtimeTracker?.lastTrustedRealtimeObservationAt,
+           now().timeIntervalSince(observedAt) <= manualRefreshWindow { return .localFresh }
         return nil
     }
 

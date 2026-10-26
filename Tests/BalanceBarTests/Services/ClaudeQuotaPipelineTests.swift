@@ -483,6 +483,20 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         XCTAssertEqual(pipeline.manualRefreshNotice(), .localFresh)
     }
 
+    func testManualRefreshNoticeIgnoresLocalDataOlderThanTheManualWindowEvenIfStillValid() {
+        let tracker = ClaudeRealtimeTracker(
+            validity: { ClaudeSourceValidity(oauth: 600, statusLine: 600, mod: 600) },
+            now: { [clock] in clock!.now })
+        let pipeline = makePipeline(realtimeTracker: tracker)
+        tracker.recordTrustedObservation(window: .fiveHour, observedAt: Self.start, epoch: .initial)
+        tracker.recordTrustedObservation(window: .sevenDay, observedAt: Self.start, epoch: .initial)
+        clock.advance(by: 30)
+        XCTAssertEqual(pipeline.manualRefreshNotice(), .localFresh, "inside the manual window the refresh is skipped")
+        clock.advance(by: 90)
+        XCTAssertNotNil(tracker.lastTrustedRealtimeObservationAt, "the data still counts as live for the status")
+        XCTAssertNil(pipeline.manualRefreshNotice(), "but a manual refresh would query the official API, so no skip notice")
+    }
+
     func testSameAccountCredentialRefreshKeepsEpochAndScope() throws {
         let pipeline = makePipeline()
         pipeline.requestFetch(reason: .initial)
