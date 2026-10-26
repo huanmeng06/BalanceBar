@@ -1045,19 +1045,24 @@ final class DashboardPageSearchTests: XCTestCase {
     }
 
     func testNativeSearchResultsRemainAvailableFromEachStartingSection() throws {
+        // One AppDelegate per test; each probe still gets a fresh window.
+        let appDelegate = AppDelegate(
+            repository: CCSwitchRepository(
+                databaseURL: URL(fileURLWithPath: "/nonexistent/issue-457-global-search.db")
+            )
+        )
+        let composition = appDelegate.dashboardCompositionForTesting
+        defer { composition.teardownForTesting() }
+        let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .general))
+        window.setContentSize(NSSize(width: 1000, height: 700))
         func rows(
             startingAt section: DashboardSection,
             query: String
         ) throws -> [String] {
-            let appDelegate = AppDelegate(
-                repository: CCSwitchRepository(
-                    databaseURL: URL(fileURLWithPath: "/nonexistent/issue-457-global-search.db")
-                )
-            )
-            let composition = appDelegate.dashboardCompositionForTesting
-            defer { composition.teardownForTesting() }
-            let window = try XCTUnwrap(composition.makeWindowForTesting(showing: section))
-            window.setContentSize(NSSize(width: 1000, height: 700))
+            // Reuse one window: clear any query, return to the starting page, then search.
+            composition.applySearchQueryForTesting("")
+            composition.showSection(section)
+            window.layoutIfNeeded()
             composition.applySearchQueryForTesting(query)
             window.layoutIfNeeded()
             return visibleSearchableRowTitles(in: composition.currentHostedPageContentForTesting())
@@ -1261,20 +1266,24 @@ final class DashboardPageSearchTests: XCTestCase {
             .write(to: directory.appendingPathComponent(".cc-switch/live-state.json"))
         let repository = CCSwitchRepository(databaseURL: databaseURL)
 
+        let appDelegate = AppDelegate(repository: repository)
+        let metadata = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            appDelegate.providerChoicesForTesting.contains { $0.name == "MyPrivateProviderXYZ" }
+                && appDelegate.connectionSummariesForTesting.codex.providerNames
+                    .contains("MyPrivateProviderXYZ")
+        }, object: nil)
+        // Provider metadata is published by ProviderMetadataReader's background
+        // read; the wait ends at publication, the timeout only bounds failure.
+        wait(for: [metadata], timeout: 10)
+        let composition = appDelegate.dashboardCompositionForTesting
+        defer { composition.teardownForTesting() }
+        let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .general))
+        window.setContentSize(NSSize(width: 1000, height: 700))
         func rows(startingAt section: DashboardSection, query: String) throws -> [String] {
-            let appDelegate = AppDelegate(repository: repository)
-            let metadata = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-                appDelegate.providerChoicesForTesting.contains { $0.name == "MyPrivateProviderXYZ" }
-                    && appDelegate.connectionSummariesForTesting.codex.providerNames
-                        .contains("MyPrivateProviderXYZ")
-            }, object: nil)
-            // Provider metadata is published by ProviderMetadataReader's background
-            // read; the wait ends at publication, the timeout only bounds failure.
-            wait(for: [metadata], timeout: 10)
-            let composition = appDelegate.dashboardCompositionForTesting
-            defer { composition.teardownForTesting() }
-            let window = try XCTUnwrap(composition.makeWindowForTesting(showing: section))
-            window.setContentSize(NSSize(width: 1000, height: 700))
+            // Reuse one window: clear any query, return to the starting page, then search.
+            composition.applySearchQueryForTesting("")
+            composition.showSection(section)
+            window.layoutIfNeeded()
             composition.applySearchQueryForTesting(query)
             window.layoutIfNeeded()
             return visibleSearchableRowTitles(in: composition.currentHostedPageContentForTesting())
@@ -1355,12 +1364,16 @@ final class DashboardPageSearchTests: XCTestCase {
             )
         ]
 
+        let appDelegate = AppDelegate(repository: repository)
+        let composition = appDelegate.dashboardCompositionForTesting
+        defer { composition.teardownForTesting() }
+        let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .general))
+        window.setContentSize(NSSize(width: 1000, height: 700))
         func rows(startingAt section: DashboardSection, query: String) throws -> [String] {
-            let appDelegate = AppDelegate(repository: repository)
-            let composition = appDelegate.dashboardCompositionForTesting
-            defer { composition.teardownForTesting() }
-            let window = try XCTUnwrap(composition.makeWindowForTesting(showing: section))
-            window.setContentSize(NSSize(width: 1000, height: 700))
+            // Reuse one window: clear any query, return to the starting page, then search.
+            composition.applySearchQueryForTesting("")
+            composition.showSection(section)
+            window.layoutIfNeeded()
             composition.applySearchQueryForTesting(query)
             window.layoutIfNeeded()
             return visibleSearchableRowTitles(in: composition.currentHostedPageContentForTesting())
