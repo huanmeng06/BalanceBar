@@ -505,7 +505,13 @@ final class ClaudeSourceTimelineView: NSView {
             line.stroke()
         }
         for band in layout.bands { drawBand(band) }
-        for bar in layout.bars { drawBar(bar, live: bar.rect.maxX >= layout.nowX - 0.5) }
+        // Only the bar of the source the card is using right now gets the stronger fill; other
+        // sources that are still valid stay light. Before a status is known, every valid bar counts.
+        let active = Self.activeSource(content.status)
+        for bar in layout.bars {
+            let valid = bar.rect.maxX >= layout.nowX - 0.5
+            drawBar(bar, live: valid && (content.status == nil || bar.source == active))
+        }
 
         // The "now" line in the accent color, capped with a dot.
         NSColor.controlAccentColor.setFill()
@@ -524,14 +530,23 @@ final class ClaudeSourceTimelineView: NSView {
         }
     }
 
+    /// The source the status slot says is in use, if any.
+    static func activeSource(_ status: StatusSlotState?) -> StatusSlotLiveSource? {
+        switch status {
+        case let .realtime(source, _): return source
+        case let .official(_, source): return source ?? .oauthAPI
+        default: return nil
+        }
+    }
+
     /// A light tint inside a solid outline of the same hue, so each refresh mark inside the
-    /// validity period stays visible instead of disappearing into a solid fill. The bar that is
-    /// still valid now is filled a little stronger.
+    /// validity period stays visible instead of disappearing into a solid fill. The bar of the
+    /// source in use right now is filled clearly stronger.
     private func drawBar(_ bar: ClaudeSourceTimelineLayout.Bar, live: Bool) {
         let color = Self.color(for: bar.source)
         let radius = min(ClaudeSourceTimelineLayout.cornerRadius, bar.rect.width / 2)
         let outline = NSBezierPath(roundedRect: bar.rect.insetBy(dx: 0.75, dy: 0.75), xRadius: radius, yRadius: radius)
-        color.withAlphaComponent(live ? 0.30 : 0.18).setFill()
+        color.withAlphaComponent(live ? 0.42 : 0.16).setFill()
         outline.fill()
         color.withAlphaComponent(0.7).setFill()
         for x in bar.dividers {

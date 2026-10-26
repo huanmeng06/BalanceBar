@@ -31,6 +31,13 @@ final class ClaudeSourceTimelineViewTests: XCTestCase {
         XCTAssertEqual(layout.x(for: now.addingTimeInterval(-1_800)), 360)
     }
 
+    func testOnlyTheSourceInUseIsHighlighted() {
+        XCTAssertEqual(ClaudeSourceTimelineView.activeSource(.realtime(.mod, at: nil)), .mod)
+        XCTAssertEqual(ClaudeSourceTimelineView.activeSource(.official(at: nil)), .oauthAPI)
+        XCTAssertNil(ClaudeSourceTimelineView.activeSource(.refreshing))
+        XCTAssertNil(ClaudeSourceTimelineView.activeSource(nil))
+    }
+
     func testTouchingReadingsMergeIntoOneBarAndAreClippedAtNow() {
         let layout = layout(readings: [
             reading(.oauthAPI, -1_800, -1_200),
