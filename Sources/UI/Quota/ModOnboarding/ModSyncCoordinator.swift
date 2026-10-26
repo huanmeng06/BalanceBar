@@ -101,8 +101,17 @@ final class ModSyncCoordinator {
         detector.detect(claudeProcessRunning: processRunning) { [weak self] environment in
             guard let self else { return }
             self.detectionInFlight = false
+            let wasInstalled = self.environment?.installation != nil
             self.environment = environment
-            self.recomputeStatus()
+            // An uninstall done outside BalanceBar (CLI / plugin manager) must invalidate
+            // the old plugin's evidence just like the in-app path; a missing CLI or a failed
+            // plugin-list check is not proof of removal.
+            if wasInstalled, environment.claudeFound, environment.installation == nil,
+               environment.installationCheck == .ok {
+                self.resetSnapshotEvidence()
+            } else {
+                self.recomputeStatus()
+            }
         }
     }
 
