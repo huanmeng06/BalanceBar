@@ -596,13 +596,13 @@
 "status.item.controller.refresh_now_failure_backoff" = "請求失敗，%1$@ 秒後自動重試";
 "status.item.controller.refresh_now_out_of_tokens" = "刷新過於頻繁，%1$@ 秒後可重試";
 "claude.status_line.enabled" = "Claude Code 原生同步";
-"claude.status_line.description" = "在終端機裡用 Claude Code 時，每次回答結束後自動推送，不用裝外掛";
+"claude.status_line.description" = "每次回答結束後由 Claude Code 自動推送，不用裝外掛";
 "claude.status_line.calibration" = "Claude 官方額度校準";
 "claude.source_tag.all_clients" = "全端通用";
 "claude.source_tag.terminal" = "終端機 CLI";
 "claude.source_tag.desktop" = "桌面版優先";
 "claude.refresh.every_minutes" = "每 %1$@ 分鐘";
-"claude.status_line.calibration_detail" = "網頁、桌面、終端機都能用；定時向官方查詢作為備援，間隔越長越不容易被限流";
+"claude.status_line.calibration_detail" = "定時向官方查詢作為備援；間隔越長越不容易被限流";
 "claude.status_line.disable_confirm_title" = "關閉 Claude Code 原生同步？";
 "claude.status_line.disable_confirm_message" = "關閉後，Claude 額度只會按固定間隔刷新，無法在每次回答結束後即時更新。";
 "claude.status_line.disable_confirm_action" = "關閉";
@@ -730,7 +730,7 @@
 "mod.card.uninstall_failed.title" = "卸載失敗";
 "mod.card.view_error_action" = "點「%1$@」查看詳情";
 "mod.card.row_title" = "BalanceBar Mod 即時增強";
-"mod.card.row_description" = "推薦 Claude 桌面版使用者，終端機也可用；對話中即時推送額度";
+"mod.card.row_description" = "安裝 Mod 後，對話進行中即時推送額度";
 "mod.card.learn_more" = "瞭解更多";
 "mod.ui.view_status" = "查看目前狀態";
 "mod.ui.back_to_intro" = "返回介紹";

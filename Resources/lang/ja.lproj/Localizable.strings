@@ -596,13 +596,13 @@
 "status.item.controller.refresh_now_failure_backoff" = "リクエスト失敗、%1$@秒後に自動再試行します";
 "status.item.controller.refresh_now_out_of_tokens" = "更新が頻繁すぎます。%1$@秒後に再試行できます";
 "claude.status_line.enabled" = "Claude Code ネイティブ同期";
-"claude.status_line.description" = "ターミナルで Claude Code を使う場合向け。回答が終わるたびに自動送信され、プラグインは不要です";
+"claude.status_line.description" = "回答が終わるたびに Claude Code が自動送信します。プラグインは不要です";
 "claude.status_line.calibration" = "Claude 公式クォータの校正";
 "claude.source_tag.all_clients" = "全環境対応";
 "claude.source_tag.terminal" = "ターミナル CLI";
 "claude.source_tag.desktop" = "デスクトップ優先";
 "claude.refresh.every_minutes" = "%1$@ 分ごと";
-"claude.status_line.calibration_detail" = "Web・デスクトップ・ターミナルのどれでも使えます。一定間隔で公式に問い合わせるフォールバックで、間隔を長くするとレート制限を避けられます";
+"claude.status_line.calibration_detail" = "一定間隔で公式に問い合わせるフォールバックです。間隔を長くするとレート制限を避けられます";
 "claude.status_line.disable_confirm_title" = "Claude Code ネイティブ同期をオフにしますか？";
 "claude.status_line.disable_confirm_message" = "オフにすると、Claude の枠は固定間隔でのみ更新され、回答のたびにすぐには反映されません。";
 "claude.status_line.disable_confirm_action" = "オフにする";
@@ -730,7 +730,7 @@
 "mod.card.uninstall_failed.title" = "アンインストール失敗";
 "mod.card.view_error_action" = "「%1$@」をクリックして詳細を表示";
 "mod.card.row_title" = "BalanceBar Mod リアルタイム強化";
-"mod.card.row_description" = "Claude デスクトップ版におすすめ、ターミナルでも使えます。会話中に使用量をリアルタイムで送信します";
+"mod.card.row_description" = "Mod を入れると、会話中に使用量をリアルタイムで送信します";
 "mod.card.learn_more" = "詳しく見る";
 "mod.ui.view_status" = "現在の状態を見る";
 "mod.ui.back_to_intro" = "紹介に戻る";

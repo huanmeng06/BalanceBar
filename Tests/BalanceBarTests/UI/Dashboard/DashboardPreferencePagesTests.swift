@@ -2115,7 +2115,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(tags, [tr(.keyClaudeSourceTagAllClients), tr(.keyClaudeSourceTagTerminal), tr(.keyClaudeSourceTagDesktop)],
                        "each Claude source names who it is for next to the Claude mark")
         XCTAssertTrue(modRow.detailLabel.stringValue.hasPrefix(tr(.modCardRowDescription) + "\n● "),
-                      "the Mod row names its audience above the status line")
+                      "the Mod row explains itself above the status line")
         let refreshNowButton = try XCTUnwrap(descendants(of: page).compactMap { $0 as? NSButton }
             .first { $0.title == tr(.keyDashboardGeneralAndRefreshPagesRefreshNow) })
         let refreshNowRow = try XCTUnwrap(SettingsRowView.enclosing(refreshNowButton))

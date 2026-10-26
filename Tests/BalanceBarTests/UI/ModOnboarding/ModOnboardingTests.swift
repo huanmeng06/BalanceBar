@@ -1487,9 +1487,9 @@ final class RealtimeBoostAdvancedCardTests: XCTestCase {
         card.update(status: .silent, operation: .intro(dismissChecked: false))
         XCTAssertEqual(card.statusRow.titleLabel.stringValue, "BalanceBar Mod realtime boost")
         XCTAssertEqual(card.statusRow.detailLabel.stringValue,
-                       "Recommended for the Claude desktop app, also works in the terminal; pushes quota in real time during chats"
+                       "With the Mod installed, quota is pushed in real time during chats"
                        + "\n● No recent data · No data in the last 10 minutes · Start a new session, or run /reload-plugins",
-                       "line one names the audience, line two carries the status")
+                       "line one explains the Mod, line two carries the status")
     }
 
     func testInstallAndDescriptionCallbacksKeepTheirOriginalSender() {

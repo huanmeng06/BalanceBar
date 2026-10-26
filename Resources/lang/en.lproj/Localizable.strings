@@ -596,13 +596,13 @@
 "status.item.controller.refresh_now_failure_backoff" = "Last request failed; retrying automatically in %1$@ s";
 "status.item.controller.refresh_now_out_of_tokens" = "Refreshing too often, retry in %1$@ s";
 "claude.status_line.enabled" = "Claude Code native sync";
-"claude.status_line.description" = "For Claude Code in the terminal: pushed after each reply, no plugin needed";
+"claude.status_line.description" = "Pushed by Claude Code after each reply; no plugin needed";
 "claude.status_line.calibration" = "Claude official quota calibration";
 "claude.source_tag.all_clients" = "All clients";
 "claude.source_tag.terminal" = "Terminal CLI";
 "claude.source_tag.desktop" = "Desktop first";
 "claude.refresh.every_minutes" = "Every %1$@ min";
-"claude.status_line.calibration_detail" = "Works for web, desktop and terminal; polls the official source on a timer as a fallback, and longer intervals avoid rate limits";
+"claude.status_line.calibration_detail" = "Polls the official source on a timer as a fallback; longer intervals avoid rate limits";
 "claude.status_line.disable_confirm_title" = "Turn off Claude Code native sync?";
 "claude.status_line.disable_confirm_message" = "Claude quota will only refresh at the fixed interval and won't update right after each reply.";
 "claude.status_line.disable_confirm_action" = "Turn Off";
@@ -730,7 +730,7 @@
 "mod.card.uninstall_failed.title" = "Uninstall failed";
 "mod.card.view_error_action" = "Click “%1$@” for details";
 "mod.card.row_title" = "BalanceBar Mod realtime boost";
-"mod.card.row_description" = "Recommended for the Claude desktop app, also works in the terminal; pushes quota in real time during chats";
+"mod.card.row_description" = "With the Mod installed, quota is pushed in real time during chats";
 "mod.card.learn_more" = "Learn more";
 "mod.ui.view_status" = "View current status";
 "mod.ui.back_to_intro" = "Back to overview";

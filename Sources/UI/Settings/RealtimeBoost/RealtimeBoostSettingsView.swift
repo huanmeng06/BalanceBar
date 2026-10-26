@@ -109,7 +109,7 @@ enum RealtimeBoostText: String, CaseIterable {
         case .cardUninstallFailedTitle: return "卸载失败"
         case .cardViewErrorAction: return "点「%@」了解详情"
         case .cardRowTitle: return "BalanceBar Mod 实时增强"
-        case .cardRowDescription: return "推荐 Claude 桌面版用户，终端也可用；对话中实时推送额度"
+        case .cardRowDescription: return "安装 Mod 后，对话进行中实时推送额度"
         case .cardLearnMore: return "了解更多"
 
         case .statusNotInstalled: return "未开启"
@@ -406,7 +406,7 @@ final class RealtimeBoostSettingsRows {
     /// The status dot leads the status line, so it sits next to the status word it colours.
     static let dotPrefix = "● "
 
-    /// Line one says who the Mod is for; line two is the live status, which nearly always has content.
+    /// Line one says what the Mod does; line two is the live status, which nearly always has content.
     static func subtitle(description: String, status: String) -> String {
         description + "\n" + dotPrefix + status
     }
