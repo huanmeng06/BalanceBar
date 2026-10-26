@@ -568,13 +568,13 @@ final class DashboardGeneralPage {
                 SettingsRowView(
                     title: tr(.keyClaudeStatusLineCalibration),
                     detail: tr(.keyClaudeStatusLineCalibrationDetail),
-                    titleAccessory: DashboardRefreshPage.agentIconStrip(["Claude"]),
+                    titleAccessory: DashboardRefreshPage.agentIconStrip(["Claude"], tag: tr(.keyClaudeSourceTagAllClients)),
                     accessoryView: refreshControls(claudeCalibrationPopup)
                 ),
                 SettingsRowView(
                     title: tr(.keyClaudeStatusLineEnabled),
                     detail: tr(.keyClaudeStatusLineDescription),
-                    titleAccessory: DashboardRefreshPage.agentIconStrip(["Claude"]),
+                    titleAccessory: DashboardRefreshPage.agentIconStrip(["Claude"], tag: tr(.keyClaudeSourceTagTerminal)),
                     accessoryView: claudeStatusLineSwitch
                 ),
                 modRows.statusRow
@@ -891,6 +891,10 @@ enum DashboardRefreshPage {
     /// Reuses the menu bar's bundled agent SVGs as small marks after a row title.
     /// A `symbol:` prefix selects an SF Symbol instead of a bundled SVG.
     /// Claude keeps its brand orange; the monochrome marks follow the secondary label color.
+    static func agentIconStrip(_ resourceNames: [String], tag: String) -> NSView {
+        AgentIconTagAccessoryView(iconStrip: agentIconStrip(resourceNames), tag: tag)
+    }
+
     static func agentIconStrip(_ resourceNames: [String], pointSize: CGFloat = 14) -> NSView {
         let iconSize = NSSize(width: pointSize, height: pointSize)
         let icons: [AgentIconStripView.Icon] = resourceNames.compactMap { name in
@@ -1255,6 +1259,82 @@ final class AgentMarkAttachmentCell: NSTextAttachmentCell {
 
 /// Fixed-size row of small agent marks. Like the update badge it reports an exact intrinsic
 /// size, so the settings row measures its title and detail text as if it were a plain label.
+/// Title accessory for the Claude quota sources: the agent mark, then a small tag naming who the source is for.
+final class AgentIconTagAccessoryView: NSView {
+    static let spacing: CGFloat = 6
+    let iconStrip: NSView
+    let tagView: SourceAudienceTagView
+
+    init(iconStrip: NSView, tag: String) {
+        self.iconStrip = iconStrip
+        tagView = SourceAudienceTagView(text: tag)
+        super.init(frame: .zero)
+        addSubview(iconStrip)
+        addSubview(tagView)
+        setContentHuggingPriority(.required, for: .horizontal)
+        setContentHuggingPriority(.required, for: .vertical)
+        setContentCompressionResistancePriority(.required, for: .horizontal)
+        setContentCompressionResistancePriority(.required, for: .vertical)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
+
+    override var intrinsicContentSize: NSSize {
+        let icon = iconStrip.intrinsicContentSize
+        let tag = tagView.intrinsicContentSize
+        return NSSize(width: icon.width + Self.spacing + tag.width, height: max(icon.height, tag.height))
+    }
+
+    override func layout() {
+        super.layout()
+        let icon = iconStrip.intrinsicContentSize
+        let tag = tagView.intrinsicContentSize
+        iconStrip.frame = NSRect(x: 0, y: (bounds.height - icon.height) / 2, width: icon.width, height: icon.height)
+        tagView.frame = NSRect(x: icon.width + Self.spacing, y: (bounds.height - tag.height) / 2,
+                               width: tag.width, height: tag.height)
+    }
+}
+
+/// A rounded capsule with short secondary text, e.g. "全端通用".
+final class SourceAudienceTagView: NSView {
+    static let horizontalPadding: CGFloat = 6
+    static let height: CGFloat = 16
+    let text: String
+    private var attributedText: NSAttributedString {
+        NSAttributedString(string: text, attributes: [
+            .font: NSFont.systemFont(ofSize: 10.5, weight: .medium),
+            .foregroundColor: NSColor.secondaryLabelColor,
+        ])
+    }
+
+    init(text: String) {
+        self.text = text
+        super.init(frame: .zero)
+        setAccessibilityElement(true)
+        setAccessibilityRole(.staticText)
+        setAccessibilityLabel(text)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
+
+    override var intrinsicContentSize: NSSize {
+        NSSize(width: ceil(attributedText.size().width) + Self.horizontalPadding * 2, height: Self.height)
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        NSColor.quaternaryLabelColor.setFill()
+        NSBezierPath(roundedRect: bounds, xRadius: bounds.height / 2, yRadius: bounds.height / 2).fill()
+        let label = attributedText
+        let size = label.size()
+        label.draw(at: NSPoint(x: (bounds.width - size.width) / 2, y: (bounds.height - size.height) / 2))
+    }
+}
+
 final class AgentIconStripView: NSView {
     struct Icon {
         let image: NSImage

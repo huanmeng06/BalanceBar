@@ -598,6 +598,9 @@
 "claude.status_line.enabled" = "Нативная синхронизация Claude Code";
 "claude.status_line.description" = "Для Claude Code в терминале: данные отправляются после каждого ответа, плагин не нужен";
 "claude.status_line.calibration" = "Сверка официальной квоты Claude";
+"claude.source_tag.all_clients" = "Все клиенты";
+"claude.source_tag.terminal" = "Терминал CLI";
+"claude.source_tag.desktop" = "Сначала десктоп";
 "claude.refresh.every_minutes" = "Каждые %1$@ мин";
 "claude.status_line.calibration_detail" = "Подходит для веба, десктопа и терминала; периодически запрашивает официальный источник как запасной вариант, больший интервал помогает избежать ограничений";
 "claude.status_line.disable_confirm_title" = "Отключить нативную синхронизацию Claude Code?";

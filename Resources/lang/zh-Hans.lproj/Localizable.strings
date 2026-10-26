@@ -598,6 +598,9 @@
 "claude.status_line.enabled" = "Claude Code 原生同步";
 "claude.status_line.description" = "在终端里用 Claude Code 时，每次回答结束后自动推送，不用装插件";
 "claude.status_line.calibration" = "Claude 官方额度校准";
+"claude.source_tag.all_clients" = "全端通用";
+"claude.source_tag.terminal" = "终端 CLI";
+"claude.source_tag.desktop" = "桌面端优先";
 "claude.refresh.every_minutes" = "每 %1$@ 分钟";
 "claude.status_line.calibration_detail" = "网页、桌面、终端都能用；定时向官方查询作为兜底，间隔越长越不容易被限流";
 "claude.status_line.disable_confirm_title" = "关闭 Claude Code 原生同步？";

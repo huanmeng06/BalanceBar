@@ -598,6 +598,9 @@
 "claude.status_line.enabled" = "Sincronización nativa de Claude Code";
 "claude.status_line.description" = "Para Claude Code en la terminal: se envía tras cada respuesta, sin plugin";
 "claude.status_line.calibration" = "Calibración de la cuota oficial de Claude";
+"claude.source_tag.all_clients" = "Todos los clientes";
+"claude.source_tag.terminal" = "Terminal CLI";
+"claude.source_tag.desktop" = "Prioridad escritorio";
 "claude.refresh.every_minutes" = "Cada %1$@ min";
 "claude.status_line.calibration_detail" = "Funciona en web, escritorio y terminal; consulta la fuente oficial periódicamente como respaldo, e intervalos largos evitan límites de uso";
 "claude.status_line.disable_confirm_title" = "¿Desactivar la sincronización nativa de Claude Code?";

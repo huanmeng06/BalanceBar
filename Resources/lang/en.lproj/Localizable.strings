@@ -598,6 +598,9 @@
 "claude.status_line.enabled" = "Claude Code native sync";
 "claude.status_line.description" = "For Claude Code in the terminal: pushed after each reply, no plugin needed";
 "claude.status_line.calibration" = "Claude official quota calibration";
+"claude.source_tag.all_clients" = "All clients";
+"claude.source_tag.terminal" = "Terminal CLI";
+"claude.source_tag.desktop" = "Desktop first";
 "claude.refresh.every_minutes" = "Every %1$@ min";
 "claude.status_line.calibration_detail" = "Works for web, desktop and terminal; polls the official source on a timer as a fallback, and longer intervals avoid rate limits";
 "claude.status_line.disable_confirm_title" = "Turn off Claude Code native sync?";

@@ -598,6 +598,9 @@
 "claude.status_line.enabled" = "Claude Code 네이티브 동기화";
 "claude.status_line.description" = "터미널에서 Claude Code를 쓸 때: 답변이 끝날 때마다 자동 전송, 플러그인 불필요";
 "claude.status_line.calibration" = "Claude 공식 할당량 보정";
+"claude.source_tag.all_clients" = "모든 환경";
+"claude.source_tag.terminal" = "터미널 CLI";
+"claude.source_tag.desktop" = "데스크톱 우선";
 "claude.refresh.every_minutes" = "%1$@분마다";
 "claude.status_line.calibration_detail" = "웹, 데스크톱, 터미널 모두에서 사용 가능; 일정 간격으로 공식 소스를 조회하는 대체 수단이며, 간격이 길수록 호출 제한을 피하기 쉽습니다";
 "claude.status_line.disable_confirm_title" = "Claude Code 네이티브 동기화를 끌까요?";

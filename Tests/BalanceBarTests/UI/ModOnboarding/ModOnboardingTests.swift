@@ -1558,7 +1558,9 @@ final class RealtimeBoostAdvancedCardTests: XCTestCase {
     func testModRowTitleHoldsOnlyTheClaudeMarkAndTheStatusDotLeadsTheSubtitle() throws {
         let card = rows(.waitingForData)
         let accessory = try XCTUnwrap(card.statusRow.titleAccessory)
-        XCTAssertTrue(accessory is AgentIconStripView, "the title accessory is the Claude mark only")
+        let tagged = try XCTUnwrap(accessory as? AgentIconTagAccessoryView, "the Claude mark is followed by an audience tag")
+        XCTAssertTrue(tagged.iconStrip is AgentIconStripView)
+        XCTAssertEqual(tagged.tagView.text, tr(.keyClaudeSourceTagDesktop))
         func dotColor(_ status: ModSyncStatus, operation: ModPanelState = .intro(dismissChecked: false)) -> NSColor? {
             card.update(status: status, operation: operation)
             let text = card.statusRow.detailLabel.attributedStringValue

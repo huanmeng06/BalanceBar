@@ -396,7 +396,8 @@ final class RealtimeBoostSettingsRows {
         let initialCopy = Self.cardCopy(status: status, operation: operation, localize: localize, modLocalize: modLocalize)
         statusRow = SettingsRowView(title: localize(.cardRowTitle),
                                     detail: Self.subtitle(description: localize(.cardRowDescription), status: initialCopy.detail),
-                                    titleAccessory: DashboardRefreshPage.agentIconStrip(["Claude"]), accessoryView: actions)
+                                    titleAccessory: DashboardRefreshPage.agentIconStrip(["Claude"], tag: tr(.keyClaudeSourceTagDesktop)),
+                                    accessoryView: actions)
         installButton.target = self; installButton.action = #selector(install(_:))
         descriptionButton.target = self; descriptionButton.action = #selector(showDescription(_:))
         update(status: status, operation: operation)
