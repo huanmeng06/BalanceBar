@@ -587,6 +587,7 @@
 "quota.status.hover.estimated" = "Оценка по данным на %1$@, ожидается официальное подтверждение";
 "quota.status.hover.realtime" = "Данные в реальном времени с этого Mac";
 "quota.status.hover.official" = "Официальные данные, обновлено в %1$@";
+"quota.status.hover.local" = "Данные с этого Mac, обновлено в %1$@";
 "quota.status.hover.external_activity" = "Обнаружена активность на другом клиенте; обновление стало чаще";
 "quota.status.reset_pending" = "Вероятно, сброшено; ожидается подтверждение";
 "quota.status.reset_pending_short" = "Ожидание";

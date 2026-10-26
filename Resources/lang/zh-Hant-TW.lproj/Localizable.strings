@@ -587,6 +587,7 @@
 "quota.status.hover.estimated" = "依據 %1$@ 的資料估算，等待官方確認";
 "quota.status.hover.realtime" = "來自本機即時資料";
 "quota.status.hover.official" = "官方資料，更新於 %1$@";
+"quota.status.hover.local" = "來自本機資料，更新於 %1$@";
 "quota.status.hover.external_activity" = "偵測到其他裝置正在使用，已提高更新頻率";
 "quota.status.reset_pending" = "預計已重置，等待確認";
 "quota.status.reset_pending_short" = "待確認";

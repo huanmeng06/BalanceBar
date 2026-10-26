@@ -148,7 +148,12 @@ final class StatusSlotViewTests: XCTestCase {
         XCTAssertEqual(view.textForTesting, "5 分钟前 · Mod")
         XCTAssertTrue(view.isDotVisibleForTesting, "stale readings carry the orange dot")
         XCTAssertEqual(srgb(view.textColorForTesting), srgb(.secondaryLabelColor))
+        XCTAssertEqual(view.toolTip, "来自本机数据，更新于 13:40:00", "a stale Mod reading is local data, never described as official")
+        view.update(state: .official(at: time, source: .statusLine))
+        XCTAssertEqual(view.toolTip, "来自本机数据，更新于 13:40:00")
+        view.update(state: .official(at: time, source: .oauthAPI))
         XCTAssertEqual(view.toolTip, "官方数据，更新于 13:40:00", "the absolute time moved into the tooltip")
+        view.update(state: .official(at: time, source: .mod))
 
         view.update(state: .error(at: time, source: .oauthAPI))
         XCTAssertEqual(view.textForTesting, "⚠︎ 5 分钟前 · OAuth API")
@@ -321,6 +326,20 @@ final class StatusSlotViewTests: XCTestCase {
     }
 
     // MARK: Hover + VoiceOver
+
+    func testHoverDetailSurvivesTheAgeRefresh() {
+        var clock = time.addingTimeInterval(60)
+        let view = StatusSlotView(timeZone: utc, now: { clock })
+        view.hoverDetail = "Too many requests (HTTP 429)"
+        view.update(state: .error(at: time, source: .oauthAPI))
+        XCTAssertEqual(view.toolTip, "更新失败，显示的是 13:40:00 的数据\nToo many requests (HTTP 429)")
+        clock = clock.addingTimeInterval(30)
+        view.refreshAgeForTesting()
+        XCTAssertEqual(view.toolTip, "更新失败，显示的是 13:40:00 的数据\nToo many requests (HTTP 429)", "the timer rebuilds the tooltip without dropping the reason")
+        XCTAssertEqual(view.accessibilityHelp(), view.toolTip)
+        view.hoverDetail = nil
+        XCTAssertEqual(view.toolTip, "更新失败，显示的是 13:40:00 的数据")
+    }
 
     func testHoverTextsIncludingExternalActivity() {
         let view = StatusSlotView(timeZone: utc)

@@ -587,6 +587,7 @@
 "quota.status.hover.estimated" = "根据 %1$@ 的数据估算，等待官方确认";
 "quota.status.hover.realtime" = "来自本机实时数据";
 "quota.status.hover.official" = "官方数据，更新于 %1$@";
+"quota.status.hover.local" = "来自本机数据，更新于 %1$@";
 "quota.status.hover.external_activity" = "检测到其他端在使用，已提高更新频率";
 "quota.status.reset_pending" = "预计已重置，等待确认";
 "quota.status.reset_pending_short" = "待确认";

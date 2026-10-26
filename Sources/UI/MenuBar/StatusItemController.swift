@@ -8460,9 +8460,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     /// Shared by a rebuilt card and an in-place update, like `applyRefreshTime`.
     /// The failure reason, when any, is appended to the slot's hover text.
     private func applyQuotaStatus(_ state: StatusSlotState, reason: String?, to slot: StatusSlotView) {
+        slot.hoverDetail = reason
         slot.update(state: state)
-        guard let reason, !reason.isEmpty else { return }
-        slot.toolTip = (slot.toolTip.map { $0 + "\n" } ?? "") + reason
     }
 
     private func reconcileOverviewSectionsIfTracking() {

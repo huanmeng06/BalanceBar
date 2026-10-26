@@ -587,6 +587,7 @@
 "quota.status.hover.estimated" = "Geschätzt aus den Daten von %1$@, offizielle Bestätigung steht aus";
 "quota.status.hover.realtime" = "Aus Live-Daten dieses Macs";
 "quota.status.hover.official" = "Offizielle Daten, aktualisiert um %1$@";
+"quota.status.hover.local" = "Daten dieses Macs, aktualisiert um %1$@";
 "quota.status.hover.external_activity" = "Aktivität auf einem anderen Client erkannt; Aktualisierung erfolgt häufiger";
 "quota.status.reset_pending" = "Wahrscheinlich zurückgesetzt; Bestätigung steht aus";
 "quota.status.reset_pending_short" = "Offen";

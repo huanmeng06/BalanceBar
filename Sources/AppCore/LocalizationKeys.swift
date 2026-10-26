@@ -580,6 +580,7 @@
     case keyQuotaStatusHoverEstimated = "quota.status.hover.estimated"
     case keyQuotaStatusHoverRealtime = "quota.status.hover.realtime"
     case keyQuotaStatusHoverOfficial = "quota.status.hover.official"
+    case keyQuotaStatusHoverLocal = "quota.status.hover.local"
     case keyQuotaStatusHoverExternalActivity = "quota.status.hover.external_activity"
     case keyQuotaStatusAgoMinutes = "quota.status.ago.minutes"
     case keyQuotaStatusAgoHours = "quota.status.ago.hours"
