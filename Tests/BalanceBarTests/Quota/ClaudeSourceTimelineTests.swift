@@ -78,6 +78,75 @@ final class ClaudeSourceTimelineTests: XCTestCase {
         XCTAssertEqual(ClaudeSourceTimeline.FailureKind(.missingCredentials), .missingCredentials)
     }
 
+    // MARK: Persistence
+
+    private func temporaryFile() throws -> URL {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ClaudeSourceTimelineTests-\(UUID().uuidString)", isDirectory: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        return directory.appendingPathComponent("claude-source-timeline.json")
+    }
+
+    func testHistoryComesBackAfterARelaunchForTheSameAccount() throws {
+        let file = try temporaryFile()
+        var now = start
+        let key = ClaudeSourceTimeline.accountKey(forStableID: "account-a|org")
+        let first = ClaudeSourceTimeline(now: { now }, fileURL: file, saveDelay: 60)
+        first.restore(accountKey: key)
+        first.recordReading(source: .mod, observedAt: start)
+        first.recordFailure(.network, at: start.addingTimeInterval(30))
+        now = start.addingTimeInterval(60)
+        first.flushPendingSave()
+
+        let stored = try String(contentsOf: file, encoding: .utf8)
+        XCTAssertFalse(stored.contains("account-a"), "the file keeps only a hash of the stable ID")
+
+        now = start.addingTimeInterval(600)
+        let relaunched = ClaudeSourceTimeline(now: { now }, fileURL: file, saveDelay: 60)
+        var changes = 0
+        relaunched.onChange = { changes += 1 }
+        relaunched.restore(accountKey: key)
+        let snapshot = relaunched.snapshot()
+        XCTAssertEqual(snapshot.readings, [
+            ClaudeSourceTimeline.Reading(source: .mod, observedAt: start, expiresAt: start.addingTimeInterval(120))
+        ])
+        XCTAssertEqual(snapshot.failures, [
+            ClaudeSourceTimeline.FailureRun(start: start.addingTimeInterval(30), end: start.addingTimeInterval(60), kind: .network)
+        ], "a run still open at quit ends at the last save, not at the relaunch")
+        XCTAssertEqual(changes, 1)
+    }
+
+    func testAnotherAccountNeverSeesTheSavedHistory() throws {
+        let file = try temporaryFile()
+        let first = ClaudeSourceTimeline(now: { self.start }, fileURL: file, saveDelay: 60)
+        first.restore(accountKey: ClaudeSourceTimeline.accountKey(forStableID: "account-a|org"))
+        first.recordReading(source: .oauthAPI, observedAt: start)
+        first.flushPendingSave()
+
+        let other = ClaudeSourceTimeline(now: { self.start }, fileURL: file, saveDelay: 60)
+        other.restore(accountKey: ClaudeSourceTimeline.accountKey(forStableID: "account-b|org"))
+        XCTAssertEqual(other.snapshot(), .empty)
+        let signedOut = ClaudeSourceTimeline(now: { self.start }, fileURL: file, saveDelay: 60)
+        signedOut.restore(accountKey: nil)
+        XCTAssertEqual(signedOut.snapshot(), .empty, "no account, no history")
+    }
+
+    func testAccountSwitchRewritesTheFileSoTheOldHistoryStaysGone() throws {
+        let file = try temporaryFile()
+        let keyA = ClaudeSourceTimeline.accountKey(forStableID: "account-a|org")
+        let keyB = ClaudeSourceTimeline.accountKey(forStableID: "account-b|org")
+        let timeline = ClaudeSourceTimeline(now: { self.start }, fileURL: file, saveDelay: 60)
+        timeline.restore(accountKey: keyA)
+        timeline.recordReading(source: .oauthAPI, observedAt: start)
+        timeline.flushPendingSave()
+        timeline.reset(accountKey: keyB)
+        timeline.flushPendingSave()
+
+        let relaunchedAsA = ClaudeSourceTimeline(now: { self.start }, fileURL: file, saveDelay: 60)
+        relaunchedAsA.restore(accountKey: keyA)
+        XCTAssertEqual(relaunchedAsA.snapshot(), .empty)
+    }
+
     func testOldEntriesArePrunedAndResetClearsEverything() {
         var now = start
         let timeline = makeTimeline(now: { now })

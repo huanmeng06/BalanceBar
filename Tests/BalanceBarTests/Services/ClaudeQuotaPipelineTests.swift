@@ -1545,6 +1545,19 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         XCTAssertEqual(pipeline.sourceTimeline.snapshot().readings.last?.expiresAt, Self.start.addingTimeInterval(310))
     }
 
+    func testSourceTimelineSurvivesARelaunchForTheSameAccount() throws {
+        let first = makePipeline()
+        first.requestFetch(reason: .initial)
+        _ = try XCTUnwrap(waitForState(first) { !$0.windows.isEmpty })
+        first.sourceTimeline.flushPendingSave()
+
+        clock.advance(by: 120)
+        let relaunched = makePipeline()
+        relaunched.start()
+        _ = try XCTUnwrap(waitForState(relaunched) { !$0.windows.isEmpty })
+        XCTAssertEqual(relaunched.sourceTimeline.snapshot().readings.map(\.observedAt), [Self.start])
+    }
+
     func testSourceTimelineIsClearedOnAccountSwitch() throws {
         let pipeline = makePipeline()
         pipeline.requestFetch(reason: .initial)

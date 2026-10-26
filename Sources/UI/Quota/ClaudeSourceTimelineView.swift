@@ -5,14 +5,15 @@ import AppKit
 struct ClaudeSourceTimelineLayout {
     static let span: TimeInterval = 60 * 60
     static let tickStep: TimeInterval = 15 * 60
-    static let headerHeight: CGFloat = 20
-    static let laneHeight: CGFloat = 18
-    static let barHeight: CGFloat = 10
-    static let axisGap: CGFloat = 3
-    static let axisLabelHeight: CGFloat = 14
-    static let labelGap: CGFloat = 8
-    static let minimumDividerSpacing: CGFloat = 4
-    static let minimumMarkWidth: CGFloat = 2
+    static let headerHeight: CGFloat = 26
+    static let laneHeight: CGFloat = 30
+    static let barHeight: CGFloat = 18
+    static let cornerRadius: CGFloat = 6
+    static let axisGap: CGFloat = 5
+    static let axisLabelHeight: CGFloat = 15
+    static let labelGap: CGFloat = 12
+    static let minimumDividerSpacing: CGFloat = 5
+    static let minimumMarkWidth: CGFloat = 4
     /// Top to bottom, as in the design sketch (Issue #619).
     static let lanes: [StatusSlotLiveSource] = [.mod, .statusLine, .oauthAPI]
     static let height: CGFloat = headerHeight + laneHeight * CGFloat(lanes.count) + axisGap + axisLabelHeight
@@ -142,8 +143,11 @@ final class ClaudeSourceTimelineView: NSView {
     }
 
     static let refreshInterval: TimeInterval = 5
-    static let labelFont = NSFont.systemFont(ofSize: 11)
-    static let axisFont = NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .regular)
+    static let labelFont = NSFont.systemFont(ofSize: 12, weight: .medium)
+    static let axisFont = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+    /// Source-colored dot in front of each lane name.
+    static let legendDotSize: CGFloat = 8
+    static let legendDotGap: CGFloat = 6
 
     private let provider: () -> Content
     private let localize: (StatusSlotText) -> String
@@ -226,7 +230,7 @@ final class ClaudeSourceTimelineView: NSView {
         let widest = ClaudeSourceTimelineLayout.lanes.map {
             ceil((laneName($0) as NSString).size(withAttributes: [.font: Self.labelFont]).width)
         }.max() ?? 0
-        return widest + ClaudeSourceTimelineLayout.labelGap
+        return Self.legendDotSize + Self.legendDotGap + widest + ClaudeSourceTimelineLayout.labelGap
     }
 
     func makeLayout() -> ClaudeSourceTimelineLayout {
@@ -267,20 +271,35 @@ final class ClaudeSourceTimelineView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         let layout = makeLayout()
-        let secondary: [NSAttributedString.Key: Any] = [.font: Self.labelFont, .foregroundColor: NSColor.secondaryLabelColor]
+        let radius = ClaudeSourceTimelineLayout.cornerRadius
+        let name: [NSAttributedString.Key: Any] = [.font: Self.labelFont, .foregroundColor: NSColor.secondaryLabelColor]
+
+        // Lane names with a source-colored dot, and a faint rounded track behind each lane.
         for source in ClaudeSourceTimelineLayout.lanes {
             let lane = layout.laneRect(source)
-            let name = laneName(source) as NSString
-            let size = name.size(withAttributes: secondary)
-            name.draw(at: NSPoint(x: bounds.minX, y: lane.midY - size.height / 2), withAttributes: secondary)
+            let dot = NSRect(
+                x: bounds.minX, y: lane.midY - Self.legendDotSize / 2,
+                width: Self.legendDotSize, height: Self.legendDotSize)
+            Self.color(for: source).setFill()
+            NSBezierPath(ovalIn: dot).fill()
+            let text = laneName(source) as NSString
+            let size = text.size(withAttributes: name)
+            text.draw(
+                at: NSPoint(x: dot.maxX + Self.legendDotGap, y: lane.midY - size.height / 2), withAttributes: name)
+            let track = NSRect(
+                x: layout.plot.minX, y: lane.midY - ClaudeSourceTimelineLayout.barHeight / 2,
+                width: layout.plot.width, height: ClaudeSourceTimelineLayout.barHeight)
+            NSColor.labelColor.withAlphaComponent(0.05).setFill()
+            NSBezierPath(roundedRect: track, xRadius: radius, yRadius: radius).fill()
         }
 
-        // Baseline under the lanes, quarter-hour ticks and the "now" mark.
-        NSColor.separatorColor.setFill()
-        NSRect(x: layout.plot.minX, y: layout.baselineY, width: layout.plot.width, height: 1).fill()
+        // Quarter-hour guides (dashed, very faint) and their times under the lanes.
         let axis: [NSAttributedString.Key: Any] = [.font: Self.axisFont, .foregroundColor: NSColor.tertiaryLabelColor]
+        let nowAttributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 11, weight: .semibold), .foregroundColor: NSColor.controlAccentColor,
+        ]
         let nowText = tr(.keyClaudeTimelineNow) as NSString
-        let nowSize = nowText.size(withAttributes: axis)
+        let nowSize = nowText.size(withAttributes: nowAttributes)
         let nowLabelX = layout.nowX - nowSize.width
         let axisY = layout.baselineY + ClaudeSourceTimelineLayout.axisGap
         let formatter = DateFormatter()
@@ -288,43 +307,57 @@ final class ClaudeSourceTimelineView: NSView {
         formatter.timeZone = timeZone
         formatter.dateFormat = "HH:mm"
         for tick in layout.ticks {
-            NSColor.separatorColor.setFill()
-            NSRect(x: tick.x, y: layout.plot.minY, width: 0.5, height: layout.plot.height + 1).fill()
+            let guide = NSBezierPath()
+            guide.move(to: NSPoint(x: tick.x, y: layout.plot.minY))
+            guide.line(to: NSPoint(x: tick.x, y: layout.baselineY))
+            guide.lineWidth = 1
+            guide.setLineDash([2, 3], count: 2, phase: 0)
+            NSColor.separatorColor.setStroke()
+            guide.stroke()
             let text = formatter.string(from: tick.date) as NSString
             let width = text.size(withAttributes: axis).width
             let minX = tick.x - width / 2
-            guard minX >= layout.plot.minX, minX + width + 6 <= nowLabelX else { continue }
+            guard minX >= layout.plot.minX, minX + width + 8 <= nowLabelX else { continue }
             text.draw(at: NSPoint(x: minX, y: axisY), withAttributes: axis)
         }
-        nowText.draw(at: NSPoint(x: nowLabelX, y: axisY), withAttributes: axis)
+        nowText.draw(at: NSPoint(x: nowLabelX, y: axisY), withAttributes: nowAttributes)
 
         for band in layout.bands { drawBand(band) }
-        for bar in layout.bars { drawBar(bar) }
+        for bar in layout.bars { drawBar(bar, live: bar.rect.maxX >= layout.nowX - 0.5) }
 
-        NSColor.labelColor.setFill()
-        NSRect(x: layout.nowX - 1, y: layout.plot.minY - 2, width: 1, height: layout.plot.height + 3).fill()
+        // The "now" line in the accent color, capped with a dot.
+        NSColor.controlAccentColor.setFill()
+        NSRect(x: layout.nowX - 0.75, y: layout.plot.minY - 2, width: 1.5, height: layout.baselineY - layout.plot.minY + 2).fill()
+        NSBezierPath(ovalIn: NSRect(x: layout.nowX - 3, y: layout.plot.minY - 6, width: 6, height: 6)).fill()
 
         if content.timeline.readings.isEmpty, content.timeline.failures.isEmpty {
             let empty = tr(.keyClaudeTimelineEmpty) as NSString
-            let size = empty.size(withAttributes: secondary)
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(ofSize: 12), .foregroundColor: NSColor.secondaryLabelColor,
+            ]
+            let size = empty.size(withAttributes: attributes)
             empty.draw(
                 at: NSPoint(x: layout.plot.midX - size.width / 2, y: layout.plot.midY - size.height / 2),
-                withAttributes: secondary)
+                withAttributes: attributes)
         }
     }
 
     /// A light tint inside a solid outline of the same hue, so each refresh mark inside the
-    /// validity period stays visible instead of disappearing into a solid fill.
-    private func drawBar(_ bar: ClaudeSourceTimelineLayout.Bar) {
+    /// validity period stays visible instead of disappearing into a solid fill. The bar that is
+    /// still valid now is filled a little stronger.
+    private func drawBar(_ bar: ClaudeSourceTimelineLayout.Bar, live: Bool) {
         let color = Self.color(for: bar.source)
-        let outline = NSBezierPath(roundedRect: bar.rect.insetBy(dx: 0.5, dy: 0.5), xRadius: 3, yRadius: 3)
-        color.withAlphaComponent(0.18).setFill()
+        let radius = min(ClaudeSourceTimelineLayout.cornerRadius, bar.rect.width / 2)
+        let outline = NSBezierPath(roundedRect: bar.rect.insetBy(dx: 0.75, dy: 0.75), xRadius: radius, yRadius: radius)
+        color.withAlphaComponent(live ? 0.30 : 0.18).setFill()
         outline.fill()
-        color.withAlphaComponent(0.75).setFill()
+        color.withAlphaComponent(0.7).setFill()
         for x in bar.dividers {
-            NSRect(x: x - 0.5, y: bar.rect.minY + 2, width: 1, height: bar.rect.height - 4).fill()
+            NSBezierPath(
+                roundedRect: NSRect(x: x - 0.75, y: bar.rect.minY + 5, width: 1.5, height: bar.rect.height - 10),
+                xRadius: 0.75, yRadius: 0.75).fill()
         }
-        outline.lineWidth = 1
+        outline.lineWidth = 1.5
         color.setStroke()
         outline.stroke()
     }
@@ -332,8 +365,9 @@ final class ClaudeSourceTimelineView: NSView {
     /// A rounded red box the size of a bar (tint, outline, faint stripes); its category is in the tooltip.
     private func drawBand(_ band: ClaudeSourceTimelineLayout.Band) {
         let rect = band.rect
-        let box = NSBezierPath(roundedRect: rect.insetBy(dx: 0.5, dy: 0.5), xRadius: 3, yRadius: 3)
-        NSColor.systemRed.withAlphaComponent(0.12).setFill()
+        let radius = min(ClaudeSourceTimelineLayout.cornerRadius, rect.width / 2)
+        let box = NSBezierPath(roundedRect: rect.insetBy(dx: 0.75, dy: 0.75), xRadius: radius, yRadius: radius)
+        NSColor.systemRed.withAlphaComponent(0.14).setFill()
         box.fill()
         NSGraphicsContext.saveGraphicsState()
         box.addClip()
@@ -342,13 +376,13 @@ final class ClaudeSourceTimelineView: NSView {
         while x < rect.maxX {
             stripes.move(to: NSPoint(x: x, y: rect.maxY))
             stripes.line(to: NSPoint(x: x + rect.height, y: rect.minY))
-            x += 6
+            x += 7
         }
-        stripes.lineWidth = 1
-        NSColor.systemRed.withAlphaComponent(0.25).setStroke()
+        stripes.lineWidth = 1.5
+        NSColor.systemRed.withAlphaComponent(0.28).setStroke()
         stripes.stroke()
         NSGraphicsContext.restoreGraphicsState()
-        box.lineWidth = 1
+        box.lineWidth = 1.5
         NSColor.systemRed.setStroke()
         box.stroke()
     }

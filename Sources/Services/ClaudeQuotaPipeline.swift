@@ -241,7 +241,9 @@ final class ClaudeQuotaPipeline {
         self.now = now
         self.realtimeTracker = realtimeTracker
         self.sourceValidity = sourceValidity
-        sourceTimeline = ClaudeSourceTimeline(validity: sourceValidity, now: now)
+        sourceTimeline = ClaudeSourceTimeline(
+            validity: sourceValidity, now: now,
+            fileURL: stateDirectory.appendingPathComponent("claude-source-timeline.json"))
         self.statusLineSource = statusLineSource
         self.snapshotInbox = snapshotInbox
         self.confirmationTimer = confirmationTimer
@@ -433,6 +435,8 @@ final class ClaudeQuotaPipeline {
         }
         let restoring = RebasingMergeStore(
             base: mergeFileStore, accountID: identity.accountIdentity?.stableID, epoch: identity.accountEpoch)
+        // Like the merge state, the source history comes back only for the same account.
+        sourceTimeline.restore(accountKey: ClaudeSourceTimeline.accountKey(forStableID: identity.accountIdentity?.stableID))
         let adapter = QuotaNotificationAdapter(processor: notificationRouter, providerID: "claude")
         self.adapter = adapter
         engine = QuotaMergeEngine(scheduler: scheduler, notifications: adapter, store: restoring, now: now)
@@ -468,7 +472,7 @@ final class ClaudeQuotaPipeline {
         }
         engine.accountDidChange(epoch: change.epoch, accountID: change.identity?.stableID)
         realtimeTracker?.reset(epoch: change.epoch)
-        sourceTimeline.reset()
+        sourceTimeline.reset(accountKey: ClaudeSourceTimeline.accountKey(forStableID: change.identity?.stableID))
         statusLineSource?.accountDidChange(epoch: change.epoch)
         lock.withLock {
             setFailureLocked(nil)
