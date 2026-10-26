@@ -266,6 +266,7 @@
     case keyClaudeSourceTagAllClients = "claude.source_tag.all_clients"
     case keyClaudeSourceTagTerminal = "claude.source_tag.terminal"
     case keyClaudeSourceTagDesktop = "claude.source_tag.desktop"
+    case keyClaudeTimelineTitle = "claude.timeline.title"
     case keyClaudeTimelineNow = "claude.timeline.now"
     case keyClaudeTimelineEmpty = "claude.timeline.empty"
     case keyClaudeTimelineFailureNetwork = "claude.timeline.failure.network"

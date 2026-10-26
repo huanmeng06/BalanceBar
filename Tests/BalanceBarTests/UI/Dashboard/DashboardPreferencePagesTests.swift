@@ -2160,6 +2160,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let timeline = try XCTUnwrap(section.footerView as? ClaudeSourceTimelineView)
         XCTAssertTrue(timeline.isDescendant(of: section))
         XCTAssertFalse(timeline.isDescendant(of: section.cardView), "the chart sits under the card, where the footnote was")
+        XCTAssertTrue(timeline.isDescendant(of: section.footerCardView), "on its own board in the same section")
+        XCTAssertEqual(timeline.titleLabel.stringValue, tr(.keyClaudeTimelineTitle))
         for view in section.contentViews {
             XCTAssertEqual((view as? SettingsRowView)?.detailLabel.stringValue, "")
         }

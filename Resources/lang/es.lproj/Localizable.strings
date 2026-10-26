@@ -612,6 +612,7 @@
 "claude.source_tag.all_clients" = "Todos los clientes";
 "claude.source_tag.terminal" = "Terminal CLI";
 "claude.source_tag.desktop" = "Prioridad escritorio";
+"claude.timeline.title" = "Cronología de fuentes de datos";
 "claude.timeline.now" = "Ahora";
 "claude.timeline.empty" = "Sin datos en los últimos 60 minutos";
 "claude.timeline.failure.network" = "Error de red";

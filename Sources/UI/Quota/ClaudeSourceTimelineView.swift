@@ -268,6 +268,8 @@ final class ClaudeSourceTimelineView: NSView {
     private let timeZone: TimeZone
     private let now: () -> Date
     let statusSlot: StatusSlotView
+    /// The board's heading, 「时间来源分布图」.
+    let titleLabel = NSTextField(labelWithString: tr(.keyClaudeTimelineTitle))
     private let canvas = TimelineCanvas()
     private let liftHost = TimelineFlippedView()
     private let liftLayer = CALayer()
@@ -336,11 +338,20 @@ final class ClaudeSourceTimelineView: NSView {
         liftHost.layer?.addSublayer(liftLayer)
         addSubview(liftHost)
 
+        titleLabel.font = .systemFont(ofSize: 13, weight: .semibold)
+        titleLabel.textColor = .labelColor
+        titleLabel.lineBreakMode = .byTruncatingTail
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        addSubview(titleLabel)
         statusSlot.translatesAutoresizingMaskIntoConstraints = false
         addSubview(statusSlot)
         NSLayoutConstraint.activate([
             statusSlot.trailingAnchor.constraint(equalTo: trailingAnchor),
-            statusSlot.topAnchor.constraint(equalTo: topAnchor)
+            statusSlot.topAnchor.constraint(equalTo: topAnchor),
+            titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor),
+            titleLabel.centerYAnchor.constraint(equalTo: statusSlot.centerYAnchor),
+            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: statusSlot.leadingAnchor, constant: -8)
         ])
         setAccessibilityElement(true)
         setAccessibilityRole(.image)

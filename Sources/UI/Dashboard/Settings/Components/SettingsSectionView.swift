@@ -21,8 +21,12 @@ final class SettingsSectionView: NSView {
     let contentStack = NSStackView()
     /// Section-wide caption under the card, aligned with row text.
     let footnoteLabel: NSTextField?
-    /// Section-wide view under the card in the footnote's place (e.g. a live chart).
+    /// Section-wide view in its own card under the rows' card (e.g. a live chart).
     let footerView: NSView?
+    /// The second card hosting `footerView`; unused without one.
+    let footerCardView = SettingsSectionCardView()
+    static let cardToFooterCardSpacing: CGFloat = 12
+    static let footerCardVerticalInset: CGFloat = 12
     private(set) var contentViews: [NSView]
     private(set) var separators: [NSView] = []
     private var searchNaturalHeightConstraint: NSLayoutConstraint?
@@ -159,9 +163,16 @@ final class SettingsSectionView: NSView {
             contentStack.setCustomSpacing(Self.cardToFootnoteSpacing, after: cardView)
         }
         if let footerView {
+            // A second card of the same chrome, set apart from the rows but in the same section.
             footerView.translatesAutoresizingMaskIntoConstraints = false
-            contentStack.addView(footerView, in: .top)
-            contentStack.setCustomSpacing(Self.cardToFootnoteSpacing * 2, after: footnoteLabel ?? cardView)
+            footerCardView.edgeInsets = NSEdgeInsets(
+                top: Self.footerCardVerticalInset, left: SettingsLayout.rowHorizontalInset,
+                bottom: Self.footerCardVerticalInset, right: SettingsLayout.rowHorizontalInset)
+            footerCardView.addArrangedSubview(footerView)
+            footerView.widthAnchor.constraint(
+                equalTo: footerCardView.widthAnchor, constant: -2 * SettingsLayout.rowHorizontalInset).isActive = true
+            contentStack.addView(footerCardView, in: .top)
+            contentStack.setCustomSpacing(Self.cardToFooterCardSpacing, after: footnoteLabel ?? cardView)
         }
 
         addSubview(contentStack)
@@ -179,12 +190,8 @@ final class SettingsSectionView: NSView {
                 footnoteLabel.trailingAnchor.constraint(equalTo: contentStack.trailingAnchor, constant: -inset)
             ])
         }
-        if let footerView {
-            let inset = SettingsLayout.rowHorizontalInset
-            NSLayoutConstraint.activate([
-                footerView.leadingAnchor.constraint(equalTo: contentStack.leadingAnchor, constant: inset),
-                footerView.trailingAnchor.constraint(equalTo: contentStack.trailingAnchor, constant: -inset)
-            ])
+        if footerView != nil {
+            footerCardView.widthAnchor.constraint(equalTo: contentStack.widthAnchor).isActive = true
         }
         reconcileSeparators()
     }

@@ -612,6 +612,7 @@
 "claude.source_tag.all_clients" = "Alle Clients";
 "claude.source_tag.terminal" = "Terminal-CLI";
 "claude.source_tag.desktop" = "Desktop zuerst";
+"claude.timeline.title" = "Zeitverlauf der Datenquellen";
 "claude.timeline.now" = "Jetzt";
 "claude.timeline.empty" = "Keine Daten in den letzten 60 Minuten";
 "claude.timeline.failure.network" = "Netzwerkfehler";

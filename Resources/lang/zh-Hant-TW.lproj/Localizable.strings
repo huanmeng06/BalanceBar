@@ -612,6 +612,7 @@
 "claude.source_tag.all_clients" = "全端通用";
 "claude.source_tag.terminal" = "終端機 CLI";
 "claude.source_tag.desktop" = "桌面版優先";
+"claude.timeline.title" = "時間來源分佈圖";
 "claude.timeline.now" = "現在";
 "claude.timeline.empty" = "最近 60 分鐘暫無資料";
 "claude.timeline.failure.network" = "網路錯誤";
