@@ -138,6 +138,8 @@ final class ClaudeQuotaPipeline {
     private let notificationRouter = ClaudeNotificationRouter()
     private let realtimeTracker: ClaudeRealtimeTracker?
     private let sourceValidity: () -> ClaudeSourceValidity
+    /// Recent source activity for the Advanced settings timeline; observation only.
+    let sourceTimeline: ClaudeSourceTimeline
     private let statusLineSource: ClaudeStatusLineSource?
     private let snapshotInbox: SnapshotInbox?
     private let confirmationTimer: SchedulerTimer
@@ -239,6 +241,7 @@ final class ClaudeQuotaPipeline {
         self.now = now
         self.realtimeTracker = realtimeTracker
         self.sourceValidity = sourceValidity
+        sourceTimeline = ClaudeSourceTimeline(validity: sourceValidity, now: now)
         self.statusLineSource = statusLineSource
         self.snapshotInbox = snapshotInbox
         self.confirmationTimer = confirmationTimer
@@ -465,6 +468,7 @@ final class ClaudeQuotaPipeline {
         }
         engine.accountDidChange(epoch: change.epoch, accountID: change.identity?.stableID)
         realtimeTracker?.reset(epoch: change.epoch)
+        sourceTimeline.reset()
         statusLineSource?.accountDidChange(epoch: change.epoch)
         lock.withLock {
             setFailureLocked(nil)
@@ -558,6 +562,9 @@ final class ClaudeQuotaPipeline {
                 observedAt: observation.observedAt ?? observation.receivedAt,
                 epoch: observation.epoch,
                 source: Self.statusSource(forSourceID: observation.source) ?? .statusLine)
+            if let source = Self.statusSource(forSourceID: observation.source) {
+                sourceTimeline.recordReading(source: source, observedAt: observation.observedAt ?? observation.receivedAt)
+            }
         }
         publish()
         return accepted
@@ -581,10 +588,13 @@ final class ClaudeQuotaPipeline {
     private func handle(_ delivery: FetchSchedulerDelivery) {
         guard let engine else { return }
         var newFailure: ClaudeQuotaFailure?
+        var adoptedOfficialRead = false
         switch delivery.result {
         case let .success(data):
             lock.withLock { lastSuccessAt = delivery.receivedAt }
+            let currentEpoch = identity.accountEpoch == delivery.epoch
             newFailure = merge(data, delivery: delivery, into: engine)
+            adoptedOfficialRead = currentEpoch && newFailure == nil
         case .rateLimited:
             newFailure = .rateLimited
         case .unauthorized:
@@ -598,6 +608,9 @@ final class ClaudeQuotaPipeline {
         }
         if let newFailure {
             diagnostics("claude official fetch failed; kind=\(Self.failureKind(newFailure))", .info)
+            sourceTimeline.recordFailure(ClaudeSourceTimeline.FailureKind(newFailure), at: delivery.receivedAt)
+        } else if adoptedOfficialRead {
+            sourceTimeline.recordOfficialSuccess(at: delivery.receivedAt)
         }
         publish()
     }
@@ -842,6 +855,7 @@ final class ClaudeQuotaPipeline {
     /// Re-evaluates freshness after the user changed a source's validity: the scheduler recomputes
     /// when local data stops suppressing requests, and the card re-resolves its status.
     func sourceValidityChanged() {
+        sourceTimeline.validityChanged()
         scheduler.rearm()
         queue.async { [self] in publish() }
     }

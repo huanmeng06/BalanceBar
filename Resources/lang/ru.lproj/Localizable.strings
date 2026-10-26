@@ -144,7 +144,6 @@
 "dashboard.advanced.page.source_validity_oauth" = "Срок действия официальной квоты";
 "dashboard.advanced.page.source_validity_native_sync" = "Срок действия нативной синхронизации";
 "dashboard.advanced.page.source_validity_mod" = "Срок действия данных Mod";
-"dashboard.advanced.page.source_validity_footnote" = "В течение срока действия квота показывается как «Онлайн», позже — «N мин».\nПока данные нативной синхронизации или Mod действительны, BalanceBar тоже не обращается к официальному API, а потом возобновляет запросы.\nЧем дольше срок, тем реже ограничения, но данные могут быть старее.\nСверка с официальным API проходит не реже раза в час.";
 "dashboard.advanced.page.validity_minutes" = "%1$@ мин";
 "dashboard.general.and.refresh.pages.update_channel" = "Канал обновлений";
 "dashboard.general.and.refresh.pages.update_channel_description" = "Выберите, проверять ли стабильные или бета-версии";
@@ -613,6 +612,19 @@
 "claude.source_tag.all_clients" = "Все клиенты";
 "claude.source_tag.terminal" = "Терминал CLI";
 "claude.source_tag.desktop" = "Сначала десктоп";
+"claude.timeline.now" = "Сейчас";
+"claude.timeline.empty" = "Нет данных за последние 60 минут";
+"claude.timeline.failure.network" = "Ошибка сети";
+"claude.timeline.failure.rate_limited" = "Лимит запросов";
+"claude.timeline.failure.unauthorized" = "Вход истёк";
+"claude.timeline.failure.server_error" = "Ошибка сервера";
+"claude.timeline.failure.missing_credentials" = "Вход не выполнен";
+"claude.timeline.tooltip.reading" = "%1$@ · получено %2$@ · действует до %3$@";
+"claude.timeline.tooltip.failure" = "%1$@ · %2$@ · %3$@–%4$@";
+"claude.timeline.tooltip.oauth_rule" = "Пока данные нативной синхронизации или Mod действительны, BalanceBar не обращается к официальному API; калибровка всё равно не реже раза в час.";
+"claude.timeline.accessibility" = "Источники данных Claude (последние 60 минут): %1$@";
+"claude.timeline.accessibility.count" = "%1$@: %2$@ раз";
+"claude.timeline.accessibility.failures" = "Сбоев: %1$@";
 "claude.refresh.every_minutes" = "Каждые %1$@ мин";
 "claude.status_line.calibration_detail" = "Периодически запрашивает официальный источник как запасной вариант; больший интервал помогает избежать ограничений";
 "claude.status_line.disable_confirm_title" = "Отключить нативную синхронизацию Claude Code?";

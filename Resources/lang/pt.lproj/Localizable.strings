@@ -144,7 +144,6 @@
 "dashboard.advanced.page.source_validity_oauth" = "Validade da cota oficial";
 "dashboard.advanced.page.source_validity_native_sync" = "Validade da sincronização nativa";
 "dashboard.advanced.page.source_validity_mod" = "Validade do push do Mod";
-"dashboard.advanced.page.source_validity_footnote" = "Dentro da validade, a cota aparece como «Ao vivo»; depois, como «há N min».\nEnquanto os dados da sincronização nativa ou do Mod forem válidos, o BalanceBar também não consulta a API oficial e retoma depois.\nMais tempo significa menos limites, mas dados possivelmente mais antigos.\nA calibração com a API oficial ocorre pelo menos a cada hora.";
 "dashboard.advanced.page.validity_minutes" = "%1$@ min";
 "dashboard.general.and.refresh.pages.update_channel" = "Canal de atualização";
 "dashboard.general.and.refresh.pages.update_channel_description" = "Escolha se deseja verificar as versões estáveis ou beta";
@@ -613,6 +612,19 @@
 "claude.source_tag.all_clients" = "Todos os clientes";
 "claude.source_tag.terminal" = "Terminal CLI";
 "claude.source_tag.desktop" = "Desktop primeiro";
+"claude.timeline.now" = "Agora";
+"claude.timeline.empty" = "Sem dados nos últimos 60 minutos";
+"claude.timeline.failure.network" = "Erro de rede";
+"claude.timeline.failure.rate_limited" = "Limite atingido";
+"claude.timeline.failure.unauthorized" = "Sessão expirada";
+"claude.timeline.failure.server_error" = "Erro do servidor";
+"claude.timeline.failure.missing_credentials" = "Sem sessão iniciada";
+"claude.timeline.tooltip.reading" = "%1$@ · recebido %2$@ · válido até %3$@";
+"claude.timeline.tooltip.failure" = "%1$@ · %2$@ · %3$@–%4$@";
+"claude.timeline.tooltip.oauth_rule" = "Enquanto os dados nativos ou do Mod forem válidos, o BalanceBar não consulta a API oficial; ainda assim calibra pelo menos a cada hora.";
+"claude.timeline.accessibility" = "Fontes de dados do Claude (últimos 60 minutos): %1$@";
+"claude.timeline.accessibility.count" = "%1$@ %2$@ vezes";
+"claude.timeline.accessibility.failures" = "%1$@ períodos de falha";
 "claude.refresh.every_minutes" = "A cada %1$@ min";
 "claude.status_line.calibration_detail" = "Consulta a fonte oficial periodicamente como alternativa; intervalos maiores evitam limites de uso";
 "claude.status_line.disable_confirm_title" = "Desativar a sincronização nativa do Claude Code?";

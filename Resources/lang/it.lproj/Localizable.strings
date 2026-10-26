@@ -144,7 +144,6 @@
 "dashboard.advanced.page.source_validity_oauth" = "Validità della quota ufficiale";
 "dashboard.advanced.page.source_validity_native_sync" = "Validità della sincronizzazione nativa";
 "dashboard.advanced.page.source_validity_mod" = "Validità del push del Mod";
-"dashboard.advanced.page.source_validity_footnote" = "Entro la validità la quota appare come «Live»; dopo, come «N min fa».\nFinché i dati della sincronizzazione nativa o del Mod sono validi, BalanceBar non interroga nemmeno l’API ufficiale, poi riprende.\nPiù a lungo significa meno limitazioni, ma dati forse più vecchi.\nLa calibrazione con l’API ufficiale avviene almeno ogni ora.";
 "dashboard.advanced.page.validity_minutes" = "%1$@ min";
 "dashboard.general.and.refresh.pages.update_channel" = "Canale degli aggiornamenti";
 "dashboard.general.and.refresh.pages.update_channel_description" = "Scegli se verificare le versioni stabili o beta";
@@ -613,6 +612,19 @@
 "claude.source_tag.all_clients" = "Tutti i client";
 "claude.source_tag.terminal" = "Terminale CLI";
 "claude.source_tag.desktop" = "Desktop prima";
+"claude.timeline.now" = "Ora";
+"claude.timeline.empty" = "Nessun dato negli ultimi 60 minuti";
+"claude.timeline.failure.network" = "Errore di rete";
+"claude.timeline.failure.rate_limited" = "Limite raggiunto";
+"claude.timeline.failure.unauthorized" = "Accesso scaduto";
+"claude.timeline.failure.server_error" = "Errore del server";
+"claude.timeline.failure.missing_credentials" = "Accesso non effettuato";
+"claude.timeline.tooltip.reading" = "%1$@ · ricevuto %2$@ · valido fino a %3$@";
+"claude.timeline.tooltip.failure" = "%1$@ · %2$@ · %3$@–%4$@";
+"claude.timeline.tooltip.oauth_rule" = "Finché i dati nativi o della Mod sono validi, BalanceBar non interroga l’API ufficiale; calibra comunque almeno ogni ora.";
+"claude.timeline.accessibility" = "Fonti dati Claude (ultimi 60 minuti): %1$@";
+"claude.timeline.accessibility.count" = "%1$@ %2$@ volte";
+"claude.timeline.accessibility.failures" = "%1$@ periodi di errore";
 "claude.refresh.every_minutes" = "Ogni %1$@ min";
 "claude.status_line.calibration_detail" = "Interroga la fonte ufficiale a intervalli regolari come ripiego; intervalli più lunghi evitano i limiti di frequenza";
 "claude.status_line.disable_confirm_title" = "Disattivare la sincronizzazione nativa di Claude Code?";

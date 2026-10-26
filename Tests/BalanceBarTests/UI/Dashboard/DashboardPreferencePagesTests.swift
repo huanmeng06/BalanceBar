@@ -2155,11 +2155,11 @@ final class DashboardPreferencePagesTests: XCTestCase {
         for view in section.contentViews {
             XCTAssertNotNil((view as? SettingsRowView)?.titleAccessory, "every row carries the Claude icon")
         }
-        XCTAssertEqual(
-            section.footnoteLabel?.stringValue,
-            tr(.keyDashboardAdvancedPageSourceValidityFootnote))
-        XCTAssertEqual(section.footnoteLabel?.isSelectable, false)
-        XCTAssertEqual(section.footnoteLabel?.font?.pointSize, 12)
+        // The live source timeline replaces the old rules footnote (Issue #619).
+        XCTAssertNil(section.footnoteLabel)
+        let timeline = try XCTUnwrap(section.footerView as? ClaudeSourceTimelineView)
+        XCTAssertTrue(timeline.isDescendant(of: section))
+        XCTAssertFalse(timeline.isDescendant(of: section.cardView), "the chart sits under the card, where the footnote was")
         for view in section.contentViews {
             XCTAssertEqual((view as? SettingsRowView)?.detailLabel.stringValue, "")
         }

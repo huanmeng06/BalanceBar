@@ -21,6 +21,8 @@ final class SettingsSectionView: NSView {
     let contentStack = NSStackView()
     /// Section-wide caption under the card, aligned with row text.
     let footnoteLabel: NSTextField?
+    /// Section-wide view under the card in the footnote's place (e.g. a live chart).
+    let footerView: NSView?
     private(set) var contentViews: [NSView]
     private(set) var separators: [NSView] = []
     private var searchNaturalHeightConstraint: NSLayoutConstraint?
@@ -34,11 +36,13 @@ final class SettingsSectionView: NSView {
         title: String,
         contentViews: [NSView],
         separatorIndices: Set<Int>? = nil,
-        footnote: String? = nil
+        footnote: String? = nil,
+        footerView: NSView? = nil
     ) {
         headingLabel = NSTextField(labelWithString: title)
         cardView = SettingsSectionCardView()
         footnoteLabel = footnote.map { NSTextField(wrappingLabelWithString: $0) }
+        self.footerView = footerView
         self.contentViews = contentViews
         super.init(frame: .zero)
         configure(title: title, separatorIndices: separatorIndices)
@@ -48,13 +52,15 @@ final class SettingsSectionView: NSView {
         title: String?,
         contentViews: [NSView],
         separatorIndices: Set<Int>? = nil,
-        footnote: String? = nil
+        footnote: String? = nil,
+        footerView: NSView? = nil
     ) {
         self.init(
             title: title ?? "",
             contentViews: contentViews,
             separatorIndices: separatorIndices,
-            footnote: footnote
+            footnote: footnote,
+            footerView: footerView
         )
     }
 
@@ -152,6 +158,11 @@ final class SettingsSectionView: NSView {
             contentStack.addView(footnoteLabel, in: .top)
             contentStack.setCustomSpacing(Self.cardToFootnoteSpacing, after: cardView)
         }
+        if let footerView {
+            footerView.translatesAutoresizingMaskIntoConstraints = false
+            contentStack.addView(footerView, in: .top)
+            contentStack.setCustomSpacing(Self.cardToFootnoteSpacing * 2, after: footnoteLabel ?? cardView)
+        }
 
         addSubview(contentStack)
         NSLayoutConstraint.activate([
@@ -166,6 +177,13 @@ final class SettingsSectionView: NSView {
             NSLayoutConstraint.activate([
                 footnoteLabel.leadingAnchor.constraint(equalTo: contentStack.leadingAnchor, constant: inset),
                 footnoteLabel.trailingAnchor.constraint(equalTo: contentStack.trailingAnchor, constant: -inset)
+            ])
+        }
+        if let footerView {
+            let inset = SettingsLayout.rowHorizontalInset
+            NSLayoutConstraint.activate([
+                footerView.leadingAnchor.constraint(equalTo: contentStack.leadingAnchor, constant: inset),
+                footerView.trailingAnchor.constraint(equalTo: contentStack.trailingAnchor, constant: -inset)
             ])
         }
         reconcileSeparators()

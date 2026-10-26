@@ -144,7 +144,6 @@
 "dashboard.advanced.page.source_validity_oauth" = "Gültigkeit: Offizielles Kontingent";
 "dashboard.advanced.page.source_validity_native_sync" = "Gültigkeit: Native Synchronisierung";
 "dashboard.advanced.page.source_validity_mod" = "Gültigkeit: Mod-Push";
-"dashboard.advanced.page.source_validity_footnote" = "Innerhalb der Gültigkeit gilt das Kontingent als „Live“, danach als „vor N Min.“.\nSolange Daten der nativen Synchronisierung oder des Mods gültig sind, fragt BalanceBar die offizielle API nicht ab und macht danach weiter.\nLänger bedeutet seltener Drosselung, aber möglicherweise ältere Daten.\nMindestens stündlich wird mit der offiziellen API abgeglichen.";
 "dashboard.advanced.page.validity_minutes" = "%1$@ Min.";
 "dashboard.general.and.refresh.pages.update_channel" = "Update-Kanal";
 "dashboard.general.and.refresh.pages.update_channel_description" = "Wähle, ob nach stabilen oder Beta-Updates gesucht werden soll";
@@ -613,6 +612,19 @@
 "claude.source_tag.all_clients" = "Alle Clients";
 "claude.source_tag.terminal" = "Terminal-CLI";
 "claude.source_tag.desktop" = "Desktop zuerst";
+"claude.timeline.now" = "Jetzt";
+"claude.timeline.empty" = "Keine Daten in den letzten 60 Minuten";
+"claude.timeline.failure.network" = "Netzwerkfehler";
+"claude.timeline.failure.rate_limited" = "Ratenlimit";
+"claude.timeline.failure.unauthorized" = "Anmeldung abgelaufen";
+"claude.timeline.failure.server_error" = "Serverfehler";
+"claude.timeline.failure.missing_credentials" = "Nicht angemeldet";
+"claude.timeline.tooltip.reading" = "%1$@ · empfangen %2$@ · gültig bis %3$@";
+"claude.timeline.tooltip.failure" = "%1$@ · %2$@ · %3$@–%4$@";
+"claude.timeline.tooltip.oauth_rule" = "Solange Nativ- oder Mod-Daten gültig sind, fragt BalanceBar die offizielle API nicht ab; kalibriert wird trotzdem mindestens stündlich.";
+"claude.timeline.accessibility" = "Claude-Datenquellen (letzte 60 Minuten): %1$@";
+"claude.timeline.accessibility.count" = "%1$@ %2$@-mal";
+"claude.timeline.accessibility.failures" = "%1$@ Fehlerphasen";
 "claude.refresh.every_minutes" = "Alle %1$@ Min.";
 "claude.status_line.calibration_detail" = "Fragt die offizielle Quelle zeitgesteuert als Rückfall ab; längere Intervalle vermeiden Rate-Limits";
 "claude.status_line.disable_confirm_title" = "Native Claude-Code-Synchronisierung ausschalten?";
