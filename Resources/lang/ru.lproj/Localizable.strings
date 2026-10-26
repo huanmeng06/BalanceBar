@@ -576,6 +576,12 @@
 
 "quota.status.refreshing" = "Чтение…";
 "quota.status.realtime" = "Онлайн";
+"quota.status.ago.minutes" = "%1$@ мин";
+"quota.status.ago.hours" = "%1$@ ч";
+"quota.status.ago.days" = "%1$@ дн";
+"quota.status.source.oauth_api" = "OAuth API";
+"quota.status.source.native_sync" = "Нативно";
+"quota.status.source.mod" = "Mod";
 "quota.status.hover.refreshing" = "Чтение актуальной квоты";
 "quota.status.hover.error" = "Не удалось обновить. Показаны данные на %1$@";
 "quota.status.hover.estimated" = "Оценка по данным на %1$@, ожидается официальное подтверждение";
@@ -584,7 +590,6 @@
 "quota.status.hover.external_activity" = "Обнаружена активность на другом клиенте; обновление стало чаще";
 "quota.status.reset_pending" = "Вероятно, сброшено; ожидается подтверждение";
 "quota.status.reset_pending_short" = "Ожидание";
-"quota.card.reset_awaiting_confirmation" = "Время сброса прошло, ожидание подтверждения";
 "quota.failure.open_usage_page" = "Открыть официальную страницу использования";
 "quota.status.accessibility" = "Состояние квоты: %1$@";
 "claude.refresh.login_expired" = "Срок входа в Claude Code истёк. Запустите claude один раз в терминале, чтобы восстановить вход; BalanceBar сам вход не продлевает.";

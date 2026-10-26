@@ -576,6 +576,12 @@
 
 "quota.status.refreshing" = "En cours…";
 "quota.status.realtime" = "En direct";
+"quota.status.ago.minutes" = "il y a %1$@ min";
+"quota.status.ago.hours" = "il y a %1$@ h";
+"quota.status.ago.days" = "il y a %1$@ j";
+"quota.status.source.oauth_api" = "OAuth API";
+"quota.status.source.native_sync" = "Natif";
+"quota.status.source.mod" = "Mod";
 "quota.status.hover.refreshing" = "Lecture du dernier quota";
 "quota.status.hover.error" = "Échec de la mise à jour. Données de %1$@ affichées";
 "quota.status.hover.estimated" = "Estimé d’après les données de %1$@, en attente de confirmation officielle";
@@ -584,7 +590,6 @@
 "quota.status.hover.external_activity" = "Activité détectée sur un autre client ; actualisation plus fréquente";
 "quota.status.reset_pending" = "Réinitialisation probable ; en attente de confirmation";
 "quota.status.reset_pending_short" = "En attente";
-"quota.card.reset_awaiting_confirmation" = "Heure de réinitialisation passée, en attente de confirmation";
 "quota.failure.open_usage_page" = "Ouvrir la page d’utilisation officielle";
 "quota.status.accessibility" = "État du quota : %1$@";
 "claude.refresh.login_expired" = "La connexion à Claude Code a expiré. Exécutez claude une fois dans un terminal pour la rétablir ; BalanceBar ne renouvelle jamais la connexion lui-même.";

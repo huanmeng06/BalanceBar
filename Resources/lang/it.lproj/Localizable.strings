@@ -576,6 +576,12 @@
 
 "quota.status.refreshing" = "Carico…";
 "quota.status.realtime" = "Live";
+"quota.status.ago.minutes" = "%1$@ min fa";
+"quota.status.ago.hours" = "%1$@ h fa";
+"quota.status.ago.days" = "%1$@ g fa";
+"quota.status.source.oauth_api" = "OAuth API";
+"quota.status.source.native_sync" = "Nativo";
+"quota.status.source.mod" = "Mod";
 "quota.status.hover.refreshing" = "Lettura dell’ultima quota";
 "quota.status.hover.error" = "Aggiornamento non riuscito. Dati delle %1$@";
 "quota.status.hover.estimated" = "Stimato dai dati delle %1$@, in attesa di conferma ufficiale";
@@ -584,7 +590,6 @@
 "quota.status.hover.external_activity" = "Attività rilevata su un altro client; aggiornamento più frequente";
 "quota.status.reset_pending" = "Probabile ripristino; in attesa di conferma";
 "quota.status.reset_pending_short" = "In attesa";
-"quota.card.reset_awaiting_confirmation" = "Ora di ripristino superata, in attesa di conferma";
 "quota.failure.open_usage_page" = "Apri la pagina di utilizzo ufficiale";
 "quota.status.accessibility" = "Stato della quota: %1$@";
 "claude.refresh.login_expired" = "L'accesso a Claude Code è scaduto. Esegui claude una volta nel terminale per ripristinarlo; BalanceBar non rinnova mai l'accesso da solo.";

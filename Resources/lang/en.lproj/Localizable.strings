@@ -576,6 +576,12 @@
 
 "quota.status.refreshing" = "Updating…";
 "quota.status.realtime" = "Live";
+"quota.status.ago.minutes" = "%1$@ min ago";
+"quota.status.ago.hours" = "%1$@ hr ago";
+"quota.status.ago.days" = "%1$@ d ago";
+"quota.status.source.oauth_api" = "OAuth API";
+"quota.status.source.native_sync" = "Native";
+"quota.status.source.mod" = "Mod";
 "quota.status.hover.refreshing" = "Reading the latest quota";
 "quota.status.hover.error" = "Update failed. Showing data from %1$@";
 "quota.status.hover.estimated" = "Estimated from data at %1$@, awaiting official confirmation";
@@ -584,7 +590,6 @@
 "quota.status.hover.external_activity" = "Activity detected on another client; refreshing more often";
 "quota.status.reset_pending" = "Likely reset; awaiting confirmation";
 "quota.status.reset_pending_short" = "Pending";
-"quota.card.reset_awaiting_confirmation" = "Past reset time, awaiting confirmation";
 "quota.failure.open_usage_page" = "Open official usage page";
 "quota.status.accessibility" = "Quota status: %1$@";
 "claude.refresh.login_expired" = "Claude Code sign-in has expired. Run claude once in a terminal to restore it; BalanceBar never renews the login itself.";
