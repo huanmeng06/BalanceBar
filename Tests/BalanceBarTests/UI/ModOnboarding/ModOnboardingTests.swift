@@ -1562,13 +1562,15 @@ final class RealtimeBoostAdvancedCardTests: XCTestCase {
         XCTAssertEqual(rows(.disabled).descriptionButton.title, "Learn more")
     }
 
-    func testGeneralRefreshSectionHostsTheModRowRightAfterNativeSyncAndAdvancedOnlyHasDiagnostics() throws {
+    func testGeneralRefreshSectionHostsTheModRowRightAfterNativeSyncAndAdvancedHasNoModRow() throws {
         let old = AppLanguage.selected
         AppLanguage.selected = .english
         defer { AppLanguage.selected = old }
         let advanced = DashboardAdvancedPage().make(.init(relay: DashboardPreferencePageRelay(), logViewer: nil))
         let advancedSections = descendants(advanced).compactMap { $0 as? SettingsSectionView }
-        XCTAssertEqual(advancedSections.map { $0.headingLabel.stringValue }, ["Diagnostics"])
+        XCTAssertEqual(advancedSections.map { $0.headingLabel.stringValue }, ["Validity of each Claude data source", "Diagnostics"])
+        XCTAssertFalse(descendants(advanced).contains { ($0 as? SettingsRowView)?.titleLabel.stringValue == "BalanceBar Mod realtime boost" },
+                       "the Mod install row lives under General; Advanced only has the validity selectors")
 
         let page = DashboardGeneralPage()
         let general = page.make(.init(preferences: AppPreferences(), relay: DashboardPreferencePageRelay(),

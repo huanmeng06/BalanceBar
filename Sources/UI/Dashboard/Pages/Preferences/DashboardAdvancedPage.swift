@@ -10,16 +10,43 @@ final class DashboardAdvancedPage {
         let relay: DashboardPreferencePageRelay
         let logViewer: NSView?
         let includeLogViewer: Bool
+        let preferences: AppPreferences
 
         init(
             relay: DashboardPreferencePageRelay,
             logViewer: NSView?,
-            includeLogViewer: Bool = true
+            includeLogViewer: Bool = true,
+            preferences: AppPreferences = AppPreferences()
         ) {
             self.relay = relay
             self.logViewer = logViewer
             self.includeLogViewer = includeLogViewer
+            self.preferences = preferences
         }
+    }
+
+    /// The official-validity selector, kept so a calibration-interval change on the Refresh page can
+    /// update its choices without rebuilding the cached page.
+    private weak var oauthValidityPopup: NSPopUpButton?
+
+    /// Re-lists the official-validity choices (never shorter than the calibration interval) and
+    /// selects the effective value.
+    func refreshOAuthValidity(preferences: AppPreferences) {
+        guard let popup = oauthValidityPopup else { return }
+        let choices = preferences.claudeOAuthValidityChoices
+        let selected = preferences.claudeOAuthValidity
+        popup.removeAllItems()
+        for value in choices {
+            popup.addItem(withTitle: Self.validityTitle(value))
+            popup.lastItem?.representedObject = NSNumber(value: value)
+        }
+        if let index = choices.firstIndex(where: { abs($0 - selected) < 0.001 }) {
+            popup.selectItem(at: index)
+        }
+    }
+
+    private static func validityTitle(_ seconds: TimeInterval) -> String {
+        tr(.keyDashboardAdvancedPageValidityMinutes, arguments: [String(Int(seconds / 60))])
     }
 
     func make(_ input: Input) -> NSView {
@@ -59,7 +86,60 @@ final class DashboardAdvancedPage {
             title: tr(.keyDashboardAdvancedPageDiagnostics),
             contentViews: contentViews
         )
-        return DashboardSettingsComponents.makeSettingsPageContent([logs])
+        return DashboardSettingsComponents.makeSettingsPageContent([makeSourceValiditySection(input), logs])
+    }
+
+    /// How long a reading from each Claude source counts as valid: it drives the card's status
+    /// (live vs "N 分钟前") and whether local readings let BalanceBar skip official requests.
+    func makeSourceValiditySection(_ input: Input) -> SettingsSectionView {
+        let minutes = Self.validityTitle
+        func popup(_ key: String, _ options: [TimeInterval], _ selected: TimeInterval) -> NSPopUpButton {
+            DashboardSettingsComponents.makeIntervalPopUpButton(
+                values: options.map { ($0, minutes($0)) },
+                selected: selected,
+                identifier: key,
+                target: input.relay,
+                action: #selector(DashboardPreferencePageRelay.interval(_:)))
+        }
+        let validity = input.preferences.claudeSourceValidity
+        let popups = [
+            popup(AppPreferences.claudeOAuthValidityKey, input.preferences.claudeOAuthValidityChoices, validity.oauth),
+            popup(AppPreferences.claudeStatusLineValidityKey, AppPreferences.claudeLocalValidityOptions, validity.statusLine),
+            popup(AppPreferences.claudeModValidityKey, AppPreferences.claudeLocalValidityOptions, validity.mod)
+        ]
+        oauthValidityPopup = popups[0]
+        // The three selectors share one right-aligned column of identical width.
+        let width = ceil(max(108, popups.map { $0.fittingSize.width }.max() ?? 108))
+        let controls = popups.map { popup -> NSStackView in
+            popup.translatesAutoresizingMaskIntoConstraints = false
+            for constraint in popup.constraints where constraint.firstAttribute == .width {
+                constraint.priority = .defaultHigh
+            }
+            let preferredWidth = popup.widthAnchor.constraint(equalToConstant: width)
+            preferredWidth.priority = .defaultHigh
+            preferredWidth.isActive = true
+            let stack = NSStackView(views: [popup])
+            stack.orientation = .vertical
+            stack.alignment = .trailing
+            return stack
+        }
+        return SettingsSectionView(
+            title: tr(.keyDashboardAdvancedPageSourceValidity),
+            contentViews: [
+                SettingsRowView(
+                    title: tr(.keyDashboardAdvancedPageSourceValidityOauth),
+                    titleAccessory: DashboardRefreshPage.agentIconStrip(["Claude"]),
+                    accessoryView: controls[0]),
+                SettingsRowView(
+                    title: tr(.keyDashboardAdvancedPageSourceValidityNativeSync),
+                    titleAccessory: DashboardRefreshPage.agentIconStrip(["Claude"]),
+                    accessoryView: controls[1]),
+                SettingsRowView(
+                    title: tr(.keyDashboardAdvancedPageSourceValidityMod),
+                    titleAccessory: DashboardRefreshPage.agentIconStrip(["Claude"]),
+                    accessoryView: controls[2])
+            ],
+            footnote: tr(.keyDashboardAdvancedPageSourceValidityFootnote))
     }
 
     /// Keeps the Diagnostics log pane at the historical 190pt slot. The real

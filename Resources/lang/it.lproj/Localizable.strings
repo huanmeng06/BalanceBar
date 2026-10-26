@@ -140,6 +140,12 @@
 "dashboard.advanced.page.diagnostics" = "Diagnostica";
 "dashboard.advanced.page.debug_log" = "Registro di debug";
 "dashboard.advanced.page.records_runtime_status_and_errors" = "Registra lo stato di esecuzione e gli errori";
+"dashboard.advanced.page.source_validity" = "Validità di ogni fonte di dati Claude";
+"dashboard.advanced.page.source_validity_oauth" = "Validità della quota ufficiale";
+"dashboard.advanced.page.source_validity_native_sync" = "Validità della sincronizzazione nativa";
+"dashboard.advanced.page.source_validity_mod" = "Validità del push del Mod";
+"dashboard.advanced.page.source_validity_footnote" = "Entro la validità la quota appare come «Live»; dopo, come «N min fa».\nFinché i dati della sincronizzazione nativa o del Mod sono validi, BalanceBar non interroga nemmeno l’API ufficiale, poi riprende.\nPiù a lungo significa meno limitazioni, ma dati forse più vecchi.\nLa calibrazione con l’API ufficiale avviene almeno ogni ora.";
+"dashboard.advanced.page.validity_minutes" = "%1$@ min";
 "dashboard.general.and.refresh.pages.update_channel" = "Canale degli aggiornamenti";
 "dashboard.general.and.refresh.pages.update_channel_description" = "Scegli se verificare le versioni stabili o beta";
 "dashboard.general.and.refresh.pages.stable" = "Stabile";

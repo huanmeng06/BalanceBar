@@ -140,6 +140,12 @@
 "dashboard.advanced.page.diagnostics" = "诊断";
 "dashboard.advanced.page.debug_log" = "调试日志";
 "dashboard.advanced.page.records_runtime_status_and_errors" = "记录运行状态与错误";
+"dashboard.advanced.page.source_validity" = "不同 Claude 数据来源的有效期";
+"dashboard.advanced.page.source_validity_oauth" = "官方额度有效期";
+"dashboard.advanced.page.source_validity_native_sync" = "原生同步有效期";
+"dashboard.advanced.page.source_validity_mod" = "Mod 推送有效期";
+"dashboard.advanced.page.source_validity_footnote" = "有效期内显示「实时」，超时变为「N 分钟前」。\n原生同步和 Mod 在有效期内，BalanceBar 也不会向官方查询，超时后恢复。\n调大更不易被限流，但数据可能更旧。\n至少每小时会向官方校准一次。";
+"dashboard.advanced.page.validity_minutes" = "%1$@ 分钟";
 "dashboard.general.and.refresh.pages.update_channel" = "更新通道";
 "dashboard.general.and.refresh.pages.update_channel_description" = "选择要检查的正式版或 Beta 测试版更新";
 "dashboard.general.and.refresh.pages.stable" = "正式版";

@@ -142,7 +142,8 @@ final class SettingsSectionView: NSView {
         }
         contentStack.addView(cardView, in: .top)
         if let footnoteLabel {
-            footnoteLabel.font = .systemFont(ofSize: 11)
+            footnoteLabel.font = .systemFont(ofSize: 12)
+            footnoteLabel.isSelectable = false
             footnoteLabel.textColor = .secondaryLabelColor
             footnoteLabel.translatesAutoresizingMaskIntoConstraints = false
             footnoteLabel.setContentHuggingPriority(.required, for: .vertical)
@@ -164,7 +165,7 @@ final class SettingsSectionView: NSView {
             let inset = SettingsLayout.rowHorizontalInset
             NSLayoutConstraint.activate([
                 footnoteLabel.leadingAnchor.constraint(equalTo: contentStack.leadingAnchor, constant: inset),
-                footnoteLabel.trailingAnchor.constraint(lessThanOrEqualTo: contentStack.trailingAnchor, constant: -inset)
+                footnoteLabel.trailingAnchor.constraint(equalTo: contentStack.trailingAnchor, constant: -inset)
             ])
         }
         reconcileSeparators()
@@ -210,7 +211,19 @@ final class SettingsSectionView: NSView {
 
     override func layout() {
         super.layout()
+        updateFootnoteWrapWidth()
         updateSearchNaturalHeightConstraintForCurrentVisibility()
+    }
+
+    /// A wrapping `NSTextField` only reports a multi-line intrinsic height once it knows
+    /// its wrap width; without it the footnote stays on one line and gets clipped.
+    private func updateFootnoteWrapWidth() {
+        guard let footnoteLabel else { return }
+        let width = max(0, bounds.width - 2 * SettingsLayout.rowHorizontalInset)
+        guard width > 1, abs(footnoteLabel.preferredMaxLayoutWidth - width) > 0.5 else { return }
+        footnoteLabel.preferredMaxLayoutWidth = width
+        footnoteLabel.invalidateIntrinsicContentSize()
+        invalidateIntrinsicContentSize()
     }
 
     func updateSearchNaturalHeightConstraintForCurrentVisibility() {

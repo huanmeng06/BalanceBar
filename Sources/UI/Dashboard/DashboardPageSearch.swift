@@ -400,6 +400,12 @@ enum DashboardSettingsSearchCatalog {
                 tr(.keyClaudeRefreshEveryMinutes, arguments: [String(Int($0 / 60))])
             })
         }
+        if section == .advanced {
+            let minutes = AppPreferences.claudeOAuthValidityOptions + AppPreferences.claudeLocalValidityOptions
+            values.append(contentsOf: Set(minutes).sorted().map {
+                tr(.keyDashboardAdvancedPageValidityMinutes, arguments: [String(Int($0 / 60))])
+            })
+        }
         return values
     }
 
@@ -581,6 +587,10 @@ enum DashboardSettingsSearchCatalog {
             ]
         case .advanced:
             return [
+                .keyDashboardAdvancedPageSourceValidity,
+                .keyDashboardAdvancedPageSourceValidityOauth,
+                .keyDashboardAdvancedPageSourceValidityNativeSync,
+                .keyDashboardAdvancedPageSourceValidityMod,
                 .keyDashboardAdvancedPageDiagnostics,
                 .keyDashboardAdvancedPageDebugLog
             ]

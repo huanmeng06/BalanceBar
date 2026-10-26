@@ -181,7 +181,8 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         confirmationTimer: SchedulerTimer = DispatchSchedulerTimer(),
         statusLineEnabled: Bool = false,
         withTestStatusLine: Bool = false,
-        withInbox: Bool = false
+        withInbox: Bool = false,
+        sourceValidity: @escaping () -> ClaudeSourceValidity = { .defaults }
     ) -> ClaudeQuotaPipeline {
         let identityQueue = DispatchQueue(label: "test.pipeline.identity")
         let identity = ClaudeAccountIdentityProvider(
@@ -221,6 +222,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
             statusLineSource: statusLineSource,
             snapshotInbox: inbox,
             statusLineEnabled: statusLineEnabled,
+            sourceValidity: sourceValidity,
             now: { [clock] in clock!.now },
             diagnostics: { [diagnosticLines] message, _ in diagnosticLines.append(message) })
         pipelines.append(pipeline)
@@ -315,7 +317,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         let pipeline = makePipeline()
         pipeline.requestFetch(reason: .initial)
         _ = try XCTUnwrap(waitForState(pipeline) { $0.status == .realtime(.oauthAPI, at: Self.start) })
-        clock.advance(by: ClaudeQuotaPipeline.officialLiveFor + 1)
+        clock.advance(by: ClaudeSourceValidity.defaults.oauth + 1)
         pipeline.tick()
         pipeline.waitUntilIdle()
         XCTAssertEqual(pipeline.latestState?.status, .official(at: Self.start, source: .oauthAPI),
@@ -479,6 +481,20 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         tracker.recordTrustedObservation(window: .fiveHour, observedAt: Self.start, epoch: .initial)
         tracker.recordTrustedObservation(window: .sevenDay, observedAt: Self.start, epoch: .initial)
         XCTAssertEqual(pipeline.manualRefreshNotice(), .localFresh)
+    }
+
+    func testManualRefreshNoticeIgnoresLocalDataOlderThanTheManualWindowEvenIfStillValid() {
+        let tracker = ClaudeRealtimeTracker(
+            validity: { ClaudeSourceValidity(oauth: 600, statusLine: 600, mod: 600) },
+            now: { [clock] in clock!.now })
+        let pipeline = makePipeline(realtimeTracker: tracker)
+        tracker.recordTrustedObservation(window: .fiveHour, observedAt: Self.start, epoch: .initial)
+        tracker.recordTrustedObservation(window: .sevenDay, observedAt: Self.start, epoch: .initial)
+        clock.advance(by: 30)
+        XCTAssertEqual(pipeline.manualRefreshNotice(), .localFresh, "inside the manual window the refresh is skipped")
+        clock.advance(by: 90)
+        XCTAssertNotNil(tracker.lastTrustedRealtimeObservationAt, "the data still counts as live for the status")
+        XCTAssertNil(pipeline.manualRefreshNotice(), "but a manual refresh would query the official API, so no skip notice")
     }
 
     func testSameAccountCredentialRefreshKeepsEpochAndScope() throws {
@@ -1238,19 +1254,108 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         let state = try XCTUnwrap(waitForState(pipeline) { $0.status.isNativeRealtime })
         XCTAssertEqual(state.failure, .unauthorized, "the official read is still paused; only the card status recovers")
 
-        // Past the real-time freshness the local reading is still current evidence: no red card.
-        clock.advance(by: 300)
+        // Past the real-time freshness (the default 2 minutes) the reading is no longer valid
+        // evidence, so the failure matters again and the slot shows how old the data is.
+        clock.advance(by: ClaudeSourceValidity.defaults.statusLine + 5)
         pipeline.tick()
         pipeline.waitUntilIdle()
-        if case .error = pipeline.latestState?.status { XCTFail("a recent local reading must not look failed") }
-
-        // Without new local data for long enough the failure matters again.
-        clock.advance(by: ClaudeQuotaPipeline.localDataStaleAfter)
-        pipeline.tick()
-        pipeline.waitUntilIdle()
-        guard case .error = pipeline.latestState?.status else {
+        guard case .error(_, .statusLine?) = pipeline.latestState?.status else {
             return XCTFail("expected error once local data went stale, got \(String(describing: pipeline.latestState?.status))")
         }
+    }
+
+    func testLongerLocalValidityKeepsFailedReadsFromTurningTheCardRed() throws {
+        var validity = ClaudeSourceValidity.defaults
+        validity.statusLine = 600
+        let tracker = ClaudeRealtimeTracker(validity: { validity }, now: { [clock] in clock!.now })
+        let pipeline = makePipeline(
+            realtimeTracker: tracker, configuration: claudeV1TestConfiguration, statusLineEnabled: true,
+            withTestStatusLine: true, withInbox: true, sourceValidity: { validity })
+        lastStatusLineSessions?.starts["s1"] = Self.start.addingTimeInterval(1)
+        pipeline.start()
+        pipeline.requestFetch(reason: .initial)
+        _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+        PipelineStubProtocol.set(.init(status: 401))
+        clock.advance(by: 600)
+        pipeline.requestFetch(reason: .manual)
+        _ = try XCTUnwrap(waitForState(pipeline) { $0.failure == .unauthorized })
+        deliverStatusLine(session: "s1", five: 24, seven: 41, at: clock.now)
+        _ = try XCTUnwrap(waitForState(pipeline) { $0.status.isNativeRealtime })
+
+        clock.advance(by: 400) // well past the default 2 minutes, inside the chosen 10
+        pipeline.tick()
+        pipeline.waitUntilIdle()
+        XCTAssertTrue(pipeline.latestState?.status.isNativeRealtime ?? false, "the chosen validity keeps the slot live")
+    }
+
+    func testSourceValidityChoiceDrivesTheStatusImmediately() throws {
+        var validity = ClaudeSourceValidity.defaults
+        validity.statusLine = 300
+        let tracker = ClaudeRealtimeTracker(validity: { validity }, now: { [clock] in clock!.now })
+        let pipeline = makePipeline(
+            realtimeTracker: tracker, configuration: claudeV1TestConfiguration, statusLineEnabled: true,
+            withTestStatusLine: true, withInbox: true, sourceValidity: { validity })
+        lastStatusLineSessions?.starts["s1"] = Self.start.addingTimeInterval(1)
+        pipeline.start()
+        pipeline.requestFetch(reason: .initial)
+        _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+        let at = Self.start.addingTimeInterval(5)
+        deliverStatusLine(session: "s1", five: 24, seven: 41, at: at)
+        _ = try XCTUnwrap(waitForState(pipeline) { $0.status.isNativeRealtime })
+
+        clock.advance(by: 200) // 200 s old: stale by default, live under the chosen 5 minutes
+        pipeline.tick()
+        pipeline.waitUntilIdle()
+        XCTAssertEqual(pipeline.latestState?.status, .realtime(.statusLine, at: at))
+
+        validity.statusLine = 60
+        pipeline.sourceValidityChanged()
+        pipeline.waitUntilIdle()
+        XCTAssertEqual(pipeline.latestState?.status, .official(at: at, source: .statusLine),
+                       "shortening the validity takes effect without waiting for new data")
+    }
+
+    func testOAuthValidityControlsHowLongAnOfficialReadStaysLive() throws {
+        var validity = ClaudeSourceValidity.defaults
+        validity.oauth = 1_800
+        let pipeline = makePipeline(sourceValidity: { validity })
+        pipeline.requestFetch(reason: .initial)
+        _ = try XCTUnwrap(waitForState(pipeline) { $0.status == .realtime(.oauthAPI, at: Self.start) })
+        clock.advance(by: 1_200)
+        pipeline.tick()
+        pipeline.waitUntilIdle()
+        XCTAssertEqual(pipeline.latestState?.status, .realtime(.oauthAPI, at: Self.start))
+        clock.advance(by: 700)
+        pipeline.tick()
+        pipeline.waitUntilIdle()
+        XCTAssertEqual(pipeline.latestState?.status, .official(at: Self.start, source: .oauthAPI))
+    }
+
+    func testLongerModValidityKeepsSkippingOfficialReadsPastTheDefaultFreshness() throws {
+        var validity = ClaudeSourceValidity.defaults
+        validity.mod = 600
+        let tracker = ClaudeRealtimeTracker(validity: { validity }, now: { [clock] in clock!.now })
+        let pipeline = makePipeline(
+            realtimeTracker: tracker, configuration: claudeV1TestConfiguration, withInbox: true,
+            sourceValidity: { validity })
+        pipeline.start()
+        pipeline.requestFetch(reason: .initial)
+        _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+        clock.advance(by: 305)
+        try placeModSnapshot(five: 25, seven: 42, observedAt: Self.start.addingTimeInterval(310))
+        _ = try XCTUnwrap(waitForState(pipeline) { $0.status.isNativeRealtime })
+
+        clock.advance(by: 250) // 250 s after the snapshot: past the default 2 minutes
+        pipeline.requestFetch(reason: .scheduled)
+        quiet(pipeline)
+        XCTAssertEqual(PipelineStubProtocol.requestCount, 1, "the chosen validity still suppresses the official read")
+        XCTAssertTrue(diagnosticLines.all.contains { $0.contains("skip=realtimeSourceFresh") })
+
+        validity.mod = 120
+        pipeline.sourceValidityChanged()
+        quiet(pipeline)
+        pipeline.requestFetch(reason: .scheduled)
+        waitForRequests(2)
     }
 
     func testStatusLineReadingBecomesAgeAndSourceOnceItIsNoLongerLive() throws {

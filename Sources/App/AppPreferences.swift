@@ -500,6 +500,49 @@ final class AppPreferences {
             defaults.set(Self.claudeCalibrationIntervals.contains(newValue) ? newValue : 300, forKey: Self.claudeCalibrationIntervalKey)
         }
     }
+    /// How long a reading from each Claude source counts as valid (live) for the status slot and for
+    /// skipping official requests. Defaults reproduce the previous fixed thresholds.
+    static let claudeOAuthValidityOptions: [TimeInterval] = [300, 600, 900, 1_800, 3_600]
+    static let claudeLocalValidityOptions: [TimeInterval] = [60, 120, 300, 600]
+    static let claudeOAuthValidityKey = "claudeOAuthValidity"
+    static let claudeStatusLineValidityKey = "claudeStatusLineValidity"
+    static let claudeModValidityKey = "claudeModValidity"
+
+    private func claudeValidity(_ key: String, options: [TimeInterval], fallback: TimeInterval) -> TimeInterval {
+        let value = defaults.double(forKey: key)
+        return options.contains(value) ? value : fallback
+    }
+
+    private func setClaudeValidity(_ value: TimeInterval, key: String, options: [TimeInterval], fallback: TimeInterval) {
+        defaults.set(options.contains(value) ? value : fallback, forKey: key)
+    }
+
+    /// Official readings are re-fetched every calibration interval, so a validity shorter than that
+    /// would turn the status orange between two healthy polls: only longer choices are offered.
+    var claudeOAuthValidityChoices: [TimeInterval] {
+        Self.claudeOAuthValidityOptions.filter { $0 >= claudeCalibrationInterval }
+    }
+    /// The saved choice, raised to the shortest allowed one when the calibration interval grew past it
+    /// (the saved value is kept, so shortening the interval again restores the original choice).
+    var claudeOAuthValidity: TimeInterval {
+        get {
+            let saved = claudeValidity(Self.claudeOAuthValidityKey, options: Self.claudeOAuthValidityOptions, fallback: ClaudeSourceValidity.defaults.oauth)
+            let choices = claudeOAuthValidityChoices
+            return choices.first { $0 >= saved } ?? choices.last ?? saved
+        }
+        set { setClaudeValidity(newValue, key: Self.claudeOAuthValidityKey, options: Self.claudeOAuthValidityOptions, fallback: ClaudeSourceValidity.defaults.oauth) }
+    }
+    var claudeStatusLineValidity: TimeInterval {
+        get { claudeValidity(Self.claudeStatusLineValidityKey, options: Self.claudeLocalValidityOptions, fallback: ClaudeSourceValidity.defaults.statusLine) }
+        set { setClaudeValidity(newValue, key: Self.claudeStatusLineValidityKey, options: Self.claudeLocalValidityOptions, fallback: ClaudeSourceValidity.defaults.statusLine) }
+    }
+    var claudeModValidity: TimeInterval {
+        get { claudeValidity(Self.claudeModValidityKey, options: Self.claudeLocalValidityOptions, fallback: ClaudeSourceValidity.defaults.mod) }
+        set { setClaudeValidity(newValue, key: Self.claudeModValidityKey, options: Self.claudeLocalValidityOptions, fallback: ClaudeSourceValidity.defaults.mod) }
+    }
+    var claudeSourceValidity: ClaudeSourceValidity {
+        ClaudeSourceValidity(oauth: claudeOAuthValidity, statusLine: claudeStatusLineValidity, mod: claudeModValidity)
+    }
     /// Saved values below the shortest option (legacy 1 s / 2 s) read as 3 s, so scheduling matches the selector.
     var codexUsageRefreshInterval: TimeInterval { get { max(Self.refreshIntervalOptions[0], positiveDouble("codexUsageRefreshInterval", default: 3)) } set { defaults.set(newValue, forKey: "codexUsageRefreshInterval") } }
     /// Enables the native Claude Code statusLine bridge.
@@ -1258,5 +1301,22 @@ enum RefreshPolicy {
 
     static func apiPostTaskDuration(interval: TimeInterval) -> TimeInterval {
         TimeInterval(QuotaConstants.apiPostTaskRefreshCount) * interval
+    }
+}
+
+/// How long a reading from each Claude source stays valid, in seconds.
+struct ClaudeSourceValidity: Equatable {
+    var oauth: TimeInterval
+    var statusLine: TimeInterval
+    var mod: TimeInterval
+
+    static let defaults = ClaudeSourceValidity(oauth: 600, statusLine: 120, mod: 120)
+
+    func seconds(for source: StatusSlotLiveSource) -> TimeInterval {
+        switch source {
+        case .oauthAPI: return oauth
+        case .statusLine: return statusLine
+        case .mod: return mod
+        }
     }
 }
