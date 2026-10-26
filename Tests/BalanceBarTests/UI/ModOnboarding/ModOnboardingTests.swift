@@ -8,6 +8,12 @@ private final class MemoryPreference: ModPromptPreferenceStoring { var isPromptD
 
 private struct FakeLocator: ClaudeExecutableLocating { var path: String?; func locate() -> String? { path } }
 
+private final class SwitchableLocator: ClaudeExecutableLocating {
+    var path: String?
+    init(path: String?) { self.path = path }
+    func locate() -> String? { path }
+}
+
 private final class ScriptedRunner: ModCommandRunning {
     var results: [ModCommandResult?]
     var onRun: (([String]) -> Void)?
@@ -1102,6 +1108,46 @@ extension ModSyncCoordinatorTests {
         coordinator.startDetectionIfNeeded(force: true)
         wait(for: [reinstalled], timeout: 5)
         XCTAssertEqual(coordinator.status, .waitingForData)
+    }
+
+    func testMissingCLIDoesNotClearEvidenceOfInstalledMod() {
+        let runner = ScriptedRunner([probeVersion, listResult(), probeVersion, listResult()])
+        let locator = SwitchableLocator(path: "/bin/claude")
+        let q = DispatchQueue(label: "test.coordinator.missing-cli")
+        let controller = ModOnboardingController(
+            installer: ModInstaller(
+                locator: locator, runner: runner, prepareInbox: { true },
+                workQueue: q, callbackQueue: .main),
+            preference: MemoryPreference())
+        let detector = ModSyncDetector(
+            locator: locator, runner: runner,
+            inboxDirectory: inboxDirectory, workQueue: q, callbackQueue: .main)
+        let coordinator = ModSyncCoordinator(
+            controller: controller, detector: detector, activityProvider: { false })
+
+        let installed = expectation(description: "installed")
+        coordinator.onStatusChange = { _ in installed.fulfill() }
+        coordinator.startDetectionIfNeeded(force: true)
+        wait(for: [installed], timeout: 5)
+
+        let accepted = expectation(description: "accepted")
+        coordinator.onStatusChange = { if case .active = $0 { accepted.fulfill() } }
+        coordinator.ingest(.init(kind: .processed(accepted: true), window: .fiveHour, observedAt: nil, receivedAt: Date()))
+        wait(for: [accepted], timeout: 5)
+
+        // The CLI temporarily cannot be found: not a confirmed uninstall.
+        locator.path = nil
+        let missing = expectation(description: "claude missing")
+        coordinator.onStatusChange = { if $0 == .claudeMissing { missing.fulfill() } }
+        coordinator.startDetectionIfNeeded(force: true)
+        wait(for: [missing], timeout: 5)
+
+        // The CLI is back and the Mod is still installed: the earlier trusted data is intact.
+        locator.path = "/bin/claude"
+        let restored = expectation(description: "restored")
+        coordinator.onStatusChange = { if case .active = $0 { restored.fulfill() } }
+        coordinator.startDetectionIfNeeded(force: true)
+        wait(for: [restored], timeout: 5)
     }
 }
 

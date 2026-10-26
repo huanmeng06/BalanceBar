@@ -104,9 +104,10 @@ final class ModSyncCoordinator {
             let wasInstalled = self.environment?.installation != nil
             self.environment = environment
             // An uninstall done outside BalanceBar (CLI / plugin manager) must invalidate
-            // the old plugin's evidence just like the in-app path; a failed check is not
-            // proof of removal.
-            if wasInstalled, environment.installation == nil, environment.installationCheck == .ok {
+            // the old plugin's evidence just like the in-app path; a missing CLI or a failed
+            // plugin-list check is not proof of removal.
+            if wasInstalled, environment.claudeFound, environment.installation == nil,
+               environment.installationCheck == .ok {
                 self.resetSnapshotEvidence()
             } else {
                 self.recomputeStatus()
