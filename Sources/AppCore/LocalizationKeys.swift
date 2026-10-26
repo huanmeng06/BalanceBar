@@ -697,6 +697,7 @@
     case modCardUninstallFailedTitle = "mod.card.uninstall_failed.title"
     case modCardViewErrorAction = "mod.card.view_error_action"
     case modCardRowTitle = "mod.card.row_title"
+    case modCardRowDescription = "mod.card.row_description"
     case modCardLearnMore = "mod.card.learn_more"
     case modUIViewStatus = "mod.ui.view_status"
     case modUIConfirmUninstallNote = "mod.ui.confirm_uninstall_note"

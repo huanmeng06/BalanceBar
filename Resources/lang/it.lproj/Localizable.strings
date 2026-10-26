@@ -596,10 +596,10 @@
 "status.item.controller.refresh_now_failure_backoff" = "Richiesta non riuscita; nuovo tentativo automatico tra %1$@ s";
 "status.item.controller.refresh_now_out_of_tokens" = "Aggiornamenti troppo frequenti; riprova tra %1$@ s";
 "claude.status_line.enabled" = "Sincronizzazione nativa Claude Code";
-"claude.status_line.description" = "Inviato da Claude Code dopo ogni risposta; nessun plugin necessario";
+"claude.status_line.description" = "Per Claude Code nel terminale: inviato dopo ogni risposta, nessun plugin necessario";
 "claude.status_line.calibration" = "Calibrazione della quota ufficiale Claude";
 "claude.refresh.every_minutes" = "Ogni %1$@ min";
-"claude.status_line.calibration_detail" = "Interroga la fonte ufficiale a intervalli regolari, come ripiego; intervalli più lunghi evitano i limiti di frequenza";
+"claude.status_line.calibration_detail" = "Funziona su web, desktop e terminale; interroga la fonte ufficiale a intervalli regolari come ripiego, intervalli più lunghi evitano i limiti di frequenza";
 "claude.status_line.disable_confirm_title" = "Disattivare la sincronizzazione nativa di Claude Code?";
 "claude.status_line.disable_confirm_message" = "La quota di Claude verrà aggiornata solo all’intervallo fisso e non subito dopo ogni risposta.";
 "claude.status_line.disable_confirm_action" = "Disattiva";
@@ -727,6 +727,7 @@
 "mod.card.uninstall_failed.title" = "Disinstallazione non riuscita";
 "mod.card.view_error_action" = "Fai clic su «%1$@» per i dettagli";
 "mod.card.row_title" = "BalanceBar Mod potenziamento in tempo reale";
+"mod.card.row_description" = "Consigliato per l’app desktop di Claude, funziona anche nel terminale; invia la quota in tempo reale durante la chat";
 "mod.card.learn_more" = "Scopri di più";
 "mod.ui.view_status" = "Vedi stato attuale";
 "mod.ui.back_to_intro" = "Torna alla panoramica";

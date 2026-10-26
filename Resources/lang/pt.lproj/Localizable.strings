@@ -596,10 +596,10 @@
 "status.item.controller.refresh_now_failure_backoff" = "A requisição falhou; nova tentativa automática em %1$@ s";
 "status.item.controller.refresh_now_out_of_tokens" = "Atualizações frequentes demais; tente de novo em %1$@ s";
 "claude.status_line.enabled" = "Sincronização nativa do Claude Code";
-"claude.status_line.description" = "Enviado pelo Claude Code após cada resposta; não requer plugin";
+"claude.status_line.description" = "Para o Claude Code no terminal: enviado após cada resposta, sem plugin";
 "claude.status_line.calibration" = "Calibração da cota oficial do Claude";
 "claude.refresh.every_minutes" = "A cada %1$@ min";
-"claude.status_line.calibration_detail" = "Consulta a fonte oficial periodicamente como alternativa; intervalos maiores evitam limites de uso";
+"claude.status_line.calibration_detail" = "Funciona na web, no desktop e no terminal; consulta a fonte oficial periodicamente como alternativa, e intervalos maiores evitam limites de uso";
 "claude.status_line.disable_confirm_title" = "Desativar a sincronização nativa do Claude Code?";
 "claude.status_line.disable_confirm_message" = "A cota do Claude será atualizada apenas no intervalo fixo, e não logo após cada resposta.";
 "claude.status_line.disable_confirm_action" = "Desativar";
@@ -727,6 +727,7 @@
 "mod.card.uninstall_failed.title" = "Falha na desinstalação";
 "mod.card.view_error_action" = "Clique em “%1$@” para ver os detalhes";
 "mod.card.row_title" = "BalanceBar Mod impulso em tempo real";
+"mod.card.row_description" = "Recomendado para o app de desktop do Claude, também funciona no terminal; envia a cota em tempo real durante o chat";
 "mod.card.learn_more" = "Saiba mais";
 "mod.ui.view_status" = "Ver status atual";
 "mod.ui.back_to_intro" = "Voltar à apresentação";

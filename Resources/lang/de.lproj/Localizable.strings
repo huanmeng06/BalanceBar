@@ -596,10 +596,10 @@
 "status.item.controller.refresh_now_failure_backoff" = "Anfrage fehlgeschlagen; automatische Wiederholung in %1$@ s";
 "status.item.controller.refresh_now_out_of_tokens" = "Zu häufig aktualisiert; Wiederholung in %1$@ s möglich";
 "claude.status_line.enabled" = "Native Synchronisierung mit Claude Code";
-"claude.status_line.description" = "Wird nach jeder Antwort von Claude Code gesendet; kein Plugin nötig";
+"claude.status_line.description" = "Für Claude Code im Terminal: wird nach jeder Antwort gesendet, kein Plugin nötig";
 "claude.status_line.calibration" = "Abgleich des offiziellen Claude-Kontingents";
 "claude.refresh.every_minutes" = "Alle %1$@ Min.";
-"claude.status_line.calibration_detail" = "Fragt die offizielle Quelle zeitgesteuert ab, als Rückfall; längere Intervalle vermeiden Rate-Limits";
+"claude.status_line.calibration_detail" = "Für Web, Desktop und Terminal; fragt die offizielle Quelle zeitgesteuert als Rückfall ab, längere Intervalle vermeiden Rate-Limits";
 "claude.status_line.disable_confirm_title" = "Native Claude-Code-Synchronisierung ausschalten?";
 "claude.status_line.disable_confirm_message" = "Das Claude-Kontingent wird dann nur im festen Intervall aktualisiert und nicht direkt nach jeder Antwort.";
 "claude.status_line.disable_confirm_action" = "Ausschalten";
@@ -727,6 +727,7 @@
 "mod.card.uninstall_failed.title" = "Deinstallation fehlgeschlagen";
 "mod.card.view_error_action" = "Mit „%1$@“ Details anzeigen";
 "mod.card.row_title" = "BalanceBar Mod Echtzeit-Boost";
+"mod.card.row_description" = "Empfohlen für die Claude-Desktop-App, funktioniert auch im Terminal; sendet das Kontingent live während des Chats";
 "mod.card.learn_more" = "Mehr erfahren";
 "mod.ui.view_status" = "Aktuellen Status ansehen";
 "mod.ui.back_to_intro" = "Zurück zur Übersicht";

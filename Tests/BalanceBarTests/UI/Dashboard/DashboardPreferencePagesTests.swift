@@ -2111,6 +2111,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertNotNil(descendants(of: nativeRow).first { ($0 as? NSControl)?.identifier?.rawValue == "claudeStatusLineEnabled" })
         let modRow = try XCTUnwrap(claudeSection.contentViews[2] as? SettingsRowView)
         XCTAssertEqual(modRow.titleLabel.stringValue, tr(.modCardRowTitle))
+        XCTAssertTrue(modRow.detailLabel.stringValue.hasPrefix(tr(.modCardRowDescription) + "\n● "),
+                      "the Mod row names its audience above the status line")
         let refreshNowButton = try XCTUnwrap(descendants(of: page).compactMap { $0 as? NSButton }
             .first { $0.title == tr(.keyDashboardGeneralAndRefreshPagesRefreshNow) })
         let refreshNowRow = try XCTUnwrap(SettingsRowView.enclosing(refreshNowButton))

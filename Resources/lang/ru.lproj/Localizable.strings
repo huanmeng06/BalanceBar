@@ -596,10 +596,10 @@
 "status.item.controller.refresh_now_failure_backoff" = "Запрос не удался; автоматический повтор через %1$@ с";
 "status.item.controller.refresh_now_out_of_tokens" = "Слишком частое обновление; повтор через %1$@ с";
 "claude.status_line.enabled" = "Нативная синхронизация Claude Code";
-"claude.status_line.description" = "Claude Code отправляет данные после каждого ответа; плагин не нужен";
+"claude.status_line.description" = "Для Claude Code в терминале: данные отправляются после каждого ответа, плагин не нужен";
 "claude.status_line.calibration" = "Сверка официальной квоты Claude";
 "claude.refresh.every_minutes" = "Каждые %1$@ мин";
-"claude.status_line.calibration_detail" = "Периодически запрашивает официальный источник как запасной вариант; больший интервал помогает избежать ограничений";
+"claude.status_line.calibration_detail" = "Подходит для веба, десктопа и терминала; периодически запрашивает официальный источник как запасной вариант, больший интервал помогает избежать ограничений";
 "claude.status_line.disable_confirm_title" = "Отключить нативную синхронизацию Claude Code?";
 "claude.status_line.disable_confirm_message" = "Лимит Claude будет обновляться только с фиксированным интервалом, а не сразу после каждого ответа.";
 "claude.status_line.disable_confirm_action" = "Отключить";
@@ -727,6 +727,7 @@
 "mod.card.uninstall_failed.title" = "Ошибка удаления";
 "mod.card.view_error_action" = "Нажмите «%1$@», чтобы узнать подробности";
 "mod.card.row_title" = "BalanceBar Mod ускорение реального времени";
+"mod.card.row_description" = "Рекомендуется для десктопного приложения Claude, работает и в терминале; передаёт квоту в реальном времени во время чата";
 "mod.card.learn_more" = "Подробнее";
 "mod.ui.view_status" = "Показать текущее состояние";
 "mod.ui.back_to_intro" = "Назад к описанию";
