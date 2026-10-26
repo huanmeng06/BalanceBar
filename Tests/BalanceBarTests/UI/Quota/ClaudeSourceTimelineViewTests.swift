@@ -58,7 +58,7 @@ final class ClaudeSourceTimelineViewTests: XCTestCase {
         XCTAssertLessThan(bars[0].dividers.count, readings.count - 1)
     }
 
-    func testFailureBandsStayInTheOAuthLaneAndAnOpenRunReachesNow() {
+    func testFailureBoxesStayInTheOAuthLaneMatchTheBarsAndAnOpenRunReachesNow() {
         let layout = layout(failures: [
             Run(start: now.addingTimeInterval(-1_500), end: now.addingTimeInterval(-900), kind: .network),
             Run(start: now.addingTimeInterval(-120), end: nil, kind: .unauthorized),
@@ -70,9 +70,9 @@ final class ClaudeSourceTimelineViewTests: XCTestCase {
             XCTAssertLessThanOrEqual(band.rect.maxY, lane.maxY)
         }
         XCTAssertEqual(layout.bands[1].rect.maxX, layout.nowX, accuracy: 0.01)
-        XCTAssertTrue(ClaudeSourceTimelineView.bandShowsText(layout.bands[0]), "a 100pt band carries its category")
-        let narrow = self.layout(failures: [layout.bands[1].run], width: 200)
-        XCTAssertFalse(ClaudeSourceTimelineView.bandShowsText(narrow.bands[0]), "a narrow band hides the text")
+        let bar = self.layout(readings: [reading(.oauthAPI, -600, 0)]).bars[0]
+        XCTAssertEqual(layout.bands[0].rect.height, bar.rect.height, "a failure box is the size of a bar")
+        XCTAssertEqual(layout.bands[0].rect.midY, bar.rect.midY, accuracy: 0.01)
     }
 
     func testTicksSitOnQuarterHoursOfTheDisplayTimeZone() {

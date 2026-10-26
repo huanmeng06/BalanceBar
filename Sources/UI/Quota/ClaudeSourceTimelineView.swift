@@ -110,10 +110,9 @@ struct ClaudeSourceTimelineLayout {
         let from = max(run.start, start)
         let to = min(run.end ?? now, now)
         guard to >= from, from < now else { return nil }
-        let lane = laneRect(.oauthAPI).insetBy(dx: 0, dy: 2)
+        // Same size as a bar so the failure reads as one more box in the OAuth row.
         let minX = x(for: from)
-        return Band(run: run, rect: CGRect(
-            x: minX, y: lane.minY, width: max(Self.minimumMarkWidth, x(for: to) - minX), height: lane.height))
+        return Band(run: run, rect: barRect(.oauthAPI, from: minX, to: x(for: to)))
     }
 
     /// Quarter-hour marks in the display time zone, so they read as 10:15, 10:30, …
@@ -145,7 +144,6 @@ final class ClaudeSourceTimelineView: NSView {
     static let refreshInterval: TimeInterval = 5
     static let labelFont = NSFont.systemFont(ofSize: 11)
     static let axisFont = NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .regular)
-    static let bandFont = NSFont.systemFont(ofSize: 10, weight: .medium)
 
     private let provider: () -> Content
     private let localize: (StatusSlotText) -> String
@@ -262,12 +260,6 @@ final class ClaudeSourceTimelineView: NSView {
         }
     }
 
-    /// Whether a band is wide enough to carry its category text.
-    static func bandShowsText(_ band: ClaudeSourceTimelineLayout.Band) -> Bool {
-        let width = (failureText(band.run.kind) as NSString).size(withAttributes: [.font: bandFont]).width
-        return band.rect.width >= ceil(width) + 8
-    }
-
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
         needsDisplay = true
@@ -337,10 +329,10 @@ final class ClaudeSourceTimelineView: NSView {
         outline.stroke()
     }
 
-    /// A rounded red box in the bars' style (tint, outline, faint stripes) rather than edge lines.
+    /// A rounded red box the size of a bar (tint, outline, faint stripes); its category is in the tooltip.
     private func drawBand(_ band: ClaudeSourceTimelineLayout.Band) {
         let rect = band.rect
-        let box = NSBezierPath(roundedRect: rect.insetBy(dx: 0.5, dy: 0.5), xRadius: 4, yRadius: 4)
+        let box = NSBezierPath(roundedRect: rect.insetBy(dx: 0.5, dy: 0.5), xRadius: 3, yRadius: 3)
         NSColor.systemRed.withAlphaComponent(0.12).setFill()
         box.fill()
         NSGraphicsContext.saveGraphicsState()
@@ -359,11 +351,6 @@ final class ClaudeSourceTimelineView: NSView {
         box.lineWidth = 1
         NSColor.systemRed.setStroke()
         box.stroke()
-        guard Self.bandShowsText(band) else { return }
-        let text = Self.failureText(band.run.kind) as NSString
-        let attributes: [NSAttributedString.Key: Any] = [.font: Self.bandFont, .foregroundColor: NSColor.systemRed]
-        let size = text.size(withAttributes: attributes)
-        text.draw(at: NSPoint(x: rect.midX - size.width / 2, y: rect.midY - size.height / 2), withAttributes: attributes)
     }
 
     // MARK: Tooltips
