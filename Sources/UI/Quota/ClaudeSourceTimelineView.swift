@@ -202,9 +202,11 @@ struct ClaudeSourceTimelineLayout {
         for end in marks where end.rect.maxX < nowX - 0.5 {
             for start in marks where start.lane != end.lane && start.rect.minX > plot.minX + 0.5
                 && abs(start.rect.minX - end.rect.maxX) <= Self.junctionTolerance {
-                let x = ((start.rect.minX + end.rect.maxX) / 2).rounded() + 0.5
-                let junction = Junction(
-                    x: x, minY: min(end.rect.minY, start.rect.minY), maxY: max(end.rect.maxY, start.rect.maxY))
+                // Only across the gap between the two marks, on the edge of the one that starts, so
+                // the line leaves one outline and lands on the other instead of piercing both.
+                let upper = end.rect.minY < start.rect.minY ? end.rect : start.rect
+                let lower = end.rect.minY < start.rect.minY ? start.rect : end.rect
+                let junction = Junction(x: start.rect.minX + 0.75, minY: upper.maxY, maxY: lower.minY)
                 if !junctions.contains(junction) { junctions.append(junction) }
             }
         }
@@ -496,9 +498,10 @@ final class ClaudeSourceTimelineView: NSView {
             let line = NSBezierPath()
             line.move(to: NSPoint(x: junction.x, y: junction.minY))
             line.line(to: NSPoint(x: junction.x, y: junction.maxY))
-            line.lineWidth = 1
-            line.setLineDash([3, 3], count: 2, phase: 0)
-            NSColor.secondaryLabelColor.withAlphaComponent(0.7).setStroke()
+            line.lineWidth = 1.5
+            line.lineCapStyle = .round
+            line.setLineDash([0.1, 4], count: 2, phase: 0)
+            NSColor.secondaryLabelColor.withAlphaComponent(0.55).setStroke()
             line.stroke()
         }
         for band in layout.bands { drawBand(band) }

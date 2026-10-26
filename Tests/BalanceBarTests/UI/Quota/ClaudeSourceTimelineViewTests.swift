@@ -71,9 +71,11 @@ final class ClaudeSourceTimelineViewTests: XCTestCase {
         ])
         XCTAssertEqual(layout.junctions.count, 1)
         let junction = try! XCTUnwrap(layout.junctions.first)
-        XCTAssertEqual(junction.x, 460.5, accuracy: 0.01)
-        XCTAssertEqual(junction.minY, layout.laneRect(.mod).midY - ClaudeSourceTimelineLayout.barHeight / 2, accuracy: 0.01)
-        XCTAssertEqual(junction.maxY, layout.laneRect(.oauthAPI).midY + ClaudeSourceTimelineLayout.barHeight / 2, accuracy: 0.01)
+        XCTAssertEqual(junction.x, 460.75, accuracy: 0.01, "on the outline of the block that starts")
+        XCTAssertEqual(junction.minY, layout.laneRect(.mod).midY + ClaudeSourceTimelineLayout.barHeight / 2, accuracy: 0.01,
+                       "leaves the upper block's bottom edge")
+        XCTAssertEqual(junction.maxY, layout.laneRect(.oauthAPI).midY - ClaudeSourceTimelineLayout.barHeight / 2, accuracy: 0.01,
+                       "lands on the lower block's top edge")
     }
 
     func testFrequentReadingsMergeWithoutCrowdedDividers() {
