@@ -765,7 +765,9 @@ final class ClaudeSourceTimelineView: NSView {
         switch target {
         case let .piece(piece):
             color = Self.color(for: piece.source)
-            tintAlpha = 0.32
+            // The block in use right now stays darker than the others while lifted, too.
+            let inUse = piece.end >= now() && (content.status == nil || piece.source == Self.activeSource(content.status))
+            tintAlpha = inUse ? 0.5 : 0.32
         case .band:
             color = .systemRed
             tintAlpha = 0.18
