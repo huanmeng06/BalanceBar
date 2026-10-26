@@ -337,28 +337,28 @@ final class ClaudeSourceTimelineView: NSView {
         outline.stroke()
     }
 
+    /// A rounded red box in the bars' style (tint, outline, faint stripes) rather than edge lines.
     private func drawBand(_ band: ClaudeSourceTimelineLayout.Band) {
         let rect = band.rect
-        NSColor.systemRed.withAlphaComponent(0.15).setFill()
-        rect.fill()
+        let box = NSBezierPath(roundedRect: rect.insetBy(dx: 0.5, dy: 0.5), xRadius: 4, yRadius: 4)
+        NSColor.systemRed.withAlphaComponent(0.12).setFill()
+        box.fill()
         NSGraphicsContext.saveGraphicsState()
-        NSBezierPath(rect: rect).addClip()
+        box.addClip()
         let stripes = NSBezierPath()
         var x = rect.minX - rect.height
         while x < rect.maxX {
             stripes.move(to: NSPoint(x: x, y: rect.maxY))
             stripes.line(to: NSPoint(x: x + rect.height, y: rect.minY))
-            x += 5
+            x += 6
         }
         stripes.lineWidth = 1
-        NSColor.systemRed.withAlphaComponent(0.55).setStroke()
+        NSColor.systemRed.withAlphaComponent(0.25).setStroke()
         stripes.stroke()
         NSGraphicsContext.restoreGraphicsState()
-        NSColor.systemRed.setFill()
-        NSRect(x: rect.minX, y: rect.minY, width: 1, height: rect.height).fill()
-        if band.run.end != nil {
-            NSRect(x: rect.maxX - 1, y: rect.minY, width: 1, height: rect.height).fill()
-        }
+        box.lineWidth = 1
+        NSColor.systemRed.setStroke()
+        box.stroke()
         guard Self.bandShowsText(band) else { return }
         let text = Self.failureText(band.run.kind) as NSString
         let attributes: [NSAttributedString.Key: Any] = [.font: Self.bandFont, .foregroundColor: NSColor.systemRed]
