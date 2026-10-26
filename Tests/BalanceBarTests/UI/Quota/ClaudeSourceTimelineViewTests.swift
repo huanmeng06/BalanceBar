@@ -135,18 +135,22 @@ final class ClaudeSourceTimelineViewTests: XCTestCase {
 
         let layout = view.makeLayout()
         let modBar = try! XCTUnwrap(layout.bars.first { $0.source == .mod })
-        XCTAssertEqual(
-            view.hoverText(at: NSPoint(x: modBar.rect.midX, y: modBar.rect.midY)),
-            tr(.keyClaudeTimelineHoverReading, arguments: [
-                "Mod", "07:59:00", "08:00:00", ClaudeSourceTimelineView.durationText(60), "1",
-                ClaudeSourceTimelineView.durationText(120)]),
-            "type, range so far, duration, refreshes and each refresh's validity")
+        let reading = view.hoverContent(for: try! XCTUnwrap(layout.hoverTarget(at: CGPoint(x: modBar.rect.midX, y: modBar.rect.midY))))
+        XCTAssertEqual(reading.title, "Mod")
+        XCTAssertEqual(reading.rows, [
+            .init(label: tr(.keyClaudeTimelineHoverTime), value: "07:59:00 – 08:00:00"),
+            .init(label: tr(.keyClaudeTimelineHoverDuration), value: ClaudeSourceTimelineView.durationText(60)),
+            .init(label: tr(.keyClaudeTimelineHoverRefreshes), value: tr(.keyClaudeTimelineHoverRefreshCount, arguments: ["1"])),
+            .init(label: tr(.keyClaudeTimelineHoverValidity), value: ClaudeSourceTimelineView.durationText(120)),
+        ], "type heading, then range so far, duration, refreshes and each refresh's validity")
         let band = try! XCTUnwrap(layout.bands.first)
-        XCTAssertEqual(
-            view.hoverText(at: NSPoint(x: band.rect.midX, y: band.rect.midY)),
-            tr(.keyClaudeTimelineHoverFailure, arguments: [
-                "OAuth API", tr(.keyClaudeTimelineFailureNetwork), "07:35:00", "07:43:20",
-                ClaudeSourceTimelineView.durationText(500)]))
+        let failure = view.hoverContent(for: .band(band))
+        XCTAssertEqual(failure.title, "OAuth API · " + tr(.keyClaudeTimelineFailureNetwork))
+        XCTAssertEqual(failure.rows, [
+            .init(label: tr(.keyClaudeTimelineHoverTime), value: "07:35:00 – 07:43:20"),
+            .init(label: tr(.keyClaudeTimelineHoverDuration), value: ClaudeSourceTimelineView.durationText(500)),
+        ])
+        XCTAssertEqual(view.hoverText(at: NSPoint(x: band.rect.midX, y: band.rect.midY)), failure.plainText)
         XCTAssertEqual(
             view.hoverText(at: NSPoint(x: 2, y: layout.laneRect(.oauthAPI).midY)),
             tr(.keyClaudeTimelineTooltipOauthRule))
@@ -242,6 +246,63 @@ final class ClaudeSourceTimelineViewTests: XCTestCase {
                 add(attachment)
                 if let directory { try png.write(to: directory.appendingPathComponent(label + ".png")) }
             }
+        }
+    }
+
+    func testBlockTooltipFitsItsContentInEveryLanguage() throws {
+        for language in AppLanguage.allCases {
+            let rows: [ClaudeSourceTimelineTooltipContent.Row] = [
+                .init(label: tr(.keyClaudeTimelineHoverTime, language: language), value: "15:04:53 – 15:09:53"),
+                .init(label: tr(.keyClaudeTimelineHoverDuration, language: language), value: "5"),
+                .init(label: tr(.keyClaudeTimelineHoverRefreshes, language: language),
+                      value: tr(.keyClaudeTimelineHoverRefreshCount, arguments: ["12"], language: language)),
+                .init(label: tr(.keyClaudeTimelineHoverValidity, language: language), value: "5"),
+            ]
+            let controller = ClaudeSourceTimelineTooltipViewController(
+                content: .init(title: "OAuth API · " + tr(.keyClaudeTimelineFailureNetwork, language: language), color: .systemBlue, rows: rows))
+            controller.loadViewIfNeeded()
+            controller.view.layoutSubtreeIfNeeded()
+            for label in descendants(of: controller.view).compactMap({ $0 as? NSTextField }) {
+                XCTAssertGreaterThanOrEqual(
+                    ceil(label.frame.width) + 0.5, ceil(label.intrinsicContentSize.width),
+                    "\(language): \(label.stringValue) is clipped")
+                let frame = label.convert(label.bounds, to: controller.view)
+                XCTAssertTrue(controller.view.bounds.insetBy(dx: -0.5, dy: -0.5).contains(frame), "\(language): \(label.stringValue) overflows")
+            }
+        }
+    }
+
+    private func descendants(of view: NSView) -> [NSView] {
+        view.subviews + view.subviews.flatMap(descendants(of:))
+    }
+
+    func testOffscreenRendersTheBlockTooltip() throws {
+        let content = ClaudeSourceTimelineTooltipContent(title: "Mod", color: .systemOrange, rows: [
+            .init(label: tr(.keyClaudeTimelineHoverTime), value: "15:04:53 – 15:09:53"),
+            .init(label: tr(.keyClaudeTimelineHoverDuration), value: ClaudeSourceTimelineView.durationText(300)),
+            .init(label: tr(.keyClaudeTimelineHoverRefreshes), value: tr(.keyClaudeTimelineHoverRefreshCount, arguments: ["1"])),
+            .init(label: tr(.keyClaudeTimelineHoverValidity), value: ClaudeSourceTimelineView.durationText(300)),
+        ])
+        let directory = ProcessInfo.processInfo.environment["BB_TIMELINE_RENDER_DIR"].map { URL(fileURLWithPath: $0) }
+        for appearanceName in [NSAppearance.Name.aqua, .darkAqua] {
+            let controller = ClaudeSourceTimelineTooltipViewController(content: content)
+            controller.loadViewIfNeeded()
+            let view = controller.view
+            view.appearance = NSAppearance(named: appearanceName)
+            view.wantsLayer = true
+            view.effectiveAppearance.performAsCurrentDrawingAppearance {
+                view.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+            }
+            view.layoutSubtreeIfNeeded()
+            let image = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+            view.effectiveAppearance.performAsCurrentDrawingAppearance { view.cacheDisplay(in: view.bounds, to: image) }
+            let png = try XCTUnwrap(image.representation(using: .png, properties: [:]))
+            let label = "timeline-tooltip-\(appearanceName == .aqua ? "light" : "dark")"
+            let attachment = XCTAttachment(data: png, uniformTypeIdentifier: "public.png")
+            attachment.name = label
+            attachment.lifetime = .keepAlways
+            add(attachment)
+            if let directory { try png.write(to: directory.appendingPathComponent(label + ".png")) }
         }
     }
 

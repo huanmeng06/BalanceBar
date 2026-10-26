@@ -620,8 +620,11 @@
 "claude.timeline.failure.server_error" = "服务异常";
 "claude.timeline.failure.missing_credentials" = "未登录";
 "claude.timeline.tooltip.oauth_rule" = "原生同步或 Mod 数据有效期内不向官方查询；至少每小时向官方校准一次。";
-"claude.timeline.hover.reading" = "%1$@\n%2$@ – %3$@ · 持续 %4$@\n刷新 %5$@ 次，每次有效 %6$@";
-"claude.timeline.hover.failure" = "%1$@ · %2$@\n%3$@ – %4$@ · 持续 %5$@";
+"claude.timeline.hover.time" = "时间";
+"claude.timeline.hover.duration" = "持续";
+"claude.timeline.hover.refreshes" = "刷新";
+"claude.timeline.hover.validity" = "每次有效";
+"claude.timeline.hover.refresh_count" = "%1$@ 次";
 "claude.timeline.duration.seconds" = "%1$@ 秒";
 "claude.timeline.duration.minutes" = "%1$@ 分钟";
 "claude.timeline.duration.hours" = "%1$@ 小时 %2$@ 分钟";

@@ -281,7 +281,7 @@ final class ClaudeSourceTimelineView: NSView {
     private(set) var hovered: ClaudeSourceTimelineLayout.HoverTarget?
     private var lastMouse: NSPoint?
     private var popover: NSPopover?
-    private var tooltipText: String?
+    private var tooltipPayload: TooltipPayload?
     private var tooltipWork: DispatchWorkItem?
     private var exitWork: DispatchWorkItem?
     private var hoverGeneration = 0
@@ -326,6 +326,7 @@ final class ClaudeSourceTimelineView: NSView {
         liftHost.wantsLayer = true
         liftHost.layer?.masksToBounds = false
         liftLayer.isHidden = true
+        liftLayer.opacity = 0
         liftLayer.shadowColor = NSColor.black.cgColor
         liftLayer.shadowRadius = 8
         liftLayer.shadowOffset = CGSize(width: 0, height: 3)
@@ -567,23 +568,33 @@ final class ClaudeSourceTimelineView: NSView {
         return tr(.keyClaudeTimelineDurationHours, arguments: [String(minutes / 60), String(minutes % 60)])
     }
 
-    /// Type, time range and duration of a block or failure box.
-    func hoverText(for target: ClaudeSourceTimelineLayout.HoverTarget) -> String {
+    /// Type (heading), then time range, duration and refreshes as labelled rows.
+    func hoverContent(for target: ClaudeSourceTimelineLayout.HoverTarget) -> ClaudeSourceTimelineTooltipContent {
         switch target {
         case let .piece(piece):
             let first = piece.readings[0]
-            return tr(.keyClaudeTimelineHoverReading, arguments: [
-                laneName(piece.source), time(piece.start), time(piece.end),
-                Self.durationText(piece.end.timeIntervalSince(piece.start)),
-                String(piece.readings.count),
-                Self.durationText(first.expiresAt.timeIntervalSince(first.observedAt))])
+            return ClaudeSourceTimelineTooltipContent(title: laneName(piece.source), color: Self.color(for: piece.source), rows: [
+                .init(label: tr(.keyClaudeTimelineHoverTime), value: time(piece.start) + " – " + time(piece.end)),
+                .init(label: tr(.keyClaudeTimelineHoverDuration), value: Self.durationText(piece.end.timeIntervalSince(piece.start))),
+                .init(label: tr(.keyClaudeTimelineHoverRefreshes),
+                      value: tr(.keyClaudeTimelineHoverRefreshCount, arguments: [String(piece.readings.count)])),
+                .init(label: tr(.keyClaudeTimelineHoverValidity),
+                      value: Self.durationText(first.expiresAt.timeIntervalSince(first.observedAt))),
+            ])
         case let .band(band):
             let end = band.run.end ?? now()
-            return tr(.keyClaudeTimelineHoverFailure, arguments: [
-                laneName(.oauthAPI), Self.failureText(band.run.kind),
-                time(band.run.start), band.run.end.map(time) ?? tr(.keyClaudeTimelineNow),
-                Self.durationText(end.timeIntervalSince(band.run.start))])
+            return ClaudeSourceTimelineTooltipContent(
+                title: laneName(.oauthAPI) + " · " + Self.failureText(band.run.kind), color: .systemRed, rows: [
+                    .init(label: tr(.keyClaudeTimelineHoverTime),
+                          value: time(band.run.start) + " – " + (band.run.end.map(time) ?? tr(.keyClaudeTimelineNow))),
+                    .init(label: tr(.keyClaudeTimelineHoverDuration),
+                          value: Self.durationText(end.timeIntervalSince(band.run.start))),
+                ])
         }
+    }
+
+    func hoverText(for target: ClaudeSourceTimelineLayout.HoverTarget) -> String {
+        hoverContent(for: target).plainText
     }
 
     /// What hovering at a point shows: a block or failure box, or the calibration rule on the
@@ -662,9 +673,11 @@ final class ClaudeSourceTimelineView: NSView {
             if let target {
                 hovered = target
                 placeLift(on: target.rect)
-                updateTooltipInPlace(text: hoverText(for: target), rect: liftedRect(target.rect))
+                updateTooltipInPlace(.rich(hoverContent(for: target)), rect: liftedRect(target.rect))
             } else if let labelText {
-                scheduleTooltip(text: labelText.0, rect: labelText.1)
+                if tooltipPayload != .plain(labelText.0) || popover?.isShown != true, tooltipWork == nil {
+                    scheduleTooltip(.plain(labelText.0), rect: labelText.1)
+                }
             } else {
                 closeTooltip()
             }
@@ -678,11 +691,11 @@ final class ClaudeSourceTimelineView: NSView {
             placeLift(on: target.rect)
             animateLift(up: true)
             if !wasHovering { setChartReceded(true) }
-            scheduleTooltip(text: hoverText(for: target), rect: liftedRect(target.rect))
+            scheduleTooltip(.rich(hoverContent(for: target)), rect: liftedRect(target.rect))
         } else {
             animateLift(up: false)
             setChartReceded(false)
-            if let labelText { scheduleTooltip(text: labelText.0, rect: labelText.1) } else { closeTooltip() }
+            if let labelText { scheduleTooltip(.plain(labelText.0), rect: labelText.1) } else { closeTooltip() }
         }
     }
 
@@ -734,13 +747,16 @@ final class ClaudeSourceTimelineView: NSView {
         CATransaction.commit()
     }
 
-    /// Scale and shadow only (no pointer tilt), on the reset card's spring.
+    /// Scale and shadow only (no pointer tilt), on the reset card's spring. The lifted block also
+    /// fades: it is a standalone rounded card, so on the way down it dissolves into the continuous
+    /// bar underneath instead of landing as a box with its own corners.
     private func animateLift(up: Bool) {
         let scale = up ? Hover.liftScale : 1
         let opacity: Float = up ? Hover.liftShadowOpacity : 0
         let generation = hoverGeneration
         let currentScale = (liftLayer.presentation()?.value(forKeyPath: "transform.scale") as? CGFloat) ?? (up ? 1 : Hover.liftScale)
         let currentOpacity = liftLayer.presentation()?.shadowOpacity ?? liftLayer.shadowOpacity
+        let currentAlpha = liftLayer.presentation()?.opacity ?? (up ? 0 : 1)
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         CATransaction.setCompletionBlock { [weak self] in
@@ -749,7 +765,14 @@ final class ClaudeSourceTimelineView: NSView {
         }
         liftLayer.transform = CATransform3DMakeScale(scale, scale, 1)
         liftLayer.shadowOpacity = opacity
+        liftLayer.opacity = up ? 1 : 0
         if !reduceMotion {
+            let fade = CABasicAnimation(keyPath: "opacity")
+            fade.fromValue = currentAlpha
+            fade.toValue = up ? 1 : 0
+            fade.duration = up ? 0.12 : Hover.restoreDuration
+            fade.timingFunction = CAMediaTimingFunction(name: up ? .easeOut : .easeIn)
+            liftLayer.add(fade, forKey: "liftFade")
             let spring = CASpringAnimation(keyPath: "transform.scale")
             spring.fromValue = currentScale
             spring.toValue = scale
@@ -814,33 +837,43 @@ final class ClaudeSourceTimelineView: NSView {
 
     // MARK: Tooltip
 
-    private func makeTooltipController(_ text: String) -> DashboardTextTooltipViewController {
-        let controller = DashboardTextTooltipViewController(text: text)
+    /// A block's structured tooltip, or a plain sentence (the OAuth rule).
+    enum TooltipPayload: Equatable {
+        case rich(ClaudeSourceTimelineTooltipContent)
+        case plain(String)
+    }
+
+    private func makeTooltipController(_ payload: TooltipPayload) -> NSViewController {
+        let controller: NSViewController
+        switch payload {
+        case let .rich(content): controller = ClaudeSourceTimelineTooltipViewController(content: content)
+        case let .plain(text): controller = DashboardTextTooltipViewController(text: text)
+        }
         controller.loadViewIfNeeded()
         return controller
     }
 
     /// Shows the app's popover tooltip above `rect` after the menu's hover delay; an open tooltip
     /// moves to the new block at once instead.
-    private func scheduleTooltip(text: String, rect: CGRect) {
+    private func scheduleTooltip(_ payload: TooltipPayload, rect: CGRect) {
         tooltipWork?.cancel()
         tooltipWork = nil
         if popover?.isShown == true {
-            updateTooltipInPlace(text: text, rect: rect)
+            updateTooltipInPlace(payload, rect: rect)
             return
         }
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
             self.tooltipWork = nil
-            self.showTooltip(text: text, rect: rect)
+            self.showTooltip(payload, rect: rect)
         }
         tooltipWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + Hover.tooltipDelay, execute: work)
     }
 
-    private func showTooltip(text: String, rect: CGRect) {
+    private func showTooltip(_ payload: TooltipPayload, rect: CGRect) {
         guard window != nil else { return }
-        let controller = makeTooltipController(text)
+        let controller = makeTooltipController(payload)
         let popover = DashboardTextTooltip.makePopover()
         popover.contentViewController = controller
         popover.contentSize = controller.view.frame.size
@@ -848,17 +881,17 @@ final class ClaudeSourceTimelineView: NSView {
         // The view is flipped, so .minY is the top edge: the tooltip opens above the block.
         popover.show(relativeTo: rect, of: self, preferredEdge: .minY)
         self.popover = popover
-        tooltipText = text
+        tooltipPayload = payload
     }
 
-    private func updateTooltipInPlace(text: String, rect: CGRect) {
+    private func updateTooltipInPlace(_ payload: TooltipPayload, rect: CGRect) {
         guard let popover, popover.isShown else { return }
         popover.animates = false
-        if tooltipText != text {
-            let controller = makeTooltipController(text)
+        if tooltipPayload != payload {
+            let controller = makeTooltipController(payload)
             popover.contentViewController = controller
             popover.contentSize = controller.view.frame.size
-            tooltipText = text
+            tooltipPayload = payload
         }
         popover.positioningRect = rect
     }
@@ -870,7 +903,7 @@ final class ClaudeSourceTimelineView: NSView {
         popover.animates = !reduceMotion
         popover.close()
         self.popover = nil
-        tooltipText = nil
+        tooltipPayload = nil
     }
 
     // MARK: Accessibility
@@ -932,6 +965,99 @@ final class ClaudeSourceTimelineView: NSView {
     }
 }
 
+/// What a block's tooltip says: a heading with the source color, then label/value rows.
+struct ClaudeSourceTimelineTooltipContent: Equatable {
+    struct Row: Equatable {
+        var label: String
+        var value: String
+    }
+
+    var title: String
+    var color: NSColor
+    var rows: [Row]
+
+    /// One line per row, for tests and logs.
+    var plainText: String {
+        ([title] + rows.map { $0.label + " " + $0.value }).joined(separator: "\n")
+    }
+}
+
+/// The block tooltip: a colored dot and a semibold heading over a two-column grid (secondary
+/// labels, monospaced-digit values). Sized from its content, so nothing is clipped.
+final class ClaudeSourceTimelineTooltipViewController: NSViewController {
+    static let horizontalInset: CGFloat = 14
+    static let verticalInset: CGFloat = 11
+
+    let content: ClaudeSourceTimelineTooltipContent
+
+    init(content: ClaudeSourceTimelineTooltipContent) {
+        self.content = content
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    static let dotSize: CGFloat = 8
+    static let dotGap: CGFloat = 6
+    static let headingGap: CGFloat = 8
+    static let rowGap: CGFloat = 4
+    static let columnGap: CGFloat = 14
+
+    /// Frame layout measured from each label's own size: the popover always fits its text.
+    override func loadView() {
+        func label(_ text: String, font: NSFont, color: NSColor) -> NSTextField {
+            let field = NSTextField(labelWithString: text)
+            field.font = font
+            field.textColor = color
+            field.lineBreakMode = .byClipping
+            field.sizeToFit()
+            return field
+        }
+        let title = label(content.title, font: .systemFont(ofSize: 13, weight: .semibold), color: .labelColor)
+        let rows = content.rows.map { row in
+            (label(row.label, font: .systemFont(ofSize: 12), color: .secondaryLabelColor),
+             label(row.value, font: .monospacedDigitSystemFont(ofSize: 12, weight: .medium), color: .labelColor))
+        }
+        let labelWidth = ceil(rows.map { $0.0.frame.width }.max() ?? 0)
+        let valueWidth = ceil(rows.map { $0.1.frame.width }.max() ?? 0)
+        let rowHeight = ceil(rows.map { max($0.0.frame.height, $0.1.frame.height) }.max() ?? 0)
+        let titleWidth = Self.dotSize + Self.dotGap + ceil(title.frame.width)
+        let gridWidth = rows.isEmpty ? 0 : labelWidth + Self.columnGap + valueWidth
+        let contentWidth = max(titleWidth, gridWidth)
+        let gridHeight = rows.isEmpty ? 0 : CGFloat(rows.count) * rowHeight + CGFloat(rows.count - 1) * Self.rowGap
+        let titleHeight = ceil(title.frame.height)
+        let size = NSSize(
+            width: contentWidth + 2 * Self.horizontalInset,
+            height: titleHeight + (rows.isEmpty ? 0 : Self.headingGap + gridHeight) + 2 * Self.verticalInset)
+
+        let root = TimelineFlippedContainer(frame: NSRect(origin: .zero, size: size))
+        let dot = NSView(frame: NSRect(
+            x: Self.horizontalInset, y: Self.verticalInset + (titleHeight - Self.dotSize) / 2,
+            width: Self.dotSize, height: Self.dotSize))
+        dot.wantsLayer = true
+        dot.layer?.backgroundColor = content.color.cgColor
+        dot.layer?.cornerRadius = Self.dotSize / 2
+        root.addSubview(dot)
+        title.frame = NSRect(
+            x: dot.frame.maxX + Self.dotGap, y: Self.verticalInset, width: ceil(title.frame.width), height: titleHeight)
+        root.addSubview(title)
+        var y = Self.verticalInset + titleHeight + Self.headingGap
+        for (name, value) in rows {
+            name.frame = NSRect(x: Self.horizontalInset, y: y, width: labelWidth, height: rowHeight)
+            value.frame = NSRect(
+                x: Self.horizontalInset + labelWidth + Self.columnGap, y: y, width: valueWidth, height: rowHeight)
+            root.addSubview(name)
+            root.addSubview(value)
+            y += rowHeight + Self.rowGap
+        }
+        root.setAccessibilityElement(true)
+        root.setAccessibilityRole(.staticText)
+        root.setAccessibilityLabel(content.plainText)
+        view = root
+        preferredContentSize = root.frame.size
+    }
+}
+
 /// Draws the chart; a separate view so the focus blur never touches the lifted block or the status.
 private final class TimelineCanvas: NSView {
     weak var owner: ClaudeSourceTimelineView?
@@ -943,6 +1069,11 @@ private final class TimelineCanvas: NSView {
     override func draw(_ dirtyRect: NSRect) {
         owner?.drawChart()
     }
+}
+
+/// Top-down coordinates for the tooltip's frame layout.
+private final class TimelineFlippedContainer: NSView {
+    override var isFlipped: Bool { true }
 }
 
 /// Hosts the lifted block's layer in the chart's flipped coordinates.

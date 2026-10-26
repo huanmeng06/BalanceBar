@@ -620,8 +620,11 @@
 "claude.timeline.failure.server_error" = "Erreur serveur";
 "claude.timeline.failure.missing_credentials" = "Non connecté";
 "claude.timeline.tooltip.oauth_rule" = "Tant que les données natives ou du Mod sont valides, BalanceBar n’interroge pas l’API officielle ; il recalibre au moins une fois par heure.";
-"claude.timeline.hover.reading" = "%1$@\n%2$@ – %3$@ · %4$@\nActualisé %5$@ fois · chaque fois valide %6$@";
-"claude.timeline.hover.failure" = "%1$@ · %2$@\n%3$@ – %4$@ · %5$@";
+"claude.timeline.hover.time" = "Heure";
+"claude.timeline.hover.duration" = "Durée";
+"claude.timeline.hover.refreshes" = "Actualisations";
+"claude.timeline.hover.validity" = "Validité de chacune";
+"claude.timeline.hover.refresh_count" = "%1$@×";
 "claude.timeline.duration.seconds" = "%1$@ s";
 "claude.timeline.duration.minutes" = "%1$@ min";
 "claude.timeline.duration.hours" = "%1$@ h %2$@ min";

@@ -620,8 +620,11 @@
 "claude.timeline.failure.server_error" = "服務異常";
 "claude.timeline.failure.missing_credentials" = "未登入";
 "claude.timeline.tooltip.oauth_rule" = "原生同步或 Mod 資料有效期內不向官方查詢；至少每小時向官方校準一次。";
-"claude.timeline.hover.reading" = "%1$@\n%2$@ – %3$@ · 持續 %4$@\n刷新 %5$@ 次，每次有效 %6$@";
-"claude.timeline.hover.failure" = "%1$@ · %2$@\n%3$@ – %4$@ · 持續 %5$@";
+"claude.timeline.hover.time" = "時間";
+"claude.timeline.hover.duration" = "持續";
+"claude.timeline.hover.refreshes" = "刷新";
+"claude.timeline.hover.validity" = "每次有效";
+"claude.timeline.hover.refresh_count" = "%1$@ 次";
 "claude.timeline.duration.seconds" = "%1$@ 秒";
 "claude.timeline.duration.minutes" = "%1$@ 分鐘";
 "claude.timeline.duration.hours" = "%1$@ 小時 %2$@ 分鐘";

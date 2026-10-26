@@ -620,8 +620,11 @@
 "claude.timeline.failure.server_error" = "Ошибка сервера";
 "claude.timeline.failure.missing_credentials" = "Вход не выполнен";
 "claude.timeline.tooltip.oauth_rule" = "Пока данные нативной синхронизации или Mod действительны, BalanceBar не обращается к официальному API; калибровка всё равно не реже раза в час.";
-"claude.timeline.hover.reading" = "%1$@\n%2$@ – %3$@ · %4$@\nОбновлений: %5$@ · каждое действует %6$@";
-"claude.timeline.hover.failure" = "%1$@ · %2$@\n%3$@ – %4$@ · %5$@";
+"claude.timeline.hover.time" = "Время";
+"claude.timeline.hover.duration" = "Длительность";
+"claude.timeline.hover.refreshes" = "Обновления";
+"claude.timeline.hover.validity" = "Каждое действует";
+"claude.timeline.hover.refresh_count" = "%1$@ раз";
 "claude.timeline.duration.seconds" = "%1$@ с";
 "claude.timeline.duration.minutes" = "%1$@ мин";
 "claude.timeline.duration.hours" = "%1$@ ч %2$@ мин";

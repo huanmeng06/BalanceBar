@@ -620,8 +620,11 @@
 "claude.timeline.failure.server_error" = "서버 오류";
 "claude.timeline.failure.missing_credentials" = "로그인 안 됨";
 "claude.timeline.tooltip.oauth_rule" = "네이티브 동기화 또는 Mod 데이터가 유효한 동안에는 공식 API를 조회하지 않으며, 최소 1시간마다 공식 데이터로 보정합니다.";
-"claude.timeline.hover.reading" = "%1$@\n%2$@ – %3$@ · %4$@ 동안\n%5$@회 갱신 · 각 %6$@ 유효";
-"claude.timeline.hover.failure" = "%1$@ · %2$@\n%3$@ – %4$@ · %5$@ 동안";
+"claude.timeline.hover.time" = "시간";
+"claude.timeline.hover.duration" = "지속";
+"claude.timeline.hover.refreshes" = "갱신";
+"claude.timeline.hover.validity" = "회당 유효";
+"claude.timeline.hover.refresh_count" = "%1$@회";
 "claude.timeline.duration.seconds" = "%1$@초";
 "claude.timeline.duration.minutes" = "%1$@분";
 "claude.timeline.duration.hours" = "%1$@시간 %2$@분";

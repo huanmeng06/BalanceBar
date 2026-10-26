@@ -620,8 +620,11 @@
 "claude.timeline.failure.server_error" = "サーバーエラー";
 "claude.timeline.failure.missing_credentials" = "未ログイン";
 "claude.timeline.tooltip.oauth_rule" = "ネイティブ同期または Mod のデータが有効な間は公式 API に問い合わせません。少なくとも 1 時間ごとに公式で校正します。";
-"claude.timeline.hover.reading" = "%1$@\n%2$@ – %3$@ · %4$@間\n更新 %5$@ 回・各 %6$@ 有効";
-"claude.timeline.hover.failure" = "%1$@ · %2$@\n%3$@ – %4$@ · %5$@間";
+"claude.timeline.hover.time" = "時間";
+"claude.timeline.hover.duration" = "継続";
+"claude.timeline.hover.refreshes" = "更新";
+"claude.timeline.hover.validity" = "各回の有効期間";
+"claude.timeline.hover.refresh_count" = "%1$@ 回";
 "claude.timeline.duration.seconds" = "%1$@ 秒";
 "claude.timeline.duration.minutes" = "%1$@ 分";
 "claude.timeline.duration.hours" = "%1$@ 時間 %2$@ 分";
