@@ -992,4 +992,46 @@ extension AppPreferencesTests {
         let unusual = try XCTUnwrap(TimeZone(secondsFromGMT: 37 * 60))
         XCTAssertEqual(AppTimeZoneSelection.manualSelection(systemTimeZone: unusual, now: now), .fixedOffset(minutes: 0))
     }
+
+    func testClaudeSourceValidityDefaultsOptionsAndFallback() {
+        let (preferences, defaults, suite) = makePreferences()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        XCTAssertEqual(preferences.claudeSourceValidity, .defaults)
+        XCTAssertEqual(ClaudeSourceValidity.defaults, ClaudeSourceValidity(oauth: 600, statusLine: 120, mod: 120))
+
+        preferences.claudeOAuthValidity = 1_800
+        preferences.claudeStatusLineValidity = 300
+        preferences.claudeModValidity = 60
+        XCTAssertEqual(
+            AppPreferences(defaults: defaults).claudeSourceValidity,
+            ClaudeSourceValidity(oauth: 1_800, statusLine: 300, mod: 60))
+
+        preferences.claudeOAuthValidity = 7
+        preferences.claudeStatusLineValidity = 7_200
+        defaults.set(5, forKey: AppPreferences.claudeModValidityKey)
+        XCTAssertEqual(preferences.claudeSourceValidity, .defaults, "values outside the options fall back to the default")
+        XCTAssertTrue(AppPreferences.claudeOAuthValidityOptions.contains(ClaudeSourceValidity.defaults.oauth))
+        XCTAssertTrue(AppPreferences.claudeLocalValidityOptions.contains(ClaudeSourceValidity.defaults.statusLine))
+    }
+
+    func testOAuthValidityNeverFallsBelowTheCalibrationInterval() throws {
+        let suite = "BalanceBarTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.claudeOAuthValidity = 300
+        XCTAssertEqual(preferences.claudeOAuthValidityChoices, AppPreferences.claudeOAuthValidityOptions)
+        XCTAssertEqual(preferences.claudeOAuthValidity, 300)
+
+        preferences.claudeCalibrationInterval = 600
+        XCTAssertEqual(preferences.claudeOAuthValidityChoices, [600, 900, 1_800, 3_600])
+        XCTAssertEqual(preferences.claudeOAuthValidity, 600, "a saved choice below the interval is raised")
+
+        preferences.claudeCalibrationInterval = 720
+        XCTAssertEqual(preferences.claudeOAuthValidity, 900, "raised to the next allowed option")
+        XCTAssertEqual(preferences.claudeSourceValidity.oauth, 900)
+
+        preferences.claudeCalibrationInterval = 300
+        XCTAssertEqual(preferences.claudeOAuthValidity, 300, "shortening the interval restores the saved choice")
+    }
 }

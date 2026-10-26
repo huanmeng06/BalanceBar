@@ -2121,6 +2121,79 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(preferences.codexUsageRefreshInterval, 3)
     }
 
+    @MainActor
+    func testAdvancedPageOffersAValiditySelectorPerClaudeSource() throws {
+        let suite = "BalanceBarTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.claudeStatusLineValidity = 300
+        let relay = DashboardPreferencePageRelay()
+        var changes: [(String, TimeInterval)] = []
+        relay.onInterval = { changes.append(($0, $1)) }
+        let page = DashboardAdvancedPage().make(.init(
+            relay: relay, logViewer: nil, includeLogViewer: false, preferences: preferences))
+
+        func popup(_ key: String) throws -> NSPopUpButton {
+            try XCTUnwrap(descendants(of: page).compactMap { $0 as? NSPopUpButton }.first { $0.identifier?.rawValue == key })
+        }
+        let oauth = try popup(AppPreferences.claudeOAuthValidityKey)
+        let statusLine = try popup(AppPreferences.claudeStatusLineValidityKey)
+        let mod = try popup(AppPreferences.claudeModValidityKey)
+        XCTAssertEqual(oauth.itemTitles.count, AppPreferences.claudeOAuthValidityOptions.count)
+        XCTAssertEqual(statusLine.itemTitles.count, AppPreferences.claudeLocalValidityOptions.count)
+        XCTAssertEqual(oauth.titleOfSelectedItem, tr(.keyDashboardAdvancedPageValidityMinutes, arguments: ["10"]))
+        XCTAssertEqual(statusLine.titleOfSelectedItem, tr(.keyDashboardAdvancedPageValidityMinutes, arguments: ["5"]))
+        XCTAssertEqual(mod.titleOfSelectedItem, tr(.keyDashboardAdvancedPageValidityMinutes, arguments: ["2"]))
+
+        let section = try XCTUnwrap(SettingsSectionView.enclosing(oauth))
+        XCTAssertEqual(section.headingLabel.stringValue, tr(.keyDashboardAdvancedPageSourceValidity))
+        XCTAssertEqual(section.contentViews.count, 3)
+        XCTAssertEqual(
+            (section.contentViews[0] as? SettingsRowView)?.titleLabel.stringValue,
+            tr(.keyDashboardAdvancedPageSourceValidityOauth))
+        for view in section.contentViews {
+            XCTAssertNotNil((view as? SettingsRowView)?.titleAccessory, "every row carries the Claude icon")
+        }
+        XCTAssertEqual(
+            section.footnoteLabel?.stringValue,
+            tr(.keyDashboardAdvancedPageSourceValidityFootnote))
+        XCTAssertEqual(section.footnoteLabel?.isSelectable, false)
+        XCTAssertEqual(section.footnoteLabel?.font?.pointSize, 12)
+        for view in section.contentViews {
+            XCTAssertEqual((view as? SettingsRowView)?.detailLabel.stringValue, "")
+        }
+
+        mod.selectItem(at: 0)
+        _ = mod.sendAction(mod.action!, to: mod.target)
+        XCTAssertEqual(changes.count, 1)
+        XCTAssertEqual(changes.first?.0, AppPreferences.claudeModValidityKey)
+        XCTAssertEqual(changes.first?.1, 60)
+    }
+
+    func testAdvancedPageOnlyOffersOAuthValiditiesAtLeastTheCalibrationInterval() throws {
+        let suite = "BalanceBarTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.claudeCalibrationInterval = 900
+        let advanced = DashboardAdvancedPage()
+        let page = advanced.make(.init(
+            relay: DashboardPreferencePageRelay(), logViewer: nil, includeLogViewer: false, preferences: preferences))
+        let oauth = try XCTUnwrap(descendants(of: page).compactMap { $0 as? NSPopUpButton }
+            .first { $0.identifier?.rawValue == AppPreferences.claudeOAuthValidityKey })
+        XCTAssertEqual(oauth.itemTitles, [900, 1_800, 3_600].map {
+            tr(.keyDashboardAdvancedPageValidityMinutes, arguments: [String(Int($0 / 60))])
+        })
+        XCTAssertEqual(oauth.titleOfSelectedItem, tr(.keyDashboardAdvancedPageValidityMinutes, arguments: ["15"]))
+
+        // The page stays mounted while the calibration interval changes on the Refresh page.
+        preferences.claudeCalibrationInterval = 300
+        advanced.refreshOAuthValidity(preferences: preferences)
+        XCTAssertEqual(oauth.itemTitles.count, AppPreferences.claudeOAuthValidityOptions.count)
+        XCTAssertEqual(oauth.itemTitles.first, tr(.keyDashboardAdvancedPageValidityMinutes, arguments: ["5"]))
+    }
+
     func testSettingsSwitchFactoryKeepsTheStockNativeSwitch() {
         let control = DashboardSettingsComponents.makeSwitch(
             identifier: "nativeSwitch",

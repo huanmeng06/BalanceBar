@@ -48,4 +48,35 @@ final class ClaudeRealtimeTrackerTests: XCTestCase {
         XCTAssertNil(tracker.lastTrustedRealtimeObservationAt)
         XCTAssertNil(tracker.bothWindowsFreshUntil)
     }
+
+    func testEachWindowExpiresWithItsOwnSourceValidity() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        var validity = ClaudeSourceValidity(oauth: 600, statusLine: 300, mod: 60)
+        let tracker = ClaudeRealtimeTracker(validity: { validity }, now: { now })
+        tracker.recordTrustedObservation(window: .fiveHour, observedAt: now, epoch: .initial, source: .statusLine)
+        tracker.recordTrustedObservation(window: .sevenDay, observedAt: now, epoch: .initial, source: .mod)
+        XCTAssertEqual(tracker.realtimeFreshUntil, now.addingTimeInterval(60), "the shorter Mod validity ends freshness")
+        XCTAssertEqual(tracker.lastTrustedRealtimeObservationAt, now)
+
+        validity.mod = 600
+        XCTAssertEqual(tracker.realtimeFreshUntil, now.addingTimeInterval(300), "changing the setting applies at once")
+
+        tracker.markPendingReset(now)
+        XCTAssertNil(tracker.realtimeFreshUntil, "a pending reset still disables freshness")
+    }
+
+    func testFreePathUsesTheOldestObservationAge() {
+        var now = Date(timeIntervalSince1970: 1_800_000_000)
+        let tracker = ClaudeRealtimeTracker(validity: { ClaudeSourceValidity(oauth: 600, statusLine: 600, mod: 600) }, now: { now })
+        tracker.recordTrustedObservation(window: .fiveHour, observedAt: now, epoch: .initial)
+        tracker.recordTrustedObservation(window: .sevenDay, observedAt: now, epoch: .initial)
+        now = now.addingTimeInterval(200)
+        var results: [Bool] = []
+        tracker.checkFreePath(within: 300) { results.append($0) }
+        tracker.checkFreePath(within: 100) { results.append($0) }
+        XCTAssertEqual(results, [true, false])
+        now = now.addingTimeInterval(500) // past the 600 s validity
+        tracker.checkFreePath(within: 3_600) { results.append($0) }
+        XCTAssertEqual(results.last, false)
+    }
 }

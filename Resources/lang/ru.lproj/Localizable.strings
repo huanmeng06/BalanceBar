@@ -140,6 +140,12 @@
 "dashboard.advanced.page.diagnostics" = "Диагностика";
 "dashboard.advanced.page.debug_log" = "Журнал отладки";
 "dashboard.advanced.page.records_runtime_status_and_errors" = "Записывает состояние выполнения и ошибки";
+"dashboard.advanced.page.source_validity" = "Срок действия каждого источника данных Claude";
+"dashboard.advanced.page.source_validity_oauth" = "Срок действия официальной квоты";
+"dashboard.advanced.page.source_validity_native_sync" = "Срок действия нативной синхронизации";
+"dashboard.advanced.page.source_validity_mod" = "Срок действия данных Mod";
+"dashboard.advanced.page.source_validity_footnote" = "В течение срока действия квота показывается как «Онлайн», позже — «N мин».\nПока данные нативной синхронизации или Mod действительны, BalanceBar тоже не обращается к официальному API, а потом возобновляет запросы.\nЧем дольше срок, тем реже ограничения, но данные могут быть старее.\nСверка с официальным API проходит не реже раза в час.";
+"dashboard.advanced.page.validity_minutes" = "%1$@ мин";
 "dashboard.general.and.refresh.pages.update_channel" = "Канал обновлений";
 "dashboard.general.and.refresh.pages.update_channel_description" = "Выберите, проверять ли стабильные или бета-версии";
 "dashboard.general.and.refresh.pages.stable" = "Стабильная";

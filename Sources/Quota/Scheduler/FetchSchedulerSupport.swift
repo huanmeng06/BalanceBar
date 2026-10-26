@@ -59,10 +59,16 @@ public protocol RealtimeSourceFreshnessProviding {
 
     /// Earliest reset deadline that passed and still awaits official confirmation, or `nil`.
     var pendingResetOf: Date? { get }
+
+    /// When the current real-time data stops being fresh, if the source decides that itself
+    /// (per-source validity). `nil` means the scheduler derives it from
+    /// `lastTrustedRealtimeObservationAt` and `FetchSchedulerConfiguration.realtimeSourceFreshness`.
+    var realtimeFreshUntil: Date? { get }
 }
 
 public extension RealtimeSourceFreshnessProviding {
     var pendingResetOf: Date? { nil }
+    var realtimeFreshUntil: Date? { nil }
 }
 
 /// Scheduler state that must survive app restarts.

@@ -723,6 +723,11 @@ final class DashboardCompositionController {
         invalidateSearchData()
     }
 
+    /// The calibration interval bounds the official-validity choices on the Advanced page.
+    func refreshClaudeSourceValidity() {
+        dashboardPreferencePages.refreshClaudeSourceValidity()
+    }
+
     func refreshLaunchAtLogin() {
         guard canUpdateSettingsPage(.general) else { return }
         dashboardPreferencePages.refreshLaunchAtLogin()

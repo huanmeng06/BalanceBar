@@ -175,7 +175,8 @@ final class DashboardPreferencePages {
             return advancedPage.make(.init(
                 relay: relay,
                 logViewer: forSearch ? nil : logsPage.makeViewer(),
-                includeLogViewer: !forSearch
+                includeLogViewer: !forSearch,
+                preferences: preferences
             ))
         case .notifications:
             notificationsPage?.showRoot()
@@ -231,6 +232,11 @@ final class DashboardPreferencePages {
         if isSearchProjectionActive {
             searchMenuPage.refresh(preferences: preferences)
         }
+    }
+
+    func refreshClaudeSourceValidity() {
+        advancedPage.refreshOAuthValidity(preferences: preferences)
+        searchAdvancedPage.refreshOAuthValidity(preferences: preferences)
     }
 
     func refreshDisplayTimeZone() {

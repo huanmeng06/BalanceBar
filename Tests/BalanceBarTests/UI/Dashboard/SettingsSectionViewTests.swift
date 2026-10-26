@@ -589,6 +589,23 @@ final class SettingsSectionViewTests: XCTestCase {
         return maxY - minY
     }
 
+    func testLongFootnoteWrapsToTheSectionWidthInsteadOfClipping() throws {
+        let text = String(repeating: "Longer means fewer rate limits but possibly older data. ", count: 6)
+        let row = SettingsRowView(title: "Row", accessoryView: NSSwitch())
+        let section = SettingsSectionView(title: "Section", contentViews: [row], footnote: text)
+        let window = makeTestWindow(width: 480)
+        window.contentView = section
+        defer { window.orderOut(nil) }
+        window.layoutIfNeeded()
+        section.layoutSubtreeIfNeeded()
+
+        let footnote = try XCTUnwrap(section.footnoteLabel)
+        let inset = SettingsLayout.rowHorizontalInset
+        XCTAssertLessThanOrEqual(footnote.alignmentRect(forFrame: footnote.frame).width, section.bounds.width - 2 * inset + 0.5)
+        XCTAssertGreaterThan(footnote.frame.height, footnote.font!.boundingRectForFont.height * 2,
+                             "a long footnote must occupy several lines")
+    }
+
     private func descendants(of view: NSView) -> [NSView] {
         view.subviews + view.subviews.flatMap(descendants)
     }

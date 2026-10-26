@@ -140,6 +140,12 @@
 "dashboard.advanced.page.diagnostics" = "診断";
 "dashboard.advanced.page.debug_log" = "デバッグログ";
 "dashboard.advanced.page.records_runtime_status_and_errors" = "実行状態とエラーを記録します";
+"dashboard.advanced.page.source_validity" = "Claude データソースごとの有効時間";
+"dashboard.advanced.page.source_validity_oauth" = "公式クォータの有効時間";
+"dashboard.advanced.page.source_validity_native_sync" = "ネイティブ同期の有効時間";
+"dashboard.advanced.page.source_validity_mod" = "Mod プッシュの有効時間";
+"dashboard.advanced.page.source_validity_footnote" = "有効時間内は「ライブ」、過ぎると「N分前」と表示されます。\nネイティブ同期と Mod は有効時間内、BalanceBar も公式へ問い合わせず、過ぎると再開します。\n長くするとレート制限を受けにくくなりますが、データが古くなる場合があります。\n公式との校正は少なくとも 1 時間に 1 回行われます。";
+"dashboard.advanced.page.validity_minutes" = "%1$@分";
 "dashboard.general.and.refresh.pages.update_channel" = "更新チャンネル";
 "dashboard.general.and.refresh.pages.update_channel_description" = "正式版またはベータテストの更新を確認するか選択します";
 "dashboard.general.and.refresh.pages.stable" = "正式版";

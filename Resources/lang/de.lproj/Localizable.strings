@@ -140,6 +140,12 @@
 "dashboard.advanced.page.diagnostics" = "Diagnose";
 "dashboard.advanced.page.debug_log" = "Debug-Protokoll";
 "dashboard.advanced.page.records_runtime_status_and_errors" = "Zeichnet Laufzeitstatus und Fehler auf";
+"dashboard.advanced.page.source_validity" = "Gültigkeit je Claude-Datenquelle";
+"dashboard.advanced.page.source_validity_oauth" = "Gültigkeit: Offizielles Kontingent";
+"dashboard.advanced.page.source_validity_native_sync" = "Gültigkeit: Native Synchronisierung";
+"dashboard.advanced.page.source_validity_mod" = "Gültigkeit: Mod-Push";
+"dashboard.advanced.page.source_validity_footnote" = "Innerhalb der Gültigkeit gilt das Kontingent als „Live“, danach als „vor N Min.“.\nSolange Daten der nativen Synchronisierung oder des Mods gültig sind, fragt BalanceBar die offizielle API nicht ab und macht danach weiter.\nLänger bedeutet seltener Drosselung, aber möglicherweise ältere Daten.\nMindestens stündlich wird mit der offiziellen API abgeglichen.";
+"dashboard.advanced.page.validity_minutes" = "%1$@ Min.";
 "dashboard.general.and.refresh.pages.update_channel" = "Update-Kanal";
 "dashboard.general.and.refresh.pages.update_channel_description" = "Wähle, ob nach stabilen oder Beta-Updates gesucht werden soll";
 "dashboard.general.and.refresh.pages.stable" = "Stabil";

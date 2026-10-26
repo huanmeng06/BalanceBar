@@ -252,8 +252,8 @@ public final class FetchScheduler: FetchScheduling {
             return log(.skipped, reasons: reasons, skip: .minimumInterval)
         }
         if !reasons.contains(.resetConfirmation),
-           let realtimeAt = realtimeFreshness?.lastTrustedRealtimeObservationAt,
-           now.timeIntervalSince(realtimeAt) < configuration.realtimeSourceFreshness,
+           let freshUntil = realtimeFreshUntil(),
+           now < freshUntil,
            !calibrationCapExceeded(now: now) {
             return log(.skipped, reasons: reasons, skip: .realtimeSourceFresh)
         }
@@ -277,6 +277,15 @@ public final class FetchScheduler: FetchScheduling {
         guard let key = identity.accountKey, key == persistent.lastSuccessAccountKey,
               let at = persistent.lastServerSuccessAt, lastSuccess == nil else { return nil }
         return at
+    }
+
+    /// End of the real-time freshness window: the source's own per-source value when it has one,
+    /// otherwise the last observation plus the configured freshness.
+    private func realtimeFreshUntil() -> Date? {
+        guard let realtimeFreshness else { return nil }
+        if let until = realtimeFreshness.realtimeFreshUntil { return until }
+        return realtimeFreshness.lastTrustedRealtimeObservationAt?
+            .addingTimeInterval(configuration.realtimeSourceFreshness)
     }
 
     private var automaticMinimumInterval: TimeInterval {
@@ -451,9 +460,8 @@ public final class FetchScheduler: FetchScheduling {
             let missing = Double(configuration.automaticTokenCost - tokens)
             next = max(next, tokenRefillAnchor.addingTimeInterval(missing * configuration.tokenRefillInterval))
         }
-        if let realtimeAt = realtimeFreshness?.lastTrustedRealtimeObservationAt,
+        if let freshUntil = realtimeFreshUntil(),
            !calibrationCapExceeded(now: now) {
-            let freshUntil = realtimeAt.addingTimeInterval(configuration.realtimeSourceFreshness)
             if freshUntil > next {
                 // Wake when local data goes stale, or at the calibration cap, whichever is first.
                 var wake = freshUntil

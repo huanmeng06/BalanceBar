@@ -137,6 +137,7 @@ final class ClaudeQuotaPipeline {
     private let mergeFileStore: QuotaMergeFileStore
     private let notificationRouter = ClaudeNotificationRouter()
     private let realtimeTracker: ClaudeRealtimeTracker?
+    private let sourceValidity: () -> ClaudeSourceValidity
     private let statusLineSource: ClaudeStatusLineSource?
     private let snapshotInbox: SnapshotInbox?
     private let confirmationTimer: SchedulerTimer
@@ -224,6 +225,7 @@ final class ClaudeQuotaPipeline {
         statusLineSource: ClaudeStatusLineSource? = nil,
         snapshotInbox: SnapshotInbox? = nil,
         statusLineEnabled: Bool = false,
+        sourceValidity: @escaping () -> ClaudeSourceValidity = { .defaults },
         now: @escaping () -> Date = Date.init,
         diagnostics: @escaping (String, SwitchLog.Level) -> Void = { message, level in
             SwitchLog.write(message, level: level, category: "refresh.claude")
@@ -236,6 +238,7 @@ final class ClaudeQuotaPipeline {
         self.identityQueue = identityQueue
         self.now = now
         self.realtimeTracker = realtimeTracker
+        self.sourceValidity = sourceValidity
         self.statusLineSource = statusLineSource
         self.snapshotInbox = snapshotInbox
         self.confirmationTimer = confirmationTimer
@@ -550,7 +553,8 @@ final class ClaudeQuotaPipeline {
             realtimeTracker?.recordTrustedObservation(
                 window: observation.window,
                 observedAt: observation.observedAt ?? observation.receivedAt,
-                epoch: observation.epoch)
+                epoch: observation.epoch,
+                source: Self.statusSource(forSourceID: observation.source) ?? .statusLine)
         }
         publish()
         return accepted
@@ -744,20 +748,25 @@ final class ClaudeQuotaPipeline {
             guard let reading, reading.epoch == identity.accountEpoch else { return false }
             return reading.source == ClaudeStatusLineSource.identifier || reading.source == SnapshotInbox.modSourceID
         }
-        // "Live" status: the newest displayed reading comes from a local source and is fresh. One
-        // window may keep its official value (a local reading that moved backwards inside the cycle
-        // is rejected), which must not hide that the other window is being updated in real time.
+        let validity = sourceValidity()
+        func isFresh(_ reading: QuotaMergedReading) -> Bool {
+            guard let source = Self.statusSource(forSourceID: reading.source) else { return false }
+            return date.timeIntervalSince(reading.effectiveTime) <= validity.seconds(for: source)
+        }
+        // "Live" status: the newest displayed reading comes from a local source and is within that
+        // source's validity. One window may keep its official value (a local reading that moved
+        // backwards inside the cycle is rejected), which must not hide that the other window is
+        // being updated in real time.
         let newestStandard = standard.compactMap { $0 }.max { $0.effectiveTime < $1.effectiveTime }
-        let nativeDisplayed = isLocal(newestStandard)
-            && date.timeIntervalSince(newestStandard!.effectiveTime) <= QuotaConstants.realtimeSourceFreshness
+        let nativeDisplayed = isLocal(newestStandard) && isFresh(newestStandard!)
         // A failed official read marks the displayed values as outdated without discarding
         // them. It only concerns the Usage API, though: a local reading received after the
-        // failures began, and not older than `localDataStaleAfter`, is current evidence, so the
+        // failures began and still within its source's validity is current evidence, so the
         // failure stays in `failure` (diagnostics, menu subtitle) without turning the card red.
         let localReadingIsCurrent = merged.windows.values.compactMap(\.displayed).contains { reading in
             isLocal(reading)
                 && reading.effectiveTime >= (failureSince ?? .distantPast)
-                && date.timeIntervalSince(reading.effectiveTime) <= Self.localDataStaleAfter
+                && isFresh(reading)
         }
         let failureTaintsDisplay = failure != nil && !nativeDisplayed && !localReadingIsCurrent
         // A pending window that already shows a provisional next-cycle reading from a local
@@ -769,7 +778,7 @@ final class ClaudeQuotaPipeline {
         let status = StatusSlotState.resolve(
             model: shown,
             context: StatusSlotContext(isRefreshing: refreshing,
-                source: Self.liveSource(of: standard, now: date, nativeDisplayed: nativeDisplayed),
+                source: Self.liveSource(of: standard, now: date, nativeDisplayed: nativeDisplayed, officialValidity: validity.oauth),
                 // The slot's age is the reading's own time, not when BalanceBar happened to receive it
                 // (a Mod snapshot read at launch may have been written minutes earlier).
                 updatedAt: newestStandard?.effectiveTime ?? updatedAt,
@@ -796,12 +805,9 @@ final class ClaudeQuotaPipeline {
 
     // MARK: - Pure helpers
 
-    /// Source of the newest standard-window reading, for the "N 分钟前 · 来源" label.
-    static func statusSource(of standard: [QuotaMergedReading?]) -> StatusSlotLiveSource? {
-        guard let newest = standard.compactMap({ $0 }).max(by: { $0.effectiveTime < $1.effectiveTime }) else {
-            return nil
-        }
-        switch newest.source {
+    /// Maps an observation's source label to the status-slot source; nil for unknown sources.
+    static func statusSource(forSourceID id: String) -> StatusSlotLiveSource? {
+        switch id {
         case ClaudeStatusLineSource.identifier: return .statusLine
         case SnapshotInbox.modSourceID: return .mod
         case sourceID: return .oauthAPI
@@ -809,26 +815,33 @@ final class ClaudeQuotaPipeline {
         }
     }
 
-    /// How long an official (OAuth API) reading still counts as live on the status slot.
-    static let officialLiveFor: TimeInterval = 600
+    /// Source of the newest standard-window reading, for the "N 分钟前 · 来源" label.
+    static func statusSource(of standard: [QuotaMergedReading?]) -> StatusSlotLiveSource? {
+        standard.compactMap { $0 }.max(by: { $0.effectiveTime < $1.effectiveTime })
+            .flatMap { statusSource(forSourceID: $0.source) }
+    }
 
     /// Source label for the status slot: the newest standard-window reading decides. A local source
-    /// is live while that reading is fresh (`nativeDisplayed`); an official read stays live for `officialLiveFor`.
-    static func liveSource(of standard: [QuotaMergedReading?], now: Date, nativeDisplayed: Bool) -> StatusSlotSource {
-        guard let newest = standard.compactMap({ $0 }).max(by: { $0.effectiveTime < $1.effectiveTime }) else {
-            return .official
-        }
-        switch newest.source {
-        case ClaudeStatusLineSource.identifier where nativeDisplayed: return .realtime(.statusLine)
-        case SnapshotInbox.modSourceID where nativeDisplayed: return .realtime(.mod)
-        case sourceID where now.timeIntervalSince(newest.effectiveTime) <= officialLiveFor: return .realtime(.oauthAPI)
-        default: return .official
+    /// is live while that reading is fresh (`nativeDisplayed`); an official read stays live for the
+    /// user's OAuth validity.
+    static func liveSource(
+        of standard: [QuotaMergedReading?], now: Date, nativeDisplayed: Bool, officialValidity: TimeInterval
+    ) -> StatusSlotSource {
+        guard let newest = standard.compactMap({ $0 }).max(by: { $0.effectiveTime < $1.effectiveTime }),
+              let source = statusSource(forSourceID: newest.source) else { return .official }
+        switch source {
+        case .statusLine, .mod: return nativeDisplayed ? .realtime(source) : .official
+        case .oauthAPI:
+            return now.timeIntervalSince(newest.effectiveTime) <= officialValidity ? .realtime(.oauthAPI) : .official
         }
     }
 
-    /// How long a local (statusLine / Mod) reading keeps the card out of the error state
-    /// while official reads keep failing: about two automatic refresh cycles.
-    static let localDataStaleAfter: TimeInterval = 600
+    /// Re-evaluates freshness after the user changed a source's validity: the scheduler recomputes
+    /// when local data stops suppressing requests, and the card re-resolves its status.
+    func sourceValidityChanged() {
+        scheduler.rearm()
+        queue.async { [self] in publish() }
+    }
 
     /// The model as the card presents it: a window awaiting confirmation that already displays a
     /// grade-B reading of the next cycle is real data, not "waiting".
@@ -966,7 +979,8 @@ extension ClaudeQuotaPipeline {
     static func makeProduction(
         client: OfficialQuotaClient,
         calibrationIntervalCap: @escaping () -> TimeInterval?,
-        automaticInterval: @escaping () -> TimeInterval? = { nil }
+        automaticInterval: @escaping () -> TimeInterval? = { nil },
+        sourceValidity: @escaping () -> ClaudeSourceValidity = { .defaults }
     ) -> ClaudeQuotaPipeline {
         let identityQueue = DispatchQueue(label: "BalanceBar.AccountIdentity", qos: .utility)
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
@@ -975,7 +989,7 @@ extension ClaudeQuotaPipeline {
             .appendingPathComponent(Bundle.main.bundleIdentifier ?? "BalanceBar", isDirectory: true)
             .appendingPathComponent("Quota", isDirectory: true)
         let identity = ClaudeAccountIdentityProvider(workQueue: identityQueue)
-        let tracker = ClaudeRealtimeTracker(now: Date.init)
+        let tracker = ClaudeRealtimeTracker(validity: sourceValidity, now: Date.init)
         let source = ClaudeStatusLineSource(accountProvider: identity, tracker: tracker)
         // The BalanceBar Mod writes Schema v1 snapshots into the shared inbox; its account
         // attribution is verified fail closed inside the inbox before anything reaches the engine.
@@ -990,7 +1004,8 @@ extension ClaudeQuotaPipeline {
             schedulerConfiguration: .claudeV1,
             realtimeTracker: tracker,
             statusLineSource: source,
-            snapshotInbox: inbox)
+            snapshotInbox: inbox,
+            sourceValidity: sourceValidity)
     }
 }
 

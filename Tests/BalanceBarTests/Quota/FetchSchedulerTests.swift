@@ -47,6 +47,7 @@ final class FetchSchedulerTests: XCTestCase {
     private final class FakeRealtime: RealtimeSourceFreshnessProviding {
         var lastTrustedRealtimeObservationAt: Date?
         var pendingResetOf: Date?
+        var realtimeFreshUntil: Date?
     }
 
     private var clock: FakeClock!
@@ -401,6 +402,22 @@ final class FetchSchedulerTests: XCTestCase {
         scheduler.waitUntilIdle()
         XCTAssertEqual(lastSkip, .insufficientTokens)
         XCTAssertFalse(timer.delays.isEmpty)
+    }
+
+    func testSourceProvidedFreshUntilReplacesTheConfiguredFreshness() {
+        let realtime = FakeRealtime()
+        let scheduler = makeScheduler(realtime: realtime, cap: 3_600)
+        request(scheduler, .scheduled)
+        complete(scheduler, .success(Data()))
+        clock.advance(300)
+        // 250 s after the observation is past the default 120 s, but the source says it is valid for 600 s.
+        realtime.lastTrustedRealtimeObservationAt = clock.now.addingTimeInterval(-250)
+        realtime.realtimeFreshUntil = clock.now.addingTimeInterval(350)
+        request(scheduler, .scheduled)
+        XCTAssertEqual(lastSkip, .realtimeSourceFresh)
+        clock.advance(400)
+        request(scheduler, .scheduled)
+        XCTAssertEqual(transport.completions.count, 1, "once the source's own validity ends the read goes ahead")
     }
 
     func testFreshRealtimeSourceSuppressesAutomaticUntilCalibrationCap() {
