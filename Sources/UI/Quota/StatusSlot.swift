@@ -79,6 +79,7 @@ enum StatusSlotText: String, CaseIterable {
     case hoverEstimated = "quota.status.hover.estimated"
     case hoverRealtime = "quota.status.hover.realtime"
     case hoverOfficial = "quota.status.hover.official"
+    case hoverLocal = "quota.status.hover.local"
     case hoverExternalActivity = "quota.status.hover.external_activity"
     case agoMinutes = "quota.status.ago.minutes"
     case agoHours = "quota.status.ago.hours"
@@ -100,6 +101,7 @@ enum StatusSlotText: String, CaseIterable {
         case .hoverEstimated: return "根据 %@ 的数据估算，等待官方确认"
         case .hoverRealtime: return "来自本机实时数据"
         case .hoverOfficial: return "官方数据，更新于 %@"
+        case .hoverLocal: return "来自本机数据，更新于 %@"
         case .hoverExternalActivity: return "检测到其他端在使用，已提高更新频率"
         case .agoMinutes: return "%@ 分钟前"
         case .agoHours: return "%@ 小时前"
@@ -246,10 +248,21 @@ final class StatusSlotView: NSView {
         case let .estimated(at): base = String(format: localize(.hoverEstimated), time(at))
         case let .realtime(source, at):
             base = source == .oauthAPI ? String(format: localize(.hoverOfficial), time(at)) : localize(.hoverRealtime)
-        case let .official(at, _): base = String(format: localize(.hoverOfficial), time(at))
+        case let .official(at, source):
+            // A stale Mod / statusLine reading is local data, not an official one.
+            let key: StatusSlotText = (source == .mod || source == .statusLine) ? .hoverLocal : .hoverOfficial
+            base = String(format: localize(key), time(at))
         }
-        guard externalActivityDetected else { return base }
-        return base + "\n" + localize(.hoverExternalActivity)
+        var text = base
+        if externalActivityDetected { text += "\n" + localize(.hoverExternalActivity) }
+        if let hoverDetail, !hoverDetail.isEmpty { text += "\n" + hoverDetail }
+        return text
+    }
+
+    /// Extra hover line the card supplies (the failure reason). It lives on the slot, not in the
+    /// tooltip, so the 30-second age refresh that rebuilds the tooltip keeps it.
+    var hoverDetail: String? {
+        didSet { if hoverDetail != oldValue { apply() } }
     }
 
     private func sourceName(_ source: StatusSlotLiveSource) -> String {
@@ -352,7 +365,7 @@ extension StatusSlotText {
     static func appLocalize(text: StatusSlotText, language: AppLanguage) -> String {
         guard let key = LocalizationKey(rawValue: text.rawValue) else { return text.defaultText }
         switch text {
-        case .hoverError, .hoverEstimated, .hoverOfficial, .accessibilityStatus, .agoMinutes, .agoHours, .agoDays:
+        case .hoverError, .hoverEstimated, .hoverOfficial, .hoverLocal, .accessibilityStatus, .agoMinutes, .agoHours, .agoDays:
             return tr(key, arguments: ["%@"], language: language)
         default:
             return tr(key, language: language)

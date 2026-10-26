@@ -593,6 +593,7 @@
 "quota.status.hover.estimated" = "%1$@ 데이터로 추정한 값이며 공식 확인을 기다리는 중입니다";
 "quota.status.hover.realtime" = "이 Mac의 실시간 데이터";
 "quota.status.hover.official" = "공식 데이터, %1$@에 업데이트됨";
+"quota.status.hover.local" = "이 Mac의 데이터, %1$@에 업데이트됨";
 "quota.status.hover.external_activity" = "다른 클라이언트에서 사용 중임을 감지하여 업데이트 빈도를 높였습니다";
 "quota.status.reset_pending" = "초기화된 것으로 보이며 확인을 기다리는 중입니다";
 "quota.status.reset_pending_short" = "확인 대기";

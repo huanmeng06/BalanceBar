@@ -593,6 +593,7 @@
 "quota.status.hover.estimated" = "Estimado con los datos de las %1$@, pendiente de confirmación oficial";
 "quota.status.hover.realtime" = "Datos en vivo de este Mac";
 "quota.status.hover.official" = "Datos oficiales, actualizados a las %1$@";
+"quota.status.hover.local" = "Datos de este Mac, actualizados a las %1$@";
 "quota.status.hover.external_activity" = "Se detectó actividad en otro cliente; se actualiza con más frecuencia";
 "quota.status.reset_pending" = "Probablemente restablecida; pendiente de confirmación";
 "quota.status.reset_pending_short" = "Pendiente";

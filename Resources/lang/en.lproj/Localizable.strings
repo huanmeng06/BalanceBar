@@ -593,6 +593,7 @@
 "quota.status.hover.estimated" = "Estimated from data at %1$@, awaiting official confirmation";
 "quota.status.hover.realtime" = "From live data on this Mac";
 "quota.status.hover.official" = "Official data, updated at %1$@";
+"quota.status.hover.local" = "From data on this Mac, updated at %1$@";
 "quota.status.hover.external_activity" = "Activity detected on another client; refreshing more often";
 "quota.status.reset_pending" = "Likely reset; awaiting confirmation";
 "quota.status.reset_pending_short" = "Pending";

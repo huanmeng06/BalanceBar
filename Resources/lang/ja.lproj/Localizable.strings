@@ -593,6 +593,7 @@
 "quota.status.hover.estimated" = "%1$@ のデータから推定。公式の確認待ち";
 "quota.status.hover.realtime" = "この Mac のリアルタイムデータ";
 "quota.status.hover.official" = "公式データ（%1$@ に更新）";
+"quota.status.hover.local" = "この Mac のデータ（%1$@ に更新）";
 "quota.status.hover.external_activity" = "他のクライアントでの利用を検出したため、更新頻度を上げました";
 "quota.status.reset_pending" = "リセット済みの可能性があります。確認待ち";
 "quota.status.reset_pending_short" = "確認待ち";
