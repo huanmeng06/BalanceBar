@@ -186,7 +186,7 @@
 "dashboard.general.and.refresh.pages.update_available_revalidating_value_value" = "新しいバージョンがあります：%1$@ -> %2$@（アップデートを確認中…）";
 "dashboard.general.and.refresh.pages.update_check_failed_update_retained_value_value_value" = "前回検出したアップデート：%1$@。今回の取得に失敗しました。\n原因：%2$@\n対処：%3$@";
 "dashboard.general.and.refresh.pages.update_check_failure_reason_rate_limited" = "GitHub API のレート制限に達しました";
-"dashboard.general.and.refresh.pages.update_check_failure_suggestion_rate_limited_wait_value" = "GitHub はアップデートのリクエストを制限しています。約 %1$@ 分後に再試行してください。";
+"dashboard.general.and.refresh.pages.update_check_failure_suggestion_rate_limited_wait_value" = "GitHub はアップデートのリクエストを制限しています。約 %1$@ 分後に再試行してください。 プロキシを有効にするか切り替えると、すぐに再試行できます。";
 "dashboard.general.and.refresh.pages.retry" = "再試行";
 "dashboard.general.and.refresh.pages.open_cc_switch" = "CC Switch を開く";
 "dashboard.general.and.refresh.pages.cc_switch" = "CC Switch";
@@ -588,7 +588,7 @@
 "quota.failure.open_usage_page" = "公式の使用状況ページを開く";
 "quota.status.accessibility" = "クォータの状態：%1$@";
 "claude.refresh.login_expired" = "Claude Code のサインインが期限切れです。ターミナルで claude を一度実行すると復旧します。BalanceBar がサインインを自動更新することはありません。";
-"status.item.controller.refresh_now_login_expired" = "Claude のログイン資格情報が期限切れです。Claude Code で再ログインしてください";
+"status.item.controller.refresh_now_login_expired" = "ログイン資格情報が期限切れです。ターミナルで Claude Code CLI をもう一度実行してください";
 "status.item.controller.refresh_now_rate_limited" = "レート制限中、%1$@後に利用可能";
 "status.item.controller.refresh_now_just_refreshed" = "直前に更新済み";
 "status.item.controller.refresh_now_recent_result" = "直前に更新済み · %1$@秒後に再試行できます";

@@ -186,7 +186,7 @@
 "dashboard.general.and.refresh.pages.update_available_revalidating_value_value" = "Nouvelle version disponible : %1$@ -> %2$@; recherche des mises à jour…";
 "dashboard.general.and.refresh.pages.update_check_failed_update_retained_value_value_value" = "Mise à jour trouvée la dernière fois : %1$@; la récupération a échoué cette fois.\nMotif : %2$@\nSuggestion : %3$@";
 "dashboard.general.and.refresh.pages.update_check_failure_reason_rate_limited" = "Limite de requêtes de l'API GitHub atteinte";
-"dashboard.general.and.refresh.pages.update_check_failure_suggestion_rate_limited_wait_value" = "GitHub limite les requêtes de mise à jour ; réessayez dans environ %1$@ minutes.";
+"dashboard.general.and.refresh.pages.update_check_failure_suggestion_rate_limited_wait_value" = "GitHub limite les requêtes de mise à jour ; réessayez dans environ %1$@ minutes. Vous pouvez aussi activer ou changer de proxy pour réessayer immédiatement.";
 "dashboard.general.and.refresh.pages.retry" = "Réessayer";
 "dashboard.general.and.refresh.pages.open_cc_switch" = "Ouvrir CC Switch";
 "dashboard.general.and.refresh.pages.cc_switch" = "CC Switch";
@@ -588,7 +588,7 @@
 "quota.failure.open_usage_page" = "Ouvrir la page d’utilisation officielle";
 "quota.status.accessibility" = "État du quota : %1$@";
 "claude.refresh.login_expired" = "La connexion à Claude Code a expiré. Exécutez claude une fois dans un terminal pour la rétablir ; BalanceBar ne renouvelle jamais la connexion lui-même.";
-"status.item.controller.refresh_now_login_expired" = "Identifiants Claude expirés ; reconnectez-vous dans Claude Code";
+"status.item.controller.refresh_now_login_expired" = "Identifiants expirés ; relancez Claude Code CLI dans le terminal";
 "status.item.controller.refresh_now_rate_limited" = "Limite de requêtes, disponible dans %1$@";
 "status.item.controller.refresh_now_just_refreshed" = "Vient d'être actualisé";
 "status.item.controller.refresh_now_recent_result" = "Vient d'être actualisé · nouvelle tentative dans %1$@ s";

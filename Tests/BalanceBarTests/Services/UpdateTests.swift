@@ -2868,10 +2868,10 @@ final class UpdateTests: XCTestCase {
         }
         XCTAssertEqual(wait ?? 0, 120, accuracy: 0.5)
 
-        // A manual click during the cooldown must not spend another request
+        // A forced (channel-switch) check during the cooldown must not spend another request
         // and must refresh the visible remaining wait.
-        service.checkForUpdates()
-        XCTAssertEqual(fetcher.requestCount, 1, "manual checks must not bypass a rate-limit cooldown")
+        service.checkForUpdatesIfNeeded(force: true)
+        XCTAssertEqual(fetcher.requestCount, 1, "forced checks must not bypass a rate-limit cooldown")
         guard case .failed(.rateLimited(let remaining)) = service.state else {
             return XCTFail("expected the rate-limited feedback to persist")
         }
@@ -2885,6 +2885,37 @@ final class UpdateTests: XCTestCase {
         scheduler.advance(by: 120.5)
         service.checkForUpdates()
         XCTAssertEqual(fetcher.requestCount, 2, "the cooldown must expire after the guided wait")
+    }
+
+    func testManualRetryDuringRateLimitCooldownReallySendsARequest() {
+        let fetcher = StubReleaseFetcher()
+        let scheduler = StubUpdateScheduler()
+        let queue = DispatchQueue(label: "UpdateTests.rate-limit-manual-retry")
+        let service = UpdateService(
+            releaseFetcher: fetcher,
+            currentVersionString: "1.0.0",
+            callbackQueue: queue,
+            workQueue: queue,
+            scheduler: scheduler,
+            minimumCheckingDuration: 0,
+            automaticCheckMinimumInterval: 60
+        )
+        let rateLimited = expectation(description: "rate limited failure settles")
+        rateLimited.assertForOverFulfill = false
+        service.onStateChange = { state in
+            if case .failed(.rateLimited) = state { rateLimited.fulfill() }
+        }
+        service.checkForUpdates()
+        fetcher.resolve(.failure(.rateLimited(GitHubRateLimitInfo(
+            statusCode: 429, rateLimitRemaining: 0, retryAfter: 1_800))))
+        wait(for: [rateLimited], timeout: 2)
+
+        service.checkForUpdatesIfNeeded()
+        XCTAssertEqual(fetcher.requestCount, 1, "automatic checks keep waiting out the cooldown")
+
+        // The limit is per source IP: after switching proxy the user's retry must go out.
+        service.checkForUpdates()
+        XCTAssertEqual(fetcher.requestCount, 2, "a user retry is never swallowed by the cooldown")
     }
 
     func testRateLimitBackoffGrowsWithoutServerGuidanceAndResetsAfterSuccess() {
@@ -2980,9 +3011,9 @@ final class UpdateTests: XCTestCase {
         XCTAssertEqual(retainedLatest, AppSemanticVersion("1.1.0"))
         XCTAssertEqual(service.availableReleaseForPresentation?.tagName, "v1.1.0")
 
-        // Clicking again inside the cooldown gives fresh wait feedback
+        // A forced re-check inside the cooldown gives fresh wait feedback
         // without another request and without dropping the badge.
-        service.checkForUpdates()
+        service.checkForUpdatesIfNeeded(force: true)
         XCTAssertEqual(fetcher.requestCount, 2)
         guard case .recheckFailed(_, _, .rateLimited(let remaining)) = service.state else {
             return XCTFail("expected the refusal feedback to retain the update")
@@ -3325,7 +3356,7 @@ final class UpdateTests: XCTestCase {
         XCTAssertTrue(recheckFailed.performsInstall, "the retained update stays installable")
         XCTAssertEqual(
             recheckFailed.subtitle,
-            "上次发现更新：1.5.0；本次获取更新失败。\n原因：已达到 GitHub API 请求限额\n建议：GitHub 正在限制更新请求，约 2 分钟后可重试。"
+            "上次发现更新：1.5.0；本次获取更新失败。\n原因：已达到 GitHub API 请求限额\n建议：GitHub 正在限制更新请求，约 2 分钟后可重试。开启或更换代理后可立即重试。"
         )
 
         let englishFailure = DashboardUpdatePresentation.make(

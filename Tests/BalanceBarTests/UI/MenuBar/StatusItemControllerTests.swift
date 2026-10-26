@@ -3484,9 +3484,13 @@ extension StatusItemControllerTests {
 
         let actionTitle = tr(.keyStatusItemControllerRefreshNow)
         func assertRefresh(subtitle: String?, _ message: String, line: UInt = #line) {
-            XCTAssertEqual(refresh.title, actionTitle, "the action title never carries the status", line: line)
+            XCTAssertEqual(refresh.title.components(separatedBy: "\n").first, actionTitle, "the action title never carries the status", line: line)
             if #available(macOS 14.4, *) {
-                XCTAssertEqual(refresh.subtitle, subtitle, message, line: line)
+                // A subtitle wider than the menu is wrapped by hand into the attributed title.
+                let shown = refresh.subtitle ?? refresh.attributedTitle?.string
+                    .components(separatedBy: "\n").dropFirst().joined(separator: " ")
+                func squeezed(_ text: String?) -> String? { text.map { $0.filter { !$0.isWhitespace } } }
+                XCTAssertEqual(squeezed(shown?.isEmpty == true ? nil : shown), squeezed(subtitle), message, line: line)
             }
         }
 

@@ -186,7 +186,7 @@
 "dashboard.general.and.refresh.pages.update_available_revalidating_value_value" = "新版本可用：%1$@ -> %2$@（正在檢查更新…）";
 "dashboard.general.and.refresh.pages.update_check_failed_update_retained_value_value_value" = "上次發現更新：%1$@；本次取得更新失敗。\n原因：%2$@\n建議：%3$@";
 "dashboard.general.and.refresh.pages.update_check_failure_reason_rate_limited" = "已達到 GitHub API 請求限額";
-"dashboard.general.and.refresh.pages.update_check_failure_suggestion_rate_limited_wait_value" = "GitHub 正在限制更新請求，約 %1$@ 分鐘後可重試。";
+"dashboard.general.and.refresh.pages.update_check_failure_suggestion_rate_limited_wait_value" = "GitHub 正在限制更新請求，約 %1$@ 分鐘後可重試。開啟或更換代理後可立即重試。";
 "dashboard.general.and.refresh.pages.retry" = "再試";
 "dashboard.general.and.refresh.pages.open_cc_switch" = "開啟 CC Switch";
 "dashboard.general.and.refresh.pages.cc_switch" = "CC Switch";
@@ -588,7 +588,7 @@
 "quota.failure.open_usage_page" = "開啟官方用量頁面";
 "quota.status.accessibility" = "額度狀態：%1$@";
 "claude.refresh.login_expired" = "Claude Code 登入已過期。在終端機執行一次 claude 即可恢復；BalanceBar 不會自行續期登入。";
-"status.item.controller.refresh_now_login_expired" = "Claude 登入憑證過期，請重新在 Claude Code 中登入";
+"status.item.controller.refresh_now_login_expired" = "登入憑證過期，請重新在終端機中執行 Claude Code CLI";
 "status.item.controller.refresh_now_rate_limited" = "被限流，%1$@後可用";
 "status.item.controller.refresh_now_just_refreshed" = "剛剛已刷新";
 "status.item.controller.refresh_now_recent_result" = "剛剛已刷新 · %1$@ 秒後可再試";

@@ -197,25 +197,30 @@ final class GitHubReleaseClient: GitHubReleaseFetching {
 /// App composition gates this fetcher to the development bundle, so the
 /// production app always uses GitHub's public releases endpoint.
 final class LocalGitHubReleaseFixture: GitHubReleaseFetching {
-    private let result: Result<[GitHubRelease], GitHubReleaseClientError>
+    private let fileURL: URL
 
     init(fileURL: URL) {
-        guard let data = try? Data(contentsOf: fileURL) else {
-            result = .failure(.invalidResponse)
-            return
-        }
-
-        if let releases = try? JSONDecoder().decode([GitHubRelease].self, from: data) {
-            result = .success(releases)
-        } else if let release = try? JSONDecoder().decode(GitHubRelease.self, from: data) {
-            result = .success([release])
-        } else {
-            result = .failure(.invalidResponse)
-        }
+        self.fileURL = fileURL
     }
 
+    /// Re-read on every fetch so a manual test can edit the file between retries.
+    /// `{"rateLimited": <seconds>}` simulates a GitHub rate limit with that wait.
     func fetchReleases(completion: @escaping (Result<[GitHubRelease], GitHubReleaseClientError>) -> Void) {
-        completion(result)
+        guard let data = try? Data(contentsOf: fileURL) else {
+            completion(.failure(.invalidResponse))
+            return
+        }
+        if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let wait = (object["rateLimited"] as? NSNumber)?.doubleValue {
+            completion(.failure(.rateLimited(GitHubRateLimitInfo(
+                statusCode: 403, rateLimitRemaining: 0, retryAfter: wait))))
+        } else if let releases = try? JSONDecoder().decode([GitHubRelease].self, from: data) {
+            completion(.success(releases))
+        } else if let release = try? JSONDecoder().decode(GitHubRelease.self, from: data) {
+            completion(.success([release]))
+        } else {
+            completion(.failure(.invalidResponse))
+        }
     }
 }
 
@@ -1029,14 +1034,20 @@ final class UpdateService {
             return
         }
         if !force, rateLimitRemainingWait() != nil { return }
-        checkForUpdates()
+        performCheck(respectingRateLimitCooldown: true)
     }
 
+    /// User-initiated check. A rate-limit cooldown is only our own politeness window: the
+    /// limit is per source IP, so after the user switches proxy a retry must really go out.
     func checkForUpdates() {
+        performCheck(respectingRateLimitCooldown: false)
+    }
+
+    private func performCheck(respectingRateLimitCooldown: Bool) {
         guard let currentVersion,
               !isBusy
         else { return }
-        if let remainingWait = rateLimitRemainingWait() {
+        if respectingRateLimitCooldown, let remainingWait = rateLimitRemainingWait() {
             // A rate-limited endpoint stays rate limited no matter how the
             // check was triggered. Re-show the failure with the remaining
             // wait instead of spending another request.
