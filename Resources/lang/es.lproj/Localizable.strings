@@ -186,7 +186,7 @@
 "dashboard.general.and.refresh.pages.update_available_revalidating_value_value" = "Nueva versión disponible: %1$@ -> %2$@; buscando actualizaciones…";
 "dashboard.general.and.refresh.pages.update_check_failed_update_retained_value_value_value" = "Última actualización encontrada: %1$@; esta vez no se pudo obtener.\nMotivo: %2$@\nSugerencia: %3$@";
 "dashboard.general.and.refresh.pages.update_check_failure_reason_rate_limited" = "Se alcanzó el límite de solicitudes de la API de GitHub";
-"dashboard.general.and.refresh.pages.update_check_failure_suggestion_rate_limited_wait_value" = "GitHub limita las solicitudes de actualización; inténtalo de nuevo en unos %1$@ minutos.";
+"dashboard.general.and.refresh.pages.update_check_failure_suggestion_rate_limited_wait_value" = "GitHub limita las solicitudes de actualización; inténtalo de nuevo en unos %1$@ minutos. También puedes activar o cambiar el proxy y reintentar de inmediato.";
 "dashboard.general.and.refresh.pages.retry" = "Reintentar";
 "dashboard.general.and.refresh.pages.open_cc_switch" = "Abrir CC Switch";
 "dashboard.general.and.refresh.pages.cc_switch" = "CC Switch";
@@ -588,7 +588,7 @@
 "quota.failure.open_usage_page" = "Abrir la página oficial de uso";
 "quota.status.accessibility" = "Estado de la cuota: %1$@";
 "claude.refresh.login_expired" = "El inicio de sesión de Claude Code ha caducado. Ejecuta claude una vez en una terminal para restaurarlo; BalanceBar nunca renueva el inicio de sesión por sí mismo.";
-"status.item.controller.refresh_now_login_expired" = "Las credenciales de Claude caducaron; inicia sesión de nuevo en Claude Code";
+"status.item.controller.refresh_now_login_expired" = "Las credenciales caducaron; ejecuta de nuevo Claude Code CLI en la terminal";
 "status.item.controller.refresh_now_rate_limited" = "Límite de peticiones, disponible en %1$@";
 "status.item.controller.refresh_now_just_refreshed" = "Recién actualizado";
 "status.item.controller.refresh_now_recent_result" = "Recién actualizado · reintenta en %1$@ s";

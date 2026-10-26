@@ -186,7 +186,7 @@
 "dashboard.general.and.refresh.pages.update_available_revalidating_value_value" = "New version available: %1$@ -> %2$@; checking for updates…";
 "dashboard.general.and.refresh.pages.update_check_failed_update_retained_value_value_value" = "Update found last time: %1$@; fetching it failed this time.\nReason: %2$@\nSuggestion: %3$@";
 "dashboard.general.and.refresh.pages.update_check_failure_reason_rate_limited" = "GitHub API rate limit reached";
-"dashboard.general.and.refresh.pages.update_check_failure_suggestion_rate_limited_wait_value" = "GitHub limits update requests; try again in about %1$@ minutes.";
+"dashboard.general.and.refresh.pages.update_check_failure_suggestion_rate_limited_wait_value" = "GitHub limits update requests; try again in about %1$@ minutes. You can also turn on or switch your proxy to retry right away.";
 "dashboard.general.and.refresh.pages.retry" = "Retry";
 "dashboard.general.and.refresh.pages.open_cc_switch" = "Open CC Switch";
 "dashboard.general.and.refresh.pages.cc_switch" = "CC Switch";
@@ -588,7 +588,7 @@
 "quota.failure.open_usage_page" = "Open official usage page";
 "quota.status.accessibility" = "Quota status: %1$@";
 "claude.refresh.login_expired" = "Claude Code sign-in has expired. Run claude once in a terminal to restore it; BalanceBar never renews the login itself.";
-"status.item.controller.refresh_now_login_expired" = "Claude sign-in credentials expired, sign in again in Claude Code";
+"status.item.controller.refresh_now_login_expired" = "Sign-in credentials expired, run the Claude Code CLI in a terminal again";
 "status.item.controller.refresh_now_rate_limited" = "Rate limited, available in %1$@";
 "status.item.controller.refresh_now_just_refreshed" = "Just refreshed";
 "status.item.controller.refresh_now_recent_result" = "Just refreshed · retry in %1$@ s";

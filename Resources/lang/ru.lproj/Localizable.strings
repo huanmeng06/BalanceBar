@@ -186,7 +186,7 @@
 "dashboard.general.and.refresh.pages.update_available_revalidating_value_value" = "Доступна новая версия: %1$@ -> %2$@; идёт проверка обновлений…";
 "dashboard.general.and.refresh.pages.update_check_failed_update_retained_value_value_value" = "Найденное в прошлый раз обновление: %1$@; в этот раз получить его не удалось.\nПричина: %2$@\nПредложение: %3$@";
 "dashboard.general.and.refresh.pages.update_check_failure_reason_rate_limited" = "Достигнут лимит запросов к GitHub API";
-"dashboard.general.and.refresh.pages.update_check_failure_suggestion_rate_limited_wait_value" = "GitHub ограничивает запросы обновлений; повторите попытку примерно через %1$@ мин.";
+"dashboard.general.and.refresh.pages.update_check_failure_suggestion_rate_limited_wait_value" = "GitHub ограничивает запросы обновлений; повторите попытку примерно через %1$@ мин. Также можно включить или сменить прокси и сразу повторить попытку.";
 "dashboard.general.and.refresh.pages.retry" = "Повторить";
 "dashboard.general.and.refresh.pages.open_cc_switch" = "Открыть CC Switch";
 "dashboard.general.and.refresh.pages.cc_switch" = "CC Switch";
@@ -588,7 +588,7 @@
 "quota.failure.open_usage_page" = "Открыть официальную страницу использования";
 "quota.status.accessibility" = "Состояние квоты: %1$@";
 "claude.refresh.login_expired" = "Срок входа в Claude Code истёк. Запустите claude один раз в терминале, чтобы восстановить вход; BalanceBar сам вход не продлевает.";
-"status.item.controller.refresh_now_login_expired" = "Учётные данные Claude истекли; войдите заново в Claude Code";
+"status.item.controller.refresh_now_login_expired" = "Учётные данные истекли; снова запустите Claude Code CLI в терминале";
 "status.item.controller.refresh_now_rate_limited" = "Лимит запросов, доступно через %1$@";
 "status.item.controller.refresh_now_just_refreshed" = "Только что обновлено";
 "status.item.controller.refresh_now_recent_result" = "Только что обновлено · повтор через %1$@ с";
