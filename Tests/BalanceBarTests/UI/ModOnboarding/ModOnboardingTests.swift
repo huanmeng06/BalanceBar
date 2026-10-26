@@ -172,7 +172,7 @@ final class ModOnboardingPanelTests: XCTestCase {
         let commands = ModInstallPlan.standard.copyableCommands.replacingOccurrences(of: "\n", with: "\n$ ")
         XCTAssertEqual(lines(.failed(.claudeNotFound)), ["# 无法自动安装", "没有找到 claude 命令。请在终端中运行下面的命令：", "$ " + commands, "<复制命令>", "<关闭>"])
         XCTAssertEqual(lines(.failed(.commandFailed(step: .installPlugin, exitCode: 1, detail: "x")))[1], "命令未成功完成。请在终端中运行下面的命令：")
-        XCTAssertEqual(lines(.dismissConfirmed), ["# 已隐藏提示", "之后可以在 设置 › 高级 › Claude 实时增强 中安装 Mod。", "<撤销>", "<关闭>"])
+        XCTAssertEqual(lines(.dismissConfirmed), ["# 已隐藏提示", "之后可以在 设置 › 通用 › 刷新 中安装 BalanceBar Mod。", "<撤销>", "<关闭>"])
     }
 
     func testPanelViewRendersEveryStateInBothAppearances() throws {
@@ -995,6 +995,7 @@ extension ModSyncCoordinatorTests {
         coordinator.onStatusChange = { _ in detected.fulfill() }
         coordinator.startDetectionIfNeeded(force: true)
         wait(for: [detected], timeout: 5)
+        panel.perform(.showStatus)
         XCTAssertTrue(
             panel.snapshotLines.contains { $0.contains("已安装，等待新会话的数据") },
             "the open panel must refresh when detection lands: \(panel.snapshotLines)")
@@ -1020,8 +1021,12 @@ extension ModSyncCoordinatorTests {
         let panel = coordinator.attachPanel()
         XCTAssertEqual(coordinator.controller.state, .intro(dismissChecked: false))
         XCTAssertTrue(
+            panel.snapshotLines.contains { $0.contains("<查看当前状态>") },
+            "the reopened panel opens on the intro page for an installed Mod: \(panel.snapshotLines)")
+        panel.perform(.showStatus)
+        XCTAssertTrue(
             panel.snapshotLines.contains { $0.contains("<卸载 BalanceBar Mod>") },
-            "the reopened panel shows the management view for an installed Mod: \(panel.snapshotLines)")
+            "the status page offers uninstall: \(panel.snapshotLines)")
         XCTAssertFalse(panel.snapshotLines.contains { $0.contains("已开启 ✓") })
     }
 
@@ -1294,6 +1299,8 @@ final class ModManagementUITests: XCTestCase {
         windows.close()
         _ = windows.prepare(owner: owner)
         XCTAssertEqual(c.state, .intro(dismissChecked: false))
+        XCTAssertTrue(windows.panelView?.snapshotLines.contains { $0.contains("<查看当前状态>") } == true)
+        windows.panelView?.perform(.showStatus)
         XCTAssertTrue(windows.panelView?.snapshotLines.contains { $0.contains("<卸载 BalanceBar Mod>") } == true)
         // Owner close tears down its child even if settings navigation changed first.
         windows.show(owner: owner)
@@ -2025,7 +2032,7 @@ final class ModInt2WindowRestorationTests: XCTestCase {
         box.performClick(nil)
         view.perform(.close)
         XCTAssertEqual(c.state, .dismissConfirmed, "Later must show the guidance page, not close")
-        XCTAssertTrue(view.snapshotLines.contains { $0.contains("之后可以在 设置 › 高级 › Claude 实时增强 中安装 Mod。") })
+        XCTAssertTrue(view.snapshotLines.contains { $0.contains("之后可以在 设置 › 通用 › 刷新 中安装 BalanceBar Mod。") })
         view.perform(.undoDismiss)
         XCTAssertFalse(c.isPromptDismissed)
         XCTAssertEqual(c.state, .intro(dismissChecked: false))
@@ -2035,6 +2042,7 @@ final class ModInt2WindowRestorationTests: XCTestCase {
         var copied = ""
         let view = ModOnboardingPanelView(controller: controller(copied: { copied = $0 }),
             syncProvider: { self.context(.waitingForData) })
+        view.perform(.showStatus)
         let copy = try XCTUnwrap(descendants(view).compactMap { $0 as? ModCopyButton }.first)
         XCTAssertEqual(copy.identifier?.rawValue, "copyReload")
         let rect = view.convert(copy.bounds, from: copy)

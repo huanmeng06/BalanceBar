@@ -1394,6 +1394,7 @@ final class DashboardPageSearchTests: XCTestCase {
             for text in Set(copy) {
                 let trimmed = text
                     .replacingOccurrences(of: "\u{2060}", with: "")
+                    .replacingOccurrences(of: "● ", with: "") // status-dot decoration, not searchable copy
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !trimmed.isEmpty else { continue }
                 XCTAssertTrue(
