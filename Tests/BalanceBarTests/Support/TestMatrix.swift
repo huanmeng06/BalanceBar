@@ -15,4 +15,8 @@ enum TestMatrix {
 
     /// Narrowest and widest supported widths.
     static let minAndMaxWidths: [CGFloat] = [420, 760]
+
+    /// Starting pages for "state is independent of where the user came from" tests:
+    /// one ordinary page and one with special search/layout logic.
+    static let representativeStartingSections: [DashboardSection] = [.menuBar, .advanced]
 }

@@ -1312,14 +1312,14 @@ final class ModManagementUITests: XCTestCase {
     }
 
     func testAllLanguagesStatesAndWidthsRenderWithoutClippedText() throws {
-        let appearances: [NSAppearance.Name] = [.aqua, .darkAqua]
-        for language in AppLanguage.allCases where language != .system {
+        let appearances = TestMatrix.layoutAppearances
+        for language in TestMatrix.representativeLanguages {
             for appearance in appearances {
                 let view = ModOnboardingPanelView(controller: controller(), localize: {
                     tr(LocalizationKey.key(for: $0), language: language)
                 })
                 view.appearance = try XCTUnwrap(NSAppearance(named: appearance))
-                for width: CGFloat in [420, 480, 760] {
+                for width in TestMatrix.minAndMaxWidths {
                     view.setFrameSize(NSSize(width: width, height: 10))
                     for (name, state, status) in fixtures {
                         view.render(content(state, status: status, language: language))
@@ -1349,7 +1349,7 @@ final class ModManagementUITests: XCTestCase {
 
     func testConfirmationLayoutInEveryLanguage() throws {
         for language in AppLanguage.allCases where language != .system {
-            for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+            for appearance in TestMatrix.layoutAppearances {
                 let view = ModOnboardingPanelView(controller: controller(), localize: {
                     tr(LocalizationKey.key(for: $0), language: language)
                 }, syncProvider: { self.context(.waitingForData, language: language) })

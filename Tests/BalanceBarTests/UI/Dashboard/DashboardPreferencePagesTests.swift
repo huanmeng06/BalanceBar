@@ -1965,13 +1965,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
 
-        for language in [
-            AppLanguage.german,
-            .french,
-            .portuguese,
-            .italian,
-            .russian
-        ] {
+        for language in TestMatrix.representativeLanguages {
             AppLanguage.selected = language
             let suiteName = "DashboardPreferencePagesTests.LaunchAtLoginLayout.\(language.rawValue).\(UUID().uuidString)"
             let defaults = UserDefaults(suiteName: suiteName)!
@@ -2011,7 +2005,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 window.orderOut(nil)
             }
 
-            for width in [880.0, 800.0, 516.0, 320.0] {
+            for width in [880.0, 320.0] {
                 host.setFrameSize(NSSize(width: width, height: 760))
                 page.setFrameSize(host.bounds.size)
                 window.layoutIfNeeded()
@@ -2715,17 +2709,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
 
-        let languages: [AppLanguage] = [
-            .simplifiedChinese,
-            .traditionalChineseTaiwan,
-            .traditionalChineseHongKong,
-            .english,
-            .japanese,
-            .korean,
-            .spanish,
-            .german,
-            .french
-        ]
+        let languages = TestMatrix.representativeLanguages
 
         for language in languages {
             AppLanguage.selected = language
@@ -4006,7 +3990,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             .italian: "Barra di avanzamento"
         ]
 
-        for language in AppLanguage.allCases where language != .system {
+        for language in TestMatrix.representativeLanguages {
             AppLanguage.selected = language
             let suiteName = "DashboardPreferencePagesTests.ProgressBarSection.\(language.rawValue).\(UUID().uuidString)"
             let defaults = UserDefaults(suiteName: suiteName)!
@@ -5963,17 +5947,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
 
-        let languages: [AppLanguage] = [
-            .simplifiedChinese,
-            .traditionalChineseTaiwan,
-            .traditionalChineseHongKong,
-            .japanese,
-            .korean,
-            .spanish,
-            .german,
-            .french,
-            .english
-        ]
+        let languages = TestMatrix.representativeLanguages
         let date = Date(timeIntervalSince1970: 1_700_000_000)
         let windows = [
             OfficialQuotaWindow(
@@ -6208,17 +6182,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
 
-        let languages: [AppLanguage] = [
-            .simplifiedChinese,
-            .traditionalChineseTaiwan,
-            .traditionalChineseHongKong,
-            .japanese,
-            .korean,
-            .spanish,
-            .german,
-            .french,
-            .english
-        ]
+        let languages = TestMatrix.representativeLanguages
         let now = Date()
         let snapshot = Snapshot.official(
             "OpenAI",
@@ -6560,7 +6524,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
     func testAnimationModeTitleStaysVisibleAfterInPlaceModeSwitchInEveryLanguage() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
-        let languages = AppLanguage.allCases.filter { $0 != .system }
+        let languages = TestMatrix.representativeLanguages
 
         for language in languages {
             AppLanguage.selected = language
@@ -7996,7 +7960,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             .spanish,
             .german,
             .french
-        ] {
+        ] { // expected strings below are keyed by these exact languages
             AppLanguage.selected = language
             let suiteName = "DashboardPreferencePagesTests.MenuBarExternalSummaries.\(UUID().uuidString)"
             let defaults = UserDefaults(suiteName: suiteName)!

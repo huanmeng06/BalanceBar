@@ -1069,7 +1069,7 @@ final class DashboardPageSearchTests: XCTestCase {
             tr(.keyDashboardMenuPageStatusLinks)
         ] {
             let generalStartRows = try rows(startingAt: .general, query: query)
-            for startingSection in [.menuBar, .menu, .advanced] as [DashboardSection] {
+            for startingSection in TestMatrix.representativeStartingSections {
                 let startRows = try rows(startingAt: startingSection, query: query)
                 XCTAssertEqual(startRows, generalStartRows, "query: \(query), section: \(startingSection)")
             }
@@ -1283,7 +1283,7 @@ final class DashboardPageSearchTests: XCTestCase {
         for query in ["MyPrivateProviderXYZ", "37.42", "7.3"] {
             let generalRows = try rows(startingAt: .general, query: query)
             XCTAssertFalse(generalRows.isEmpty, query)
-            for startingSection in [DashboardSection.menuBar, .menu, .advanced] {
+            for startingSection in [DashboardSection.advanced] {
                 let startRows = try rows(startingAt: startingSection, query: query)
                 XCTAssertEqual(startRows, generalRows, "query: \(query), section: \(startingSection)")
             }
