@@ -598,6 +598,9 @@
 "claude.status_line.enabled" = "Claude Code native sync";
 "claude.status_line.description" = "Pushed by Claude Code after each reply; no plugin needed";
 "claude.status_line.calibration" = "Claude official quota calibration";
+"claude.source_tag.all_clients" = "All clients";
+"claude.source_tag.terminal" = "Terminal CLI";
+"claude.source_tag.desktop" = "Desktop first";
 "claude.refresh.every_minutes" = "Every %1$@ min";
 "claude.status_line.calibration_detail" = "Polls the official source on a timer as a fallback; longer intervals avoid rate limits";
 "claude.status_line.disable_confirm_title" = "Turn off Claude Code native sync?";
@@ -727,6 +730,7 @@
 "mod.card.uninstall_failed.title" = "Uninstall failed";
 "mod.card.view_error_action" = "Click “%1$@” for details";
 "mod.card.row_title" = "BalanceBar Mod realtime boost";
+"mod.card.row_description" = "With the Mod installed, quota is pushed in real time during chats";
 "mod.card.learn_more" = "Learn more";
 "mod.ui.view_status" = "View current status";
 "mod.ui.back_to_intro" = "Back to overview";

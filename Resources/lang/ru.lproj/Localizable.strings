@@ -598,6 +598,9 @@
 "claude.status_line.enabled" = "Нативная синхронизация Claude Code";
 "claude.status_line.description" = "Claude Code отправляет данные после каждого ответа; плагин не нужен";
 "claude.status_line.calibration" = "Сверка официальной квоты Claude";
+"claude.source_tag.all_clients" = "Все клиенты";
+"claude.source_tag.terminal" = "Терминал CLI";
+"claude.source_tag.desktop" = "Сначала десктоп";
 "claude.refresh.every_minutes" = "Каждые %1$@ мин";
 "claude.status_line.calibration_detail" = "Периодически запрашивает официальный источник как запасной вариант; больший интервал помогает избежать ограничений";
 "claude.status_line.disable_confirm_title" = "Отключить нативную синхронизацию Claude Code?";
@@ -727,6 +730,7 @@
 "mod.card.uninstall_failed.title" = "Ошибка удаления";
 "mod.card.view_error_action" = "Нажмите «%1$@», чтобы узнать подробности";
 "mod.card.row_title" = "BalanceBar Mod ускорение реального времени";
+"mod.card.row_description" = "С установленным Mod квота передаётся в реальном времени во время чата";
 "mod.card.learn_more" = "Подробнее";
 "mod.ui.view_status" = "Показать текущее состояние";
 "mod.ui.back_to_intro" = "Назад к описанию";

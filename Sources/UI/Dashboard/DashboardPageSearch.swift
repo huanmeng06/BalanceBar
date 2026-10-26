@@ -482,6 +482,9 @@ enum DashboardSettingsSearchCatalog {
                 .keyDashboardGeneralAndRefreshPagesStartup,
                 .keyDashboardGeneralAndRefreshPagesRefresh,
                 .keyClaudeStatusLineCalibration,
+                .keyClaudeSourceTagAllClients,
+                .keyClaudeSourceTagTerminal,
+                .keyClaudeSourceTagDesktop,
                 .keyClaudeStatusLineCalibrationDetail,
                 .keyClaudeStatusLineEnabled,
                 .keyClaudeStatusLineDescription,
@@ -516,6 +519,7 @@ enum DashboardSettingsSearchCatalog {
                 .modCardInstallFailedTitle,
                 .modCardUninstallFailedTitle,
                 .modCardRowTitle,
+                .modCardRowDescription,
                 .modCardLearnMore,
                 .keyDashboardOfficialQuotaRefreshFrequency,
                 .keyDashboardRefreshOfficialScope,
@@ -616,6 +620,7 @@ enum DashboardSettingsSearchCatalog {
                 texts += cardStates.map { realtimeBoostLocalize($0) }
                 texts.append("BalanceBar Mod")
                 texts.append(realtimeBoostLocalize(.cardRowTitle))
+                texts.append(realtimeBoostLocalize(.cardRowDescription))
                 texts.append(contentsOf: DashboardSettingsFormattedCopy.languageMenuTitles())
                 texts.append(contentsOf: Set(TimeZoneCityCatalog.all.map {
                     TimeZoneCityCatalog.continentTitle(for: $0)

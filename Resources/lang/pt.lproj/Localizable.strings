@@ -598,6 +598,9 @@
 "claude.status_line.enabled" = "Sincronização nativa do Claude Code";
 "claude.status_line.description" = "Enviado pelo Claude Code após cada resposta; não requer plugin";
 "claude.status_line.calibration" = "Calibração da cota oficial do Claude";
+"claude.source_tag.all_clients" = "Todos os clientes";
+"claude.source_tag.terminal" = "Terminal CLI";
+"claude.source_tag.desktop" = "Desktop primeiro";
 "claude.refresh.every_minutes" = "A cada %1$@ min";
 "claude.status_line.calibration_detail" = "Consulta a fonte oficial periodicamente como alternativa; intervalos maiores evitam limites de uso";
 "claude.status_line.disable_confirm_title" = "Desativar a sincronização nativa do Claude Code?";
@@ -727,6 +730,7 @@
 "mod.card.uninstall_failed.title" = "Falha na desinstalação";
 "mod.card.view_error_action" = "Clique em “%1$@” para ver os detalhes";
 "mod.card.row_title" = "BalanceBar Mod impulso em tempo real";
+"mod.card.row_description" = "Com o Mod instalado, a cota é enviada em tempo real durante o chat";
 "mod.card.learn_more" = "Saiba mais";
 "mod.ui.view_status" = "Ver status atual";
 "mod.ui.back_to_intro" = "Voltar à apresentação";

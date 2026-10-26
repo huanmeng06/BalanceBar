@@ -383,6 +383,7 @@ extension LocalizationKey {
         case .cardUninstallFailedTitle: return .modCardUninstallFailedTitle
         case .cardViewErrorAction: return .modCardViewErrorAction
         case .cardRowTitle: return .modCardRowTitle
+        case .cardRowDescription: return .modCardRowDescription
         case .cardLearnMore: return .modCardLearnMore
         case .title: return .modSettingsTitle
         case .statusNotInstalled: return .modSettingsStatusNotInstalled

@@ -1474,17 +1474,22 @@ final class RealtimeBoostAdvancedCardTests: XCTestCase {
             timeZone: TimeZone(identifier: "UTC")!)
     }
 
+    private func statusLine(_ row: SettingsRowView) -> String {
+        row.detailLabel.stringValue.components(separatedBy: "\n").last ?? ""
+    }
+
     func testHistoricalStatusTitleAndLatestDataUseSeparateLines() {
         let card = rows(.active(lastAcceptedAt: Date()))
         XCTAssertEqual(card.statusRow.titleLabel.stringValue, "BalanceBar Mod realtime boost")
-        XCTAssertTrue(card.statusRow.detailLabel.stringValue.hasPrefix("● Enabled · Last trusted data: "))
+        XCTAssertTrue(statusLine(card.statusRow).hasPrefix("● Enabled · Last trusted data: "))
         XCTAssertTrue(card.installButton.isHidden)
         XCTAssertEqual(card.descriptionButton.title, "Learn more")
         card.update(status: .silent, operation: .intro(dismissChecked: false))
         XCTAssertEqual(card.statusRow.titleLabel.stringValue, "BalanceBar Mod realtime boost")
         XCTAssertEqual(card.statusRow.detailLabel.stringValue,
-                       "● No recent data · No data in the last 10 minutes · Start a new session, or run /reload-plugins")
-        XCTAssertFalse(card.statusRow.detailLabel.stringValue.contains("\n"), "the subtitle is a single line")
+                       "With the Mod installed, quota is pushed in real time during chats"
+                       + "\n● No recent data · No data in the last 10 minutes · Start a new session, or run /reload-plugins",
+                       "line one explains the Mod, line two carries the status")
     }
 
     func testInstallAndDescriptionCallbacksKeepTheirOriginalSender() {
@@ -1505,7 +1510,7 @@ final class RealtimeBoostAdvancedCardTests: XCTestCase {
         XCTAssertEqual(card.descriptionButton.title, "Manage")
         XCTAssertTrue(card.statusRow.detailLabel.stringValue.contains("Install Mod"))
         card.update(status: .waitingForData, operation: .succeeded)
-        XCTAssertTrue(card.statusRow.detailLabel.stringValue.hasPrefix("● Waiting for data"))
+        XCTAssertTrue(statusLine(card.statusRow).hasPrefix("● Waiting for data"))
         XCTAssertFalse(card.statusRow.detailLabel.stringValue.contains("Enabled"))
         card.update(status: .notInstalled(hasOtherScopeInstall: false), operation: .failed(.inboxNotReady))
         XCTAssertFalse(card.installButton.isHidden)
@@ -1544,21 +1549,24 @@ final class RealtimeBoostAdvancedCardTests: XCTestCase {
 
         let card = rows[mod]
         XCTAssertEqual(card.identifier, DashboardPageSearch.rowIdentifier)
-        XCTAssertEqual(card.detailLabel.stringValue, "● Not installed · Install to sync quota in real time")
+        XCTAssertEqual(statusLine(card), "● Not installed · Install to sync quota in real time")
         page.refreshModSync(.active(lastAcceptedAt: Date()), operation: .succeeded)
         XCTAssertEqual(card.titleLabel.stringValue, "BalanceBar Mod realtime boost")
-        XCTAssertTrue(card.detailLabel.stringValue.hasPrefix("● Enabled · "))
+        XCTAssertTrue(statusLine(card).hasPrefix("● Enabled · "))
     }
 
     func testModRowTitleHoldsOnlyTheClaudeMarkAndTheStatusDotLeadsTheSubtitle() throws {
         let card = rows(.waitingForData)
         let accessory = try XCTUnwrap(card.statusRow.titleAccessory)
-        XCTAssertTrue(accessory is AgentIconStripView, "the title accessory is the Claude mark only")
+        let tagged = try XCTUnwrap(accessory as? AgentIconTagAccessoryView, "the Claude mark is followed by an audience tag")
+        XCTAssertTrue(tagged.iconStrip is AgentIconStripView)
+        XCTAssertEqual(tagged.tagView.text, tr(.keyClaudeSourceTagDesktop))
         func dotColor(_ status: ModSyncStatus, operation: ModPanelState = .intro(dismissChecked: false)) -> NSColor? {
             card.update(status: status, operation: operation)
             let text = card.statusRow.detailLabel.attributedStringValue
-            XCTAssertTrue(text.string.hasPrefix("● "))
-            return text.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
+            let dot = (text.string as NSString).range(of: "\n● ")
+            XCTAssertNotEqual(dot.location, NSNotFound, "the dot leads the second (status) line")
+            return text.attribute(.foregroundColor, at: dot.location + 1, effectiveRange: nil) as? NSColor
         }
         XCTAssertEqual(dotColor(.active(lastAcceptedAt: Date())), .systemGreen)
         XCTAssertEqual(dotColor(.silent), .systemOrange)
@@ -1577,7 +1585,8 @@ final class RealtimeBoostAdvancedCardTests: XCTestCase {
             RunLoop.current.run(until: Date().addingTimeInterval(0.05))
         }
         host.layoutSubtreeIfNeeded()
-        XCTAssertLessThan(accessory.bounds.width, 60, "the accessory must hug the Claude mark, not stretch")
+        XCTAssertEqual(accessory.bounds.width, accessory.intrinsicContentSize.width, accuracy: 1,
+                       "the accessory must hug the Claude mark and its tag, not stretch")
         XCTAssertEqual(card.statusRow.titleLabel.frame.height, 17, accuracy: 4, "the fixed row title stays on one line")
     }
 

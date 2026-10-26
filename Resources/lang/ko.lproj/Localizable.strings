@@ -596,8 +596,11 @@
 "status.item.controller.refresh_now_failure_backoff" = "요청 실패, %1$@초 후 자동 재시도";
 "status.item.controller.refresh_now_out_of_tokens" = "새로고침이 너무 잦습니다. %1$@초 후 재시도할 수 있습니다";
 "claude.status_line.enabled" = "Claude Code 네이티브 동기화";
-"claude.status_line.description" = "Claude 답변이 끝날 때마다 Claude Code가 전송하며, 플러그인이 필요 없습니다";
+"claude.status_line.description" = "답변이 끝날 때마다 Claude Code가 자동 전송하며, 플러그인이 필요 없습니다";
 "claude.status_line.calibration" = "Claude 공식 할당량 보정";
+"claude.source_tag.all_clients" = "모든 환경";
+"claude.source_tag.terminal" = "터미널 CLI";
+"claude.source_tag.desktop" = "데스크톱 우선";
 "claude.refresh.every_minutes" = "%1$@분마다";
 "claude.status_line.calibration_detail" = "일정 간격으로 공식 소스를 조회하는 대체 수단이며, 간격이 길수록 호출 제한을 피하기 쉽습니다";
 "claude.status_line.disable_confirm_title" = "Claude Code 네이티브 동기화를 끌까요?";
@@ -727,6 +730,7 @@
 "mod.card.uninstall_failed.title" = "제거 실패";
 "mod.card.view_error_action" = "“%1$@”을(를) 클릭해 자세히 보기";
 "mod.card.row_title" = "BalanceBar Mod 실시간 부스트";
+"mod.card.row_description" = "Mod를 설치하면 대화 중 사용량을 실시간으로 전송합니다";
 "mod.card.learn_more" = "자세히 보기";
 "mod.ui.view_status" = "현재 상태 보기";
 "mod.ui.back_to_intro" = "소개로 돌아가기";

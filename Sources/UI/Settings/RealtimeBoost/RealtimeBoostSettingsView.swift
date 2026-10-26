@@ -62,6 +62,7 @@ enum RealtimeBoostText: String, CaseIterable {
     case cardUninstallFailedTitle = "mod.card.uninstall_failed.title"
     case cardViewErrorAction = "mod.card.view_error_action"
     case cardRowTitle = "mod.card.row_title"
+    case cardRowDescription = "mod.card.row_description"
     case cardLearnMore = "mod.card.learn_more"
 
     var defaultText: String {
@@ -108,6 +109,7 @@ enum RealtimeBoostText: String, CaseIterable {
         case .cardUninstallFailedTitle: return "卸载失败"
         case .cardViewErrorAction: return "点「%@」了解详情"
         case .cardRowTitle: return "BalanceBar Mod 实时增强"
+        case .cardRowDescription: return "安装 Mod 后，对话进行中实时推送额度"
         case .cardLearnMore: return "了解更多"
 
         case .statusNotInstalled: return "未开启"
@@ -392,18 +394,27 @@ final class RealtimeBoostSettingsRows {
         let actions = NSStackView(views: [spinner, installButton, descriptionButton])
         actions.spacing = 8
         let initialCopy = Self.cardCopy(status: status, operation: operation, localize: localize, modLocalize: modLocalize)
-        statusRow = SettingsRowView(title: localize(.cardRowTitle), detail: Self.dotPrefix + initialCopy.detail,
-                                    titleAccessory: DashboardRefreshPage.agentIconStrip(["Claude"]), accessoryView: actions)
+        statusRow = SettingsRowView(title: localize(.cardRowTitle),
+                                    detail: Self.subtitle(description: localize(.cardRowDescription), status: initialCopy.detail),
+                                    titleAccessory: DashboardRefreshPage.agentIconStrip(["Claude"], tag: tr(.keyClaudeSourceTagDesktop)),
+                                    accessoryView: actions)
         installButton.target = self; installButton.action = #selector(install(_:))
         descriptionButton.target = self; descriptionButton.action = #selector(showDescription(_:))
         update(status: status, operation: operation)
     }
 
-    /// The status dot leads the subtitle, so it sits next to the status word it colours.
+    /// The status dot leads the status line, so it sits next to the status word it colours.
     static let dotPrefix = "● "
 
+    /// Line one says what the Mod does; line two is the live status, which nearly always has content.
+    static func subtitle(description: String, status: String) -> String {
+        description + "\n" + dotPrefix + status
+    }
+
     private func applyDetail(_ detail: String, dotColor: NSColor) {
-        statusRow.updateDetail(Self.dotPrefix + detail)
+        let description = localize(.cardRowDescription)
+        statusRow.updateDetail(Self.subtitle(description: description, status: detail))
+        let dotLocation = (description as NSString).length + 1
         let label = statusRow.detailLabel
         let font = label.font ?? .systemFont(ofSize: NSFont.smallSystemFontSize)
         let text = NSMutableAttributedString(string: label.stringValue, attributes: [
@@ -412,7 +423,7 @@ final class RealtimeBoostSettingsRows {
         text.addAttributes([
             .font: dotFont, .foregroundColor: dotColor,
             .baselineOffset: (font.capHeight - dotFont.capHeight) / 2,
-        ], range: NSRange(location: 0, length: 1))
+        ], range: NSRange(location: dotLocation, length: 1))
         label.attributedStringValue = text
     }
 
