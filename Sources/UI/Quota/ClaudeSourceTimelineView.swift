@@ -25,6 +25,18 @@ struct ClaudeSourceTimelineLayout {
         var readings: [ClaudeSourceTimeline.Reading]
         /// x positions where a later reading starts inside the bar, far enough apart to show.
         var dividers: [CGFloat]
+        /// The blocks between dividers, each the readings that start inside it.
+        var pieces: [Piece] = []
+    }
+
+    /// One block of a bar (what hovering lifts): from its first reading until the next block
+    /// starts, or until the bar ends.
+    struct Piece: Equatable {
+        var source: StatusSlotLiveSource
+        var rect: CGRect
+        var readings: [ClaudeSourceTimeline.Reading]
+        var start: Date
+        var end: Date
     }
 
     struct Band: Equatable {
@@ -37,11 +49,23 @@ struct ClaudeSourceTimelineLayout {
         var x: CGFloat
     }
 
+    /// One mark ending where a mark in another lane starts: a dashed line ties them together as
+    /// the same moment (e.g. local data expiring and the official read taking over).
+    struct Junction: Equatable {
+        var x: CGFloat
+        var minY: CGFloat
+        var maxY: CGFloat
+    }
+
+    /// Edges this close (about 18 s on a 600 pt chart) count as the same moment.
+    static let junctionTolerance: CGFloat = 3
+
     let now: Date
     let plot: CGRect
     private(set) var bars: [Bar] = []
     private(set) var bands: [Band] = []
     private(set) var ticks: [Tick] = []
+    private(set) var junctions: [Junction] = []
 
     var start: Date { now.addingTimeInterval(-Self.span) }
     var nowX: CGFloat { plot.maxX }
@@ -59,6 +83,7 @@ struct ClaudeSourceTimelineLayout {
         bars = Self.lanes.flatMap { makeBars(for: $0, readings: snapshot.readings) }
         bands = snapshot.failures.compactMap(makeBand)
         ticks = makeTicks(timeZone: timeZone)
+        junctions = makeJunctions()
     }
 
     func x(for date: Date) -> CGFloat {
@@ -89,6 +114,9 @@ struct ClaudeSourceTimelineLayout {
 
     private func makeBars(for source: StatusSlotLiveSource, readings: [ClaudeSourceTimeline.Reading]) -> [Bar] {
         var bars: [Bar] = []
+        // Readings grouped by block, parallel to `bars`: a divider starts a new block.
+        var groups: [[[ClaudeSourceTimeline.Reading]]] = []
+        var ends: [Date] = []
         var lastMarkX: CGFloat = 0
         for reading in readings where reading.source == source {
             let from = max(reading.observedAt, start)
@@ -98,17 +126,62 @@ struct ClaudeSourceTimelineLayout {
             if var current = bars.last, minX <= current.rect.maxX + 0.5 {
                 if minX - lastMarkX >= Self.minimumDividerSpacing {
                     current.dividers.append(minX)
+                    groups[groups.count - 1].append([reading])
                     lastMarkX = minX
+                } else {
+                    groups[groups.count - 1][groups[groups.count - 1].count - 1].append(reading)
                 }
                 current.rect = barRect(source, from: current.rect.minX, to: max(current.rect.maxX, maxX))
                 current.readings.append(reading)
                 bars[bars.count - 1] = current
+                ends[ends.count - 1] = max(ends[ends.count - 1], to)
             } else {
                 bars.append(Bar(source: source, rect: barRect(source, from: minX, to: maxX), readings: [reading], dividers: []))
+                groups.append([[reading]])
+                ends.append(to)
                 lastMarkX = minX
             }
         }
+        for index in bars.indices {
+            let bar = bars[index]
+            let edges = [bar.rect.minX] + bar.dividers + [bar.rect.maxX]
+            let blocks = groups[index]
+            bars[index].pieces = blocks.indices.map { block in
+                let pieceStart = max(blocks[block][0].observedAt, start)
+                let pieceEnd = block + 1 < blocks.count ? blocks[block + 1][0].observedAt : ends[index]
+                return Piece(
+                    source: source,
+                    rect: CGRect(x: edges[block], y: bar.rect.minY, width: edges[block + 1] - edges[block], height: bar.rect.height),
+                    readings: blocks[block], start: pieceStart, end: max(pieceEnd, pieceStart))
+            }
+        }
         return bars
+    }
+
+    /// The block (or failure box) under a point, for hovering.
+    enum HoverTarget: Equatable {
+        case piece(Piece)
+        case band(Band)
+
+        var rect: CGRect {
+            switch self {
+            case let .piece(piece): return piece.rect
+            case let .band(band): return band.rect
+            }
+        }
+    }
+
+    func hoverTarget(at point: CGPoint) -> HoverTarget? {
+        let slop: CGFloat = 3
+        if let band = bands.last(where: { $0.rect.insetBy(dx: -1, dy: -slop).contains(point) }) {
+            return .band(band)
+        }
+        for bar in bars where bar.rect.insetBy(dx: -1, dy: -slop).contains(point) {
+            if let piece = bar.pieces.first(where: { point.x >= $0.rect.minX - 1 && point.x <= $0.rect.maxX + 1 }) {
+                return .piece(piece)
+            }
+        }
+        return nil
     }
 
     private func makeBand(_ run: ClaudeSourceTimeline.FailureRun) -> Band? {
@@ -118,6 +191,24 @@ struct ClaudeSourceTimelineLayout {
         // Same size as a bar so the failure reads as one more box in the OAuth row.
         let minX = x(for: from)
         return Band(run: run, rect: barRect(.oauthAPI, from: minX, to: x(for: to)))
+    }
+
+    /// Pairs a real end (not cut off by "now") with a real start (not cut off by the left edge) in
+    /// another lane. Failure boxes take part as marks of the OAuth lane.
+    private func makeJunctions() -> [Junction] {
+        let marks: [(lane: StatusSlotLiveSource, rect: CGRect)] =
+            bars.map { ($0.source, $0.rect) } + bands.map { (.oauthAPI, $0.rect) }
+        var junctions: [Junction] = []
+        for end in marks where end.rect.maxX < nowX - 0.5 {
+            for start in marks where start.lane != end.lane && start.rect.minX > plot.minX + 0.5
+                && abs(start.rect.minX - end.rect.maxX) <= Self.junctionTolerance {
+                let x = ((start.rect.minX + end.rect.maxX) / 2).rounded() + 0.5
+                let junction = Junction(
+                    x: x, minY: min(end.rect.minY, start.rect.minY), maxY: max(end.rect.maxY, start.rect.maxY))
+                if !junctions.contains(junction) { junctions.append(junction) }
+            }
+        }
+        return junctions
     }
 
     /// Quarter-hour marks in the display time zone, so they read as 10:15, 10:30, …
@@ -137,6 +228,10 @@ struct ClaudeSourceTimelineLayout {
 
 /// Live timeline of Claude quota sources for Settings › Advanced (Issue #619): when each source's
 /// readings arrived and how long they counted as valid, official failures, and the current status.
+///
+/// Hovering a block lifts it (scale and shadow, like the Codex reset card but without the pointer
+/// tilt), blurs the rest of the chart (the menu's focus blur) and shows the app's popover tooltip
+/// above it with the block's type and duration.
 final class ClaudeSourceTimelineView: NSView {
     struct Content: Equatable {
         var timeline: ClaudeSourceTimeline.Snapshot
@@ -146,23 +241,58 @@ final class ClaudeSourceTimelineView: NSView {
         static let empty = Content(timeline: .empty, status: nil)
     }
 
+    /// Hover look and timings, matching the menu's focus blur and the reset card's lift.
+    enum Hover {
+        static let liftScale: CGFloat = 1.12
+        static let liftShadowOpacity: Float = 0.3
+        static let blurRadius: CGFloat = 3
+        static let recededAlpha: CGFloat = 0.5
+        static let blurDuration: TimeInterval = 0.18
+        static let restoreDuration: TimeInterval = 0.2
+        static let tooltipDelay: TimeInterval = 0.3
+        static let exitDebounce: TimeInterval = 0.08
+        static let springStiffness: CGFloat = 320
+        static let springDamping: CGFloat = 19
+    }
+
     static let refreshInterval: TimeInterval = 5
     static let labelFont = NSFont.systemFont(ofSize: 12, weight: .medium)
     static let axisFont = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular)
     /// Source-colored dot in front of each lane name.
     static let legendDotSize: CGFloat = 8
     static let legendDotGap: CGFloat = 6
+    private static let blurFilterName = "balancebarTimelineFocusBlur"
 
     private let provider: () -> Content
     private let localize: (StatusSlotText) -> String
     private let timeZone: TimeZone
     private let now: () -> Date
     let statusSlot: StatusSlotView
+    private let canvas = TimelineCanvas()
+    private let liftHost = TimelineFlippedView()
+    private let liftLayer = CALayer()
+    private let liftFill = CAShapeLayer()
+    private let liftTint = CAShapeLayer()
     private(set) var content: Content = .empty
     private var refreshTimer: Timer?
     private var occlusionObserver: NSObjectProtocol?
+    private var trackingArea: NSTrackingArea?
+    /// The lifted block, if any.
+    private(set) var hovered: ClaudeSourceTimelineLayout.HoverTarget?
+    private var lastMouse: NSPoint?
+    private var popover: NSPopover?
+    private var tooltipText: String?
+    private var tooltipWork: DispatchWorkItem?
+    private var exitWork: DispatchWorkItem?
+    private var hoverGeneration = 0
+    private var blurGeneration = 0
 
     var isRefreshTimerRunningForTesting: Bool { refreshTimer != nil }
+    var isLiftedForTesting: Bool { hovered != nil && !liftLayer.isHidden }
+    var isChartRecededForTesting: Bool {
+        canvas.layer?.filters?.contains { ($0 as? CIFilter)?.name == Self.blurFilterName } == true
+    }
+    var isTooltipPendingOrShownForTesting: Bool { tooltipWork != nil || popover?.isShown == true }
 
     init(
         provider: @escaping () -> Content,
@@ -182,6 +312,29 @@ final class ClaudeSourceTimelineView: NSView {
         setContentCompressionResistancePriority(.required, for: .vertical)
         setContentHuggingPriority(.defaultLow, for: .horizontal)
         setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        wantsLayer = true
+
+        canvas.owner = self
+        canvas.frame = bounds
+        canvas.autoresizingMask = [.width, .height]
+        canvas.wantsLayer = true
+        canvas.layerUsesCoreImageFilters = true
+        addSubview(canvas)
+
+        liftHost.frame = bounds
+        liftHost.autoresizingMask = [.width, .height]
+        liftHost.wantsLayer = true
+        liftHost.layer?.masksToBounds = false
+        liftLayer.isHidden = true
+        liftLayer.shadowColor = NSColor.black.cgColor
+        liftLayer.shadowRadius = 8
+        liftLayer.shadowOffset = CGSize(width: 0, height: 3)
+        liftLayer.shadowOpacity = 0
+        liftLayer.addSublayer(liftFill)
+        liftLayer.addSublayer(liftTint)
+        liftHost.layer?.addSublayer(liftLayer)
+        addSubview(liftHost)
+
         statusSlot.translatesAutoresizingMaskIntoConstraints = false
         addSubview(statusSlot)
         NSLayoutConstraint.activate([
@@ -197,6 +350,9 @@ final class ClaudeSourceTimelineView: NSView {
 
     deinit {
         refreshTimer?.invalidate()
+        tooltipWork?.cancel()
+        exitWork?.cancel()
+        popover?.close()
         if let occlusionObserver { NotificationCenter.default.removeObserver(occlusionObserver) }
     }
 
@@ -216,8 +372,9 @@ final class ClaudeSourceTimelineView: NSView {
             statusSlot.isHidden = true
         }
         setAccessibilityLabel(accessibilitySummary)
-        needsDisplay = true
-        rebuildToolTips()
+        canvas.needsDisplay = true
+        // The chart moves under a still pointer as time passes; keep the lifted block in step.
+        if hovered != nil, let lastMouse { updateHover(at: lastMouse) }
     }
 
     // MARK: Layout
@@ -243,11 +400,6 @@ final class ClaudeSourceTimelineView: NSView {
             labelColumnWidth: labelColumnWidth, timeZone: timeZone)
     }
 
-    override func layout() {
-        super.layout()
-        rebuildToolTips()
-    }
-
     // MARK: Drawing
 
     private static func color(for source: StatusSlotLiveSource) -> NSColor {
@@ -270,10 +422,11 @@ final class ClaudeSourceTimelineView: NSView {
 
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
-        needsDisplay = true
+        canvas.needsDisplay = true
+        if let hovered { styleLift(for: hovered) }
     }
 
-    override func draw(_ dirtyRect: NSRect) {
+    fileprivate func drawChart() {
         let layout = makeLayout()
         let radius = ClaudeSourceTimelineLayout.cornerRadius
         let name: [NSAttributedString.Key: Any] = [.font: Self.labelFont, .foregroundColor: NSColor.secondaryLabelColor]
@@ -326,6 +479,16 @@ final class ClaudeSourceTimelineView: NSView {
         }
         nowText.draw(at: NSPoint(x: nowLabelX, y: axisY), withAttributes: nowAttributes)
 
+        // Same-moment junctions sit under the marks, so they show only in the gap between lanes.
+        for junction in layout.junctions {
+            let line = NSBezierPath()
+            line.move(to: NSPoint(x: junction.x, y: junction.minY))
+            line.line(to: NSPoint(x: junction.x, y: junction.maxY))
+            line.lineWidth = 1
+            line.setLineDash([3, 3], count: 2, phase: 0)
+            NSColor.secondaryLabelColor.withAlphaComponent(0.7).setStroke()
+            line.stroke()
+        }
         for band in layout.bands { drawBand(band) }
         for bar in layout.bars { drawBar(bar, live: bar.rect.maxX >= layout.nowX - 0.5) }
 
@@ -391,42 +554,323 @@ final class ClaudeSourceTimelineView: NSView {
         box.stroke()
     }
 
-    // MARK: Tooltips
+    // MARK: Hover text
 
     private func time(_ date: Date) -> String { StatusSlotAppearance.timeText(date, timeZone: timeZone) }
 
-    private func rebuildToolTips() {
-        removeAllToolTips()
-        guard bounds.width > 0 else { return }
-        let layout = makeLayout()
-        for item in layout.bars {
-            let lane = layout.laneRect(item.source)
-            addToolTip(NSRect(x: item.rect.minX, y: lane.minY, width: item.rect.width, height: lane.height), owner: self, userData: nil)
-        }
-        for band in layout.bands { addToolTip(band.rect, owner: self, userData: nil) }
-        let oauthLabel = NSRect(x: bounds.minX, y: layout.laneRect(.oauthAPI).minY, width: labelColumnWidth, height: ClaudeSourceTimelineLayout.laneHeight)
-        addToolTip(oauthLabel, owner: self, userData: nil)
+    /// "45 秒" / "3 分钟" / "1 小时 5 分钟".
+    static func durationText(_ interval: TimeInterval) -> String {
+        let seconds = max(0, Int(interval.rounded()))
+        if seconds < 60 { return tr(.keyClaudeTimelineDurationSeconds, arguments: [String(seconds)]) }
+        let minutes = Int((Double(seconds) / 60).rounded())
+        if minutes < 60 { return tr(.keyClaudeTimelineDurationMinutes, arguments: [String(minutes)]) }
+        return tr(.keyClaudeTimelineDurationHours, arguments: [String(minutes / 60), String(minutes % 60)])
     }
 
-    /// Text for the hover point: the failure band, the reading under the pointer, or the OAuth rule.
-    func toolTipText(at point: NSPoint) -> String? {
-        let layout = makeLayout()
-        if point.x < layout.plot.minX {
-            let lane = layout.laneRect(.oauthAPI)
-            return point.y >= lane.minY && point.y < lane.maxY ? tr(.keyClaudeTimelineTooltipOauthRule) : nil
-        }
-        if let band = layout.bands.last(where: { $0.rect.contains(point) }) {
-            return tr(.keyClaudeTimelineTooltipFailure, arguments: [
+    /// Type, time range and duration of a block or failure box.
+    func hoverText(for target: ClaudeSourceTimelineLayout.HoverTarget) -> String {
+        switch target {
+        case let .piece(piece):
+            let first = piece.readings[0]
+            return tr(.keyClaudeTimelineHoverReading, arguments: [
+                laneName(piece.source), time(piece.start), time(piece.end),
+                Self.durationText(piece.end.timeIntervalSince(piece.start)),
+                String(piece.readings.count),
+                Self.durationText(first.expiresAt.timeIntervalSince(first.observedAt))])
+        case let .band(band):
+            let end = band.run.end ?? now()
+            return tr(.keyClaudeTimelineHoverFailure, arguments: [
                 laneName(.oauthAPI), Self.failureText(band.run.kind),
-                time(band.run.start), band.run.end.map(time) ?? tr(.keyClaudeTimelineNow)])
+                time(band.run.start), band.run.end.map(time) ?? tr(.keyClaudeTimelineNow),
+                Self.durationText(end.timeIntervalSince(band.run.start))])
         }
-        guard let bar = layout.bars.first(where: {
-            layout.laneRect($0.source).contains(point) && point.x >= $0.rect.minX && point.x <= $0.rect.maxX
-        }) else { return nil }
-        let date = layout.date(at: point.x)
-        let reading = bar.readings.last(where: { $0.observedAt <= date }) ?? bar.readings[0]
-        return tr(.keyClaudeTimelineTooltipReading, arguments: [
-            laneName(reading.source), time(reading.observedAt), time(reading.expiresAt)])
+    }
+
+    /// What hovering at a point shows: a block or failure box, or the calibration rule on the
+    /// OAuth lane name.
+    func hoverText(at point: NSPoint) -> String? {
+        let layout = makeLayout()
+        if let target = layout.hoverTarget(at: point) { return hoverText(for: target) }
+        return oauthLabelRect(in: layout).contains(point) ? tr(.keyClaudeTimelineTooltipOauthRule) : nil
+    }
+
+    private func oauthLabelRect(in layout: ClaudeSourceTimelineLayout) -> NSRect {
+        let lane = layout.laneRect(.oauthAPI)
+        return NSRect(x: bounds.minX, y: lane.minY, width: labelColumnWidth, height: lane.height)
+    }
+
+    // MARK: Hover tracking
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let trackingArea { removeTrackingArea(trackingArea) }
+        let area = NSTrackingArea(
+            rect: .zero, options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect],
+            owner: self, userInfo: nil)
+        addTrackingArea(area)
+        trackingArea = area
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        exitWork?.cancel()
+        exitWork = nil
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        lastMouse = point
+        updateHover(at: point)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        lastMouse = nil
+        exitWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            self?.exitWork = nil
+            self?.setHover(nil, labelText: nil)
+        }
+        exitWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + Hover.exitDebounce, execute: work)
+    }
+
+    /// Lifts the block under `point` (or shows the OAuth rule over the lane name); test seam too.
+    func updateHover(at point: NSPoint) {
+        exitWork?.cancel()
+        exitWork = nil
+        let layout = makeLayout()
+        if let target = layout.hoverTarget(at: point) {
+            setHover(target, labelText: nil)
+        } else if oauthLabelRect(in: layout).contains(point) {
+            setHover(nil, labelText: (tr(.keyClaudeTimelineTooltipOauthRule), oauthLabelRect(in: layout)))
+        } else {
+            setHover(nil, labelText: nil)
+        }
+    }
+
+    private static func sameTarget(_ lhs: ClaudeSourceTimelineLayout.HoverTarget?, _ rhs: ClaudeSourceTimelineLayout.HoverTarget?) -> Bool {
+        switch (lhs, rhs) {
+        case (nil, nil): return true
+        case let (.piece(a)?, .piece(b)?): return a.source == b.source && a.readings.first == b.readings.first
+        case let (.band(a)?, .band(b)?): return a.run.start == b.run.start
+        default: return false
+        }
+    }
+
+    private func setHover(_ target: ClaudeSourceTimelineLayout.HoverTarget?, labelText: (String, NSRect)?) {
+        if Self.sameTarget(target, hovered) {
+            // Same block: follow its geometry (time moves it) without restarting any animation.
+            if let target {
+                hovered = target
+                placeLift(on: target.rect)
+                updateTooltipInPlace(text: hoverText(for: target), rect: liftedRect(target.rect))
+            } else if let labelText {
+                scheduleTooltip(text: labelText.0, rect: labelText.1)
+            } else {
+                closeTooltip()
+            }
+            return
+        }
+        let wasHovering = hovered != nil
+        hovered = target
+        hoverGeneration += 1
+        if let target {
+            styleLift(for: target)
+            placeLift(on: target.rect)
+            animateLift(up: true)
+            if !wasHovering { setChartReceded(true) }
+            scheduleTooltip(text: hoverText(for: target), rect: liftedRect(target.rect))
+        } else {
+            animateLift(up: false)
+            setChartReceded(false)
+            if let labelText { scheduleTooltip(text: labelText.0, rect: labelText.1) } else { closeTooltip() }
+        }
+    }
+
+    // MARK: Lift
+
+    private var reduceMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
+
+    private func liftedRect(_ rect: CGRect) -> CGRect {
+        rect.insetBy(dx: -rect.width * (Hover.liftScale - 1) / 2, dy: -rect.height * (Hover.liftScale - 1) / 2)
+    }
+
+    private func styleLift(for target: ClaudeSourceTimelineLayout.HoverTarget) {
+        let color: NSColor
+        let tintAlpha: CGFloat
+        switch target {
+        case let .piece(piece):
+            color = Self.color(for: piece.source)
+            tintAlpha = 0.32
+        case .band:
+            color = .systemRed
+            tintAlpha = 0.18
+        }
+        // The lifted block is opaque: it floats over the blurred chart rather than showing it through.
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            liftFill.fillColor = NSColor.windowBackgroundColor.cgColor
+            liftTint.fillColor = color.withAlphaComponent(tintAlpha).cgColor
+            liftTint.strokeColor = color.cgColor
+            liftTint.lineWidth = 1.5
+            CATransaction.commit()
+        }
+    }
+
+    private func placeLift(on rect: CGRect) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        let radius = min(ClaudeSourceTimelineLayout.cornerRadius, rect.width / 2)
+        liftLayer.bounds = CGRect(origin: .zero, size: rect.size)
+        liftLayer.position = CGPoint(x: rect.midX, y: rect.midY)
+        let local = CGRect(origin: .zero, size: rect.size)
+        let path = CGPath(roundedRect: local.insetBy(dx: 0.75, dy: 0.75), cornerWidth: radius, cornerHeight: radius, transform: nil)
+        liftFill.frame = local
+        liftTint.frame = local
+        liftFill.path = path
+        liftTint.path = path
+        liftLayer.shadowPath = CGPath(roundedRect: local, cornerWidth: radius, cornerHeight: radius, transform: nil)
+        liftLayer.isHidden = false
+        CATransaction.commit()
+    }
+
+    /// Scale and shadow only (no pointer tilt), on the reset card's spring.
+    private func animateLift(up: Bool) {
+        let scale = up ? Hover.liftScale : 1
+        let opacity: Float = up ? Hover.liftShadowOpacity : 0
+        let generation = hoverGeneration
+        let currentScale = (liftLayer.presentation()?.value(forKeyPath: "transform.scale") as? CGFloat) ?? (up ? 1 : Hover.liftScale)
+        let currentOpacity = liftLayer.presentation()?.shadowOpacity ?? liftLayer.shadowOpacity
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        CATransaction.setCompletionBlock { [weak self] in
+            guard let self, !up, self.hoverGeneration == generation else { return }
+            self.liftLayer.isHidden = true
+        }
+        liftLayer.transform = CATransform3DMakeScale(scale, scale, 1)
+        liftLayer.shadowOpacity = opacity
+        if !reduceMotion {
+            let spring = CASpringAnimation(keyPath: "transform.scale")
+            spring.fromValue = currentScale
+            spring.toValue = scale
+            spring.stiffness = Hover.springStiffness
+            spring.damping = Hover.springDamping
+            spring.duration = spring.settlingDuration
+            liftLayer.add(spring, forKey: "lift")
+            let shadow = CABasicAnimation(keyPath: "shadowOpacity")
+            shadow.fromValue = currentOpacity
+            shadow.toValue = opacity
+            shadow.duration = up ? Hover.blurDuration : Hover.restoreDuration
+            shadow.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            liftLayer.add(shadow, forKey: "liftShadow")
+        }
+        CATransaction.commit()
+    }
+
+    // MARK: Blur
+
+    /// The menu's focus blur: Gaussian radius 3 and half opacity on everything but the lifted block.
+    private func setChartReceded(_ receded: Bool) {
+        guard let layer = canvas.layer else { return }
+        blurGeneration += 1
+        let generation = blurGeneration
+        let radius: CGFloat = receded && !NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency ? Hover.blurRadius : 0
+        let duration = receded ? Hover.blurDuration : Hover.restoreDuration
+        let keyPath = "filters.\(Self.blurFilterName).inputRadius"
+        if receded, layer.filters?.contains(where: { ($0 as? CIFilter)?.name == Self.blurFilterName }) != true,
+           let filter = CIFilter(name: "CIGaussianBlur") {
+            filter.name = Self.blurFilterName
+            filter.setValue(0, forKey: kCIInputRadiusKey)
+            layer.filters = (layer.filters ?? []) + [filter]
+        }
+        let current = (layer.presentation()?.value(forKeyPath: keyPath) as? CGFloat) ?? (receded ? 0 : Hover.blurRadius)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        CATransaction.setCompletionBlock { [weak self] in
+            guard let self, !receded, self.blurGeneration == generation else { return }
+            self.canvas.layer?.filters = self.canvas.layer?.filters?.filter { ($0 as? CIFilter)?.name != Self.blurFilterName }
+        }
+        layer.setValue(radius, forKeyPath: keyPath)
+        if !reduceMotion {
+            let animation = CABasicAnimation(keyPath: keyPath)
+            animation.fromValue = current
+            animation.toValue = radius
+            animation.duration = duration
+            animation.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            layer.add(animation, forKey: "focusBlur")
+        }
+        CATransaction.commit()
+        let alpha = receded ? Hover.recededAlpha : 1
+        if reduceMotion {
+            canvas.alphaValue = alpha
+        } else {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = duration
+                context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                canvas.animator().alphaValue = alpha
+            }
+        }
+    }
+
+    // MARK: Tooltip
+
+    private func makeTooltipController(_ text: String) -> DashboardTextTooltipViewController {
+        let controller = DashboardTextTooltipViewController(text: text)
+        controller.loadViewIfNeeded()
+        return controller
+    }
+
+    /// Shows the app's popover tooltip above `rect` after the menu's hover delay; an open tooltip
+    /// moves to the new block at once instead.
+    private func scheduleTooltip(text: String, rect: CGRect) {
+        tooltipWork?.cancel()
+        tooltipWork = nil
+        if popover?.isShown == true {
+            updateTooltipInPlace(text: text, rect: rect)
+            return
+        }
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.tooltipWork = nil
+            self.showTooltip(text: text, rect: rect)
+        }
+        tooltipWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + Hover.tooltipDelay, execute: work)
+    }
+
+    private func showTooltip(text: String, rect: CGRect) {
+        guard window != nil else { return }
+        let controller = makeTooltipController(text)
+        let popover = DashboardTextTooltip.makePopover()
+        popover.contentViewController = controller
+        popover.contentSize = controller.view.frame.size
+        popover.animates = !reduceMotion
+        // The view is flipped, so .minY is the top edge: the tooltip opens above the block.
+        popover.show(relativeTo: rect, of: self, preferredEdge: .minY)
+        self.popover = popover
+        tooltipText = text
+    }
+
+    private func updateTooltipInPlace(text: String, rect: CGRect) {
+        guard let popover, popover.isShown else { return }
+        popover.animates = false
+        if tooltipText != text {
+            let controller = makeTooltipController(text)
+            popover.contentViewController = controller
+            popover.contentSize = controller.view.frame.size
+            tooltipText = text
+        }
+        popover.positioningRect = rect
+    }
+
+    private func closeTooltip() {
+        tooltipWork?.cancel()
+        tooltipWork = nil
+        guard let popover else { return }
+        popover.animates = !reduceMotion
+        popover.close()
+        self.popover = nil
+        tooltipText = nil
     }
 
     // MARK: Accessibility
@@ -453,6 +897,10 @@ final class ClaudeSourceTimelineView: NSView {
                 forName: NSWindow.didChangeOcclusionStateNotification, object: window, queue: .main
             ) { [weak self] _ in self?.syncRefreshTimer() }
             reload()
+        } else {
+            lastMouse = nil
+            setHover(nil, labelText: nil)
+            closeTooltip()
         }
         syncRefreshTimer()
     }
@@ -484,8 +932,22 @@ final class ClaudeSourceTimelineView: NSView {
     }
 }
 
-extension ClaudeSourceTimelineView: NSViewToolTipOwner {
-    func view(_ view: NSView, stringForToolTip tag: NSView.ToolTipTag, point: NSPoint, userData data: UnsafeMutableRawPointer?) -> String {
-        toolTipText(at: point) ?? ""
+/// Draws the chart; a separate view so the focus blur never touches the lifted block or the status.
+private final class TimelineCanvas: NSView {
+    weak var owner: ClaudeSourceTimelineView?
+
+    override var isFlipped: Bool { true }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override func draw(_ dirtyRect: NSRect) {
+        owner?.drawChart()
     }
+}
+
+/// Hosts the lifted block's layer in the chart's flipped coordinates.
+private final class TimelineFlippedView: NSView {
+    override var isFlipped: Bool { true }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }

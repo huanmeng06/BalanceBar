@@ -619,9 +619,12 @@
 "claude.timeline.failure.unauthorized" = "ログイン期限切れ";
 "claude.timeline.failure.server_error" = "サーバーエラー";
 "claude.timeline.failure.missing_credentials" = "未ログイン";
-"claude.timeline.tooltip.reading" = "%1$@ · %2$@ 受信 · %3$@ まで有効";
-"claude.timeline.tooltip.failure" = "%1$@ · %2$@ · %3$@–%4$@";
 "claude.timeline.tooltip.oauth_rule" = "ネイティブ同期または Mod のデータが有効な間は公式 API に問い合わせません。少なくとも 1 時間ごとに公式で校正します。";
+"claude.timeline.hover.reading" = "%1$@\n%2$@ – %3$@ · %4$@間\n更新 %5$@ 回・各 %6$@ 有効";
+"claude.timeline.hover.failure" = "%1$@ · %2$@\n%3$@ – %4$@ · %5$@間";
+"claude.timeline.duration.seconds" = "%1$@ 秒";
+"claude.timeline.duration.minutes" = "%1$@ 分";
+"claude.timeline.duration.hours" = "%1$@ 時間 %2$@ 分";
 "claude.timeline.accessibility" = "Claude データソース（直近 60 分）：%1$@";
 "claude.timeline.accessibility.count" = "%1$@ %2$@ 回";
 "claude.timeline.accessibility.failures" = "失敗 %1$@ 件";

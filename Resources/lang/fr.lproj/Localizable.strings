@@ -619,9 +619,12 @@
 "claude.timeline.failure.unauthorized" = "Connexion expirée";
 "claude.timeline.failure.server_error" = "Erreur serveur";
 "claude.timeline.failure.missing_credentials" = "Non connecté";
-"claude.timeline.tooltip.reading" = "%1$@ · reçu à %2$@ · valide jusqu’à %3$@";
-"claude.timeline.tooltip.failure" = "%1$@ · %2$@ · %3$@–%4$@";
 "claude.timeline.tooltip.oauth_rule" = "Tant que les données natives ou du Mod sont valides, BalanceBar n’interroge pas l’API officielle ; il recalibre au moins une fois par heure.";
+"claude.timeline.hover.reading" = "%1$@\n%2$@ – %3$@ · %4$@\nActualisé %5$@ fois · chaque fois valide %6$@";
+"claude.timeline.hover.failure" = "%1$@ · %2$@\n%3$@ – %4$@ · %5$@";
+"claude.timeline.duration.seconds" = "%1$@ s";
+"claude.timeline.duration.minutes" = "%1$@ min";
+"claude.timeline.duration.hours" = "%1$@ h %2$@ min";
 "claude.timeline.accessibility" = "Sources de données Claude (60 dernières minutes) : %1$@";
 "claude.timeline.accessibility.count" = "%1$@ %2$@ fois";
 "claude.timeline.accessibility.failures" = "%1$@ périodes d’échec";

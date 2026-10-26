@@ -619,9 +619,12 @@
 "claude.timeline.failure.unauthorized" = "로그인 만료";
 "claude.timeline.failure.server_error" = "서버 오류";
 "claude.timeline.failure.missing_credentials" = "로그인 안 됨";
-"claude.timeline.tooltip.reading" = "%1$@ · %2$@ 수신 · %3$@까지 유효";
-"claude.timeline.tooltip.failure" = "%1$@ · %2$@ · %3$@–%4$@";
 "claude.timeline.tooltip.oauth_rule" = "네이티브 동기화 또는 Mod 데이터가 유효한 동안에는 공식 API를 조회하지 않으며, 최소 1시간마다 공식 데이터로 보정합니다.";
+"claude.timeline.hover.reading" = "%1$@\n%2$@ – %3$@ · %4$@ 동안\n%5$@회 갱신 · 각 %6$@ 유효";
+"claude.timeline.hover.failure" = "%1$@ · %2$@\n%3$@ – %4$@ · %5$@ 동안";
+"claude.timeline.duration.seconds" = "%1$@초";
+"claude.timeline.duration.minutes" = "%1$@분";
+"claude.timeline.duration.hours" = "%1$@시간 %2$@분";
 "claude.timeline.accessibility" = "Claude 데이터 소스(최근 60분): %1$@";
 "claude.timeline.accessibility.count" = "%1$@ %2$@회";
 "claude.timeline.accessibility.failures" = "실패 %1$@건";

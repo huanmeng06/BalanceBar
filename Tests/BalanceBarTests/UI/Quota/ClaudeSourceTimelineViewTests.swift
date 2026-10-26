@@ -61,6 +61,21 @@ final class ClaudeSourceTimelineViewTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(early.first?.rect.minX ?? 0, 60, "a mark at the left edge stays inside the chart too")
     }
 
+    func testAHandOverBetweenLanesGetsASameMomentJunction() {
+        let layout = layout(readings: [
+            reading(.mod, -1_300, -1_200),       // Mod expires at -1200 …
+            reading(.oauthAPI, -1_200, -600),    // … exactly when the official read takes over
+            reading(.statusLine, -900, -700),    // 100 s from anything: no junction
+            reading(.statusLine, -60, 60),       // live: its "end" is only cut off by now
+            reading(.oauthAPI, -60, 300),
+        ])
+        XCTAssertEqual(layout.junctions.count, 1)
+        let junction = try! XCTUnwrap(layout.junctions.first)
+        XCTAssertEqual(junction.x, 460.5, accuracy: 0.01)
+        XCTAssertEqual(junction.minY, layout.laneRect(.mod).midY - ClaudeSourceTimelineLayout.barHeight / 2, accuracy: 0.01)
+        XCTAssertEqual(junction.maxY, layout.laneRect(.oauthAPI).midY + ClaudeSourceTimelineLayout.barHeight / 2, accuracy: 0.01)
+    }
+
     func testFrequentReadingsMergeWithoutCrowdedDividers() {
         let readings = stride(from: -600.0, to: -300, by: 5).map { reading(.mod, $0, $0 + 120) }
         let bars = layout(readings: readings).bars
@@ -121,17 +136,65 @@ final class ClaudeSourceTimelineViewTests: XCTestCase {
         let layout = view.makeLayout()
         let modBar = try! XCTUnwrap(layout.bars.first { $0.source == .mod })
         XCTAssertEqual(
-            view.toolTipText(at: NSPoint(x: modBar.rect.midX, y: modBar.rect.midY)),
-            tr(.keyClaudeTimelineTooltipReading, arguments: ["Mod", "07:59:00", "08:01:00"]))
+            view.hoverText(at: NSPoint(x: modBar.rect.midX, y: modBar.rect.midY)),
+            tr(.keyClaudeTimelineHoverReading, arguments: [
+                "Mod", "07:59:00", "08:00:00", ClaudeSourceTimelineView.durationText(60), "1",
+                ClaudeSourceTimelineView.durationText(120)]),
+            "type, range so far, duration, refreshes and each refresh's validity")
         let band = try! XCTUnwrap(layout.bands.first)
         XCTAssertEqual(
-            view.toolTipText(at: NSPoint(x: band.rect.midX, y: band.rect.midY)),
-            tr(.keyClaudeTimelineTooltipFailure, arguments: [
-                "OAuth API", tr(.keyClaudeTimelineFailureNetwork), "07:35:00", "07:43:20"]))
+            view.hoverText(at: NSPoint(x: band.rect.midX, y: band.rect.midY)),
+            tr(.keyClaudeTimelineHoverFailure, arguments: [
+                "OAuth API", tr(.keyClaudeTimelineFailureNetwork), "07:35:00", "07:43:20",
+                ClaudeSourceTimelineView.durationText(500)]))
         XCTAssertEqual(
-            view.toolTipText(at: NSPoint(x: 2, y: layout.laneRect(.oauthAPI).midY)),
+            view.hoverText(at: NSPoint(x: 2, y: layout.laneRect(.oauthAPI).midY)),
             tr(.keyClaudeTimelineTooltipOauthRule))
-        XCTAssertNil(view.toolTipText(at: NSPoint(x: 2, y: layout.laneRect(.mod).midY)))
+        XCTAssertNil(view.hoverText(at: NSPoint(x: 2, y: layout.laneRect(.mod).midY)))
+    }
+
+    func testEachRefreshBlockIsItsOwnHoverTarget() {
+        // Three Mod refreshes 40 s apart (≈ 6.7 pt) inside one continuous bar.
+        let layout = layout(readings: [reading(.mod, -200, -80), reading(.mod, -160, -40), reading(.mod, -120, 0)])
+        let bar = try! XCTUnwrap(layout.bars.first)
+        XCTAssertEqual(bar.pieces.count, 3)
+        XCTAssertEqual(bar.pieces.map(\.start), [-200, -160, -120].map { now.addingTimeInterval($0) })
+        XCTAssertEqual(bar.pieces.map(\.end), [-160, -120, 0].map { now.addingTimeInterval($0) })
+        XCTAssertEqual(bar.pieces.first?.rect.minX, bar.rect.minX)
+        XCTAssertEqual(bar.pieces.last?.rect.maxX, bar.rect.maxX)
+        let middle = bar.pieces[1]
+        guard case let .piece(hit)? = layout.hoverTarget(at: CGPoint(x: middle.rect.midX, y: middle.rect.midY)) else {
+            return XCTFail("the middle block should be hoverable")
+        }
+        XCTAssertEqual(hit, middle)
+        XCTAssertNil(layout.hoverTarget(at: CGPoint(x: bar.rect.minX - 20, y: bar.rect.midY)))
+    }
+
+    func testDurationsReadAsSecondsMinutesOrHours() {
+        XCTAssertEqual(ClaudeSourceTimelineView.durationText(45), tr(.keyClaudeTimelineDurationSeconds, arguments: ["45"]))
+        XCTAssertEqual(ClaudeSourceTimelineView.durationText(150), tr(.keyClaudeTimelineDurationMinutes, arguments: ["3"]))
+        XCTAssertEqual(ClaudeSourceTimelineView.durationText(3_900), tr(.keyClaudeTimelineDurationHours, arguments: ["1", "5"]))
+    }
+
+    func testHoveringLiftsTheBlockBlursTheChartAndQueuesTheTooltip() throws {
+        let content = ClaudeSourceTimelineView.Content(
+            timeline: .init(readings: [reading(.oauthAPI, -900, -300)], failures: []), status: nil)
+        let view = ClaudeSourceTimelineView(provider: { content }, localize: StatusSlotText.defaultLocalize, timeZone: utc, now: { self.now })
+        view.frame = NSRect(x: 0, y: 0, width: 600, height: ClaudeSourceTimelineLayout.height)
+        let window = NSWindow(contentRect: view.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView?.addSubview(view)
+        defer { window.close() }
+        let bar = try XCTUnwrap(view.makeLayout().bars.first)
+
+        view.updateHover(at: NSPoint(x: bar.rect.midX, y: bar.rect.midY))
+        XCTAssertTrue(view.isLiftedForTesting)
+        XCTAssertTrue(view.isChartRecededForTesting, "everything but the lifted block is blurred")
+        XCTAssertTrue(view.isTooltipPendingOrShownForTesting)
+
+        view.updateHover(at: NSPoint(x: bar.rect.midX, y: view.makeLayout().laneRect(.mod).midY))
+        XCTAssertNil(view.hovered, "an empty spot lowers the block")
+        XCTAssertFalse(view.isTooltipPendingOrShownForTesting)
     }
 
     /// Offscreen renders for review (XCTest attachments); `BB_TIMELINE_RENDER_DIR` also writes PNGs.
