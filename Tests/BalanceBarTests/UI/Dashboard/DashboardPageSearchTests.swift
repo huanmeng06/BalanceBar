@@ -1391,7 +1391,8 @@ final class DashboardPageSearchTests: XCTestCase {
             let copy = composition.visibleSearchCopyForTesting(
                 in: composition.currentHostedPageContentForTesting()
             )
-            for text in Set(copy) {
+            // A multi-line subtitle (the Mod row's description + status) is separate pieces of copy.
+            for text in Set(copy.flatMap { $0.components(separatedBy: "\n") }) {
                 let trimmed = text
                     .replacingOccurrences(of: "\u{2060}", with: "")
                     .replacingOccurrences(of: "● ", with: "") // status-dot decoration, not searchable copy
@@ -3992,6 +3993,11 @@ extension DashboardPageSearchTests {
         } as? SettingsRowView)
     }
 
+    /// The Mod row's subtitle is "description\n● status"; status assertions read the second line.
+    private func modStatusLine(_ row: SettingsRowView) -> String {
+        row.detailLabel.stringValue.components(separatedBy: "\n").last ?? ""
+    }
+
     func testVisibleAdvancedModCardUpdatesAfterUninstallAndNewEvidence() throws {
         let language = AppLanguage.selected
         AppLanguage.selected = .english
@@ -4006,13 +4012,13 @@ extension DashboardPageSearchTests {
         window.layoutIfNeeded()
         XCTAssertTrue(window.isVisible)
         let row = try modCardRow(composition)
-        XCTAssertTrue(row.detailLabel.stringValue.hasPrefix("● Enabled"))
+        XCTAssertTrue(modStatusLine(row).hasPrefix("● Enabled"))
         value.status = .notInstalled(hasOtherScopeInstall: false)
         value.operation = .uninstallSucceeded
         composition.refreshModSync()
         window.layoutIfNeeded()
         XCTAssertEqual(row.titleLabel.stringValue, "BalanceBar Mod realtime boost")
-        XCTAssertEqual(row.detailLabel.stringValue, "● Not installed · Install to sync quota in real time",
+        XCTAssertEqual(modStatusLine(row), "● Not installed · Install to sync quota in real time",
                        "an uninstalled card should show its next action instead of stale accepted data")
         value.operation = .installing(current: .installPlugin)
         composition.refreshModSync()
@@ -4050,8 +4056,8 @@ extension DashboardPageSearchTests {
         composition.showSection(.general)
         window.layoutIfNeeded()
         XCTAssertTrue(try modCardRow(composition) === row)
-        XCTAssertTrue(row.detailLabel.stringValue.hasPrefix("● Not installed"), "cached General must pick up the latest status on activation")
-        XCTAssertEqual(row.detailLabel.stringValue, "● Not installed · Install to sync quota in real time")
+        XCTAssertTrue(modStatusLine(row).hasPrefix("● Not installed"), "cached General must pick up the latest status on activation")
+        XCTAssertEqual(modStatusLine(row), "● Not installed · Install to sync quota in real time")
     }
 
     func testGlobalSearchModCardReceivesLiveStatusUpdates() throws {
@@ -4072,7 +4078,7 @@ extension DashboardPageSearchTests {
         value.operation = .uninstallSucceeded
         composition.refreshModSync()
         window.layoutIfNeeded()
-        XCTAssertTrue(try modCardRow(composition).detailLabel.stringValue.hasPrefix("● Not installed"))
+        XCTAssertTrue(modStatusLine(try modCardRow(composition)).hasPrefix("● Not installed"))
     }
 
     func testModCardVisibilityTracksAdvancedAndGlobalSearchProjection() throws {

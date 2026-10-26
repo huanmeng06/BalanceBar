@@ -1585,7 +1585,8 @@ final class RealtimeBoostAdvancedCardTests: XCTestCase {
             RunLoop.current.run(until: Date().addingTimeInterval(0.05))
         }
         host.layoutSubtreeIfNeeded()
-        XCTAssertLessThan(accessory.bounds.width, 60, "the accessory must hug the Claude mark, not stretch")
+        XCTAssertEqual(accessory.bounds.width, accessory.intrinsicContentSize.width, accuracy: 1,
+                       "the accessory must hug the Claude mark and its tag, not stretch")
         XCTAssertEqual(card.statusRow.titleLabel.frame.height, 17, accuracy: 4, "the fixed row title stays on one line")
     }
 
