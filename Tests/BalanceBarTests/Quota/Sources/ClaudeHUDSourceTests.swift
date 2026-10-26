@@ -140,8 +140,11 @@ final class ClaudeHUDSourceTests: XCTestCase {
         let source = makeSource()
         defer { source.stop() }
         XCTAssertTrue(scan(source).isEmpty)
-        Thread.sleep(forTimeInterval: 0.5) // the half-write retry runs after 0.1 s
-        guard case .degraded = source.diagnostics.health else { return XCTFail("expected degraded") }
+        // The half-write retry runs after 0.1 s; poll instead of assuming how long that takes.
+        let deadline = Date().addingTimeInterval(5)
+        func isDegraded() -> Bool { if case .degraded = source.diagnostics.health { return true }; return false }
+        while !isDegraded(), Date() < deadline { Thread.sleep(forTimeInterval: 0.02) }
+        XCTAssertTrue(isDegraded(), "expected degraded")
     }
 
     func testLiveWatchersFollowConfigWithoutRestart() throws {
@@ -156,10 +159,15 @@ final class ClaudeHUDSourceTests: XCTestCase {
         source.start { observation in
             if observation.usedPercentage == 55 { received.fulfill() }
         }
-        Thread.sleep(forTimeInterval: 0.3)
-        try writeSnapshot(used: 55)
-        try writeConfig(exportingTo: export)
-        wait(for: [received], timeout: 5)
+        // The watcher start-up time is not fixed, so rewrite until the observation arrives.
+        let deadline = Date().addingTimeInterval(8)
+        var outcome: XCTWaiter.Result
+        repeat {
+            try writeSnapshot(used: 55)
+            try writeConfig(exportingTo: export)
+            outcome = XCTWaiter.wait(for: [received], timeout: 0.5)
+        } while outcome != .completed && Date() < deadline
+        XCTAssertEqual(outcome, .completed)
     }
 
     func testEnvironmentVariablesAndTildeInExportPathAreExpanded() throws {

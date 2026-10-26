@@ -1391,16 +1391,18 @@ final class TerminalSessionIdentityTests: XCTestCase {
     }
 
     func testAppleScriptWaitTimesOutWithoutBlockingCaller() {
-        let started = Date()
+        let release = DispatchSemaphore(value: 0)
         let finished = expectation(description: "late execute finishes")
+        // The work stays blocked until the caller has already returned, so a
+        // caller that waited for it would see a result instead of nil.
         let result = TerminalFrontmostTTY.waitWithTimeout(0.05) {
-            Thread.sleep(forTimeInterval: 0.2)
+            _ = release.wait(timeout: .now() + 5)
             finished.fulfill()
             return "late"
         }
         XCTAssertNil(result)
-        XCTAssertLessThan(Date().timeIntervalSince(started), 0.15)
-        wait(for: [finished], timeout: 1)
+        release.signal()
+        wait(for: [finished], timeout: 5)
     }
 
     func testCompactIdentityTitleStripsPathsAndTruncates() {

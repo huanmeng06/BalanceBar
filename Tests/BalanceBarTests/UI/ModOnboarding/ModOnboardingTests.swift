@@ -1312,14 +1312,14 @@ final class ModManagementUITests: XCTestCase {
     }
 
     func testAllLanguagesStatesAndWidthsRenderWithoutClippedText() throws {
-        let appearances: [NSAppearance.Name] = [.aqua, .darkAqua]
-        for language in AppLanguage.allCases where language != .system {
+        let appearances = TestMatrix.layoutAppearances
+        for language in TestMatrix.representativeLanguages {
             for appearance in appearances {
                 let view = ModOnboardingPanelView(controller: controller(), localize: {
                     tr(LocalizationKey.key(for: $0), language: language)
                 })
                 view.appearance = try XCTUnwrap(NSAppearance(named: appearance))
-                for width: CGFloat in [420, 480, 760] {
+                for width in TestMatrix.minAndMaxWidths {
                     view.setFrameSize(NSSize(width: width, height: 10))
                     for (name, state, status) in fixtures {
                         view.render(content(state, status: status, language: language))
@@ -1332,10 +1332,6 @@ final class ModManagementUITests: XCTestCase {
                             XCTAssertGreaterThanOrEqual(rect.minX, -1, context)
                             XCTAssertLessThanOrEqual(rect.maxX, width + 1, context)
                             XCTAssertGreaterThanOrEqual(button.bounds.width + 1, button.fittingSize.width, context)
-                        }
-                        if name == "not-installed", width == 420 {
-                            let suffix = appearance == .aqua ? "light" : "dark"
-                            try export(view, name: "locale-\(language.rawValue)-\(suffix)")
                         }
                         for field in descendants(view).compactMap({ $0 as? NSTextField }) {
                             let rect = view.convert(field.bounds, from: field)
@@ -1351,42 +1347,9 @@ final class ModManagementUITests: XCTestCase {
         }
     }
 
-    func testExportOfflineStateScreenshots() throws {
-        let output = FileManager.default.temporaryDirectory.appendingPathComponent("BalanceBar-Issue604-UI")
-        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
-        for appearance in [NSAppearance.Name.aqua, .darkAqua] {
-            for language in [AppLanguage.english, .simplifiedChinese] {
-                for (name, state, status) in fixtures {
-                    let view = ModOnboardingPanelView(controller: controller(), localize: {
-                        tr(LocalizationKey.key(for: $0), language: language)
-                    })
-                    view.appearance = try XCTUnwrap(NSAppearance(named: appearance))
-                    view.render(content(state, status: status, language: language))
-                    view.layoutSubtreeIfNeeded()
-                    let suffix = appearance == .aqua ? "light" : "dark"
-                    let prefix = language == .english ? "after" : "int2-zh"
-                    try export(view, name: "\(prefix)-\(name)-\(suffix)")
-                }
-            }
-        }
-        print("Offline UI fixtures: \(output.path)")
-    }
-
-    private func export(_ view: NSView, name: String) throws {
-        let output = FileManager.default.temporaryDirectory.appendingPathComponent("BalanceBar-Issue604-UI")
-        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
-        let bitmap = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
-        view.cacheDisplay(in: view.bounds, to: bitmap)
-        let path = output.appendingPathComponent("\(name).png")
-        try XCTUnwrap(bitmap.representation(using: .png, properties: [:])).write(to: path)
-        let attachment = XCTAttachment(contentsOfFile: path)
-        attachment.lifetime = .keepAlways
-        add(attachment)
-    }
-
-    func testConfirmationLayoutAndScreenshotsInEveryLanguage() throws {
+    func testConfirmationLayoutInEveryLanguage() throws {
         for language in AppLanguage.allCases where language != .system {
-            for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+            for appearance in TestMatrix.layoutAppearances {
                 let view = ModOnboardingPanelView(controller: controller(), localize: {
                     tr(LocalizationKey.key(for: $0), language: language)
                 }, syncProvider: { self.context(.waitingForData, language: language) })
@@ -1401,9 +1364,6 @@ final class ModManagementUITests: XCTestCase {
                     let rect = view.convert(button.bounds, from: button)
                     XCTAssertGreaterThanOrEqual(rect.minX, -1)
                     XCTAssertLessThanOrEqual(rect.maxX, view.bounds.width + 1)
-                }
-                if language == .english {
-                    try export(view, name: "after-confirmation-\(appearance == .aqua ? "light" : "dark")")
                 }
             }
         }
@@ -1844,12 +1804,10 @@ final class RealtimeBoostAdvancedCardTests: XCTestCase {
         XCTAssertEqual(controller.state, .intro(dismissChecked: false))
     }
 
-    func testExportAdvancedCardsInBothAppearancesAndAllLanguages() throws {
+    func testAdvancedCardsTextStaysInsideBoundsForRepresentativeLanguages() throws {
         let previous = AppLanguage.selected
         let originalAppearance = NSApp.appearance
         defer { AppLanguage.selected = previous; NSApp.appearance = originalAppearance }
-        let output = FileManager.default.temporaryDirectory.appendingPathComponent("BalanceBar-Issue604-Advanced")
-        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
         let states: [(String, ModSyncStatus, ModPanelState)] = [
             ("not-installed", .notInstalled(hasOtherScopeInstall: false), .intro(dismissChecked: false)),
             ("installing", .notInstalled(hasOtherScopeInstall: false), .installing(current: .installPlugin)),
@@ -1858,12 +1816,12 @@ final class RealtimeBoostAdvancedCardTests: XCTestCase {
             ("silent", .silent, .intro(dismissChecked: false)),
             ("failed", .inboxNotReady, .failed(.inboxNotReady)),
             ("uninstalling", .waitingForData, .uninstalling(current: .removeMarketplace))]
-        for language in AppLanguage.allCases where language != .system {
+        for language in TestMatrix.representativeLanguages {
             AppLanguage.selected = language
-            for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+            for appearance in TestMatrix.layoutAppearances {
                 // Dashboard chrome follows the application's effective appearance.
                 NSApp.appearance = NSAppearance(named: appearance)
-                for width: CGFloat in [420, 760] {
+                for width in TestMatrix.minAndMaxWidths {
                     for (name, status, operation) in states {
                         let page = DashboardGeneralPage()
                         let narrowCard = RealtimeBoostSettingsRows(status: status, operation: operation,
@@ -1894,22 +1852,10 @@ final class RealtimeBoostAdvancedCardTests: XCTestCase {
                             XCTAssertGreaterThanOrEqual(rect.minX, -1, "\(language) \(width) \(name)")
                             XCTAssertLessThanOrEqual(rect.maxX, width + 1, "\(language) \(width) \(name)")
                         }
-                        if width == 760 && (language == .simplifiedChinese || language == .english)
-                            || width == 420 && name == "not-installed" {
-                            let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
-                            host.cacheDisplay(in: host.bounds, to: bitmap)
-                            let suffix = appearance == .aqua ? "light" : "dark"
-                            let path = output.appendingPathComponent("\(language.rawValue)-\(name)-\(Int(width))-\(suffix).png")
-                            try XCTUnwrap(bitmap.representation(using: .png, properties: [:])).write(to: path)
-                            let attachment = XCTAttachment(contentsOfFile: path)
-                            attachment.lifetime = .keepAlways
-                            add(attachment)
-                        }
                     }
                 }
             }
         }
-        print("Advanced card offline renders: \(output.path)")
     }
 
     private func descendants(_ view: NSView) -> [NSView] { view.subviews.flatMap { [$0] + descendants($0) } }

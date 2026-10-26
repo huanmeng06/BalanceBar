@@ -211,17 +211,25 @@ final class CodexRolloutSourceTests: XCTestCase {
         initial.expectedFulfillmentCount = 2
         let appended = expectation(description: "appended event")
         appended.expectedFulfillmentCount = 2
+        appended.assertForOverFulfill = false
         source.start { observation in
             lock.lock(); received.append(observation); let count = received.count; lock.unlock()
             if count <= 2 { initial.fulfill() } else { appended.fulfill() }
         }
         wait(for: [initial], timeout: 5)
-        Thread.sleep(forTimeInterval: 0.5) // let the FSEvents stream settle
-        let handle = try FileHandle(forWritingTo: url)
-        try handle.seekToEnd()
-        try handle.write(contentsOf: Data(line(at: 60, primary: window(300, 11), secondary: window(10080, 21)).utf8))
-        try handle.close()
-        wait(for: [appended], timeout: 10)
+        // FSEvents start-up latency is not fixed: keep appending newer lines until one is delivered.
+        let deadline = Date().addingTimeInterval(10)
+        var outcome: XCTWaiter.Result
+        var step = 0.0
+        repeat {
+            step += 1
+            let handle = try FileHandle(forWritingTo: url)
+            try handle.seekToEnd()
+            try handle.write(contentsOf: Data(line(at: 60 + step, primary: window(300, 11 + step), secondary: window(10080, 21 + step)).utf8))
+            try handle.close()
+            outcome = XCTWaiter.wait(for: [appended], timeout: 1)
+        } while outcome != .completed && Date() < deadline
+        XCTAssertEqual(outcome, .completed)
         source.stop()
         source.stop()
     }

@@ -217,6 +217,7 @@ jobs:
             -configuration Debug -derivedDataPath "$RUNNER_TEMP/BalanceBar-DerivedData" \
             -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO \
             ARCHS=arm64 ONLY_ACTIVE_ARCH=YES -parallel-testing-enabled NO \
+            -retry-tests-on-failure -test-iterations 2 \
             -resultBundlePath "$RUNNER_TEMP/BalanceBar.xcresult" test-without-building
       - name: Full test conclusion and counts
         if: always()

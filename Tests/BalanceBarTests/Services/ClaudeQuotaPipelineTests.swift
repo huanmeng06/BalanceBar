@@ -300,10 +300,9 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
     func testStartupBuildsEngineAndLoadsAccountOffTheCallingThread() throws {
         let gate = GatedConfigurationReader(data: try Data(contentsOf: configurationURL))
         let pipeline = makePipeline(reader: gate)
-        let began = Date()
         pipeline.start()
         pipeline.requestFetch(reason: .initial)
-        XCTAssertLessThan(Date().timeIntervalSince(began), 0.5, "start and request must not wait for file IO")
+        // The gated reader has not been released yet, so no state can exist if start/request did not block on file IO.
         XCTAssertNil(pipeline.latestState)
         XCTAssertEqual(gate.entered.wait(timeout: .now() + 2), .success)
         gate.release.signal()
