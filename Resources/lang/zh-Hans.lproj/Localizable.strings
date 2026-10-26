@@ -634,7 +634,7 @@
 "mod.failure.copy" = "复制命令";
 "mod.failure.copied" = "已复制";
 "mod.dismissed.title" = "已隐藏提示";
-"mod.dismissed.note" = "之后可以在 设置 › 高级 › Claude 实时增强 中安装 Mod。";
+"mod.dismissed.note" = "之后可以在 设置 › 通用 › 刷新 中安装 BalanceBar Mod。";
 "mod.dismissed.undo" = "撤销";
 "mod.panel.uninstall" = "卸载 BalanceBar Mod";
 "mod.uninstall.step1" = "卸载 Mod";

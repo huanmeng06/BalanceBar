@@ -634,7 +634,7 @@
 "mod.failure.copy" = "Copia comandi";
 "mod.failure.copied" = "Copiato";
 "mod.dismissed.title" = "Suggerimento nascosto";
-"mod.dismissed.note" = "Potrai installare il Mod più tardi in Impostazioni › Avanzate › Potenziamento in tempo reale di Claude.";
+"mod.dismissed.note" = "Potrai installare BalanceBar Mod più tardi in Impostazioni › Generali › Aggiorna.";
 "mod.dismissed.undo" = "Annulla";
 "mod.panel.uninstall" = "Disinstalla BalanceBar Mod";
 "mod.uninstall.step1" = "Disinstalla Mod";

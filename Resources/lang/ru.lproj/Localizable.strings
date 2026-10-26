@@ -634,7 +634,7 @@
 "mod.failure.copy" = "Копировать команды";
 "mod.failure.copied" = "Скопировано";
 "mod.dismissed.title" = "Подсказка скрыта";
-"mod.dismissed.note" = "Позже Mod можно установить в Настройки › Дополнительно › Данные Claude в реальном времени.";
+"mod.dismissed.note" = "Позже BalanceBar Mod можно установить в Настройки › Основные › Обновить.";
 "mod.dismissed.undo" = "Отменить";
 "mod.panel.uninstall" = "Удалить BalanceBar Mod";
 "mod.uninstall.step1" = "Удалить Mod";

@@ -634,7 +634,7 @@
 "mod.failure.copy" = "명령 복사";
 "mod.failure.copied" = "복사됨";
 "mod.dismissed.title" = "안내를 숨겼습니다";
-"mod.dismissed.note" = "나중에 설정 › 고급 › Claude 실시간 강화 에서 Mod를 설치할 수 있습니다.";
+"mod.dismissed.note" = "나중에 설정 › 일반 › 업데이트 에서 BalanceBar Mod를 설치할 수 있습니다.";
 "mod.dismissed.undo" = "실행 취소";
 "mod.panel.uninstall" = "BalanceBar Mod 제거";
 "mod.uninstall.step1" = "Mod 제거";

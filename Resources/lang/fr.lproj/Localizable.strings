@@ -634,7 +634,7 @@
 "mod.failure.copy" = "Copier les commandes";
 "mod.failure.copied" = "Copié";
 "mod.dismissed.title" = "Invite masquée";
-"mod.dismissed.note" = "Vous pourrez installer le Mod plus tard dans Réglages › Avancé › Boost en temps réel de Claude.";
+"mod.dismissed.note" = "Vous pourrez installer BalanceBar Mod plus tard dans Réglages › Général › Actualiser.";
 "mod.dismissed.undo" = "Annuler";
 "mod.panel.uninstall" = "Désinstaller BalanceBar Mod";
 "mod.uninstall.step1" = "Désinstaller le Mod";

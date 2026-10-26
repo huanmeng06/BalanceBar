@@ -634,7 +634,7 @@
 "mod.failure.copy" = "Copy commands";
 "mod.failure.copied" = "Copied";
 "mod.dismissed.title" = "Prompt hidden";
-"mod.dismissed.note" = "You can install the Mod later in Settings › Advanced › Claude real-time boost.";
+"mod.dismissed.note" = "You can install BalanceBar Mod later in Settings › General › Refresh.";
 "mod.dismissed.undo" = "Undo";
 "mod.panel.uninstall" = "Uninstall BalanceBar Mod";
 "mod.uninstall.step1" = "Uninstall Mod";

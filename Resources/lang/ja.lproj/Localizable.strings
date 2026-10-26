@@ -634,7 +634,7 @@
 "mod.failure.copy" = "コマンドをコピー";
 "mod.failure.copied" = "コピーしました";
 "mod.dismissed.title" = "ヒントを非表示にしました";
-"mod.dismissed.note" = "Mod は後から 設定 › 詳細 › Claude リアルタイム強化 でインストールできます。";
+"mod.dismissed.note" = "BalanceBar Mod は後から 設定 › 一般 › 更新 でインストールできます。";
 "mod.dismissed.undo" = "取り消す";
 "mod.panel.uninstall" = "BalanceBar Mod をアンインストール";
 "mod.uninstall.step1" = "Mod をアンインストール";

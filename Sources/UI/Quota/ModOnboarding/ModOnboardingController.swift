@@ -137,7 +137,7 @@ enum ModOnboardingText: String, CaseIterable {
         case .copyCommands: return "复制命令"
         case .copied: return "已复制"
         case .dismissedTitle: return "已隐藏提示"
-        case .dismissedNote: return "之后可以在 设置 › 高级 › Claude 实时增强 中安装 Mod。"
+        case .dismissedNote: return "之后可以在 设置 › 通用 › 刷新 中安装 BalanceBar Mod。"
         case .undoDismiss: return "撤销"
         case .uninstallButton: return "卸载 BalanceBar Mod"
         case .uninstallStep1: return "卸载 Mod"

@@ -634,7 +634,7 @@
 "mod.failure.copy" = "Befehle kopieren";
 "mod.failure.copied" = "Kopiert";
 "mod.dismissed.title" = "Hinweis ausgeblendet";
-"mod.dismissed.note" = "Du kannst den Mod später unter Einstellungen › Erweitert › Claude-Echtzeit-Boost installieren.";
+"mod.dismissed.note" = "Du kannst BalanceBar Mod später unter Einstellungen › Allgemein › Aktualisieren installieren.";
 "mod.dismissed.undo" = "Widerrufen";
 "mod.panel.uninstall" = "BalanceBar Mod deinstallieren";
 "mod.uninstall.step1" = "Mod deinstallieren";
