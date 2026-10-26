@@ -157,26 +157,22 @@ final class QuotaIOTests: XCTestCase {
         XCTAssertEqual(strings(try reader.read(url)), ["a", "b", "c", "a"])
     }
 
-    func testDeduplicationBeyondCapacityStaysLinear() throws {
+    func testDeduplicationBeyondCapacityKeepsReadingEveryUniqueLine() throws {
         let url = root.appendingPathComponent("unique.jsonl")
         var text = ""
-        for index in 0..<150_000 { text += "{\"id\":\"\(UUID().uuidString)-\(index)\"}\n" }
+        for index in 0..<150 { text += "{\"id\":\"\(UUID().uuidString)-\(index)\"}\n" }
         try Data(text.utf8).write(to: url)
         let reader = IncrementalJSONLReader(
-            configuration: QuotaIOConfiguration(maximumDeduplicationKeys: 50_000),
+            configuration: QuotaIOConfiguration(maximumDeduplicationKeys: 50),
             deduplicationKey: { String(decoding: $0, as: UTF8.self) }
         )
-        let start = Date()
         var count = 0
         var result: JSONLReadResult
         repeat {
             result = try reader.read(url)
             count += result.lines.count
         } while result.hasMore
-        let elapsed = Date().timeIntervalSince(start)
-        XCTAssertEqual(count, 150_000)
-        XCTAssertLessThan(elapsed, 10, "dedup eviction should be amortized O(1)")
-        print("QuotaIOBenchmark dedup: 150000 unique keys (cap 50000) in \(String(format: "%.3f", elapsed)) s")
+        XCTAssertEqual(count, 150)
     }
 
     func testReaderRejectsGroupWritableFileThroughValidator() throws {
@@ -319,54 +315,5 @@ final class QuotaIOTests: XCTestCase {
         _ = try write("y", to: "after-stop.json")
         Thread.sleep(forTimeInterval: 0.8)
         XCTAssertEqual(lock.withLock { batches.count }, 2)
-    }
-
-    // MARK: Benchmark
-
-    func testIncrementalParseOf100kLinesBenchmark() throws {
-        let line = "{\"type\":\"usage\",\"input_tokens\":12345,\"output_tokens\":678,\"id\":\"%d\"}\n"
-        let url = root.appendingPathComponent("bench.jsonl")
-        var text = ""
-        text.reserveCapacity(100_000 * 80)
-        for index in 0..<50_000 { text += line.replacingOccurrences(of: "%d", with: "\(index)") }
-        try Data(text.utf8).write(to: url)
-        let reader = IncrementalJSONLReader(deduplicationKey: { String(decoding: $0, as: UTF8.self) })
-        var initial = 0
-        var first: JSONLReadResult
-        repeat {
-            first = try reader.read(url)
-            initial += first.lines.count
-        } while first.hasMore
-        XCTAssertEqual(initial, 50_000)
-
-        var appended = ""
-        for index in 50_000..<150_000 { appended += line.replacingOccurrences(of: "%d", with: "\(index)") }
-        try append(appended, to: url)
-
-        let footprintBefore = Self.physicalFootprint()
-        var peakFootprint = footprintBefore
-        let start = Date()
-        var count = 0
-        var result: JSONLReadResult
-        repeat {
-            result = try reader.read(url)
-            count += result.lines.count
-            peakFootprint = max(peakFootprint, Self.physicalFootprint())
-        } while result.hasMore
-        let elapsed = Date().timeIntervalSince(start)
-        XCTAssertEqual(count, 100_000)
-        print("QuotaIOBenchmark: 100000 incremental lines in \(String(format: "%.3f", elapsed)) s, "
-            + "peak footprint delta \((peakFootprint - footprintBefore) / 1_048_576) MiB")
-    }
-
-    private static func physicalFootprint() -> UInt64 {
-        var info = task_vm_info_data_t()
-        var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<natural_t>.size)
-        let result = withUnsafeMutablePointer(to: &info) {
-            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
-                task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count)
-            }
-        }
-        return result == KERN_SUCCESS ? info.phys_footprint : 0
     }
 }

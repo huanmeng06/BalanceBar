@@ -187,6 +187,7 @@
 		A10000000000000300000001 /* AutomatedTestHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000300000010 /* AutomatedTestHost.swift */; };
 		A10000000000000300000021 /* BackgroundTestHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000300000020 /* BackgroundTestHost.swift */; };
 		A10000000000000300000051 /* TestRepositoryRoot.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000300000050 /* TestRepositoryRoot.swift */; };
+		A10000000000000300000F01 /* TestMatrix.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000300000F00 /* TestMatrix.swift */; };
 		A10000000000000300000031 /* AutomatedTestHostTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000300000030 /* AutomatedTestHostTests.swift */; };
 		A48000000000000000000002 /* ClaudeApplicationIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = A48000000000000000000001 /* ClaudeApplicationIdentity.swift */; };
 		A10000000000000200000002 /* ChatGPTApplicationIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000200000011 /* ChatGPTApplicationIdentity.swift */; };
@@ -447,6 +448,7 @@
 		A10000000000000200000010 /* InitialLaunchPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InitialLaunchPresentation.swift; sourceTree = "<group>"; };
 		A10000000000000300000010 /* AutomatedTestHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomatedTestHost.swift; sourceTree = "<group>"; };
 		A10000000000000300000020 /* BackgroundTestHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundTestHost.swift; sourceTree = "<group>"; };
+		A10000000000000300000F00 /* TestMatrix.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestMatrix.swift; sourceTree = "<group>"; };
 		A10000000000000300000050 /* TestRepositoryRoot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestRepositoryRoot.swift; sourceTree = "<group>"; };
 		A10000000000000300000030 /* AutomatedTestHostTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomatedTestHostTests.swift; sourceTree = "<group>"; };
 		A48000000000000000000001 /* ClaudeApplicationIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeApplicationIdentity.swift; sourceTree = "<group>"; };
@@ -729,6 +731,7 @@
 			children = (
 				A10000000000000300000020 /* BackgroundTestHost.swift */,
 				A10000000000000300000050 /* TestRepositoryRoot.swift */,
+				A10000000000000300000F00 /* TestMatrix.swift */,
 				A40300000000000000000005 /* DashboardShellTestHarness.swift */,
 			);
 			path = Support;
@@ -1672,6 +1675,7 @@
 			files = (
 				A10000000000000300000021 /* BackgroundTestHost.swift in Sources */,
 				A10000000000000300000051 /* TestRepositoryRoot.swift in Sources */,
+				A10000000000000300000F01 /* TestMatrix.swift in Sources */,
 				A40300000000000000000006 /* DashboardShellTestHarness.swift in Sources */,
 				A10000000000000300000031 /* AutomatedTestHostTests.swift in Sources */,
 				A10000000000000000000030 /* MenuBarGeometryTests.swift in Sources */,
