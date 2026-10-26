@@ -134,11 +134,11 @@ struct ClaudeSourceTimelineLayout {
                 current.rect = barRect(source, from: current.rect.minX, to: max(current.rect.maxX, maxX))
                 current.readings.append(reading)
                 bars[bars.count - 1] = current
-                ends[ends.count - 1] = max(ends[ends.count - 1], to)
+                ends[ends.count - 1] = max(ends[ends.count - 1], reading.expiresAt)
             } else {
                 bars.append(Bar(source: source, rect: barRect(source, from: minX, to: maxX), readings: [reading], dividers: []))
                 groups.append([[reading]])
-                ends.append(to)
+                ends.append(reading.expiresAt)
                 lastMarkX = minX
             }
         }
@@ -147,7 +147,9 @@ struct ClaudeSourceTimelineLayout {
             let edges = [bar.rect.minX] + bar.dividers + [bar.rect.maxX]
             let blocks = groups[index]
             bars[index].pieces = blocks.indices.map { block in
-                let pieceStart = max(blocks[block][0].observedAt, start)
+                // Real times, not the ones clipped to the chart, so the tooltip stays put while
+                // the left edge slides; an end after now means the block is still running.
+                let pieceStart = blocks[block][0].observedAt
                 let pieceEnd = block + 1 < blocks.count ? blocks[block + 1][0].observedAt : ends[index]
                 return Piece(
                     source: source,
@@ -540,14 +542,22 @@ final class ClaudeSourceTimelineView: NSView {
     }
 
     /// A light tint inside a solid outline of the same hue, so each refresh mark inside the
-    /// validity period stays visible instead of disappearing into a solid fill. The bar of the
+    /// validity period stays visible instead of disappearing into a solid fill. The block of the
     /// source in use right now is filled clearly stronger.
     private func drawBar(_ bar: ClaudeSourceTimelineLayout.Bar, live: Bool) {
         let color = Self.color(for: bar.source)
         let radius = min(ClaudeSourceTimelineLayout.cornerRadius, bar.rect.width / 2)
         let outline = NSBezierPath(roundedRect: bar.rect.insetBy(dx: 0.75, dy: 0.75), xRadius: radius, yRadius: radius)
-        color.withAlphaComponent(live ? 0.42 : 0.16).setFill()
+        color.withAlphaComponent(0.16).setFill()
         outline.fill()
+        // Only the block running right now is darker, not the whole bar.
+        if live, let current = bar.pieces.last {
+            NSGraphicsContext.saveGraphicsState()
+            outline.addClip()
+            color.withAlphaComponent(0.42).setFill()
+            current.rect.fill()
+            NSGraphicsContext.restoreGraphicsState()
+        }
         color.withAlphaComponent(0.7).setFill()
         for x in bar.dividers {
             NSBezierPath(
@@ -602,9 +612,12 @@ final class ClaudeSourceTimelineView: NSView {
         switch target {
         case let .piece(piece):
             let first = piece.readings[0]
+            let ongoing = piece.end >= now()
             return ClaudeSourceTimelineTooltipContent(title: laneName(piece.source), color: Self.color(for: piece.source), rows: [
-                .init(label: tr(.keyClaudeTimelineHoverTime), value: time(piece.start) + " – " + time(piece.end)),
-                .init(label: tr(.keyClaudeTimelineHoverDuration), value: Self.durationText(piece.end.timeIntervalSince(piece.start))),
+                .init(label: tr(.keyClaudeTimelineHoverTime),
+                      value: time(piece.start) + " – " + (ongoing ? tr(.keyClaudeTimelineNow) : time(piece.end))),
+                .init(label: tr(.keyClaudeTimelineHoverDuration),
+                      value: Self.durationText(min(piece.end, now()).timeIntervalSince(piece.start))),
                 .init(label: tr(.keyClaudeTimelineHoverRefreshes),
                       value: tr(.keyClaudeTimelineHoverRefreshCount, arguments: [String(piece.readings.count)])),
                 .init(label: tr(.keyClaudeTimelineHoverValidity),
