@@ -1896,6 +1896,9 @@ final class RealtimeBoostAdvancedCardTests: XCTestCase {
                 // Dashboard chrome follows the application's effective appearance.
                 NSApp.appearance = NSAppearance(named: appearance)
                 for width in TestMatrix.minAndMaxWidths {
+                    // The 760pt width builds the whole General page per state, which is the expensive part;
+                    // English (baseline) and Russian (longest text) are enough there. 420pt covers every language.
+                    if width == 760, language != .english, language != .russian { continue }
                     for (name, status, operation) in states {
                         let page = DashboardGeneralPage()
                         let narrowCard = RealtimeBoostSettingsRows(status: status, operation: operation,
