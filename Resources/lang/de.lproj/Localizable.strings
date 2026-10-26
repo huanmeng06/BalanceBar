@@ -596,10 +596,10 @@
 "status.item.controller.refresh_now_failure_backoff" = "Anfrage fehlgeschlagen; automatische Wiederholung in %1$@ s";
 "status.item.controller.refresh_now_out_of_tokens" = "Zu häufig aktualisiert; Wiederholung in %1$@ s möglich";
 "claude.status_line.enabled" = "Native Synchronisierung mit Claude Code";
-"claude.status_line.description" = "Nutzt die interne Schnittstelle von Claude Code, um Reset-Zeit, verbleibendes Kontingent und Status nach jeder Claude-Antwort früher zu erhalten.";
+"claude.status_line.description" = "Wird nach jeder Antwort von Claude Code gesendet; kein Plugin nötig";
 "claude.status_line.calibration" = "Abgleich des offiziellen Claude-Kontingents";
 "claude.refresh.every_minutes" = "Alle %1$@ Min.";
-"claude.status_line.calibration_detail" = "Längere Intervalle vermeiden Ratenbegrenzungen; die native Synchronisierung zeigt neues Kontingent früher an";
+"claude.status_line.calibration_detail" = "Fragt die offizielle Quelle zeitgesteuert ab, als Rückfall; längere Intervalle vermeiden Rate-Limits";
 "claude.status_line.disable_confirm_title" = "Native Claude-Code-Synchronisierung ausschalten?";
 "claude.status_line.disable_confirm_message" = "Das Claude-Kontingent wird dann nur im festen Intervall aktualisiert und nicht direkt nach jeder Antwort.";
 "claude.status_line.disable_confirm_action" = "Ausschalten";
@@ -609,7 +609,7 @@
 "claude.status_line.disable_failed_ok" = "OK";
 
 // BalanceBar Mod realtime sync (Issue #597)
-"claude.mod_sync.title" = "Claude-Code-Mod-Echtzeitsynchronisierung";
+"claude.mod_sync.title" = "BalanceBar Mod Echtzeit-Boost";
 "claude.mod_sync.manage" = "Verwalten…";
 "mod.prompt.row" = "Echtzeit-Boost aktivieren ›";
 "mod.prompt.menu" = "Claude-Mod installieren – Kontingent in Echtzeit";
@@ -627,7 +627,7 @@
 "mod.install.step3" = "Fertig";
 "mod.install.enabled" = "Aktiviert ✓";
 "mod.install.enabled_note" = "Neu geöffnete Claude-Code-Sitzungen übernehmen es automatisch.";
-"mod.install.reload_hint" = "Bestehende Sitzungen können optional /reload-plugins ausführen.";
+"mod.install.reload_hint" = "Bestehende Sitzungen können optional den folgenden Befehl ausführen.";
 "mod.failure.title" = "Automatische Installation fehlgeschlagen";
 "mod.failure.claude_missing" = "Der Befehl „claude“ wurde nicht gefunden. Führe die folgenden Befehle im Terminal aus:";
 "mod.failure.command_failed" = "Der Befehl wurde nicht abgeschlossen. Führe die folgenden Befehle im Terminal aus:";
@@ -636,11 +636,11 @@
 "mod.dismissed.title" = "Hinweis ausgeblendet";
 "mod.dismissed.note" = "Du kannst den Mod später unter Einstellungen › Erweitert › Claude-Echtzeit-Boost installieren.";
 "mod.dismissed.undo" = "Widerrufen";
-"mod.panel.uninstall" = "Echtzeitsynchronisierung deinstallieren";
+"mod.panel.uninstall" = "BalanceBar Mod deinstallieren";
 "mod.uninstall.step1" = "Mod deinstallieren";
 "mod.uninstall.step2" = "Quelle entfernen";
 "mod.uninstall.done" = "Deinstalliert ✓";
-"mod.uninstall.done_note" = "Die Kontingentanzeige fällt auf den offiziellen Pfad zurück; statusLine und andere Plugin-Einstellungen bleiben unverändert.";
+"mod.uninstall.done_note" = "Das Kontingent wird jetzt zeitgesteuert bei der offiziellen Quelle abgefragt. „Native Synchronisierung mit Claude Code“ und andere Plugins bleiben unberührt.";
 "mod.failure.uninstall_command" = "Die Deinstallation ist nicht abgeschlossen. Führe die folgenden Befehle im Terminal aus:";
 "mod.failure.copy_enable" = "Aktivierungsbefehl kopieren";
 "mod.failure.inbox" = "Der Snapshot-Eingang konnte nicht erstellt werden (unzureichende Berechtigungen oder falscher Besitzer). Prüfe ~/Library/Application Support/BalanceBar/inbox und versuche es erneut.";
@@ -675,21 +675,62 @@
 "mod.ui.background_note" = "Der Vorgang läuft nach dem Schließen weiter. Zum Prüfen des Fortschritts erneut öffnen.";
 "mod.ui.refresh" = "Erneut prüfen";
 "mod.ui.retry" = "Wiederholen";
-"mod.ui.confirm_uninstall" = "Echtzeitsynchronisierung deinstallieren?";
+"mod.ui.confirm_uninstall" = "BalanceBar Mod deinstallieren?";
+"mod.ui.confirm_uninstall_note" = "Nach der Deinstallation wird das Claude-Kontingent zeitgesteuert bei der offiziellen Quelle abgefragt, statt in Echtzeit aktualisiert zu werden. „Native Synchronisierung mit Claude Code“ und andere Plugins bleiben unberührt.";
+"mod.ui.confirm_uninstall_action" = "Deinstallieren";
+"mod.ui.uninstall_reload_hint" = "Bestehende Sitzungen können den folgenden Befehl ausführen, damit die Deinstallation sofort wirksam wird.";
 "mod.ui.cancel" = "Abbrechen";
 "mod.ui.uninstall_failure_title" = "Deinstallation unvollständig";
 "mod.ui.account_advice" = "Claude Code und BalanceBar müssen dasselbe Konto verwenden. Danach eine neue Sitzung starten.";
 "mod.ui.cycle_advice" = "Offizielles Kontingent weiterverwenden. Neue Sitzungsdaten prüfen, sobald die offizielle Quelle den neuen Zyklus bestätigt.";
 
 // INT-2 settings card restored for Issue #604
-"mod.settings.status.title_format" = "BalanceBar-Mod-Status: %1$@";
 "mod.settings.status.enabled_short" = "Aktiv";
 "mod.settings.status.last_data" = "Letzte vertrauenswürdige Daten: %1$@";
 "mod.settings.action.view_note" = "Details";
 "mod.settings.action.manage" = "Verwalten";
 "mod.settings.action.view_error" = "Fehler ansehen";
-"mod.settings.status.silent_short" = "Installiert, aber seit 10 Minuten keine Daten";
-"mod.settings.status.silent_hint" = "Starte eine neue Sitzung oder führe in einer offenen /reload-plugins aus";
+
+// BB-609 Advanced card copy
+"mod.card.not_installed.title" = "Nicht installiert";
+"mod.card.not_installed.reason" = "Nach der Installation werden Quoten in Echtzeit synchronisiert";
+"mod.card.other_scope.title" = "Nur im Projekt installiert";
+"mod.card.other_scope.reason" = "Funktioniert nur in diesem Projekt";
+"mod.card.other_scope.action" = "Mit „%1$@“ für den Benutzer installieren";
+"mod.card.waiting.title" = "Warten auf Daten";
+"mod.card.waiting.reason" = "Installiert, noch keine Sitzungsdaten empfangen";
+"mod.card.waiting.action" = "Eine neue Claude-Sitzung starten";
+"mod.card.silent.title" = "Keine aktuellen Daten";
+"mod.card.silent.reason" = "Seit 10 Minuten keine Daten empfangen";
+"mod.card.silent.action" = "Neue Sitzung starten oder /reload-plugins ausführen";
+"mod.card.disabled.title" = "Deaktiviert";
+"mod.card.disabled.reason" = "Plugin installiert, aber deaktiviert";
+"mod.card.disabled.action" = "Auf „%1$@“ klicken, um zu sehen, wie man es aktiviert";
+"mod.card.claude_missing.title" = "Claude Code fehlt";
+"mod.card.claude_missing.reason" = "Der Befehl claude fehlt auf diesem Mac";
+"mod.card.claude_missing.action" = "Claude Code installieren und erneut versuchen";
+"mod.card.version_too_old.title" = "Version zu alt";
+"mod.card.version_too_old.reason" = "Aktuelle Claude-Code-Version %1$@";
+"mod.card.version_too_old.action" = "Auf v2.1.287 oder neuer aktualisieren";
+"mod.card.inbox.title" = "Posteingang nicht verfügbar";
+"mod.card.inbox.reason" = "Falsche Berechtigungen oder falscher Eigentümer";
+"mod.card.inbox.action" = "Mit „%1$@“ neu erstellen";
+"mod.card.rejected.title" = "Daten abgelehnt";
+"mod.card.rejected.account_reason" = "Claude und BalanceBar verwenden unterschiedliche Konten";
+"mod.card.rejected.account_action" = "Mit demselben Konto anmelden";
+"mod.card.rejected.cycle_reason" = "Zyklus stimmt nicht mit offiziellen Daten überein";
+"mod.card.rejected.cycle_action" = "Stattdessen wird das offizielle Kontingent verwendet";
+"mod.card.unknown.title" = "Status unbekannt";
+"mod.card.unknown.reason" = "Plugin-Liste konnte nicht gelesen werden";
+"mod.card.unknown.action" = "Später erneut versuchen";
+"mod.card.install_failed.title" = "Installation fehlgeschlagen";
+"mod.card.uninstall_failed.title" = "Deinstallation fehlgeschlagen";
+"mod.card.view_error_action" = "Mit „%1$@“ Details anzeigen";
+"mod.card.row_title" = "BalanceBar Mod Echtzeit-Boost";
+"mod.card.learn_more" = "Mehr erfahren";
+"mod.ui.view_status" = "Aktuellen Status ansehen";
+"mod.ui.back_to_intro" = "Zurück zur Übersicht";
+"mod.ui.last_data_note" = "„Letzte vertrauenswürdige Daten“ ist der Zeitpunkt, an dem BalanceBar zuletzt Kontingentdaten übernommen hat; er ändert sich nicht, solange das Kontingent gleich bleibt.";
 
 // INT-2 Mod window presentation
 "mod.ui.int2.pitch_title" = "Claude-Kontingent in Echtzeit aktualisieren";

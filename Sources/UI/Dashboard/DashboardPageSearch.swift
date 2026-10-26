@@ -485,6 +485,38 @@ enum DashboardSettingsSearchCatalog {
                 .keyClaudeStatusLineCalibrationDetail,
                 .keyClaudeStatusLineEnabled,
                 .keyClaudeStatusLineDescription,
+                .keyClaudeModSyncTitle,
+                .keyClaudeModSyncManage,
+                .modSyncStatusDetecting,
+                .modSyncStatusClaudeMissing,
+                .modSyncStatusInboxNotReady,
+                .modSyncStatusOtherScope,
+                .modSyncStatusDisabled,
+                .modSyncStatusRejectedAccount,
+                .modSyncStatusRejectedCycle,
+                .modSettingsStatusNotInstalled,
+                .modSettingsStatusWaiting,
+                .modSettingsStatusSilent,
+                .modSettingsTitle,
+                .modSettingsViewNote,
+                .modSettingsManage,
+                .modSettingsViewError,
+                .modSettingsActionInstall,
+                .modSettingsStatusEnabledShort,
+                .modCardNotInstalledTitle,
+                .modCardOtherScopeTitle,
+                .modCardWaitingTitle,
+                .modCardSilentTitle,
+                .modCardDisabledTitle,
+                .modCardClaudeMissingTitle,
+                .modCardVersionTooOldTitle,
+                .modCardInboxTitle,
+                .modCardRejectedTitle,
+                .modCardUnknownTitle,
+                .modCardInstallFailedTitle,
+                .modCardUninstallFailedTitle,
+                .modCardRowTitle,
+                .modCardLearnMore,
                 .keyDashboardOfficialQuotaRefreshFrequency,
                 .keyDashboardRefreshOfficialScope,
                 .keyDashboardRefreshAPIScope,
@@ -546,26 +578,6 @@ enum DashboardSettingsSearchCatalog {
         case .advanced:
             return [
                 .keyDashboardAdvancedPageDiagnostics,
-                .keyClaudeModSyncTitle,
-                .keyClaudeModSyncManage,
-                .modSyncStatusDetecting,
-                .modSyncStatusClaudeMissing,
-                .modSyncStatusInboxNotReady,
-                .modSyncStatusOtherScope,
-                .modSyncStatusDisabled,
-                .modSyncStatusRejectedAccount,
-                .modSyncStatusRejectedCycle,
-                .modSettingsStatusNotInstalled,
-                .modSettingsStatusWaiting,
-                .modSettingsStatusSilent,
-                .modSettingsTitle,
-                .modSettingsViewNote,
-                .modSettingsManage,
-                .modSettingsViewError,
-                .modSettingsActionInstall,
-                .modSettingsStatusEnabledShort,
-                .modSettingsStatusSilentShort,
-                .modSettingsSilentHint,
                 .keyDashboardAdvancedPageDebugLog
             ]
         case .about:
@@ -594,13 +606,16 @@ enum DashboardSettingsSearchCatalog {
             ]
         case .general, .menu, .advanced:
             var texts = DashboardSettingsFormattedCopy.sharedVisibleTexts(for: section)
-            if section == .advanced {
-                let states: [RealtimeBoostText] = [.statusNotInstalled, .statusWaiting, .statusEnabledShort,
-                    .statusSilentShort, .statusDetecting, .statusClaudeMissing, .statusInboxNotReady,
-                    .statusOtherScope, .statusDisabled, .statusRejectedAccount, .statusRejectedCycle]
-                texts += states.map { RealtimeBoostSettingsRows.title(for: realtimeBoostLocalize($0)) }
-            }
             if section == .general {
+                let cardStates: [RealtimeBoostText] = [
+                    .statusDetecting, .cardNotInstalledTitle, .cardOtherScopeTitle, .statusEnabledShort,
+                    .cardWaitingTitle, .cardSilentTitle, .cardDisabledTitle, .cardClaudeMissingTitle,
+                    .cardVersionTooOldTitle, .cardInboxTitle, .cardRejectedTitle, .cardUnknownTitle,
+                    .cardInstallFailedTitle, .cardUninstallFailedTitle,
+                ]
+                texts += cardStates.map { realtimeBoostLocalize($0) }
+                texts.append("BalanceBar Mod")
+                texts.append(realtimeBoostLocalize(.cardRowTitle))
                 texts.append(contentsOf: DashboardSettingsFormattedCopy.languageMenuTitles())
                 texts.append(contentsOf: Set(TimeZoneCityCatalog.all.map {
                     TimeZoneCityCatalog.continentTitle(for: $0)

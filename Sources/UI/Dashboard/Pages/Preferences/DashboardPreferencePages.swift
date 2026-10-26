@@ -145,7 +145,9 @@ final class DashboardPreferencePages {
                 relay: relay,
                 updateState: updateState,
                 launchAtLoginState: launchAtLoginController.currentState(),
-                launchWithChatGPTState: launchWithChatGPTController.currentState()
+                launchWithChatGPTState: launchWithChatGPTController.currentState(),
+                modSyncStatus: actions.modSyncStatusProvider() ?? .detecting,
+                modPanelState: actions.modPanelStateProvider() ?? .intro(dismissChecked: false)
             ))
         case .menuBar:
             return menuBarPage.make(.init(
@@ -173,9 +175,7 @@ final class DashboardPreferencePages {
             return advancedPage.make(.init(
                 relay: relay,
                 logViewer: forSearch ? nil : logsPage.makeViewer(),
-                includeLogViewer: !forSearch,
-                modSyncStatus: actions.modSyncStatusProvider() ?? .detecting,
-                modPanelState: actions.modPanelStateProvider() ?? .intro(dismissChecked: false)
+                includeLogViewer: !forSearch
             ))
         case .notifications:
             notificationsPage?.showRoot()
@@ -399,9 +399,9 @@ final class DashboardPreferencePages {
 
     func refreshModSync() {
         let status = actions.modSyncStatusProvider()
-        advancedPage.refreshModSync(status, operation: actions.modPanelStateProvider())
+        generalPage.refreshModSync(status, operation: actions.modPanelStateProvider())
         if isSearchProjectionActive {
-            searchAdvancedPage.refreshModSync(status, operation: actions.modPanelStateProvider())
+            searchGeneralPage.refreshModSync(status, operation: actions.modPanelStateProvider())
         }
     }
 

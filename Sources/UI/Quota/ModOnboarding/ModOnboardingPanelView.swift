@@ -16,7 +16,7 @@ enum ModPanelItem: Equatable {
     case button(title: String, action: ButtonAction)
 
     enum StepStatus: String, Equatable { case pending, running, done }
-    enum ButtonAction: Equatable { case install, close, copyCommands, copyReload, copyList, undoDismiss, uninstall, copyUninstall, copyEnable, refresh, confirmUninstall, cancelUninstall }
+    enum ButtonAction: Equatable { case install, close, copyCommands, copyReload, copyList, undoDismiss, uninstall, copyUninstall, copyEnable, refresh, confirmUninstall, cancelUninstall, showStatus, showIntro }
 
     var snapshotLine: String {
         switch self {
@@ -61,12 +61,13 @@ enum ModPanelContent {
         plan: ModInstallPlan,
         localize: (ModOnboardingText) -> String,
         sync: ModPanelSyncContext? = nil,
-        promptDismissed: Bool = false
+        promptDismissed: Bool = false,
+        showsIntro: Bool = false
     ) -> [ModPanelItem] {
         let t = localize
         if let sync {
             return managementItems(for: state, plan: plan, localize: t, sync: sync,
-                                   promptDismissed: promptDismissed)
+                                   promptDismissed: promptDismissed, showsIntro: showsIntro)
         }
         switch state {
         case let .intro(checked):
@@ -149,7 +150,7 @@ enum ModPanelContent {
     private static func managementItems(
         for state: ModPanelState, plan: ModInstallPlan,
         localize t: (ModOnboardingText) -> String, sync: ModPanelSyncContext,
-        promptDismissed: Bool
+        promptDismissed: Bool, showsIntro: Bool
     ) -> [ModPanelItem] {
         let close = ModPanelItem.button(title: t(.closeButton), action: .close)
         let refresh = ModPanelItem.button(title: t(.refresh), action: .refresh)
@@ -163,6 +164,19 @@ enum ModPanelContent {
             [.text(t(.enabledNote)), .text(t(.reloadHint)),
              .codeBlock(ModInstallPlan.reloadCommand, copyAction: .copyReload),
              .button(title: t(.copyCommands), action: .copyReload)]
+        }
+        let backToIntro = ModPanelItem.button(title: t(.backToIntro), action: .showIntro)
+        // An installed Mod opens on the overview; "View current status" leads to the live state.
+        if case .intro = state, showsIntro, isInstalled(sync.status) {
+            return [.hero(symbol: nil, title: t(.pitchTitle), subtitle: t(.pitchSubtitle)),
+                    .feature(symbol: "bolt.fill", title: t(.feature1Title), detail: t(.feature1Detail)),
+                    .feature(symbol: "terminal", title: t(.feature2Title), detail: t(.coverageNote)),
+                    .feature(symbol: "gauge.with.dots.needle.33percent", title: t(.benefitFallback), detail: t(.fallbackNote)),
+                    .feature(symbol: "lock.shield", title: t(.feature4Title), detail: t(.feature4Detail)),
+                    .button(title: t(.viewStatus), action: .showStatus), close]
+        }
+        func statusPage(_ items: [ModPanelItem]) -> [ModPanelItem] {
+            isInstalled(sync.status) ? items + [backToIntro] : items
         }
         switch state {
         case .intro:
@@ -195,24 +209,24 @@ enum ModPanelContent {
                 if sync.status == .inboxNotReady { result.append(.button(title: t(.retry), action: .install)) }
                 return result + [close]
             case .silent:
-                return [.hero(symbol: "exclamationmark.triangle.fill", title: t(.silentTitle), subtitle: sync.statusText),
+                return statusPage([.hero(symbol: "exclamationmark.triangle.fill", title: t(.silentTitle), subtitle: sync.statusText),
                         .text("•  " + t(.silentCheckVersion)), .text("•  " + t(.silentCheckSession)),
                         .text("•  " + t(.silentCheckPolicy)),
                         .codeBlock(ModInstallPlan.reloadCommand, copyAction: .copyReload),
-                        .button(title: t(.copyCommands), action: .copyReload), uninstall, refresh, close]
+                        .button(title: t(.copyCommands), action: .copyReload), uninstall, refresh, close])
             case .disabled:
-                return [.hero(symbol: nil, title: t(.manageTitle), subtitle: sync.statusText),
+                return statusPage([.hero(symbol: nil, title: t(.manageTitle), subtitle: sync.statusText),
                         .codeBlock(plan.copyableEnableCommand, copyAction: .copyEnable),
                         .button(title: t(.copyEnableCommands), action: .copyEnable),
                         .text(t(.reloadHint)), .codeBlock(ModInstallPlan.reloadCommand, copyAction: .copyReload),
-                        .text(t(.removeNote)), uninstall, refresh, close]
+                        .text(t(.removeNote)), uninstall, refresh, close])
             case let .snapshotRejected(event):
-                return [.hero(symbol: "exclamationmark.triangle.fill", title: t(.manageTitle), subtitle: sync.statusText),
+                return statusPage([.hero(symbol: "exclamationmark.triangle.fill", title: t(.manageTitle), subtitle: sync.statusText),
                         .text(t(event.rejection == .accountMismatch ? .accountAdvice : .cycleAdvice))]
-                    + reloadAdvice() + [uninstall, refresh, close]
+                    + reloadAdvice() + [uninstall, refresh, close])
             case .waitingForData, .active:
-                return [.hero(symbol: nil, title: t(.manageTitle), subtitle: sync.statusText)]
-                    + reloadAdvice() + [.text(t(.removeNote)), uninstall, close]
+                return statusPage([.hero(symbol: nil, title: t(.manageTitle), subtitle: sync.statusText)]
+                    + reloadAdvice() + [.text(t(.lastDataNote)), .text(t(.removeNote)), uninstall, close])
             }
         case let .installing(current):
             return [.hero(symbol: nil, title: t(.pitchTitle), subtitle: nil)]
@@ -245,6 +259,7 @@ enum ModPanelContent {
                 + steps([t(.uninstallStep1), t(.uninstallStep2), t(.step3)], current: current.rawValue) + [close]
         case .uninstallSucceeded:
             return [.hero(symbol: "checkmark.circle.fill", title: t(.uninstalledTitle), subtitle: t(.uninstallDoneNote)),
+                    .text(t(.uninstallReloadHint)),
                     .codeBlock(ModInstallPlan.reloadCommand, copyAction: .copyReload), close]
         case let .uninstallFailed(failure):
             var result: [ModPanelItem] = [.hero(symbol: "exclamationmark.triangle.fill", title: t(.uninstallFailureTitle), subtitle: nil),
@@ -425,6 +440,8 @@ final class ModOnboardingPanelView: NSView {
     private var previousSyncStatus: ModSyncStatus?
     private var successCloseWork: DispatchWorkItem?
     private(set) var isConfirmingUninstall = false
+    /// Installed Mods open on the overview; "View current status" flips this off until the panel closes.
+    private(set) var showsIntro = true
     private(set) var defaultButton: NSButton?
     var syncProvider: (() -> ModPanelSyncContext?)?
     var onRequestClose: () -> Void = {}
@@ -442,7 +459,9 @@ final class ModOnboardingPanelView: NSView {
 
     static func requiredWidth(localize t: (ModOnboardingText) -> String) -> CGFloat {
         let widths = [[t(.copyCommands), t(.laterButton), t(.installButton)],
-                      [t(.uninstallButton), t(.closeButton)], [t(.retry), t(.closeButton)]].map { titles in
+                      [t(.uninstallButton), t(.closeButton)], [t(.retry), t(.closeButton)],
+                      // Status page: every footer button fits on one line.
+                      [t(.uninstallButton), t(.refresh), t(.backToIntro), t(.closeButton)]].map { titles in
             titles.reduce(CGFloat(0)) { total, title in
                 let button = NSButton(title: title, target: nil, action: nil)
                 button.bezelStyle = .push; button.controlSize = .large
@@ -512,14 +531,15 @@ final class ModOnboardingPanelView: NSView {
         let content: [ModPanelItem]
         if isConfirmingUninstall {
             content = [.hero(symbol: "exclamationmark.triangle.fill", title: localize(.confirmUninstall),
-                             subtitle: localize(.uninstallDoneNote)),
-                       .button(title: localize(.uninstallButton), action: .confirmUninstall),
+                             subtitle: localize(.confirmUninstallNote)),
+                       .button(title: localize(.confirmUninstallAction), action: .confirmUninstall),
                        .button(title: localize(.cancel), action: .cancelUninstall)]
         } else {
             content = ModPanelContent.items(for: controller.state, plan: controller.plan,
                                             localize: localize, sync: syncProvider?(),
                                             promptDismissed: controller.isPromptDismissed
-                                                || controller.isDismissCheckboxChecked)
+                                                || controller.isDismissCheckboxChecked,
+                                            showsIntro: showsIntro)
         }
         render(content)
         // The original success animation closes after two seconds, but only after
@@ -561,10 +581,10 @@ final class ModOnboardingPanelView: NSView {
             if case let .hero(symbol, _, _) = item { return symbol?.hasPrefix("exclamation") == true }; return false
         }
         let leading = visible.filter { action in
-            ![.close, .cancelUninstall, .confirmUninstall].contains(action.1) && (action.1 != .install || warning)
+            ![.close, .cancelUninstall, .confirmUninstall, .showStatus].contains(action.1) && (action.1 != .install || warning)
         }
         let trailing = visible.filter { action in
-            [.close, .cancelUninstall, .confirmUninstall].contains(action.1) || (action.1 == .install && !warning)
+            [.close, .cancelUninstall, .confirmUninstall, .showStatus].contains(action.1) || (action.1 == .install && !warning)
         }.sorted { $0.1 != .install && $1.1 == .install }
         let footer = makeFooter(leading: leading, trailing: trailing)
         stack.addArrangedSubview(footer)
@@ -634,6 +654,12 @@ final class ModOnboardingPanelView: NSView {
             controller.setPromptEnabled(true)
             onPromptPreferenceChange?()
         case .refresh: onRequestRefresh()
+        case .showStatus:
+            showsIntro = false
+            reload()
+        case .showIntro:
+            showsIntro = true
+            reload()
         case .uninstall:
             isConfirmingUninstall = true
             reload()
@@ -646,6 +672,7 @@ final class ModOnboardingPanelView: NSView {
             reload()
         case .close:
             isConfirmingUninstall = false
+            showsIntro = true
             if controller.close() {
                 onRequestClose()
             } else {
@@ -829,7 +856,8 @@ final class ModOnboardingPanelView: NSView {
     @objc private func buttonPressed(_ sender: NSButton) {
         guard let id = sender.identifier?.rawValue,
               let action = [ModPanelItem.ButtonAction.install, .close, .copyCommands, .copyReload, .copyList, .undoDismiss,
-                            .uninstall, .copyUninstall, .copyEnable, .refresh, .confirmUninstall, .cancelUninstall]
+                            .uninstall, .copyUninstall, .copyEnable, .refresh, .confirmUninstall, .cancelUninstall,
+                            .showStatus, .showIntro]
                 .first(where: { String(describing: $0) == id }) else { return }
         perform(action)
         if [.copyCommands, .copyReload, .copyList, .copyUninstall, .copyEnable].contains(action) {

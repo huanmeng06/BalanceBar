@@ -21,26 +21,94 @@ enum RealtimeBoostText: String, CaseIterable {
     case statusRejectedCycle = "mod.sync.status.rejected_cycle"
     case statusInstallationUnknown = "mod.sync.status.installation_unknown"
 
-    case statusTitleFormat = "mod.settings.status.title_format"
     case statusEnabledShort = "mod.settings.status.enabled_short"
     case lastData = "mod.settings.status.last_data"
     case viewNote = "mod.settings.action.view_note"
     case manage = "mod.settings.action.manage"
     case viewError = "mod.settings.action.view_error"
-    case statusSilentShort = "mod.settings.status.silent_short"
-    case silentHint = "mod.settings.status.silent_hint"
+
+    case cardNotInstalledTitle = "mod.card.not_installed.title"
+    case cardNotInstalledReason = "mod.card.not_installed.reason"
+    case cardOtherScopeTitle = "mod.card.other_scope.title"
+    case cardOtherScopeReason = "mod.card.other_scope.reason"
+    case cardOtherScopeAction = "mod.card.other_scope.action"
+    case cardWaitingTitle = "mod.card.waiting.title"
+    case cardWaitingReason = "mod.card.waiting.reason"
+    case cardWaitingAction = "mod.card.waiting.action"
+    case cardSilentTitle = "mod.card.silent.title"
+    case cardSilentReason = "mod.card.silent.reason"
+    case cardSilentAction = "mod.card.silent.action"
+    case cardDisabledTitle = "mod.card.disabled.title"
+    case cardDisabledReason = "mod.card.disabled.reason"
+    case cardDisabledAction = "mod.card.disabled.action"
+    case cardClaudeMissingTitle = "mod.card.claude_missing.title"
+    case cardClaudeMissingReason = "mod.card.claude_missing.reason"
+    case cardClaudeMissingAction = "mod.card.claude_missing.action"
+    case cardVersionTooOldTitle = "mod.card.version_too_old.title"
+    case cardVersionTooOldReason = "mod.card.version_too_old.reason"
+    case cardVersionTooOldAction = "mod.card.version_too_old.action"
+    case cardInboxTitle = "mod.card.inbox.title"
+    case cardInboxReason = "mod.card.inbox.reason"
+    case cardInboxAction = "mod.card.inbox.action"
+    case cardRejectedTitle = "mod.card.rejected.title"
+    case cardRejectedAccountReason = "mod.card.rejected.account_reason"
+    case cardRejectedAccountAction = "mod.card.rejected.account_action"
+    case cardRejectedCycleReason = "mod.card.rejected.cycle_reason"
+    case cardRejectedCycleAction = "mod.card.rejected.cycle_action"
+    case cardUnknownTitle = "mod.card.unknown.title"
+    case cardUnknownReason = "mod.card.unknown.reason"
+    case cardUnknownAction = "mod.card.unknown.action"
+    case cardInstallFailedTitle = "mod.card.install_failed.title"
+    case cardUninstallFailedTitle = "mod.card.uninstall_failed.title"
+    case cardViewErrorAction = "mod.card.view_error_action"
+    case cardRowTitle = "mod.card.row_title"
+    case cardLearnMore = "mod.card.learn_more"
 
     var defaultText: String {
         switch self {
         case .title: return "Claude 实时增强"
-        case .statusTitleFormat: return "BalanceBar Mod 状态：%1$@"
         case .statusEnabledShort: return "已启用"
         case .lastData: return "最近可信数据：%1$@"
         case .viewNote: return "查看说明"
         case .manage: return "管理"
         case .viewError: return "查看原因"
-        case .statusSilentShort: return "已安装，但 10 分钟内没有收到数据"
-        case .silentHint: return "请新开会话，或在已有会话运行 /reload-plugins"
+
+        case .cardNotInstalledTitle: return "未安装"
+        case .cardNotInstalledReason: return "安装后可实时同步额度"
+        case .cardOtherScopeTitle: return "仅项目级安装"
+        case .cardOtherScopeReason: return "只在该项目内生效"
+        case .cardOtherScopeAction: return "点「%@」装到用户级"
+        case .cardWaitingTitle: return "等待数据"
+        case .cardWaitingReason: return "已安装，还没收到会话数据"
+        case .cardWaitingAction: return "新开一个 Claude 会话即可"
+        case .cardSilentTitle: return "暂无数据"
+        case .cardSilentReason: return "10 分钟内没有收到数据"
+        case .cardSilentAction: return "新开会话，或运行 /reload-plugins"
+        case .cardDisabledTitle: return "已停用"
+        case .cardDisabledReason: return "插件已安装，但被停用"
+        case .cardDisabledAction: return "点「%@」查看启用方法"
+        case .cardClaudeMissingTitle: return "未找到 Claude Code"
+        case .cardClaudeMissingReason: return "系统中没有 claude 命令"
+        case .cardClaudeMissingAction: return "安装 Claude Code 后重试"
+        case .cardVersionTooOldTitle: return "版本过旧"
+        case .cardVersionTooOldReason: return "当前 Claude Code %1$@"
+        case .cardVersionTooOldAction: return "请升级到 v2.1.287 或更高"
+        case .cardInboxTitle: return "收件箱不可用"
+        case .cardInboxReason: return "权限不足或所有者不符"
+        case .cardInboxAction: return "点「%@」重建"
+        case .cardRejectedTitle: return "数据被拒绝"
+        case .cardRejectedAccountReason: return "Claude 与 BalanceBar 登录的账号不同"
+        case .cardRejectedAccountAction: return "请切换到同一账号"
+        case .cardRejectedCycleReason: return "周期与官方数据不一致"
+        case .cardRejectedCycleAction: return "已改用官方额度"
+        case .cardUnknownTitle: return "状态未知"
+        case .cardUnknownReason: return "读取插件列表失败"
+        case .cardUnknownAction: return "稍后重试"
+        case .cardInstallFailedTitle: return "安装失败"
+        case .cardUninstallFailedTitle: return "卸载失败"
+        case .cardViewErrorAction: return "点「%@」了解详情"
+        case .cardRowTitle: return "BalanceBar Mod 实时增强"
+        case .cardLearnMore: return "了解更多"
 
         case .statusNotInstalled: return "未开启"
         case .statusWaiting: return "已安装，等待新会话的数据"
@@ -199,18 +267,105 @@ final class RealtimeBoostSettingsView: NSView {
     @objc private func togglePrompt() { controller.setPromptEnabled(promptToggle.state == .on) }
 }
 
-/// The INT-2 Advanced card, rendered from the current sync facts and operation.
+/// The row's subtitle: `status · reason · action`, one line, omitting what a state does not have.
+struct RealtimeBoostCardCopy: Equatable {
+    var status: String
+    var reason: String?
+    var action: String?
+
+    var detail: String {
+        [status, reason, action].compactMap { $0 }.joined(separator: " · ")
+    }
+}
+
+/// The INT-2 status row, rendered from the current sync facts and operation.
 /// It owns no controller or extra state machine; actions return to composition.
 final class RealtimeBoostSettingsRows {
     let statusRow: SettingsRowView
     let installButton: NSButton
     let descriptionButton: NSButton
     let spinner = NSProgressIndicator()
-    private let dot = RealtimeBoostStatusDot()
     private let localize: (RealtimeBoostText) -> String
     private let modLocalize: (ModOnboardingText) -> String
     private let onInstall: (NSButton) -> Void
     private let onShowDescription: (NSButton) -> Void
+
+    static func cardCopy(
+        status: ModSyncStatus,
+        operation: ModPanelState,
+        localize: (RealtimeBoostText) -> String = realtimeBoostLocalize,
+        modLocalize: (ModOnboardingText) -> String = modOnboardingLocalize,
+        timeZone: TimeZone = .current
+    ) -> RealtimeBoostCardCopy {
+        let base: RealtimeBoostCardCopy
+        switch status {
+        case .detecting:
+            base = .init(status: localize(.statusDetecting))
+        case let .notInstalled(hasOtherScopeInstall):
+            if hasOtherScopeInstall {
+                base = .init(
+                    status: localize(.cardOtherScopeTitle),
+                    reason: localize(.cardOtherScopeReason),
+                    action: String(format: localize(.cardOtherScopeAction), localize(.install)))
+            } else {
+                base = .init(status: localize(.cardNotInstalledTitle), reason: localize(.cardNotInstalledReason))
+            }
+        case .waitingForData:
+            base = .init(status: localize(.cardWaitingTitle), reason: localize(.cardWaitingReason),
+                         action: localize(.cardWaitingAction))
+        case let .active(at):
+            base = .init(status: localize(.statusEnabledShort),
+                         reason: String(format: localize(.lastData), StatusSlotAppearance.timeText(at, timeZone: timeZone)))
+        case .silent:
+            base = .init(status: localize(.cardSilentTitle), reason: localize(.cardSilentReason),
+                         action: localize(.cardSilentAction))
+        case .disabled:
+            base = .init(status: localize(.cardDisabledTitle), reason: localize(.cardDisabledReason),
+                         action: String(format: localize(.cardDisabledAction), localize(.cardLearnMore)))
+        case .claudeMissing:
+            base = .init(status: localize(.cardClaudeMissingTitle), reason: localize(.cardClaudeMissingReason),
+                         action: localize(.cardClaudeMissingAction))
+        case let .claudeVersionTooOld(version):
+            base = .init(status: localize(.cardVersionTooOldTitle),
+                         reason: String(format: localize(.cardVersionTooOldReason), "\(version.major).\(version.minor).\(version.patch)"),
+                         action: localize(.cardVersionTooOldAction))
+        case .inboxNotReady:
+            base = .init(status: localize(.cardInboxTitle), reason: localize(.cardInboxReason),
+                         action: String(format: localize(.cardInboxAction), localize(.install)))
+        case let .snapshotRejected(event):
+            let reason: RealtimeBoostText
+            let action: RealtimeBoostText
+            switch event.rejection {
+            case .accountMismatch:
+                reason = .cardRejectedAccountReason
+                action = .cardRejectedAccountAction
+            case .unverifiedCycle:
+                reason = .cardRejectedCycleReason
+                action = .cardRejectedCycleAction
+            }
+            base = .init(status: localize(.cardRejectedTitle), reason: localize(reason), action: localize(action))
+        case .installationUnknown:
+            base = .init(status: localize(.cardUnknownTitle), reason: localize(.cardUnknownReason),
+                         action: localize(.cardUnknownAction))
+        }
+
+        switch operation {
+        case let .installing(step):
+            return .init(status: base.status,
+                         reason: modLocalize([.step1, .step2, .waitingStep][step.rawValue]) + "…")
+        case let .uninstalling(step):
+            return .init(status: base.status,
+                         reason: modLocalize([.uninstallStep1, .uninstallStep2, .step3][step.rawValue]) + "…")
+        case .failed:
+            return .init(status: localize(.cardInstallFailedTitle), reason: modLocalize(.failureTitle),
+                         action: String(format: localize(.cardViewErrorAction), localize(.viewError)))
+        case .uninstallFailed:
+            return .init(status: localize(.cardUninstallFailedTitle), reason: modLocalize(.uninstallFailureTitle),
+                         action: String(format: localize(.cardViewErrorAction), localize(.viewError)))
+        default:
+            return base
+        }
+    }
 
     init(
         status: ModSyncStatus,
@@ -236,46 +391,39 @@ final class RealtimeBoostSettingsRows {
         descriptionButton.identifier = NSUserInterfaceItemIdentifier("realtimeBoost.description")
         let actions = NSStackView(views: [spinner, installButton, descriptionButton])
         actions.spacing = 8
-        statusRow = SettingsRowView(title: Self.title(for: Self.stateText(for: status, localize: localize), localize: localize),
-                                    detail: nil, titleAccessory: dot, accessoryView: actions)
+        let initialCopy = Self.cardCopy(status: status, operation: operation, localize: localize, modLocalize: modLocalize)
+        statusRow = SettingsRowView(title: localize(.cardRowTitle), detail: Self.dotPrefix + initialCopy.detail,
+                                    titleAccessory: DashboardRefreshPage.agentIconStrip(["Claude"]), accessoryView: actions)
         installButton.target = self; installButton.action = #selector(install(_:))
         descriptionButton.target = self; descriptionButton.action = #selector(showDescription(_:))
         update(status: status, operation: operation)
     }
 
-    func makeSection() -> SettingsSectionView {
-        let section = SettingsSectionView(title: localize(.title), contentViews: [statusRow])
-        let heading = section.headingLabel
-        heading.usesSingleLineMode = false
-        heading.lineBreakMode = .byWordWrapping
-        heading.maximumNumberOfLines = 0
-        heading.cell?.wraps = true
-        heading.cell?.isScrollable = false
-        heading.widthAnchor.constraint(equalTo: section.widthAnchor).isActive = true
-        return section
+    /// The status dot leads the subtitle, so it sits next to the status word it colours.
+    static let dotPrefix = "● "
+
+    private func applyDetail(_ detail: String, dotColor: NSColor) {
+        statusRow.updateDetail(Self.dotPrefix + detail)
+        let label = statusRow.detailLabel
+        let font = label.font ?? .systemFont(ofSize: NSFont.smallSystemFontSize)
+        let text = NSMutableAttributedString(string: label.stringValue, attributes: [
+            .font: font, .foregroundColor: label.textColor ?? NSColor.secondaryLabelColor])
+        let dotFont = NSFont.systemFont(ofSize: font.pointSize * 0.7)
+        text.addAttributes([
+            .font: dotFont, .foregroundColor: dotColor,
+            .baselineOffset: (font.capHeight - dotFont.capHeight) / 2,
+        ], range: NSRange(location: 0, length: 1))
+        label.attributedStringValue = text
     }
 
     func update(status: ModSyncStatus, operation: ModPanelState) {
-        let stateText = Self.stateText(for: status, localize: localize)
-        var detail: String? = nil
-        switch status {
-        case let .active(at):
-            detail = String(format: localize(.lastData), StatusSlotAppearance.timeText(at, timeZone: .current))
-        case .silent:
-            detail = localize(.silentHint)
-        default: break
-        }
+        let copy = Self.cardCopy(status: status, operation: operation, localize: localize, modLocalize: modLocalize)
         var busy = false
         var failed = false
         switch operation {
-        case let .installing(step):
+        case .installing, .uninstalling:
             busy = true
-            detail = modLocalize([.step1, .step2, .waitingStep][step.rawValue]) + "…"
-        case let .uninstalling(step):
-            busy = true
-            detail = modLocalize([.uninstallStep1, .uninstallStep2, .step3][step.rawValue]) + "…"
-        case .failed: failed = true; detail = modLocalize(.failureTitle)
-        case .uninstallFailed: failed = true; detail = modLocalize(.uninstallFailureTitle)
+        case .failed, .uninstallFailed: failed = true
         default: break
         }
         let canInstall: Bool
@@ -283,26 +431,13 @@ final class RealtimeBoostSettingsRows {
         case .notInstalled, .inboxNotReady: canInstall = true
         default: canInstall = false
         }
-        statusRow.titleLabel.stringValue = Self.title(for: stateText, localize: localize)
-        statusRow.updateDetail(detail)
+        statusRow.titleLabel.stringValue = localize(.cardRowTitle)
+        applyDetail(copy.detail, dotColor: failed ? .systemRed : Self.color(for: status))
         installButton.isHidden = !canInstall || busy
         descriptionButton.title = failed ? localize(.viewError)
-            : busy || ModPanelContent.isInstalled(status) ? localize(.manage) : localize(.viewNote)
+            : busy ? localize(.manage) : localize(.cardLearnMore)
         if busy { spinner.startAnimation(nil) } else { spinner.stopAnimation(nil) }
-        dot.color = failed ? .systemRed : Self.color(for: status)
         statusRow.invalidateAfterContentChange()
-    }
-
-    private static func stateText(for status: ModSyncStatus, localize: (RealtimeBoostText) -> String) -> String {
-        switch status {
-        case .active: return localize(.statusEnabledShort)
-        case .silent: return localize(.statusSilentShort)
-        default: return RealtimeBoostPresentation.make(status: status, localize: localize).statusText
-        }
-    }
-
-    static func title(for stateText: String, localize: (RealtimeBoostText) -> String = realtimeBoostLocalize) -> String {
-        String(format: localize(.statusTitleFormat), stateText)
     }
 
     private static func color(for status: ModSyncStatus) -> NSColor {
@@ -315,20 +450,4 @@ final class RealtimeBoostSettingsRows {
     }
     @objc private func install(_ sender: NSButton) { onInstall(sender) }
     @objc private func showDescription(_ sender: NSButton) { onShowDescription(sender) }
-}
-
-private final class RealtimeBoostStatusDot: NSView {
-    var color: NSColor = .tertiaryLabelColor { didSet { needsDisplay = true } }
-    init() {
-        super.init(frame: .zero)
-        translatesAutoresizingMaskIntoConstraints = false
-        widthAnchor.constraint(equalToConstant: 8).isActive = true
-        heightAnchor.constraint(equalToConstant: 8).isActive = true
-        setAccessibilityElement(false)
-    }
-    required init?(coder: NSCoder) { nil }
-    override func draw(_ dirtyRect: NSRect) {
-        color.setFill()
-        NSBezierPath(ovalIn: bounds).fill()
-    }
 }

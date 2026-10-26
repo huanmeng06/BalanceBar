@@ -715,10 +715,10 @@ final class DashboardCompositionController {
     }
 
     /// Live Claude Mod realtime sync status from the coordinator's detection and the
-    /// pipeline's snapshot evidence. Covers an already-visible Advanced page and an
+    /// pipeline's snapshot evidence. Covers an already-visible General page and an
     /// active global search projection.
     func refreshModSync() {
-        guard canUpdateSettingsPage(.advanced) else { return }
+        guard canUpdateSettingsPage(.general) else { return }
         dashboardPreferencePages.refreshModSync()
         invalidateSearchData()
     }
@@ -1341,7 +1341,7 @@ final class DashboardCompositionController {
             && window?.isMiniaturized != true
             && !modSyncApplicationHidden
             && !NSApp.isHidden
-            && (section == .advanced || isGlobalSettingsSearchActive)
+            && (section == .general || isGlobalSettingsSearchActive)
         setModSyncCardVisible(visible)
     }
 
@@ -1400,6 +1400,9 @@ final class DashboardCompositionController {
             dashboardPreferencePages.refreshUpdateState(state.updateState())
             dashboardPreferencePages.refreshLaunchAtLogin()
             dashboardPreferencePages.refreshLaunchWithChatGPT()
+            // The General page is cached. Apply Mod changes that arrived while another
+            // page was mounted before showing its Mod row again.
+            dashboardPreferencePages.refreshModSync()
         case .menuBar:
             dashboardPreferencePages.refreshMenuBar(
                 snapshot: state.snapshot(),
@@ -1413,11 +1416,7 @@ final class DashboardCompositionController {
             )
         case .menu:
             dashboardPreferencePages.refreshMenu()
-        case .advanced:
-            // The Advanced page is cached. Apply changes that arrived while another
-            // page was mounted before showing its Mod card again.
-            dashboardPreferencePages.refreshModSync()
-        case .about, .notifications:
+        case .advanced, .about, .notifications:
             break
         }
     }

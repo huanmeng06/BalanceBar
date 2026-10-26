@@ -354,6 +354,8 @@ final class DashboardGeneralPage {
         let updateState: UpdateCheckState
         let launchAtLoginState: LaunchAtLoginState
         let launchWithChatGPTState: LaunchWithChatGPTState
+        let modSyncStatus: ModSyncStatus
+        let modPanelState: ModPanelState
 
         init(
             preferences: AppPreferences,
@@ -361,7 +363,9 @@ final class DashboardGeneralPage {
             relay: DashboardPreferencePageRelay,
             updateState: UpdateCheckState,
             launchAtLoginState: LaunchAtLoginState = LaunchAtLoginState(status: .notRegistered),
-            launchWithChatGPTState: LaunchWithChatGPTState = LaunchWithChatGPTState(status: .notRegistered)
+            launchWithChatGPTState: LaunchWithChatGPTState = LaunchWithChatGPTState(status: .notRegistered),
+            modSyncStatus: ModSyncStatus = .detecting,
+            modPanelState: ModPanelState = .intro(dismissChecked: false)
         ) {
             self.preferences = preferences
             self.connectionSummaries = connectionSummaries
@@ -369,8 +373,12 @@ final class DashboardGeneralPage {
             self.updateState = updateState
             self.launchAtLoginState = launchAtLoginState
             self.launchWithChatGPTState = launchWithChatGPTState
+            self.modSyncStatus = modSyncStatus
+            self.modPanelState = modPanelState
         }
     }
+
+    private var realtimeBoostRows: RealtimeBoostSettingsRows?
 
     private weak var timeZoneComboBox: DashboardTimeZoneComboBox?
     private weak var systemTimeZoneSwitch: NSSwitch?
@@ -389,6 +397,11 @@ final class DashboardGeneralPage {
     private var launchWithChatGPTControls: DashboardAdaptiveControlsStackView?
 
     func make(_ input: Input) -> NSView {
+        let modRows = RealtimeBoostSettingsRows(
+            status: input.modSyncStatus, operation: input.modPanelState,
+            onInstall: { [weak relay = input.relay] button in relay?.installModSync(button) },
+            onShowDescription: { [weak relay = input.relay] button in relay?.manageModSync(button) })
+        realtimeBoostRows = modRows
         let openButton = NSButton(
             title: tr(.keyDashboardGeneralAndRefreshPagesOpenCcSwitch),
             target: input.relay,
@@ -530,6 +543,8 @@ final class DashboardGeneralPage {
             target: input.relay,
             action: #selector(DashboardPreferencePageRelay.toggle(_:))
         )
+        // One "Refresh" heading over two cards: the shared Codex/API selectors, then the
+        // Claude rows (calibration, native sync and the Mod status).
         let refreshing = SettingsSectionView(
             title: tr(.keyDashboardGeneralAndRefreshPagesRefresh),
             contentViews: [
@@ -539,6 +554,17 @@ final class DashboardGeneralPage {
                     titleAccessory: DashboardRefreshPage.agentIconStrip(["CodexIcon", "GrokIdle"]),
                     accessoryView: refreshControls(officialActivePopup)
                 ),
+                SettingsRowView(
+                    title: tr(.keyDashboardGeneralAndRefreshPagesBalanceUpdatesDuringTasks),
+                    detail: tr(.keyDashboardRefreshAPIScope),
+                    titleAccessory: DashboardRefreshPage.agentIconStrip(["symbol:key"], pointSize: 18),
+                    accessoryView: refreshControls(activeRefreshPopup)
+                )
+            ]
+        )
+        let refreshingClaude = SettingsSectionView(
+            title: "",
+            contentViews: [
                 SettingsRowView(
                     title: tr(.keyClaudeStatusLineCalibration),
                     detail: tr(.keyClaudeStatusLineCalibrationDetail),
@@ -551,12 +577,7 @@ final class DashboardGeneralPage {
                     titleAccessory: DashboardRefreshPage.agentIconStrip(["Claude"]),
                     accessoryView: claudeStatusLineSwitch
                 ),
-                SettingsRowView(
-                    title: tr(.keyDashboardGeneralAndRefreshPagesBalanceUpdatesDuringTasks),
-                    detail: tr(.keyDashboardRefreshAPIScope),
-                    titleAccessory: DashboardRefreshPage.agentIconStrip(["symbol:key"], pointSize: 18),
-                    accessoryView: refreshControls(activeRefreshPopup)
-                )
+                modRows.statusRow
             ]
         )
         let refreshNow = SettingsSectionView(
@@ -678,7 +699,15 @@ final class DashboardGeneralPage {
                 updateRow
             ]
         )
-        return DashboardSettingsComponents.makeSettingsPageContent([system, refreshing, refreshNow, startup, app])
+        let content = DashboardSettingsComponents.makeSettingsPageContent(
+            [system, refreshing, refreshingClaude, refreshNow, startup, app])
+        // The two refresh cards belong to one heading, so they sit closer than separate sections.
+        (content as? NSStackView)?.setCustomSpacing(12, after: refreshing)
+        return content
+    }
+
+    func refreshModSync(_ status: ModSyncStatus?, operation: ModPanelState?) {
+        realtimeBoostRows?.update(status: status ?? .detecting, operation: operation ?? .intro(dismissChecked: false))
     }
 
     func refreshDisplayTimeZone(_ selection: AppTimeZoneSelection) {

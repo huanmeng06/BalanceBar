@@ -596,10 +596,10 @@
 "status.item.controller.refresh_now_failure_backoff" = "请求失败，%1$@ 秒后自动重试";
 "status.item.controller.refresh_now_out_of_tokens" = "刷新过于频繁，%1$@ 秒后可重试";
 "claude.status_line.enabled" = "Claude Code 原生同步";
-"claude.status_line.description" = "通过 Claude Code 内部接口，在 Claude 每次回答结束后，更及时地获取刷新时间、剩余额度和状态。";
+"claude.status_line.description" = "每次回答结束后由 Claude Code 推送，无需安装插件";
 "claude.status_line.calibration" = "Claude 官方额度校准";
 "claude.refresh.every_minutes" = "每 %1$@ 分钟";
-"claude.status_line.calibration_detail" = "较长的间隔可避免限流；开启原生同步后，新额度可更早显示";
+"claude.status_line.calibration_detail" = "定时向官方查询，作为兜底；间隔越长越不易限流";
 "claude.status_line.disable_confirm_title" = "关闭 Claude Code 原生同步？";
 "claude.status_line.disable_confirm_message" = "关闭后，Claude 额度只会按固定间隔刷新，无法在每次回答结束后及时更新。";
 "claude.status_line.disable_confirm_action" = "关闭";
@@ -609,7 +609,7 @@
 "claude.status_line.disable_failed_ok" = "好";
 
 // BalanceBar Mod realtime sync (Issue #597)
-"claude.mod_sync.title" = "Claude Code Mod 实时同步";
+"claude.mod_sync.title" = "BalanceBar Mod 实时增强";
 "claude.mod_sync.manage" = "管理…";
 "mod.prompt.row" = "启用实时增强 ›";
 "mod.prompt.menu" = "为 Claude 安装 Mod，额度实时更新";
@@ -627,7 +627,7 @@
 "mod.install.step3" = "完成";
 "mod.install.enabled" = "已开启 ✓";
 "mod.install.enabled_note" = "新开的 Claude Code 会话会自动生效。";
-"mod.install.reload_hint" = "已有会话可选运行 /reload-plugins。";
+"mod.install.reload_hint" = "已有会话可选运行下面的命令。";
 "mod.failure.title" = "无法自动安装";
 "mod.failure.claude_missing" = "没有找到 claude 命令。请在终端中运行下面的命令：";
 "mod.failure.command_failed" = "命令未成功完成。请在终端中运行下面的命令：";
@@ -636,11 +636,11 @@
 "mod.dismissed.title" = "已隐藏提示";
 "mod.dismissed.note" = "之后可以在 设置 › 高级 › Claude 实时增强 中安装 Mod。";
 "mod.dismissed.undo" = "撤销";
-"mod.panel.uninstall" = "卸载实时同步";
+"mod.panel.uninstall" = "卸载 BalanceBar Mod";
 "mod.uninstall.step1" = "卸载 Mod";
 "mod.uninstall.step2" = "移除安装来源";
 "mod.uninstall.done" = "已卸载 ✓";
-"mod.uninstall.done_note" = "额度显示回退到官方路径；statusLine 与其他插件配置保持不变。";
+"mod.uninstall.done_note" = "额度已改为定时向官方查询。「Claude Code 原生同步」和其他插件不受影响。";
 "mod.failure.uninstall_command" = "卸载未完成。请在终端中运行下面的命令：";
 "mod.failure.copy_enable" = "复制启用命令";
 "mod.failure.inbox" = "快照收件箱无法创建（权限不足或所有者不符）。请检查 ~/Library/Application Support/BalanceBar/inbox 后重试。";
@@ -675,21 +675,62 @@
 "mod.ui.background_note" = "关闭窗口不会中断操作，可随时重新打开查看进度。";
 "mod.ui.refresh" = "重新检测";
 "mod.ui.retry" = "重试";
-"mod.ui.confirm_uninstall" = "确认卸载实时同步？";
+"mod.ui.confirm_uninstall" = "卸载 BalanceBar Mod？";
+"mod.ui.confirm_uninstall_note" = "卸载后，Claude 额度改为定时向官方查询，不再实时更新。「Claude Code 原生同步」和其他插件不受影响。";
+"mod.ui.confirm_uninstall_action" = "卸载";
+"mod.ui.uninstall_reload_hint" = "已有会话可运行下面的命令，让卸载立即生效。";
 "mod.ui.cancel" = "取消";
 "mod.ui.uninstall_failure_title" = "卸载未完成";
 "mod.ui.account_advice" = "请确认 Claude Code 与 BalanceBar 使用同一账号，再新开会话。";
 "mod.ui.cycle_advice" = "继续使用官方额度；新周期经官方确认后，再检查新会话的数据。";
 
 // INT-2 settings card restored for Issue #604
-"mod.settings.status.title_format" = "BalanceBar Mod 状态：%1$@";
 "mod.settings.status.enabled_short" = "已启用";
 "mod.settings.status.last_data" = "最近可信数据：%1$@";
 "mod.settings.action.view_note" = "查看说明";
 "mod.settings.action.manage" = "管理";
 "mod.settings.action.view_error" = "查看原因";
-"mod.settings.status.silent_short" = "已安装，但 10 分钟内没有收到数据";
-"mod.settings.status.silent_hint" = "请新开会话，或在已有会话运行 /reload-plugins";
+
+// BB-609 Advanced card copy
+"mod.card.not_installed.title" = "未安装";
+"mod.card.not_installed.reason" = "安装后可实时同步额度";
+"mod.card.other_scope.title" = "仅项目级安装";
+"mod.card.other_scope.reason" = "只在该项目内生效";
+"mod.card.other_scope.action" = "点「%1$@」装到用户级";
+"mod.card.waiting.title" = "等待数据";
+"mod.card.waiting.reason" = "已安装，还没收到会话数据";
+"mod.card.waiting.action" = "新开一个 Claude 会话即可";
+"mod.card.silent.title" = "暂无数据";
+"mod.card.silent.reason" = "10 分钟内没有收到数据";
+"mod.card.silent.action" = "新开会话，或运行 /reload-plugins";
+"mod.card.disabled.title" = "已停用";
+"mod.card.disabled.reason" = "插件已安装，但被停用";
+"mod.card.disabled.action" = "点「%1$@」查看启用方法";
+"mod.card.claude_missing.title" = "未找到 Claude Code";
+"mod.card.claude_missing.reason" = "系统中没有 claude 命令";
+"mod.card.claude_missing.action" = "安装 Claude Code 后重试";
+"mod.card.version_too_old.title" = "版本过旧";
+"mod.card.version_too_old.reason" = "当前 Claude Code %1$@";
+"mod.card.version_too_old.action" = "请升级到 v2.1.287 或更高";
+"mod.card.inbox.title" = "收件箱不可用";
+"mod.card.inbox.reason" = "权限不足或所有者不符";
+"mod.card.inbox.action" = "点「%1$@」重建";
+"mod.card.rejected.title" = "数据被拒绝";
+"mod.card.rejected.account_reason" = "Claude 与 BalanceBar 登录的账号不同";
+"mod.card.rejected.account_action" = "请切换到同一账号";
+"mod.card.rejected.cycle_reason" = "周期与官方数据不一致";
+"mod.card.rejected.cycle_action" = "已改用官方额度";
+"mod.card.unknown.title" = "状态未知";
+"mod.card.unknown.reason" = "读取插件列表失败";
+"mod.card.unknown.action" = "稍后重试";
+"mod.card.install_failed.title" = "安装失败";
+"mod.card.uninstall_failed.title" = "卸载失败";
+"mod.card.view_error_action" = "点「%1$@」了解详情";
+"mod.card.row_title" = "BalanceBar Mod 实时增强";
+"mod.card.learn_more" = "了解更多";
+"mod.ui.view_status" = "查看当前状态";
+"mod.ui.back_to_intro" = "返回介绍";
+"mod.ui.last_data_note" = "「最近可信数据」是 BalanceBar 最后一次采用额度数据的时间；额度没变化时不会更新。";
 
 // INT-2 Mod window presentation
 "mod.ui.int2.pitch_title" = "让 Claude 额度实时更新";

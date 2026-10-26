@@ -596,10 +596,10 @@
 "status.item.controller.refresh_now_failure_backoff" = "A requisição falhou; nova tentativa automática em %1$@ s";
 "status.item.controller.refresh_now_out_of_tokens" = "Atualizações frequentes demais; tente de novo em %1$@ s";
 "claude.status_line.enabled" = "Sincronização nativa do Claude Code";
-"claude.status_line.description" = "Usa a interface interna do Claude Code para obter mais cedo o horário de redefinição, a cota restante e o status após cada resposta do Claude.";
+"claude.status_line.description" = "Enviado pelo Claude Code após cada resposta; não requer plugin";
 "claude.status_line.calibration" = "Calibração da cota oficial do Claude";
 "claude.refresh.every_minutes" = "A cada %1$@ min";
-"claude.status_line.calibration_detail" = "Intervalos maiores evitam limites de taxa; a sincronização nativa pode mostrar a nova cota mais cedo";
+"claude.status_line.calibration_detail" = "Consulta a fonte oficial periodicamente como alternativa; intervalos maiores evitam limites de uso";
 "claude.status_line.disable_confirm_title" = "Desativar a sincronização nativa do Claude Code?";
 "claude.status_line.disable_confirm_message" = "A cota do Claude será atualizada apenas no intervalo fixo, e não logo após cada resposta.";
 "claude.status_line.disable_confirm_action" = "Desativar";
@@ -609,7 +609,7 @@
 "claude.status_line.disable_failed_ok" = "OK";
 
 // BalanceBar Mod realtime sync (Issue #597)
-"claude.mod_sync.title" = "Sincronização em tempo real do Mod do Claude Code";
+"claude.mod_sync.title" = "BalanceBar Mod impulso em tempo real";
 "claude.mod_sync.manage" = "Gerir…";
 "mod.prompt.row" = "Ativar o impulso em tempo real ›";
 "mod.prompt.menu" = "Instalar o Mod do Claude: cota em tempo real";
@@ -627,7 +627,7 @@
 "mod.install.step3" = "Concluído";
 "mod.install.enabled" = "Ativado ✓";
 "mod.install.enabled_note" = "As novas sessões do Claude Code aplicam-no automaticamente.";
-"mod.install.reload_hint" = "As sessões existentes podem opcionalmente executar /reload-plugins.";
+"mod.install.reload_hint" = "As sessões existentes podem executar, opcionalmente, o comando abaixo.";
 "mod.failure.title" = "Falha na instalação automática";
 "mod.failure.claude_missing" = "O comando claude não foi encontrado. Execute os seguintes comandos no Terminal:";
 "mod.failure.command_failed" = "O comando não foi concluído. Execute os seguintes comandos no Terminal:";
@@ -636,11 +636,11 @@
 "mod.dismissed.title" = "Aviso ocultado";
 "mod.dismissed.note" = "Pode instalar o Mod mais tarde em Definições › Avançadas › Reforço em tempo real do Claude.";
 "mod.dismissed.undo" = "Desfazer";
-"mod.panel.uninstall" = "Desinstalar sincronização em tempo real";
+"mod.panel.uninstall" = "Desinstalar o BalanceBar Mod";
 "mod.uninstall.step1" = "Desinstalar Mod";
 "mod.uninstall.step2" = "Remover origem";
 "mod.uninstall.done" = "Desinstalado ✓";
-"mod.uninstall.done_note" = "A apresentação da quota volta ao caminho oficial; o statusLine e as restantes definições de plugins ficam intactas.";
+"mod.uninstall.done_note" = "A cota agora é consultada periodicamente na fonte oficial. “Sincronização nativa do Claude Code” e outros plugins não são afetados.";
 "mod.failure.uninstall_command" = "A desinstalação não foi concluída. Execute os seguintes comandos no Terminal:";
 "mod.failure.copy_enable" = "Copiar comando de ativação";
 "mod.failure.inbox" = "Não foi possível criar a caixa de entrada de instantâneos (permissões insuficientes ou proprietário incorreto). Verifique ~/Library/Application Support/BalanceBar/inbox e tente novamente.";
@@ -675,21 +675,62 @@
 "mod.ui.background_note" = "A operação continua ao fechar esta janela. Abra-a novamente para ver o progresso.";
 "mod.ui.refresh" = "Verificar novamente";
 "mod.ui.retry" = "Tentar novamente";
-"mod.ui.confirm_uninstall" = "Desinstalar a sincronização em tempo real?";
+"mod.ui.confirm_uninstall" = "Desinstalar o BalanceBar Mod?";
+"mod.ui.confirm_uninstall_note" = "Após desinstalar, a cota do Claude passa a ser consultada periodicamente na fonte oficial, em vez de atualizar em tempo real. “Sincronização nativa do Claude Code” e outros plugins não são afetados.";
+"mod.ui.confirm_uninstall_action" = "Desinstalar";
+"mod.ui.uninstall_reload_hint" = "As sessões existentes podem executar o comando abaixo para aplicar a desinstalação imediatamente.";
 "mod.ui.cancel" = "Cancelar";
 "mod.ui.uninstall_failure_title" = "Desinstalação incompleta";
 "mod.ui.account_advice" = "Verifique se Claude Code e BalanceBar usam a mesma conta e inicie uma nova sessão.";
 "mod.ui.cycle_advice" = "Continue usando a cota oficial. Confira os dados de uma nova sessão após a fonte oficial confirmar o novo ciclo.";
 
 // INT-2 settings card restored for Issue #604
-"mod.settings.status.title_format" = "Estado do BalanceBar Mod: %1$@";
 "mod.settings.status.enabled_short" = "Ativado";
 "mod.settings.status.last_data" = "Últimos dados confiáveis: %1$@";
 "mod.settings.action.view_note" = "Detalhes";
 "mod.settings.action.manage" = "Gerir";
 "mod.settings.action.view_error" = "Ver erro";
-"mod.settings.status.silent_short" = "Instalado, mas sem dados há 10 minutos";
-"mod.settings.status.silent_hint" = "Inicie uma nova sessão ou execute /reload-plugins numa já aberta";
+
+// BB-609 Advanced card copy
+"mod.card.not_installed.title" = "Não instalado";
+"mod.card.not_installed.reason" = "Instale para sincronizar cotas em tempo real";
+"mod.card.other_scope.title" = "Instalação apenas para o projeto";
+"mod.card.other_scope.reason" = "Funciona apenas nesse projeto";
+"mod.card.other_scope.action" = "Clique em “%1$@” para instalar para seu usuário";
+"mod.card.waiting.title" = "Aguardando dados";
+"mod.card.waiting.reason" = "Instalado, ainda sem dados da sessão";
+"mod.card.waiting.action" = "Inicie uma nova sessão do Claude";
+"mod.card.silent.title" = "Sem dados recentes";
+"mod.card.silent.reason" = "Nenhum dado recebido nos últimos 10 minutos";
+"mod.card.silent.action" = "Inicie uma nova sessão ou execute /reload-plugins";
+"mod.card.disabled.title" = "Desativado";
+"mod.card.disabled.reason" = "Plugin instalado, mas desativado";
+"mod.card.disabled.action" = "Clique em “%1$@” para ver como ativar";
+"mod.card.claude_missing.title" = "Claude não encontrado";
+"mod.card.claude_missing.reason" = "O comando claude não existe neste Mac";
+"mod.card.claude_missing.action" = "Instale o Claude Code e tente novamente";
+"mod.card.version_too_old.title" = "Versão muito antiga";
+"mod.card.version_too_old.reason" = "Versão atual do Claude Code %1$@";
+"mod.card.version_too_old.action" = "Atualize para v2.1.287 ou posterior";
+"mod.card.inbox.title" = "Caixa de entrada indisponível";
+"mod.card.inbox.reason" = "Permissões ou proprietário incorretos";
+"mod.card.inbox.action" = "Clique em “%1$@” para recriá-la";
+"mod.card.rejected.title" = "Dados rejeitados";
+"mod.card.rejected.account_reason" = "Claude e BalanceBar usam contas diferentes";
+"mod.card.rejected.account_action" = "Entre na mesma conta";
+"mod.card.rejected.cycle_reason" = "O ciclo não corresponde aos dados oficiais";
+"mod.card.rejected.cycle_action" = "Usando a cota oficial";
+"mod.card.unknown.title" = "Status desconhecido";
+"mod.card.unknown.reason" = "Não foi possível ler a lista de plugins";
+"mod.card.unknown.action" = "Tente novamente mais tarde";
+"mod.card.install_failed.title" = "Falha na instalação";
+"mod.card.uninstall_failed.title" = "Falha na desinstalação";
+"mod.card.view_error_action" = "Clique em “%1$@” para ver os detalhes";
+"mod.card.row_title" = "BalanceBar Mod impulso em tempo real";
+"mod.card.learn_more" = "Saiba mais";
+"mod.ui.view_status" = "Ver status atual";
+"mod.ui.back_to_intro" = "Voltar à apresentação";
+"mod.ui.last_data_note" = "“Últimos dados confiáveis” é quando o BalanceBar aceitou dados de cota pela última vez; não muda enquanto a cota continuar igual.";
 
 // INT-2 Mod window presentation
 "mod.ui.int2.pitch_title" = "Atualize a cota do Claude em tempo real";

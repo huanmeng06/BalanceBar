@@ -596,10 +596,10 @@
 "status.item.controller.refresh_now_failure_backoff" = "Échec de la requête ; nouvelle tentative automatique dans %1$@ s";
 "status.item.controller.refresh_now_out_of_tokens" = "Actualisation trop fréquente ; nouvelle tentative dans %1$@ s";
 "claude.status_line.enabled" = "Synchronisation native Claude Code";
-"claude.status_line.description" = "Utilise l’interface interne de Claude Code pour obtenir plus tôt l’heure de réinitialisation, le quota restant et l’état après chaque réponse de Claude.";
+"claude.status_line.description" = "Envoyé par Claude Code après chaque réponse ; aucun plugin requis";
 "claude.status_line.calibration" = "Recalage du quota officiel Claude";
 "claude.refresh.every_minutes" = "Toutes les %1$@ min";
-"claude.status_line.calibration_detail" = "Des intervalles plus longs évitent les limitations ; la synchronisation native peut afficher le nouveau quota plus tôt";
+"claude.status_line.calibration_detail" = "Interroge la source officielle à intervalles réguliers, en secours ; un intervalle plus long évite les limitations";
 "claude.status_line.disable_confirm_title" = "Désactiver la synchronisation native de Claude Code ?";
 "claude.status_line.disable_confirm_message" = "Le quota Claude ne sera actualisé qu’à l’intervalle fixe, et non juste après chaque réponse.";
 "claude.status_line.disable_confirm_action" = "Désactiver";
@@ -609,7 +609,7 @@
 "claude.status_line.disable_failed_ok" = "OK";
 
 // BalanceBar Mod realtime sync (Issue #597)
-"claude.mod_sync.title" = "Synchronisation en temps réel du Mod Claude Code";
+"claude.mod_sync.title" = "BalanceBar Mod boost temps réel";
 "claude.mod_sync.manage" = "Gérer…";
 "mod.prompt.row" = "Activer le boost temps réel ›";
 "mod.prompt.menu" = "Installer le Mod Claude pour un quota en temps réel";
@@ -627,7 +627,7 @@
 "mod.install.step3" = "Terminé";
 "mod.install.enabled" = "Activé ✓";
 "mod.install.enabled_note" = "Les nouvelles sessions Claude Code l'appliquent automatiquement.";
-"mod.install.reload_hint" = "Les sessions existantes peuvent éventuellement exécuter /reload-plugins.";
+"mod.install.reload_hint" = "Les sessions existantes peuvent éventuellement exécuter la commande ci-dessous.";
 "mod.failure.title" = "Échec de l'installation automatique";
 "mod.failure.claude_missing" = "La commande claude est introuvable. Exécutez les commandes suivantes dans le Terminal :";
 "mod.failure.command_failed" = "La commande ne s'est pas terminée. Exécutez les commandes suivantes dans le Terminal :";
@@ -636,11 +636,11 @@
 "mod.dismissed.title" = "Invite masquée";
 "mod.dismissed.note" = "Vous pourrez installer le Mod plus tard dans Réglages › Avancé › Boost en temps réel de Claude.";
 "mod.dismissed.undo" = "Annuler";
-"mod.panel.uninstall" = "Désinstaller la synchronisation temps réel";
+"mod.panel.uninstall" = "Désinstaller BalanceBar Mod";
 "mod.uninstall.step1" = "Désinstaller le Mod";
 "mod.uninstall.step2" = "Supprimer la source";
 "mod.uninstall.done" = "Désinstallé ✓";
-"mod.uninstall.done_note" = "L'affichage du quota revient au chemin officiel ; statusLine et les autres plugins restent inchangés.";
+"mod.uninstall.done_note" = "Le quota est désormais interrogé à intervalles réguliers auprès de la source officielle. « Synchronisation native Claude Code » et les autres plugins ne sont pas affectés.";
 "mod.failure.uninstall_command" = "La désinstallation n'est pas terminée. Exécutez les commandes suivantes dans le Terminal :";
 "mod.failure.copy_enable" = "Copier la commande d'activation";
 "mod.failure.inbox" = "La boîte de réception des instantanés n'a pas pu être créée (permissions insuffisantes ou propriétaire incorrect). Vérifiez ~/Library/Application Support/BalanceBar/inbox puis réessayez.";
@@ -675,21 +675,62 @@
 "mod.ui.background_note" = "Fermer cette fenêtre ne coupe pas l’opération. Rouvrez-la pour suivre la progression.";
 "mod.ui.refresh" = "Vérifier à nouveau";
 "mod.ui.retry" = "Réessayer";
-"mod.ui.confirm_uninstall" = "Désinstaller la synchronisation en temps réel ?";
+"mod.ui.confirm_uninstall" = "Désinstaller BalanceBar Mod ?";
+"mod.ui.confirm_uninstall_note" = "Après la désinstallation, le quota Claude sera interrogé à intervalles réguliers auprès de la source officielle au lieu d’être mis à jour en temps réel. « Synchronisation native Claude Code » et les autres plugins ne sont pas affectés.";
+"mod.ui.confirm_uninstall_action" = "Désinstaller";
+"mod.ui.uninstall_reload_hint" = "Les sessions existantes peuvent exécuter la commande ci-dessous pour appliquer la désinstallation immédiatement.";
 "mod.ui.cancel" = "Annuler";
 "mod.ui.uninstall_failure_title" = "Désinstallation incomplète";
 "mod.ui.account_advice" = "Vérifiez que Claude Code et BalanceBar utilisent le même compte, puis ouvrez une nouvelle session.";
 "mod.ui.cycle_advice" = "Continuez avec les quotas officiels. Vérifiez les données d’une nouvelle session après confirmation du nouveau cycle par la source officielle.";
 
 // INT-2 settings card restored for Issue #604
-"mod.settings.status.title_format" = "État de BalanceBar Mod : %1$@";
 "mod.settings.status.enabled_short" = "Activé";
 "mod.settings.status.last_data" = "Dernières données fiables : %1$@";
 "mod.settings.action.view_note" = "Détails";
 "mod.settings.action.manage" = "Gérer";
 "mod.settings.action.view_error" = "Voir l’erreur";
-"mod.settings.status.silent_short" = "Installé, mais aucune donnée depuis 10 minutes";
-"mod.settings.status.silent_hint" = "Démarrez une nouvelle session ou exécutez /reload-plugins dans une session ouverte";
+
+// BB-609 Advanced card copy
+"mod.card.not_installed.title" = "Non installé";
+"mod.card.not_installed.reason" = "Installez pour synchroniser les quotas en temps réel";
+"mod.card.other_scope.title" = "Installation limitée au projet";
+"mod.card.other_scope.reason" = "Fonctionne uniquement dans ce projet";
+"mod.card.other_scope.action" = "Cliquez sur «%1$@» pour installer pour votre utilisateur";
+"mod.card.waiting.title" = "En attente de données";
+"mod.card.waiting.reason" = "Installé, aucune donnée de session reçue";
+"mod.card.waiting.action" = "Démarrez une nouvelle session Claude";
+"mod.card.silent.title" = "Aucune donnée récente";
+"mod.card.silent.reason" = "Aucune donnée reçue depuis 10 minutes";
+"mod.card.silent.action" = "Démarrez une nouvelle session ou exécutez /reload-plugins";
+"mod.card.disabled.title" = "Désactivé";
+"mod.card.disabled.reason" = "Plugin installé mais désactivé";
+"mod.card.disabled.action" = "Cliquez sur « %1$@ » pour voir comment l’activer";
+"mod.card.claude_missing.title" = "Claude introuvable";
+"mod.card.claude_missing.reason" = "La commande claude est absente de ce Mac";
+"mod.card.claude_missing.action" = "Installez Claude Code puis réessayez";
+"mod.card.version_too_old.title" = "Version trop ancienne";
+"mod.card.version_too_old.reason" = "Version actuelle de Claude Code %1$@";
+"mod.card.version_too_old.action" = "Mettez à jour vers v2.1.287 ou ultérieure";
+"mod.card.inbox.title" = "Boîte de réception indisponible";
+"mod.card.inbox.reason" = "Permissions ou propriétaire incorrects";
+"mod.card.inbox.action" = "Cliquez sur «%1$@» pour la recréer";
+"mod.card.rejected.title" = "Données rejetées";
+"mod.card.rejected.account_reason" = "Claude et BalanceBar utilisent des comptes différents";
+"mod.card.rejected.account_action" = "Connectez-vous au même compte";
+"mod.card.rejected.cycle_reason" = "Le cycle ne correspond pas aux données officielles";
+"mod.card.rejected.cycle_action" = "Le quota officiel est utilisé à la place";
+"mod.card.unknown.title" = "État inconnu";
+"mod.card.unknown.reason" = "Impossible de lire la liste des plugins";
+"mod.card.unknown.action" = "Réessayez plus tard";
+"mod.card.install_failed.title" = "Échec de l’installation";
+"mod.card.uninstall_failed.title" = "Échec de la désinstallation";
+"mod.card.view_error_action" = "Cliquez sur «%1$@» pour afficher les détails";
+"mod.card.row_title" = "BalanceBar Mod boost temps réel";
+"mod.card.learn_more" = "En savoir plus";
+"mod.ui.view_status" = "Voir l’état actuel";
+"mod.ui.back_to_intro" = "Retour à la présentation";
+"mod.ui.last_data_note" = "« Dernières données fiables » indique quand BalanceBar a accepté pour la dernière fois des données de quota ; cela ne change pas tant que le quota reste identique.";
 
 // INT-2 Mod window presentation
 "mod.ui.int2.pitch_title" = "Mettre à jour le quota de Claude en temps réel";

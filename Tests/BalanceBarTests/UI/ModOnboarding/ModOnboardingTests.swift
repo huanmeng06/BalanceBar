@@ -168,7 +168,7 @@ final class ModOnboardingPanelTests: XCTestCase {
     func testSnapshotInstallingSucceededFailedDismissed() {
         XCTAssertEqual(lines(.installing(current: .installPlugin)), ["# 实时增强", "[x] 添加来源", "[~] 安装 Mod", "[ ] 完成"])
         XCTAssertEqual(lines(.succeeded), ["# 已开启 ✓", "[x] 添加来源", "[x] 安装 Mod", "[x] 完成",
-                                           "新开的 Claude Code 会话会自动生效。", "已有会话可选运行 /reload-plugins。", "</reload-plugins>", "<关闭>"])
+                                           "新开的 Claude Code 会话会自动生效。", "已有会话可选运行下面的命令。", "</reload-plugins>", "<关闭>"])
         let commands = ModInstallPlan.standard.copyableCommands.replacingOccurrences(of: "\n", with: "\n$ ")
         XCTAssertEqual(lines(.failed(.claudeNotFound)), ["# 无法自动安装", "没有找到 claude 命令。请在终端中运行下面的命令：", "$ " + commands, "<复制命令>", "<关闭>"])
         XCTAssertEqual(lines(.failed(.commandFailed(step: .installPlugin, exitCode: 1, detail: "x")))[1], "命令未成功完成。请在终端中运行下面的命令：")
@@ -581,19 +581,19 @@ final class ModPanelSyncContextTests: XCTestCase {
         let lines = self.lines(.intro(dismissChecked: false), sync: context(.waitingForData))
         XCTAssertTrue(lines.contains { $0.contains("已安装，等待新会话的数据") })
         XCTAssertFalse(lines.contains { $0.contains("不再在菜单中提示") })
-        XCTAssertTrue(lines.contains("<卸载实时同步>"))
+        XCTAssertTrue(lines.contains("<卸载 BalanceBar Mod>"))
         XCTAssertFalse(lines.contains("<一键安装>"))
 
         // A not-installed status offers the install action.
         let notInstalled = self.lines(.intro(dismissChecked: false), sync: context(.notInstalled(hasOtherScopeInstall: false)))
         XCTAssertTrue(notInstalled.contains("<一键安装>"))
-        XCTAssertFalse(notInstalled.contains("<卸载实时同步>"))
+        XCTAssertFalse(notInstalled.contains("<卸载 BalanceBar Mod>"))
     }
 
     func testInstalledStatusesOfferUninstallInsteadOfInstall() {
         for status in [ModSyncStatus.waitingForData, .active(lastAcceptedAt: Date()), .silent] {
             let lines = self.lines(.intro(dismissChecked: false), sync: context(status))
-            XCTAssertTrue(lines.contains("<卸载实时同步>"), "\(status)")
+            XCTAssertTrue(lines.contains("<卸载 BalanceBar Mod>"), "\(status)")
             XCTAssertFalse(lines.contains("<一键安装>"), "\(status)")
         }
     }
@@ -601,14 +601,14 @@ final class ModPanelSyncContextTests: XCTestCase {
     func testDisabledOffersTheEnableCommandFallback() {
         let lines = lines(.intro(dismissChecked: false), sync: context(.disabled))
         XCTAssertTrue(lines.contains("<复制启用命令>"))
-        XCTAssertTrue(lines.contains("<卸载实时同步>"))
+        XCTAssertTrue(lines.contains("<卸载 BalanceBar Mod>"))
     }
 
     func testLegacyPanelWithoutSyncKeepsTheCheckbox() {
         let lines = lines(.intro(dismissChecked: false), sync: nil)
         XCTAssertTrue(lines.contains("( ) 不再在菜单中提示"))
         XCTAssertTrue(lines.contains("<一键安装>"))
-        XCTAssertFalse(lines.contains("<卸载实时同步>"))
+        XCTAssertFalse(lines.contains("<卸载 BalanceBar Mod>"))
     }
 
     func testUninstallPanelStates() {
@@ -617,7 +617,7 @@ final class ModPanelSyncContextTests: XCTestCase {
         ])
         XCTAssertEqual(lines(.uninstallSucceeded, sync: nil), [
             "# 已卸载 ✓",
-            "额度显示回退到官方路径；statusLine 与其他插件配置保持不变。",
+            "额度已改为定时向官方查询。「Claude Code 原生同步」和其他插件不受影响。",
             "<关闭>",
         ])
         let commands = ModInstallPlan.standard.copyableUninstallCommands.replacingOccurrences(of: "\n", with: "\n$ ")
@@ -1020,7 +1020,7 @@ extension ModSyncCoordinatorTests {
         let panel = coordinator.attachPanel()
         XCTAssertEqual(coordinator.controller.state, .intro(dismissChecked: false))
         XCTAssertTrue(
-            panel.snapshotLines.contains { $0.contains("<卸载实时同步>") },
+            panel.snapshotLines.contains { $0.contains("<卸载 BalanceBar Mod>") },
             "the reopened panel shows the management view for an installed Mod: \(panel.snapshotLines)")
         XCTAssertFalse(panel.snapshotLines.contains { $0.contains("已开启 ✓") })
     }
@@ -1294,7 +1294,7 @@ final class ModManagementUITests: XCTestCase {
         windows.close()
         _ = windows.prepare(owner: owner)
         XCTAssertEqual(c.state, .intro(dismissChecked: false))
-        XCTAssertTrue(windows.panelView?.snapshotLines.contains { $0.contains("<卸载实时同步>") } == true)
+        XCTAssertTrue(windows.panelView?.snapshotLines.contains { $0.contains("<卸载 BalanceBar Mod>") } == true)
         // Owner close tears down its child even if settings navigation changed first.
         windows.show(owner: owner)
         XCTAssertTrue(panel.parent === owner)
@@ -1454,15 +1454,30 @@ final class RealtimeBoostAdvancedCardTests: XCTestCase {
             onInstall: install, onShowDescription: describe)
     }
 
+    private func cardCopy(
+        _ status: ModSyncStatus,
+        operation: ModPanelState = .intro(dismissChecked: false),
+        language: AppLanguage = .simplifiedChinese
+    ) -> RealtimeBoostCardCopy {
+        RealtimeBoostSettingsRows.cardCopy(
+            status: status,
+            operation: operation,
+            localize: { realtimeBoostLocalize($0, language: language) },
+            modLocalize: { tr(LocalizationKey.key(for: $0), language: language) },
+            timeZone: TimeZone(identifier: "UTC")!)
+    }
+
     func testHistoricalStatusTitleAndLatestDataUseSeparateLines() {
         let card = rows(.active(lastAcceptedAt: Date()))
-        XCTAssertEqual(card.statusRow.titleLabel.stringValue, "BalanceBar Mod status: Enabled")
-        XCTAssertTrue(card.statusRow.detailLabel.stringValue.hasPrefix("Last trusted data: "))
+        XCTAssertEqual(card.statusRow.titleLabel.stringValue, "BalanceBar Mod realtime boost")
+        XCTAssertTrue(card.statusRow.detailLabel.stringValue.hasPrefix("● Enabled · Last trusted data: "))
         XCTAssertTrue(card.installButton.isHidden)
-        XCTAssertEqual(card.descriptionButton.title, "Manage")
+        XCTAssertEqual(card.descriptionButton.title, "Learn more")
         card.update(status: .silent, operation: .intro(dismissChecked: false))
-        XCTAssertTrue(card.statusRow.titleLabel.stringValue.contains("10 minutes"))
-        XCTAssertTrue(card.statusRow.detailLabel.stringValue.contains("/reload-plugins"))
+        XCTAssertEqual(card.statusRow.titleLabel.stringValue, "BalanceBar Mod realtime boost")
+        XCTAssertEqual(card.statusRow.detailLabel.stringValue,
+                       "● No recent data · No data in the last 10 minutes · Start a new session, or run /reload-plugins")
+        XCTAssertFalse(card.statusRow.detailLabel.stringValue.contains("\n"), "the subtitle is a single line")
     }
 
     func testInstallAndDescriptionCallbacksKeepTheirOriginalSender() {
@@ -1470,7 +1485,7 @@ final class RealtimeBoostAdvancedCardTests: XCTestCase {
         var described: NSButton?
         let card = rows(.notInstalled(hasOtherScopeInstall: false), install: { installed = $0 }, describe: { described = $0 })
         XCTAssertFalse(card.installButton.isHidden)
-        XCTAssertEqual(card.descriptionButton.title, "Details")
+        XCTAssertEqual(card.descriptionButton.title, "Learn more")
         card.installButton.performClick(nil)
         card.descriptionButton.performClick(nil)
         XCTAssertTrue(installed === card.installButton)
@@ -1483,8 +1498,8 @@ final class RealtimeBoostAdvancedCardTests: XCTestCase {
         XCTAssertEqual(card.descriptionButton.title, "Manage")
         XCTAssertTrue(card.statusRow.detailLabel.stringValue.contains("Install Mod"))
         card.update(status: .waitingForData, operation: .succeeded)
-        XCTAssertTrue(card.statusRow.titleLabel.stringValue.contains("waiting"))
-        XCTAssertFalse(card.statusRow.titleLabel.stringValue.contains("Enabled"))
+        XCTAssertTrue(card.statusRow.detailLabel.stringValue.hasPrefix("● Waiting for data"))
+        XCTAssertFalse(card.statusRow.detailLabel.stringValue.contains("Enabled"))
         card.update(status: .notInstalled(hasOtherScopeInstall: false), operation: .failed(.inboxNotReady))
         XCTAssertFalse(card.installButton.isHidden)
         XCTAssertEqual(card.descriptionButton.title, "View error")
@@ -1498,39 +1513,284 @@ final class RealtimeBoostAdvancedCardTests: XCTestCase {
             XCTAssertTrue(rows(status).installButton.isHidden)
         }
         XCTAssertFalse(rows(.inboxNotReady).installButton.isHidden)
-        XCTAssertEqual(rows(.disabled).descriptionButton.title, "Manage")
+        XCTAssertEqual(rows(.disabled).descriptionButton.title, "Learn more")
     }
 
-    func testAdvancedOwnsTheOnlyModSectionAndRefreshesItInPlace() throws {
+    func testGeneralRefreshSectionHostsTheModRowRightAfterNativeSyncAndAdvancedOnlyHasDiagnostics() throws {
         let old = AppLanguage.selected
         AppLanguage.selected = .english
         defer { AppLanguage.selected = old }
-        let page = DashboardAdvancedPage()
-        let advanced = page.make(.init(relay: DashboardPreferencePageRelay(), logViewer: nil,
-                                      modSyncStatus: .notInstalled(hasOtherScopeInstall: false)))
-        let sections = descendants(advanced).compactMap { $0 as? SettingsSectionView }
-        XCTAssertEqual(sections.map { $0.headingLabel.stringValue }, ["Claude real-time boost", "Diagnostics"])
-        let card = try XCTUnwrap(sections.first?.contentViews.first as? SettingsRowView)
+        let advanced = DashboardAdvancedPage().make(.init(relay: DashboardPreferencePageRelay(), logViewer: nil))
+        let advancedSections = descendants(advanced).compactMap { $0 as? SettingsSectionView }
+        XCTAssertEqual(advancedSections.map { $0.headingLabel.stringValue }, ["Diagnostics"])
+
+        let page = DashboardGeneralPage()
+        let general = page.make(.init(preferences: AppPreferences(), relay: DashboardPreferencePageRelay(),
+            updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6"))),
+            modSyncStatus: .notInstalled(hasOtherScopeInstall: false)))
+        let refreshSection = try XCTUnwrap(descendants(general).compactMap { $0 as? SettingsSectionView }
+            .first { $0.contentViews.contains { ($0 as? SettingsRowView)?.titleLabel.stringValue == "BalanceBar Mod realtime boost" } })
+        let rows = refreshSection.contentViews.compactMap { $0 as? SettingsRowView }
+        let nativeSync = try XCTUnwrap(rows.firstIndex { $0.titleLabel.stringValue == tr(.keyClaudeStatusLineEnabled) })
+        let mod = try XCTUnwrap(rows.firstIndex { $0.titleLabel.stringValue == "BalanceBar Mod realtime boost" })
+        XCTAssertEqual(mod, nativeSync + 1, "the Mod row sits directly below Claude Code native sync")
+
+        let card = rows[mod]
         XCTAssertEqual(card.identifier, DashboardPageSearch.rowIdentifier)
+        XCTAssertEqual(card.detailLabel.stringValue, "● Not installed · Install to sync quota in real time")
         page.refreshModSync(.active(lastAcceptedAt: Date()), operation: .succeeded)
-        XCTAssertEqual(card.titleLabel.stringValue, "BalanceBar Mod status: Enabled")
-        let general = DashboardGeneralPage().make(.init(preferences: AppPreferences(), relay: DashboardPreferencePageRelay(),
-            updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6")))))
-        XCTAssertFalse(descendants(general).compactMap { $0 as? NSTextField }.contains {
-            $0.stringValue.contains("Claude Code Mod") || $0.stringValue.contains("BalanceBar Mod")
-        })
+        XCTAssertEqual(card.titleLabel.stringValue, "BalanceBar Mod realtime boost")
+        XCTAssertTrue(card.detailLabel.stringValue.hasPrefix("● Enabled · "))
     }
 
-    func testSearchFindsTheAdvancedCardFromAnotherSettingsPage() {
+    func testModRowTitleHoldsOnlyTheClaudeMarkAndTheStatusDotLeadsTheSubtitle() throws {
+        let card = rows(.waitingForData)
+        let accessory = try XCTUnwrap(card.statusRow.titleAccessory)
+        XCTAssertTrue(accessory is AgentIconStripView, "the title accessory is the Claude mark only")
+        func dotColor(_ status: ModSyncStatus, operation: ModPanelState = .intro(dismissChecked: false)) -> NSColor? {
+            card.update(status: status, operation: operation)
+            let text = card.statusRow.detailLabel.attributedStringValue
+            XCTAssertTrue(text.string.hasPrefix("● "))
+            return text.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
+        }
+        XCTAssertEqual(dotColor(.active(lastAcceptedAt: Date())), .systemGreen)
+        XCTAssertEqual(dotColor(.silent), .systemOrange)
+        XCTAssertEqual(dotColor(.notInstalled(hasOtherScopeInstall: false)), .tertiaryLabelColor)
+        XCTAssertEqual(dotColor(.inboxNotReady), .systemRed)
+        XCTAssertEqual(dotColor(.notInstalled(hasOtherScopeInstall: false), operation: .failed(.inboxNotReady)), .systemRed)
+        let host = NSView(frame: NSRect(x: 0, y: 0, width: 760, height: 300))
+        let section = SettingsSectionView(title: "R", contentViews: [card.statusRow])
+        section.translatesAutoresizingMaskIntoConstraints = false
+        host.addSubview(section)
+        NSLayoutConstraint.activate([section.leadingAnchor.constraint(equalTo: host.leadingAnchor, constant: 24),
+            section.trailingAnchor.constraint(equalTo: host.trailingAnchor, constant: -24),
+            section.topAnchor.constraint(equalTo: host.topAnchor, constant: 24)])
+        for _ in 0..<3 {
+            host.layoutSubtreeIfNeeded()
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        }
+        host.layoutSubtreeIfNeeded()
+        XCTAssertLessThan(accessory.bounds.width, 60, "the accessory must hug the Claude mark, not stretch")
+        XCTAssertEqual(card.statusRow.titleLabel.frame.height, 17, accuracy: 4, "the fixed row title stays on one line")
+    }
+
+    private func panelView(_ status: ModSyncStatus) -> ModOnboardingPanelView {
+        let controller = ModOnboardingController(preference: MemoryPreference())
+        let ctx = ModPanelSyncContext(status: status, statusText: RealtimeBoostPresentation.make(status: status).statusText)
+        let view = ModOnboardingPanelView(controller: controller, syncProvider: { ctx })
+        view.reload()
+        return view
+    }
+
+    func testInstalledModOpensOnTheOverviewThenShowsStatusAndCanGoBack() throws {
+        let view = panelView(.silent)
+        XCTAssertTrue(view.snapshotLines.contains("<\(ModOnboardingText.viewStatus.defaultText)>"))
+        XCTAssertTrue(view.snapshotLines.contains { $0.contains(ModOnboardingText.feature1Title.defaultText) })
+        XCTAssertFalse(view.snapshotLines.contains { $0.contains(ModOnboardingText.silentTitle.defaultText) },
+                       "status details stay behind the button")
+        func click(_ title: String) throws {
+            func buttons(_ v: NSView) -> [NSButton] { (v as? NSButton).map { [$0] } ?? v.subviews.flatMap(buttons) }
+            try XCTUnwrap(buttons(view).first { $0.title == title }, title).performClick(nil)
+        }
+        try click(ModOnboardingText.viewStatus.defaultText)
+        XCTAssertTrue(view.snapshotLines.contains { $0.contains(ModOnboardingText.silentTitle.defaultText) })
+        XCTAssertTrue(view.snapshotLines.contains("<\(ModOnboardingText.backToIntro.defaultText)>"))
+        try click(ModOnboardingText.backToIntro.defaultText)
+        XCTAssertTrue(view.snapshotLines.contains("<\(ModOnboardingText.viewStatus.defaultText)>"))
+    }
+
+    func testPanelIsWideEnoughForTheStatusPageFooterOnOneLineInEveryLanguage() {
+        for language in AppLanguage.allCases where language != .system {
+            let t: (ModOnboardingText) -> String = { tr(LocalizationKey.key(for: $0), language: language) }
+            let width = ModOnboardingPanelView.requiredWidth(localize: t)
+            let needed = [t(.uninstallButton), t(.refresh), t(.backToIntro), t(.closeButton)].reduce(CGFloat(48)) { total, title in
+                let b = NSButton(title: title, target: nil, action: nil)
+                b.bezelStyle = .push; b.controlSize = .large
+                return total + b.fittingSize.width + 10
+            }
+            XCTAssertGreaterThanOrEqual(width, min(needed, ModOnboardingPanelView.maximumWidth), "\(language)")
+        }
+    }
+
+    func testUninstallConfirmationUsesItsOwnPlainCopy() {
+        let view = panelView(.active(lastAcceptedAt: Date()))
+        view.perform(.showStatus)
+        view.perform(.uninstall)
+        XCTAssertTrue(view.isConfirmingUninstall)
+        let lines = view.snapshotLines
+        XCTAssertTrue(lines.contains { $0.contains("卸载 BalanceBar Mod？") })
+        XCTAssertTrue(lines.contains { $0.contains("定时向官方查询") && !$0.contains("statusLine") })
+        XCTAssertTrue(lines.contains("<卸载>"))
+        XCTAssertTrue(lines.contains("<取消>"))
+    }
+
+    func testUninstallConfirmationCopyExistsInEveryLanguage() {
+        for language in AppLanguage.allCases where language != .system {
+            for text in [ModOnboardingText.confirmUninstall, .confirmUninstallNote, .confirmUninstallAction] {
+                let value = tr(LocalizationKey.key(for: text), language: language)
+                XCTAssertFalse(value.isEmpty, "\(language): \(text.rawValue)")
+                XCTAssertNotEqual(value, text.rawValue, "\(language): missing \(text.rawValue)")
+            }
+            XCTAssertFalse(tr(LocalizationKey.key(for: .confirmUninstallNote), language: language).contains("statusLine"), "\(language)")
+        }
+    }
+
+    func testReloadHintPointsAtTheCommandBelowInsteadOfRepeatingIt() {
+        for language in AppLanguage.allCases where language != .system {
+            XCTAssertFalse(tr(LocalizationKey.key(for: ModOnboardingText.reloadHint), language: language).contains("/reload-plugins"), "\(language)")
+        }
+        let view = panelView(.waitingForData)
+        view.perform(.showStatus)
+        let lines = view.snapshotLines
+        let hint = lines.firstIndex(of: ModOnboardingText.reloadHint.defaultText)
+        XCTAssertNotNil(hint)
+        XCTAssertEqual(hint.map { lines[$0 + 1] }, "$ /reload-plugins", "the command follows its hint")
+    }
+
+    func testStatusPageForActiveModExplainsLastTrustedData() {
+        let view = panelView(.active(lastAcceptedAt: Date()))
+        view.perform(.showStatus)
+        XCTAssertTrue(view.snapshotLines.contains(ModOnboardingText.lastDataNote.defaultText))
+    }
+
+    func testNotInstalledPanelKeepsTheIntroWithoutStatusButtons() {
+        let view = panelView(.notInstalled(hasOtherScopeInstall: false))
+        XCTAssertFalse(view.snapshotLines.contains("<\(ModOnboardingText.viewStatus.defaultText)>"))
+        XCTAssertTrue(view.snapshotLines.contains("<\(ModOnboardingText.installButton.defaultText)>"))
+    }
+
+    func testPanelOverviewCopyExistsInEveryLanguage() {
+        for language in AppLanguage.allCases where language != .system {
+            for text in [ModOnboardingText.viewStatus, .backToIntro, .lastDataNote] {
+                let value = tr(LocalizationKey.key(for: text), language: language)
+                XCTAssertFalse(value.isEmpty, "\(language): \(text.rawValue)")
+                XCTAssertNotEqual(value, text.rawValue, "\(language): missing \(text.rawValue)")
+            }
+            XCTAssertNotEqual(realtimeBoostLocalize(.cardLearnMore, language: language), "mod.card.learn_more", "\(language)")
+        }
+    }
+
+    func testRowTitleIsFixedAndStatusWordLeadsTheSubtitleInChineseAndEnglish() {
+        let now = Date(timeIntervalSince1970: 1_767_274_800)
+        let accountRejection = ModSyncStatus.snapshotRejected(.init(rejection: .accountMismatch, at: now))
+        let cycleRejection = ModSyncStatus.snapshotRejected(.init(rejection: .unverifiedCycle, at: now))
+        let statuses: [ModSyncStatus] = [
+            .detecting,
+            .notInstalled(hasOtherScopeInstall: false),
+            .notInstalled(hasOtherScopeInstall: true),
+            .active(lastAcceptedAt: now),
+            .waitingForData,
+            .silent,
+            .disabled,
+            .claudeMissing,
+            .claudeVersionTooOld(.init(major: 2, minor: 1, patch: 100)),
+            .inboxNotReady,
+            accountRejection,
+            cycleRejection,
+            .installationUnknown,
+        ]
+
+        for language in [AppLanguage.simplifiedChinese, .english] {
+            for status in statuses {
+                let word = cardCopy(status, language: language).status
+                XCTAssertFalse(word.contains("BalanceBar Mod"), "\(language): \(word)")
+                XCTAssertFalse(word.contains("：") || word.contains(":"), "\(language): \(word)")
+                XCTAssertFalse(word.contains("。"), "\(language): \(word)")
+                XCTAssertLessThanOrEqual(word.count, 20, "\(language): \(word)")
+                XCTAssertFalse(cardCopy(status, language: language).detail.contains("\n"), "\(language): one line")
+            }
+        }
+    }
+
+    func testCardDetailSplitsReasonAndAction() {
+        func assertCopy(
+            _ status: ModSyncStatus,
+            operation: ModPanelState = .intro(dismissChecked: false),
+            title: String,
+            reason: String?,
+            action: String?
+        ) {
+            let copy = cardCopy(status, operation: operation)
+            XCTAssertEqual(copy.status, title)
+            XCTAssertEqual(copy.reason, reason)
+            XCTAssertEqual(copy.action, action)
+            XCTAssertEqual(copy.detail, [title, reason, action].compactMap { $0 }.joined(separator: " · "))
+        }
+
+        assertCopy(.notInstalled(hasOtherScopeInstall: false), title: "未安装",
+                   reason: "安装后可实时同步额度", action: nil)
+        assertCopy(.notInstalled(hasOtherScopeInstall: true), title: "仅项目级安装",
+                   reason: "只在该项目内生效", action: "点「一键安装」装到用户级")
+        assertCopy(.waitingForData, title: "等待数据",
+                   reason: "已安装，还没收到会话数据", action: "新开一个 Claude 会话即可")
+        assertCopy(.silent, title: "暂无数据",
+                   reason: "10 分钟内没有收到数据", action: "新开会话，或运行 /reload-plugins")
+        assertCopy(.disabled, title: "已停用",
+                   reason: "插件已安装，但被停用", action: "点「了解更多」查看启用方法")
+        assertCopy(.claudeMissing, title: "未找到 Claude Code",
+                   reason: "系统中没有 claude 命令", action: "安装 Claude Code 后重试")
+        assertCopy(.claudeVersionTooOld(.init(major: 2, minor: 1, patch: 100)), title: "版本过旧",
+                   reason: "当前 Claude Code 2.1.100", action: "请升级到 v2.1.287 或更高")
+        assertCopy(.inboxNotReady, title: "收件箱不可用",
+                   reason: "权限不足或所有者不符", action: "点「一键安装」重建")
+        assertCopy(.snapshotRejected(.init(rejection: .accountMismatch, at: Date())), title: "数据被拒绝",
+                   reason: "Claude 与 BalanceBar 登录的账号不同", action: "请切换到同一账号")
+        assertCopy(.snapshotRejected(.init(rejection: .unverifiedCycle, at: Date())), title: "数据被拒绝",
+                   reason: "周期与官方数据不一致", action: "已改用官方额度")
+        assertCopy(.installationUnknown, title: "状态未知",
+                   reason: "读取插件列表失败", action: "稍后重试")
+        assertCopy(.notInstalled(hasOtherScopeInstall: false),
+                   operation: .installing(current: .installPlugin), title: "未安装",
+                   reason: "安装 Mod…", action: nil)
+        assertCopy(.waitingForData, operation: .uninstalling(current: .removeMarketplace),
+                   title: "等待数据", reason: "移除安装来源…", action: nil)
+        assertCopy(.notInstalled(hasOtherScopeInstall: false), operation: .failed(.inboxNotReady),
+                   title: "安装失败", reason: "无法自动安装", action: "点「查看原因」了解详情")
+        assertCopy(.waitingForData, operation: .uninstallFailed(.commandFailed(step: .removeMarketplace, exitCode: 1, detail: "")),
+                   title: "卸载失败", reason: "卸载未完成", action: "点「查看原因」了解详情")
+    }
+
+    func testCardCopyExistsInEveryLanguage() {
+        let cardTexts = RealtimeBoostText.allCases.filter { $0.rawValue.hasPrefix("mod.card.") }
+        XCTAssertFalse(cardTexts.isEmpty)
+        for language in AppLanguage.allCases where language != .system {
+            for text in cardTexts {
+                let value = realtimeBoostLocalize(text, language: language)
+                XCTAssertFalse(value.isEmpty, "\(language): \(text.rawValue)")
+                XCTAssertNotEqual(value, text.rawValue, "\(language): missing \(text.rawValue)")
+            }
+        }
+    }
+
+    func testCardActionNamesMatchButtonTitlesInEveryLanguage() {
+        for language in AppLanguage.allCases where language != .system {
+            let localize: (RealtimeBoostText) -> String = { realtimeBoostLocalize($0, language: language) }
+            let install = localize(.install)
+            let learnMore = localize(.cardLearnMore)
+            let viewError = localize(.viewError)
+            let projectAction = cardCopy(.notInstalled(hasOtherScopeInstall: true), language: language).action
+            let inboxAction = cardCopy(.inboxNotReady, language: language).action
+            let disabledAction = cardCopy(.disabled, language: language).action
+            let failedAction = cardCopy(.notInstalled(hasOtherScopeInstall: false),
+                                        operation: .failed(.inboxNotReady), language: language).action
+            XCTAssertTrue(projectAction?.contains(install) == true, "\(language): \(projectAction ?? "nil")")
+            XCTAssertTrue(inboxAction?.contains(install) == true, "\(language): \(inboxAction ?? "nil")")
+            XCTAssertTrue(disabledAction?.contains(learnMore) == true, "\(language): \(disabledAction ?? "nil")")
+            XCTAssertTrue(failedAction?.contains(viewError) == true, "\(language): \(failedAction ?? "nil")")
+        }
+    }
+
+    func testSearchFindsTheModRowOnTheGeneralPageFromAnotherSettingsPage() {
         let old = AppLanguage.selected
         defer { AppLanguage.selected = old }
         for language in AppLanguage.allCases where language != .system {
             AppLanguage.selected = language
-            for key in [LocalizationKey.modSettingsTitle, .modSettingsViewNote, .modSettingsManage, .modSyncStatusDetecting] {
+            for key in [LocalizationKey.modSettingsTitle, .modSettingsViewNote, .modSettingsManage, .modSyncStatusDetecting,
+                        .modCardRowTitle] {
                 let query = tr(key)
-                XCTAssertTrue(DashboardSettingsSearchCatalog.matchingSections(query: query).contains(.advanced))
+                XCTAssertTrue(DashboardSettingsSearchCatalog.matchingSections(query: query).contains(.general))
             }
-            XCTAssertFalse(DashboardSettingsSearchCatalog.keys(for: .general).contains(.keyClaudeModSyncTitle))
+            XCTAssertFalse(DashboardSettingsSearchCatalog.keys(for: .advanced).contains(.keyClaudeModSyncTitle))
         }
     }
 
@@ -1589,14 +1849,16 @@ final class RealtimeBoostAdvancedCardTests: XCTestCase {
                 NSApp.appearance = NSAppearance(named: appearance)
                 for width: CGFloat in [420, 760] {
                     for (name, status, operation) in states {
-                        let page = DashboardAdvancedPage()
+                        let page = DashboardGeneralPage()
                         let narrowCard = RealtimeBoostSettingsRows(status: status, operation: operation,
                             onInstall: { _ in }, onShowDescription: { _ in })
-                        // 420pt stress-tests the new card alone. The full Advanced page
-                        // also contains the existing diagnostics toolbar; its supported
+                        // 420pt stress-tests the row alone. The full General page
+                        // also contains the other settings; its supported
                         // window width starts at 800pt, including the sidebar.
-                        let content: NSView = width == 420 ? narrowCard.makeSection()
-                            : page.make(.init(relay: DashboardPreferencePageRelay(), logViewer: nil,
+                        let content: NSView = width == 420
+                            ? SettingsSectionView(title: tr(.keyDashboardGeneralAndRefreshPagesRefresh), contentViews: [narrowCard.statusRow])
+                            : page.make(.init(preferences: AppPreferences(), relay: DashboardPreferencePageRelay(),
+                                              updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6"))),
                                               modSyncStatus: status, modPanelState: operation))
                         let host = AdvancedCardRenderHost(frame: NSRect(x: 0, y: 0, width: width, height: 1000))
                         host.appearance = try XCTUnwrap(NSAppearance(named: appearance))

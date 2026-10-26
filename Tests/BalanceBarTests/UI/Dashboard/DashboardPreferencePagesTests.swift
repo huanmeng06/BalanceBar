@@ -2088,24 +2088,34 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(apiRow.detailLabel.stringValue, tr(.keyDashboardRefreshAPIScope))
         let section = try XCTUnwrap(SettingsSectionView.enclosing(officialRow))
         XCTAssertNil(section.footnoteLabel)
-        // Order: Codex/Grok, Claude's fixed calibration, Claude Code native sync, API.
-        XCTAssertEqual(section.contentViews.count, 4)
-        let calibrationRow = try XCTUnwrap(section.contentViews[1] as? SettingsRowView)
+        // One "Refresh" heading, two cards: the shared Codex/Grok and API selectors,
+        // then the Claude rows (calibration, native sync, BalanceBar Mod status).
+        XCTAssertEqual(section.contentViews.count, 2)
+        XCTAssertTrue(section.contentViews[0] === officialRow)
+        XCTAssertTrue(section.contentViews[1] === apiRow)
+        let claudeSection = try XCTUnwrap(SettingsSectionView.enclosing(
+            try XCTUnwrap(descendants(of: page).compactMap { $0 as? SettingsRowView }
+                .first { $0.titleLabel.stringValue == tr(.keyClaudeStatusLineCalibration) })))
+        XCTAssertFalse(claudeSection === section)
+        XCTAssertTrue(claudeSection.headingLabel.isHidden, "the second card has no heading of its own")
+        XCTAssertEqual(claudeSection.contentViews.count, 3)
+        let calibrationRow = try XCTUnwrap(claudeSection.contentViews[0] as? SettingsRowView)
         XCTAssertEqual(calibrationRow.titleLabel.stringValue, tr(.keyClaudeStatusLineCalibration))
         XCTAssertEqual(calibrationRow.detailLabel.stringValue, tr(.keyClaudeStatusLineCalibrationDetail))
         let calibrationPopup = try XCTUnwrap(descendants(of: calibrationRow).compactMap { $0 as? NSPopUpButton }
             .first { $0.identifier?.rawValue == AppPreferences.claudeCalibrationIntervalKey })
         XCTAssertEqual(calibrationPopup.itemTitles.count, AppPreferences.claudeCalibrationIntervals.count)
         XCTAssertEqual(calibrationPopup.titleOfSelectedItem, tr(.keyClaudeRefreshEveryMinutes, arguments: ["5"]))
-        let nativeRow = try XCTUnwrap(section.contentViews[2] as? SettingsRowView)
+        let nativeRow = try XCTUnwrap(claudeSection.contentViews[1] as? SettingsRowView)
         XCTAssertEqual(nativeRow.titleLabel.stringValue, tr(.keyClaudeStatusLineEnabled))
         XCTAssertNotNil(descendants(of: nativeRow).first { ($0 as? NSControl)?.identifier?.rawValue == "claudeStatusLineEnabled" })
-        XCTAssertTrue(section.contentViews[0] === officialRow)
-        XCTAssertTrue(section.contentViews[3] === apiRow)
+        let modRow = try XCTUnwrap(claudeSection.contentViews[2] as? SettingsRowView)
+        XCTAssertEqual(modRow.titleLabel.stringValue, tr(.modCardRowTitle))
         let refreshNowButton = try XCTUnwrap(descendants(of: page).compactMap { $0 as? NSButton }
             .first { $0.title == tr(.keyDashboardGeneralAndRefreshPagesRefreshNow) })
         let refreshNowRow = try XCTUnwrap(SettingsRowView.enclosing(refreshNowButton))
         XCTAssertFalse(SettingsSectionView.enclosing(refreshNowRow) === section)
+        XCTAssertFalse(SettingsSectionView.enclosing(refreshNowRow) === claudeSection)
         official.selectItem(at: 3)
         _ = official.sendAction(official.action!, to: official.target)
         XCTAssertEqual(preferences.officialUsageRefreshInterval, 15)
