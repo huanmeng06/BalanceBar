@@ -596,10 +596,10 @@
 "status.item.controller.refresh_now_failure_backoff" = "請求失敗，%1$@ 秒後自動重試";
 "status.item.controller.refresh_now_out_of_tokens" = "刷新過於頻繁，%1$@ 秒後可重試";
 "claude.status_line.enabled" = "Claude Code 原生同步";
-"claude.status_line.description" = "透過 Claude Code 內部介面，在 Claude 每次回答結束後，更即時地取得刷新時間、剩餘額度和狀態。";
+"claude.status_line.description" = "每次回答結束後由 Claude Code 推送，無需安裝外掛";
 "claude.status_line.calibration" = "Claude 官方額度校準";
 "claude.refresh.every_minutes" = "每 %1$@ 分鐘";
-"claude.status_line.calibration_detail" = "較長的間隔可避免限流；開啟原生同步後，新額度可更早顯示";
+"claude.status_line.calibration_detail" = "定時向官方查詢，作為備援；間隔越長越不易被限流";
 "claude.status_line.disable_confirm_title" = "關閉 Claude Code 原生同步？";
 "claude.status_line.disable_confirm_message" = "關閉後，Claude 額度只會按固定間隔刷新，無法在每次回答結束後即時更新。";
 "claude.status_line.disable_confirm_action" = "關閉";
@@ -609,7 +609,7 @@
 "claude.status_line.disable_failed_ok" = "好";
 
 // BalanceBar Mod realtime sync (Issue #597)
-"claude.mod_sync.title" = "Claude Code Mod 即時同步";
+"claude.mod_sync.title" = "BalanceBar Mod 即時增強";
 "claude.mod_sync.manage" = "管理…";
 "mod.prompt.row" = "啟用即時增強 ›";
 "mod.prompt.menu" = "為 Claude 安裝 Mod，額度即時更新";
@@ -627,27 +627,27 @@
 "mod.install.step3" = "完成";
 "mod.install.enabled" = "已開啟 ✓";
 "mod.install.enabled_note" = "新開的 Claude Code 會話會自動生效。";
-"mod.install.reload_hint" = "已有會話可選擇執行 /reload-plugins。";
+"mod.install.reload_hint" = "已有會話可選擇執行下面的指令。";
 "mod.failure.title" = "無法自動安裝";
 "mod.failure.claude_missing" = "沒有找到 claude 指令。請在終端機中執行下面的指令：";
 "mod.failure.command_failed" = "指令未成功完成。請在終端機中執行下面的指令：";
 "mod.failure.copy" = "複製指令";
 "mod.failure.copied" = "已複製";
 "mod.dismissed.title" = "已隱藏提示";
-"mod.dismissed.note" = "之後可以在 設定 › 進階 › Claude 即時增強 中安裝 Mod。";
+"mod.dismissed.note" = "之後可以在 設定 › 通用 › 刷新 中安裝 BalanceBar Mod。";
 "mod.dismissed.undo" = "復原";
-"mod.panel.uninstall" = "解除安裝即時同步";
+"mod.panel.uninstall" = "卸載 BalanceBar Mod";
 "mod.uninstall.step1" = "解除安裝 Mod";
 "mod.uninstall.step2" = "移除安裝來源";
 "mod.uninstall.done" = "已解除安裝 ✓";
-"mod.uninstall.done_note" = "額度顯示回退到官方路徑；statusLine 與其他外掛設定保持不變。";
+"mod.uninstall.done_note" = "額度已改為定時向官方查詢。「Claude Code 原生同步」和其他外掛不受影響。";
 "mod.failure.uninstall_command" = "解除安裝未完成。請在終端機中執行下面的指令：";
 "mod.failure.copy_enable" = "複製啟用指令";
 "mod.failure.inbox" = "快照收件匣無法建立（權限不足或擁有者不符）。請檢查 ~/Library/Application Support/BalanceBar/inbox 後重試。";
 "mod.settings.title" = "Claude 即時增強";
 "mod.settings.status.not_installed" = "未開啟";
 "mod.settings.status.waiting" = "已安裝，等待新會話的資料";
-"mod.settings.status.active" = "已開啟，最近資料 %1$@";
+"mod.settings.status.active" = "已開啟，最近可信資料 %1$@";
 "mod.settings.status.silent" = "已安裝，但 10 分鐘內沒有收到資料。請新開會話，或在已有會話執行 /reload-plugins";
 "mod.settings.status.unsupported" = "Claude Code %1$@ 過舊，需要 v2.1.287 或更新版本";
 "mod.settings.action.install" = "一鍵安裝";
@@ -675,21 +675,62 @@
 "mod.ui.background_note" = "關閉視窗不會中斷操作，可隨時重新開啟查看進度。";
 "mod.ui.refresh" = "重新偵測";
 "mod.ui.retry" = "重試";
-"mod.ui.confirm_uninstall" = "確認解除安裝即時同步？";
+"mod.ui.confirm_uninstall" = "卸載 BalanceBar Mod？";
+"mod.ui.confirm_uninstall_note" = "卸載後，Claude 額度改為定時向官方查詢，不再即時更新。「Claude Code 原生同步」和其他外掛不受影響。";
+"mod.ui.confirm_uninstall_action" = "卸載";
+"mod.ui.uninstall_reload_hint" = "已有會話可執行下面的指令，讓卸載立即生效。";
 "mod.ui.cancel" = "取消";
 "mod.ui.uninstall_failure_title" = "解除安裝未完成";
 "mod.ui.account_advice" = "請確認 Claude Code 與 BalanceBar 使用同一帳戶，再開啟新工作階段。";
 "mod.ui.cycle_advice" = "繼續使用官方額度；新週期經官方確認後，再檢查新工作階段的資料。";
 
 // INT-2 settings card restored for Issue #604
-"mod.settings.status.title_format" = "BalanceBar Mod 狀態：%1$@";
 "mod.settings.status.enabled_short" = "已啟用";
-"mod.settings.status.last_data" = "最新資料：%1$@";
+"mod.settings.status.last_data" = "最近可信資料：%1$@";
 "mod.settings.action.view_note" = "檢視說明";
 "mod.settings.action.manage" = "管理";
 "mod.settings.action.view_error" = "檢視原因";
-"mod.settings.status.silent_short" = "已安裝，但 10 分鐘內沒有收到資料";
-"mod.settings.status.silent_hint" = "請開啟新工作階段，或在已開啟的工作階段執行 /reload-plugins";
+
+// BB-609 Advanced card copy
+"mod.card.not_installed.title" = "未安裝";
+"mod.card.not_installed.reason" = "安裝後即可即時同步額度";
+"mod.card.other_scope.title" = "僅專案層級安裝";
+"mod.card.other_scope.reason" = "只在該專案內生效";
+"mod.card.other_scope.action" = "點「%1$@」安裝到使用者層級";
+"mod.card.waiting.title" = "等待資料";
+"mod.card.waiting.reason" = "已安裝，尚未收到工作階段資料";
+"mod.card.waiting.action" = "開啟新的 Claude 工作階段即可";
+"mod.card.silent.title" = "暫無資料";
+"mod.card.silent.reason" = "10 分鐘內沒有收到資料";
+"mod.card.silent.action" = "開啟新工作階段，或執行 /reload-plugins";
+"mod.card.disabled.title" = "已停用";
+"mod.card.disabled.reason" = "外掛已安裝，但已停用";
+"mod.card.disabled.action" = "點「%1$@」查看啟用方式";
+"mod.card.claude_missing.title" = "找不到 Claude Code";
+"mod.card.claude_missing.reason" = "此 Mac 上沒有 claude 指令";
+"mod.card.claude_missing.action" = "安裝 Claude Code 後重試";
+"mod.card.version_too_old.title" = "版本過舊";
+"mod.card.version_too_old.reason" = "目前 Claude Code 版本 %1$@";
+"mod.card.version_too_old.action" = "請升級至 v2.1.287 或更新版本";
+"mod.card.inbox.title" = "收件匣不可用";
+"mod.card.inbox.reason" = "權限不足或擁有者不符";
+"mod.card.inbox.action" = "點「%1$@」重建";
+"mod.card.rejected.title" = "資料遭拒";
+"mod.card.rejected.account_reason" = "Claude 與 BalanceBar 使用不同帳戶";
+"mod.card.rejected.account_action" = "請使用相同帳戶登入";
+"mod.card.rejected.cycle_reason" = "週期與官方資料不一致";
+"mod.card.rejected.cycle_action" = "已改用官方額度";
+"mod.card.unknown.title" = "狀態未知";
+"mod.card.unknown.reason" = "無法讀取外掛清單";
+"mod.card.unknown.action" = "稍後再試";
+"mod.card.install_failed.title" = "安裝失敗";
+"mod.card.uninstall_failed.title" = "卸載失敗";
+"mod.card.view_error_action" = "點「%1$@」查看詳情";
+"mod.card.row_title" = "BalanceBar Mod 即時增強";
+"mod.card.learn_more" = "瞭解更多";
+"mod.ui.view_status" = "查看目前狀態";
+"mod.ui.back_to_intro" = "返回介紹";
+"mod.ui.last_data_note" = "「最近可信資料」是 BalanceBar 最後一次採用額度資料的時間；額度沒有變化時不會更新。";
 
 // INT-2 Mod window presentation
 "mod.ui.int2.pitch_title" = "讓 Claude 額度即時更新";

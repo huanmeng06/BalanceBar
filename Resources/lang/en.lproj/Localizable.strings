@@ -596,10 +596,10 @@
 "status.item.controller.refresh_now_failure_backoff" = "Last request failed; retrying automatically in %1$@ s";
 "status.item.controller.refresh_now_out_of_tokens" = "Refreshing too often, retry in %1$@ s";
 "claude.status_line.enabled" = "Claude Code native sync";
-"claude.status_line.description" = "Uses Claude Code's internal interface to pick up the reset time, remaining quota and status sooner after each Claude reply.";
+"claude.status_line.description" = "Pushed by Claude Code after each reply; no plugin needed";
 "claude.status_line.calibration" = "Claude official quota calibration";
 "claude.refresh.every_minutes" = "Every %1$@ min";
-"claude.status_line.calibration_detail" = "Longer intervals avoid rate limits; native sync can show new quota sooner";
+"claude.status_line.calibration_detail" = "Polls the official source on a timer as a fallback; longer intervals avoid rate limits";
 "claude.status_line.disable_confirm_title" = "Turn off Claude Code native sync?";
 "claude.status_line.disable_confirm_message" = "Claude quota will only refresh at the fixed interval and won't update right after each reply.";
 "claude.status_line.disable_confirm_action" = "Turn Off";
@@ -609,7 +609,7 @@
 "claude.status_line.disable_failed_ok" = "OK";
 
 // BalanceBar Mod realtime sync (Issue #597)
-"claude.mod_sync.title" = "Claude Code Mod realtime sync";
+"claude.mod_sync.title" = "BalanceBar Mod realtime boost";
 "claude.mod_sync.manage" = "Manage…";
 "mod.prompt.row" = "Enable realtime boost ›";
 "mod.prompt.menu" = "Install the Claude Mod for live quota updates";
@@ -627,27 +627,27 @@
 "mod.install.step3" = "Done";
 "mod.install.enabled" = "Enabled ✓";
 "mod.install.enabled_note" = "Newly opened Claude Code sessions pick it up automatically.";
-"mod.install.reload_hint" = "Existing sessions can optionally run /reload-plugins.";
+"mod.install.reload_hint" = "Existing sessions can optionally run the command below.";
 "mod.failure.title" = "Automatic install failed";
 "mod.failure.claude_missing" = "The claude command was not found. Run the following commands in Terminal:";
 "mod.failure.command_failed" = "The command did not complete. Run the following commands in Terminal:";
 "mod.failure.copy" = "Copy commands";
 "mod.failure.copied" = "Copied";
 "mod.dismissed.title" = "Prompt hidden";
-"mod.dismissed.note" = "You can install the Mod later in Settings › Advanced › Claude real-time boost.";
+"mod.dismissed.note" = "You can install BalanceBar Mod later in Settings › General › Refresh.";
 "mod.dismissed.undo" = "Undo";
-"mod.panel.uninstall" = "Uninstall realtime sync";
+"mod.panel.uninstall" = "Uninstall BalanceBar Mod";
 "mod.uninstall.step1" = "Uninstall Mod";
 "mod.uninstall.step2" = "Remove source";
 "mod.uninstall.done" = "Uninstalled ✓";
-"mod.uninstall.done_note" = "Quota display falls back to the official path; statusLine and other plugin settings are untouched.";
+"mod.uninstall.done_note" = "Quota is now checked against the official source on a timer. “Claude Code native sync” and other plugins are not affected.";
 "mod.failure.uninstall_command" = "Uninstall did not finish. Run the following commands in Terminal:";
 "mod.failure.copy_enable" = "Copy enable command";
 "mod.failure.inbox" = "The snapshot inbox could not be created (insufficient permissions or wrong owner). Check ~/Library/Application Support/BalanceBar/inbox and try again.";
 "mod.settings.title" = "Claude real-time boost";
 "mod.settings.status.not_installed" = "Not enabled";
 "mod.settings.status.waiting" = "Installed, waiting for data from a new session";
-"mod.settings.status.active" = "Enabled, last data %1$@";
+"mod.settings.status.active" = "Enabled, last trusted data %1$@";
 "mod.settings.status.silent" = "Installed, but no data for 10 minutes. Start a new session, or run /reload-plugins in an existing one";
 "mod.settings.status.unsupported" = "Claude Code %1$@ is too old; v2.1.287 or newer is required";
 "mod.settings.action.install" = "Install";
@@ -675,21 +675,62 @@
 "mod.ui.background_note" = "Closing this window keeps the operation running. Reopen it to check progress.";
 "mod.ui.refresh" = "Check again";
 "mod.ui.retry" = "Retry";
-"mod.ui.confirm_uninstall" = "Uninstall realtime sync?";
+"mod.ui.confirm_uninstall" = "Uninstall BalanceBar Mod?";
+"mod.ui.confirm_uninstall_note" = "After uninstalling, Claude quota is checked against the official source on a timer instead of updating in real time. “Claude Code native sync” and other plugins are not affected.";
+"mod.ui.confirm_uninstall_action" = "Uninstall";
+"mod.ui.uninstall_reload_hint" = "Existing sessions can run the command below to apply the removal right away.";
 "mod.ui.cancel" = "Cancel";
 "mod.ui.uninstall_failure_title" = "Uninstall incomplete";
 "mod.ui.account_advice" = "Check that Claude Code and BalanceBar use the same account, then start a new session.";
 "mod.ui.cycle_advice" = "Keep using official quota. Check new session data after the official source confirms the new cycle.";
 
 // INT-2 settings card restored for Issue #604
-"mod.settings.status.title_format" = "BalanceBar Mod status: %1$@";
 "mod.settings.status.enabled_short" = "Enabled";
-"mod.settings.status.last_data" = "Latest data: %1$@";
+"mod.settings.status.last_data" = "Last trusted data: %1$@";
 "mod.settings.action.view_note" = "Details";
 "mod.settings.action.manage" = "Manage";
 "mod.settings.action.view_error" = "View error";
-"mod.settings.status.silent_short" = "Installed, but no data for 10 minutes";
-"mod.settings.status.silent_hint" = "Start a new session, or run /reload-plugins in an open one";
+
+// BB-609 Advanced card copy
+"mod.card.not_installed.title" = "Not installed";
+"mod.card.not_installed.reason" = "Install to sync quota in real time";
+"mod.card.other_scope.title" = "Project-only install";
+"mod.card.other_scope.reason" = "Only works in that project";
+"mod.card.other_scope.action" = "Click “%1$@” to install for your user";
+"mod.card.waiting.title" = "Waiting for data";
+"mod.card.waiting.reason" = "Installed, no session data yet";
+"mod.card.waiting.action" = "Start a new Claude session";
+"mod.card.silent.title" = "No recent data";
+"mod.card.silent.reason" = "No data in the last 10 minutes";
+"mod.card.silent.action" = "Start a new session, or run /reload-plugins";
+"mod.card.disabled.title" = "Disabled";
+"mod.card.disabled.reason" = "Plugin installed but disabled";
+"mod.card.disabled.action" = "Click “%1$@” to see how to enable it";
+"mod.card.claude_missing.title" = "Claude not found";
+"mod.card.claude_missing.reason" = "No claude command on this Mac";
+"mod.card.claude_missing.action" = "Install Claude Code, then retry";
+"mod.card.version_too_old.title" = "Version too old";
+"mod.card.version_too_old.reason" = "Current Claude Code %1$@";
+"mod.card.version_too_old.action" = "Update to v2.1.287 or later";
+"mod.card.inbox.title" = "Inbox unavailable";
+"mod.card.inbox.reason" = "Wrong permissions or owner";
+"mod.card.inbox.action" = "Click “%1$@” to rebuild it";
+"mod.card.rejected.title" = "Data rejected";
+"mod.card.rejected.account_reason" = "Claude and BalanceBar use different accounts";
+"mod.card.rejected.account_action" = "Sign in with the same account";
+"mod.card.rejected.cycle_reason" = "Cycle doesn't match official data";
+"mod.card.rejected.cycle_action" = "Using official quota instead";
+"mod.card.unknown.title" = "Status unknown";
+"mod.card.unknown.reason" = "Couldn't read the plugin list";
+"mod.card.unknown.action" = "Try again later";
+"mod.card.install_failed.title" = "Install failed";
+"mod.card.uninstall_failed.title" = "Uninstall failed";
+"mod.card.view_error_action" = "Click “%1$@” for details";
+"mod.card.row_title" = "BalanceBar Mod realtime boost";
+"mod.card.learn_more" = "Learn more";
+"mod.ui.view_status" = "View current status";
+"mod.ui.back_to_intro" = "Back to overview";
+"mod.ui.last_data_note" = "“Last trusted data” is when BalanceBar last accepted quota data; it does not change while the quota stays the same.";
 
 // INT-2 Mod window presentation
 "mod.ui.int2.pitch_title" = "Make Claude quota update in real time";

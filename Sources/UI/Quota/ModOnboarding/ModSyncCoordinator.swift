@@ -25,6 +25,9 @@ final class ModSyncCoordinator {
     private var lastDetectionStartedAt = Date.distantPast
     /// Guards one-shot silence rechecks against a later status/evidence change.
     private var silenceScheduleGeneration: UInt64 = 0
+    /// Invalidates queued card polls when Advanced/search stops showing Mod status.
+    private var visibleRefreshGeneration: UInt64 = 0
+    private var advancedStatusCardVisible = false
     /// The currently presented management panel; refreshed on every status change so an
     /// open panel never keeps showing "detecting" or a finished operation's page.
     private weak var presentedPanel: ModOnboardingPanelView?
@@ -100,6 +103,29 @@ final class ModSyncCoordinator {
             self.detectionInFlight = false
             self.environment = environment
             self.recomputeStatus()
+        }
+    }
+
+    /// Polls for external CLI changes only while the Advanced Mod card or its global
+    /// search projection is visible. Each probe still uses the existing 30-second
+    /// throttle, and `detectionInFlight` prevents overlapping CLI commands.
+    func setAdvancedStatusCardVisible(_ visible: Bool) {
+        guard advancedStatusCardVisible != visible else { return }
+        advancedStatusCardVisible = visible
+        visibleRefreshGeneration &+= 1
+        guard visible else { return }
+        let generation = visibleRefreshGeneration
+        startDetectionIfNeeded()
+        scheduleVisibleRefresh(generation: generation)
+    }
+
+    private func scheduleVisibleRefresh(generation: UInt64) {
+        schedule(Self.detectionThrottle) { [weak self] in
+            guard let self,
+                  self.advancedStatusCardVisible,
+                  self.visibleRefreshGeneration == generation else { return }
+            self.startDetectionIfNeeded()
+            self.scheduleVisibleRefresh(generation: generation)
         }
     }
 
@@ -230,7 +256,9 @@ func realtimeBoostLocalize(_ text: RealtimeBoostText) -> String {
 /// as a literal placeholder here, then let Presentation insert the actual value.
 func realtimeBoostLocalize(_ text: RealtimeBoostText, language: AppLanguage) -> String {
     switch text {
-    case .statusActive, .statusUnsupported, .statusVersionTooOld, .statusTitleFormat, .lastData:
+    case .statusActive, .statusUnsupported, .statusVersionTooOld, .lastData,
+         .cardOtherScopeAction, .cardDisabledAction, .cardVersionTooOldReason,
+         .cardInboxAction, .cardViewErrorAction:
         return tr(LocalizationKey.key(for: text), arguments: ["%@"], language: language)
     default:
         return tr(LocalizationKey.key(for: text), language: language)
@@ -268,6 +296,12 @@ extension LocalizationKey {
         case .retry: return .modUIRetry
         case .confirmUninstall: return .modUIConfirmUninstall
         case .cancel: return .modUICancel
+        case .viewStatus: return .modUIViewStatus
+        case .confirmUninstallNote: return .modUIConfirmUninstallNote
+        case .confirmUninstallAction: return .modUIConfirmUninstallAction
+        case .uninstallReloadHint: return .modUIUninstallReloadHint
+        case .backToIntro: return .modUIBackToIntro
+        case .lastDataNote: return .modUILastDataNote
         case .uninstallFailureTitle: return .modUIUninstallFailureTitle
         case .accountAdvice: return .modUIAccountAdvice
         case .cycleAdvice: return .modUICycleAdvice
@@ -309,14 +343,47 @@ extension LocalizationKey {
 
     static func key(for text: RealtimeBoostText) -> LocalizationKey {
         switch text {
-        case .statusTitleFormat: return .modSettingsStatusTitleFormat
         case .statusEnabledShort: return .modSettingsStatusEnabledShort
         case .lastData: return .modSettingsLastData
         case .viewNote: return .modSettingsViewNote
         case .manage: return .modSettingsManage
         case .viewError: return .modSettingsViewError
-        case .statusSilentShort: return .modSettingsStatusSilentShort
-        case .silentHint: return .modSettingsSilentHint
+        case .cardNotInstalledTitle: return .modCardNotInstalledTitle
+        case .cardNotInstalledReason: return .modCardNotInstalledReason
+        case .cardOtherScopeTitle: return .modCardOtherScopeTitle
+        case .cardOtherScopeReason: return .modCardOtherScopeReason
+        case .cardOtherScopeAction: return .modCardOtherScopeAction
+        case .cardWaitingTitle: return .modCardWaitingTitle
+        case .cardWaitingReason: return .modCardWaitingReason
+        case .cardWaitingAction: return .modCardWaitingAction
+        case .cardSilentTitle: return .modCardSilentTitle
+        case .cardSilentReason: return .modCardSilentReason
+        case .cardSilentAction: return .modCardSilentAction
+        case .cardDisabledTitle: return .modCardDisabledTitle
+        case .cardDisabledReason: return .modCardDisabledReason
+        case .cardDisabledAction: return .modCardDisabledAction
+        case .cardClaudeMissingTitle: return .modCardClaudeMissingTitle
+        case .cardClaudeMissingReason: return .modCardClaudeMissingReason
+        case .cardClaudeMissingAction: return .modCardClaudeMissingAction
+        case .cardVersionTooOldTitle: return .modCardVersionTooOldTitle
+        case .cardVersionTooOldReason: return .modCardVersionTooOldReason
+        case .cardVersionTooOldAction: return .modCardVersionTooOldAction
+        case .cardInboxTitle: return .modCardInboxTitle
+        case .cardInboxReason: return .modCardInboxReason
+        case .cardInboxAction: return .modCardInboxAction
+        case .cardRejectedTitle: return .modCardRejectedTitle
+        case .cardRejectedAccountReason: return .modCardRejectedAccountReason
+        case .cardRejectedAccountAction: return .modCardRejectedAccountAction
+        case .cardRejectedCycleReason: return .modCardRejectedCycleReason
+        case .cardRejectedCycleAction: return .modCardRejectedCycleAction
+        case .cardUnknownTitle: return .modCardUnknownTitle
+        case .cardUnknownReason: return .modCardUnknownReason
+        case .cardUnknownAction: return .modCardUnknownAction
+        case .cardInstallFailedTitle: return .modCardInstallFailedTitle
+        case .cardUninstallFailedTitle: return .modCardUninstallFailedTitle
+        case .cardViewErrorAction: return .modCardViewErrorAction
+        case .cardRowTitle: return .modCardRowTitle
+        case .cardLearnMore: return .modCardLearnMore
         case .title: return .modSettingsTitle
         case .statusNotInstalled: return .modSettingsStatusNotInstalled
         case .statusWaiting: return .modSettingsStatusWaiting

@@ -596,10 +596,10 @@
 "status.item.controller.refresh_now_failure_backoff" = "요청 실패, %1$@초 후 자동 재시도";
 "status.item.controller.refresh_now_out_of_tokens" = "새로고침이 너무 잦습니다. %1$@초 후 재시도할 수 있습니다";
 "claude.status_line.enabled" = "Claude Code 네이티브 동기화";
-"claude.status_line.description" = "Claude Code 내부 인터페이스를 사용해 Claude 답변이 끝날 때마다 초기화 시간, 남은 한도, 상태를 더 빨리 가져옵니다.";
+"claude.status_line.description" = "Claude 답변이 끝날 때마다 Claude Code가 전송하며, 플러그인이 필요 없습니다";
 "claude.status_line.calibration" = "Claude 공식 할당량 보정";
 "claude.refresh.every_minutes" = "%1$@분마다";
-"claude.status_line.calibration_detail" = "간격이 길수록 속도 제한을 피할 수 있으며, 네이티브 동기화를 켜면 새 한도를 더 빨리 표시할 수 있습니다";
+"claude.status_line.calibration_detail" = "일정 간격으로 공식 소스를 조회하는 대체 수단이며, 간격이 길수록 호출 제한을 피하기 쉽습니다";
 "claude.status_line.disable_confirm_title" = "Claude Code 네이티브 동기화를 끌까요?";
 "claude.status_line.disable_confirm_message" = "끄면 Claude 한도가 정해진 간격으로만 갱신되며, 답변이 끝날 때마다 바로 반영되지 않습니다.";
 "claude.status_line.disable_confirm_action" = "끄기";
@@ -609,7 +609,7 @@
 "claude.status_line.disable_failed_ok" = "확인";
 
 // BalanceBar Mod realtime sync (Issue #597)
-"claude.mod_sync.title" = "Claude Code Mod 실시간 동기화";
+"claude.mod_sync.title" = "BalanceBar Mod 실시간 부스트";
 "claude.mod_sync.manage" = "관리…";
 "mod.prompt.row" = "실시간 부스트 활성화 ›";
 "mod.prompt.menu" = "Claude용 Mod 설치로 할당량 실시간 업데이트";
@@ -627,27 +627,27 @@
 "mod.install.step3" = "완료";
 "mod.install.enabled" = "활성화됨 ✓";
 "mod.install.enabled_note" = "새로 연 Claude Code 세션에 자동으로 적용됩니다.";
-"mod.install.reload_hint" = "기존 세션에서는 필요에 따라 /reload-plugins 를 실행할 수 있습니다.";
+"mod.install.reload_hint" = "기존 세션에서는 필요하면 아래 명령을 실행할 수 있습니다.";
 "mod.failure.title" = "자동 설치 실패";
 "mod.failure.claude_missing" = "claude 명령을 찾을 수 없습니다. 터미널에서 다음 명령을 실행하세요:";
 "mod.failure.command_failed" = "명령이 완료되지 않았습니다. 터미널에서 다음 명령을 실행하세요:";
 "mod.failure.copy" = "명령 복사";
 "mod.failure.copied" = "복사됨";
 "mod.dismissed.title" = "안내를 숨겼습니다";
-"mod.dismissed.note" = "나중에 설정 › 고급 › Claude 실시간 강화 에서 Mod를 설치할 수 있습니다.";
+"mod.dismissed.note" = "나중에 설정 › 일반 › 업데이트 에서 BalanceBar Mod를 설치할 수 있습니다.";
 "mod.dismissed.undo" = "실행 취소";
-"mod.panel.uninstall" = "실시간 동기화 제거";
+"mod.panel.uninstall" = "BalanceBar Mod 제거";
 "mod.uninstall.step1" = "Mod 제거";
 "mod.uninstall.step2" = "소스 제거";
 "mod.uninstall.done" = "제거됨 ✓";
-"mod.uninstall.done_note" = "쿼터 표시는 공식 경로로 되돌아갑니다. statusLine 및 다른 플러그인 설정은 변경되지 않습니다.";
+"mod.uninstall.done_note" = "이제 사용량은 일정 간격으로 공식 소스에서 조회됩니다. “Claude Code 네이티브 동기화” 및 다른 플러그인에는 영향이 없습니다.";
 "mod.failure.uninstall_command" = "제거가 완료되지 않았습니다. 터미널에서 다음 명령을 실행하세요:";
 "mod.failure.copy_enable" = "활성화 명령 복사";
 "mod.failure.inbox" = "스냅샷 수신함을 만들 수 없습니다(권한 부족 또는 소유자 불일치). ~/Library/Application Support/BalanceBar/inbox 를 확인한 후 다시 시도하세요.";
 "mod.settings.title" = "Claude 실시간 강화";
 "mod.settings.status.not_installed" = "꺼짐";
 "mod.settings.status.waiting" = "설치됨, 새 세션의 데이터 대기 중";
-"mod.settings.status.active" = "켜짐, 최근 데이터 %1$@";
+"mod.settings.status.active" = "켜짐, 최근 신뢰된 데이터 %1$@";
 "mod.settings.status.silent" = "설치되었지만 10 분 동안 데이터가 없습니다. 새 세션을 시작하거나 기존 세션에서 /reload-plugins 를 실행하세요";
 "mod.settings.status.unsupported" = "Claude Code %1$@ 은(는) 너무 오래되어 v2.1.287 이상이 필요합니다";
 "mod.settings.action.install" = "원클릭 설치";
@@ -675,21 +675,62 @@
 "mod.ui.background_note" = "창을 닫아도 작업은 계속됩니다. 다시 열어 진행 상황을 확인하세요.";
 "mod.ui.refresh" = "다시 확인";
 "mod.ui.retry" = "재시도";
-"mod.ui.confirm_uninstall" = "실시간 동기화를 제거할까요?";
+"mod.ui.confirm_uninstall" = "BalanceBar Mod를 제거할까요?";
+"mod.ui.confirm_uninstall_note" = "제거하면 Claude 사용량이 실시간으로 갱신되지 않고 일정 간격으로 공식 소스에서 조회됩니다. “Claude Code 네이티브 동기화” 및 다른 플러그인에는 영향이 없습니다.";
+"mod.ui.confirm_uninstall_action" = "제거";
+"mod.ui.uninstall_reload_hint" = "기존 세션에서는 아래 명령을 실행하면 제거가 바로 적용됩니다.";
 "mod.ui.cancel" = "취소";
 "mod.ui.uninstall_failure_title" = "제거 미완료";
 "mod.ui.account_advice" = "Claude Code와 BalanceBar가 같은 계정을 사용하는지 확인한 후 새 세션을 시작하세요.";
 "mod.ui.cycle_advice" = "공식 할당량을 계속 사용합니다. 공식 소스에서 새 주기를 확인한 후 새 세션의 데이터를 확인하세요.";
 
 // INT-2 settings card restored for Issue #604
-"mod.settings.status.title_format" = "BalanceBar Mod 상태: %1$@";
 "mod.settings.status.enabled_short" = "사용 중";
-"mod.settings.status.last_data" = "최근 데이터: %1$@";
+"mod.settings.status.last_data" = "최근 신뢰된 데이터: %1$@";
 "mod.settings.action.view_note" = "자세히";
 "mod.settings.action.manage" = "관리";
 "mod.settings.action.view_error" = "오류 보기";
-"mod.settings.status.silent_short" = "설치되었지만 10분 동안 데이터가 없습니다";
-"mod.settings.status.silent_hint" = "새 세션을 시작하거나 열려 있는 세션에서 /reload-plugins 를 실행하세요";
+
+// BB-609 Advanced card copy
+"mod.card.not_installed.title" = "설치되지 않음";
+"mod.card.not_installed.reason" = "설치하면 쿼터가 실시간으로 동기화됩니다";
+"mod.card.other_scope.title" = "프로젝트 범위로만 설치됨";
+"mod.card.other_scope.reason" = "해당 프로젝트에서만 작동";
+"mod.card.other_scope.action" = "“%1$@”을(를) 클릭해 사용자 범위로 설치";
+"mod.card.waiting.title" = "데이터 대기 중";
+"mod.card.waiting.reason" = "설치됨, 세션 데이터가 아직 없음";
+"mod.card.waiting.action" = "새 Claude 세션 시작";
+"mod.card.silent.title" = "최근 데이터 없음";
+"mod.card.silent.reason" = "지난 10분 동안 데이터를 받지 못함";
+"mod.card.silent.action" = "새 세션 시작 또는 /reload-plugins 실행";
+"mod.card.disabled.title" = "비활성화됨";
+"mod.card.disabled.reason" = "플러그인이 설치되어 있지만 비활성화됨";
+"mod.card.disabled.action" = "“%1$@”을(를) 눌러 활성화 방법 보기";
+"mod.card.claude_missing.title" = "Claude Code를 찾을 수 없음";
+"mod.card.claude_missing.reason" = "이 Mac에 claude 명령이 없음";
+"mod.card.claude_missing.action" = "Claude Code 설치 후 다시 시도";
+"mod.card.version_too_old.title" = "버전이 너무 오래됨";
+"mod.card.version_too_old.reason" = "현재 Claude Code 버전 %1$@";
+"mod.card.version_too_old.action" = "v2.1.287 이상으로 업데이트";
+"mod.card.inbox.title" = "받은 편지함을 사용할 수 없음";
+"mod.card.inbox.reason" = "권한 또는 소유자 불일치";
+"mod.card.inbox.action" = "“%1$@”을(를) 클릭해 다시 만들기";
+"mod.card.rejected.title" = "데이터가 거부됨";
+"mod.card.rejected.account_reason" = "Claude와 BalanceBar 로그인 계정이 다름";
+"mod.card.rejected.account_action" = "같은 계정으로 로그인";
+"mod.card.rejected.cycle_reason" = "주기가 공식 데이터와 일치하지 않음";
+"mod.card.rejected.cycle_action" = "대신 공식 쿼터 사용";
+"mod.card.unknown.title" = "상태 알 수 없음";
+"mod.card.unknown.reason" = "플러그인 목록을 읽을 수 없음";
+"mod.card.unknown.action" = "나중에 다시 시도";
+"mod.card.install_failed.title" = "설치 실패";
+"mod.card.uninstall_failed.title" = "제거 실패";
+"mod.card.view_error_action" = "“%1$@”을(를) 클릭해 자세히 보기";
+"mod.card.row_title" = "BalanceBar Mod 실시간 부스트";
+"mod.card.learn_more" = "자세히 보기";
+"mod.ui.view_status" = "현재 상태 보기";
+"mod.ui.back_to_intro" = "소개로 돌아가기";
+"mod.ui.last_data_note" = "“최근 신뢰된 데이터”는 BalanceBar가 사용량 데이터를 마지막으로 채택한 시각이며, 사용량이 그대로이면 바뀌지 않습니다.";
 
 // INT-2 Mod window presentation
 "mod.ui.int2.pitch_title" = "Claude 할당량을 실시간으로 업데이트";

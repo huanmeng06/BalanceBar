@@ -1394,6 +1394,7 @@ final class DashboardPageSearchTests: XCTestCase {
             for text in Set(copy) {
                 let trimmed = text
                     .replacingOccurrences(of: "\u{2060}", with: "")
+                    .replacingOccurrences(of: "● ", with: "") // status-dot decoration, not searchable copy
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !trimmed.isEmpty else { continue }
                 XCTAssertTrue(
@@ -2694,9 +2695,10 @@ final class DashboardPageSearchTests: XCTestCase {
         let firstTitle = tr(.keyDashboardOfficialQuotaRefreshFrequency, language: .english)
         let secondTitle = tr(.keyDashboardGeneralAndRefreshPagesBalanceUpdatesDuringTasks, language: .english)
         let section = try XCTUnwrap(firstSection(titled: refreshHeading, in: page) as? SettingsSectionView)
-        // Mod management has its own Advanced card; General retains its four refresh rows.
-        XCTAssertEqual(section.contentViews.count, 4)
-        XCTAssertEqual(section.separators.count, 3)
+        // The headed card holds the shared Codex/Grok and API selectors; the Claude rows
+        // (including the BalanceBar Mod status) form a second card under the same heading.
+        XCTAssertEqual(section.contentViews.count, 2)
+        XCTAssertEqual(section.separators.count, 1)
         XCTAssertTrue(section.separators.allSatisfy { !$0.isHidden })
         let codexIndex = 0
 
@@ -2718,7 +2720,7 @@ final class DashboardPageSearchTests: XCTestCase {
         }
         assertVisualSeparatorsMatchVisibleRows(section)
         XCTAssertTrue(section.contentViews[codexIndex] === settingsRow(titled: firstTitle, in: section))
-        XCTAssertTrue(section.contentViews[3] === settingsRow(titled: secondTitle, in: section))
+        XCTAssertTrue(section.contentViews[1] === settingsRow(titled: secondTitle, in: section))
     }
 
     func testGeneralSearchCatalogCoversUnifiedRefreshSettings() {
@@ -3951,7 +3953,11 @@ extension DashboardPageSearchTests {
         var operation: ModPanelState = .intro(dismissChecked: false)
     }
 
-    private func modCardComposition(_ value: ModCardRefreshState, defaults: UserDefaults) -> DashboardCompositionController {
+    private func modCardComposition(
+        _ value: ModCardRefreshState,
+        defaults: UserDefaults,
+        visibilityChanged: @escaping (Bool) -> Void = { _ in }
+    ) -> DashboardCompositionController {
         DashboardCompositionController(state: DashboardCompositionState(
             preferences: AppPreferences(defaults: defaults), devBundleIdentifier: "com.huanmeng06.BalanceBar.dev",
             providerPollInterval: 3, currentProviderIsOfficial: { true }, providerChoices: { [] },
@@ -3975,7 +3981,8 @@ extension DashboardPageSearchTests {
                 onLunaReserveDisplayModeChanged: { _ in }, onBankedResetDisplayModeChanged: { _ in },
                 onUpdateChannelChanged: { _ in }, onOpenCCSwitch: {}, onOpenSystemMenuBarSettings: {},
                 onManageModSync: { _ in }, onCheckForUpdates: {}, onInstallUpdate: {}, onOpenUpdateNotes: {},
-                onClamp: {}, onStatusLinksChanged: {}, onDidShowPage: {}, onDidClose: {}, onDidResize: {}))
+                onClamp: {}, onStatusLinksChanged: {}, onDidShowPage: {}, onDidClose: {}, onDidResize: {},
+                onModSyncVisibilityChanged: visibilityChanged))
     }
 
     private func modCardRow(_ composition: DashboardCompositionController) throws -> SettingsRowView {
@@ -3995,17 +4002,18 @@ extension DashboardPageSearchTests {
         let value = ModCardRefreshState()
         let composition = modCardComposition(value, defaults: defaults)
         defer { composition.teardownForTesting() }
-        let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .advanced))
+        let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .general))
         window.layoutIfNeeded()
         XCTAssertTrue(window.isVisible)
         let row = try modCardRow(composition)
-        XCTAssertTrue(row.titleLabel.stringValue.contains("Enabled"))
+        XCTAssertTrue(row.detailLabel.stringValue.hasPrefix("● Enabled"))
         value.status = .notInstalled(hasOtherScopeInstall: false)
         value.operation = .uninstallSucceeded
         composition.refreshModSync()
         window.layoutIfNeeded()
-        XCTAssertTrue(row.titleLabel.stringValue.contains("Not enabled"), "uninstalled card must not retain Enabled")
-        XCTAssertTrue(row.detailLabel.isHidden, "old accepted timestamp must disappear after uninstall")
+        XCTAssertEqual(row.titleLabel.stringValue, "BalanceBar Mod realtime boost")
+        XCTAssertEqual(row.detailLabel.stringValue, "● Not installed · Install to sync quota in real time",
+                       "an uninstalled card should show its next action instead of stale accepted data")
         value.operation = .installing(current: .installPlugin)
         composition.refreshModSync()
         window.layoutIfNeeded()
@@ -4032,18 +4040,18 @@ extension DashboardPageSearchTests {
         let value = ModCardRefreshState()
         let composition = modCardComposition(value, defaults: defaults)
         defer { composition.teardownForTesting() }
-        let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .advanced))
+        let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .general))
         window.layoutIfNeeded()
         let row = try modCardRow(composition)
         composition.showSection(.menu)
         value.status = .notInstalled(hasOtherScopeInstall: false)
         value.operation = .uninstallSucceeded
         composition.refreshModSync()
-        composition.showSection(.advanced)
+        composition.showSection(.general)
         window.layoutIfNeeded()
         XCTAssertTrue(try modCardRow(composition) === row)
-        XCTAssertTrue(row.titleLabel.stringValue.contains("Not enabled"), "cached Advanced must pick up the latest status on activation")
-        XCTAssertTrue(row.detailLabel.isHidden)
+        XCTAssertTrue(row.detailLabel.stringValue.hasPrefix("● Not installed"), "cached General must pick up the latest status on activation")
+        XCTAssertEqual(row.detailLabel.stringValue, "● Not installed · Install to sync quota in real time")
     }
 
     func testGlobalSearchModCardReceivesLiveStatusUpdates() throws {
@@ -4064,6 +4072,44 @@ extension DashboardPageSearchTests {
         value.operation = .uninstallSucceeded
         composition.refreshModSync()
         window.layoutIfNeeded()
-        XCTAssertTrue(try modCardRow(composition).titleLabel.stringValue.contains("Not enabled"))
+        XCTAssertTrue(try modCardRow(composition).detailLabel.stringValue.hasPrefix("● Not installed"))
+    }
+
+    func testModCardVisibilityTracksAdvancedAndGlobalSearchProjection() throws {
+        let suite = "ModCardVisibility.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        var visibilityChanges: [Bool] = []
+        let composition = modCardComposition(
+            ModCardRefreshState(), defaults: defaults,
+            visibilityChanged: { visibilityChanges.append($0) })
+        defer { composition.teardownForTesting() }
+
+        let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .general))
+        XCTAssertEqual(visibilityChanges, [true], "opening General makes the card visible")
+
+        func postAndDrain(_ name: Notification.Name, object: Any?) {
+            NotificationCenter.default.post(name: name, object: object)
+            let drained = expectation(description: "visibility notification handled")
+            DispatchQueue.main.async { drained.fulfill() }
+            wait(for: [drained], timeout: 2)
+        }
+
+        postAndDrain(NSWindow.didMiniaturizeNotification, object: window)
+        XCTAssertEqual(visibilityChanges.last, false, "minimizing the Dashboard stops visible polling")
+        postAndDrain(NSWindow.didDeminiaturizeNotification, object: window)
+        XCTAssertEqual(visibilityChanges.last, true, "restoring the Dashboard resumes polling")
+        postAndDrain(NSApplication.didHideNotification, object: NSApp)
+        XCTAssertEqual(visibilityChanges.last, false, "hiding the app stops visible polling")
+        postAndDrain(NSApplication.didUnhideNotification, object: NSApp)
+        XCTAssertEqual(visibilityChanges.last, true, "unhiding the app resumes polling")
+
+        composition.showSection(.menu)
+        XCTAssertEqual(visibilityChanges.last, false, "leaving General stops visible polling")
+
+        composition.applySearchQueryForTesting("BalanceBar Mod")
+        XCTAssertEqual(visibilityChanges.last, true, "global search projection enables polling")
+        composition.applySearchQueryForTesting("")
+        XCTAssertEqual(visibilityChanges.last, false, "clearing search disables polling when Advanced is hidden")
     }
 }

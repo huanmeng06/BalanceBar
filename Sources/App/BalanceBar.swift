@@ -577,6 +577,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 guard let self else { return }
                 self.modSyncCoordinator.presentPanel(from: anchor)
                 self.modSyncCoordinator.controller.startInstall()
+            },
+            onModSyncVisibilityChanged: { [weak self] visible in
+                self?.modSyncCoordinator.setAdvancedStatusCardVisible(visible)
             }
         ),
         launchAtLoginController: launchAtLoginController

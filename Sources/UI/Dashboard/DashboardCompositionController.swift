@@ -216,6 +216,7 @@ struct DashboardCompositionActions {
     let onDidClose: () -> Void
     let onDidResize: () -> Void
     var onInstallModSync: ((NSView) -> Void)? = nil
+    var onModSyncVisibilityChanged: ((Bool) -> Void)? = nil
 }
 
 /// Owns Dashboard shell, page composition, page lifecycle, and Status Links
@@ -236,6 +237,10 @@ final class DashboardCompositionController {
     private var globalSettingsSearchSections: Set<DashboardSection> = []
     private var globalSearchGroupsBySection: [DashboardSection: DashboardGlobalSearchGroupView] = [:]
     private var isBuildingGlobalSearchPage = false
+    private var modSyncCardVisible = false
+    private var modSyncApplicationHidden = false
+    private var modSyncWindowMiniaturized = false
+    private var modSyncVisibilityObservers: [NSObjectProtocol] = []
     private lazy var dashboardProviderPages = DashboardProviderPageCoordinator(
         actions: DashboardProviderPageActions(
             onRefresh: actions.onManualRefresh,
@@ -333,9 +338,11 @@ final class DashboardCompositionController {
                 if self?.isBuildingGlobalSearchPage != true {
                     self?.applyMountedPageSearch()
                 }
+                self?.updateModSyncCardVisibility()
                 self?.actions.onDidShowPage()
             },
             didClose: { [weak self] in
+                self?.setModSyncCardVisible(false)
                 self?.actions.onDidClose()
             },
             didResize: { [weak self] in
@@ -359,7 +366,10 @@ final class DashboardCompositionController {
     )
     private lazy var windowController: DashboardWindowController = {
         let controller = DashboardWindowController()
-        controller.didClose = { [weak self] in self?.actions.onDidClose() }
+        controller.didClose = { [weak self] in
+            self?.setModSyncCardVisible(false)
+            self?.actions.onDidClose()
+        }
         controller.didResize = { [weak self] in self?.actions.onDidResize() }
         controller.onAppearanceDidChange = { [weak self] in self?.rebuild() }
         return controller
@@ -399,6 +409,7 @@ final class DashboardCompositionController {
     }
 
     func start() {
+        installModSyncVisibilityObservers()
         configureNotificationNavigation()
         bindDashboardSearch()
         windowController.start()
@@ -408,11 +419,14 @@ final class DashboardCompositionController {
         initialSection: DashboardSection = .general,
         scrollOffsetY: CGFloat? = nil
     ) {
+        installModSyncVisibilityObservers()
         configureNotificationNavigation()
         bindDashboardSearch()
         installMenuBarRestoreSnapshotProvider()
         let isNewWindow = windowController.window == nil
         windowController.open(initialSection: initialSection)
+        modSyncWindowMiniaturized = windowController.window?.isMiniaturized ?? false
+        modSyncApplicationHidden = NSApp.isHidden
         if isNewWindow {
             pageSession.installShell(on: windowController)
             pageSession.showSection(initialSection)
@@ -422,6 +436,9 @@ final class DashboardCompositionController {
             }
         }
         windowController.present()
+        modSyncWindowMiniaturized = windowController.window?.isMiniaturized ?? false
+        modSyncApplicationHidden = NSApp.isHidden
+        updateModSyncCardVisibility()
         refreshLaunchAtLogin()
         refreshLaunchWithChatGPT()
     }
@@ -429,7 +446,10 @@ final class DashboardCompositionController {
         invalidateSearchData()
         pageSession.rebuild(on: windowController)
     }
-    func showSection(_ section: DashboardSection) { pageSession.selectSection(section) }
+    func showSection(_ section: DashboardSection) {
+        pageSession.selectSection(section)
+        updateModSyncCardVisibility()
+    }
 
     func showNotificationAgent(_ agent: BalanceNotificationAgent) {
         configureNotificationNavigation()
@@ -451,6 +471,8 @@ final class DashboardCompositionController {
     }
     func showProvider(_ providerID: String) { pageSession.showProvider(providerID) }
     func teardown() {
+        setModSyncCardVisible(false)
+        removeModSyncVisibilityObservers()
         invalidateSearchData()
         isGlobalSettingsSearchActive = false
         dashboardPreferencePages.setSearchProjectionActive(false)
@@ -693,10 +715,10 @@ final class DashboardCompositionController {
     }
 
     /// Live Claude Mod realtime sync status from the coordinator's detection and the
-    /// pipeline's snapshot evidence. Covers an already-visible Advanced page and an
+    /// pipeline's snapshot evidence. Covers an already-visible General page and an
     /// active global search projection.
     func refreshModSync() {
-        guard canUpdateSettingsPage(.advanced) else { return }
+        guard canUpdateSettingsPage(.general) else { return }
         dashboardPreferencePages.refreshModSync()
         invalidateSearchData()
     }
@@ -898,6 +920,7 @@ final class DashboardCompositionController {
     }
 
     private func handleDashboardSearch(_ query: String) {
+        defer { updateModSyncCardVisibility() }
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
         if needle.isEmpty {
             if isGlobalSettingsSearchActive {
@@ -1312,6 +1335,59 @@ final class DashboardCompositionController {
         window?.isVisible == true && (section == target || isGlobalSettingsSearchActive)
     }
 
+    private func updateModSyncCardVisibility() {
+        let visible = window?.isVisible == true
+            && !modSyncWindowMiniaturized
+            && window?.isMiniaturized != true
+            && !modSyncApplicationHidden
+            && !NSApp.isHidden
+            && (section == .general || isGlobalSettingsSearchActive)
+        setModSyncCardVisible(visible)
+    }
+
+    private func setModSyncCardVisible(_ visible: Bool) {
+        guard modSyncCardVisible != visible else { return }
+        modSyncCardVisible = visible
+        actions.onModSyncVisibilityChanged?(visible)
+    }
+
+    private func installModSyncVisibilityObservers() {
+        guard modSyncVisibilityObservers.isEmpty else { return }
+        let center = NotificationCenter.default
+        modSyncApplicationHidden = NSApp.isHidden
+        modSyncVisibilityObservers = [
+            center.addObserver(forName: NSWindow.didMiniaturizeNotification, object: nil, queue: .main) { [weak self] notification in
+                guard let self,
+                      let eventWindow = notification.object as? NSWindow,
+                      let dashboardWindow = self.window,
+                      eventWindow === dashboardWindow else { return }
+                self.modSyncWindowMiniaturized = true
+                self.updateModSyncCardVisibility()
+            },
+            center.addObserver(forName: NSWindow.didDeminiaturizeNotification, object: nil, queue: .main) { [weak self] notification in
+                guard let self,
+                      let eventWindow = notification.object as? NSWindow,
+                      let dashboardWindow = self.window,
+                      eventWindow === dashboardWindow else { return }
+                self.modSyncWindowMiniaturized = false
+                self.updateModSyncCardVisibility()
+            },
+            center.addObserver(forName: NSApplication.didHideNotification, object: NSApp, queue: .main) { [weak self] _ in
+                self?.modSyncApplicationHidden = true
+                self?.updateModSyncCardVisibility()
+            },
+            center.addObserver(forName: NSApplication.didUnhideNotification, object: NSApp, queue: .main) { [weak self] _ in
+                self?.modSyncApplicationHidden = false
+                self?.updateModSyncCardVisibility()
+            },
+        ]
+    }
+
+    private func removeModSyncVisibilityObservers() {
+        modSyncVisibilityObservers.forEach(NotificationCenter.default.removeObserver)
+        modSyncVisibilityObservers.removeAll()
+    }
+
     private func prepareForPageReplacement() {
         dashboardProviderPages.unmount()
     }
@@ -1324,6 +1400,9 @@ final class DashboardCompositionController {
             dashboardPreferencePages.refreshUpdateState(state.updateState())
             dashboardPreferencePages.refreshLaunchAtLogin()
             dashboardPreferencePages.refreshLaunchWithChatGPT()
+            // The General page is cached. Apply Mod changes that arrived while another
+            // page was mounted before showing its Mod row again.
+            dashboardPreferencePages.refreshModSync()
         case .menuBar:
             dashboardPreferencePages.refreshMenuBar(
                 snapshot: state.snapshot(),
@@ -1337,11 +1416,7 @@ final class DashboardCompositionController {
             )
         case .menu:
             dashboardPreferencePages.refreshMenu()
-        case .advanced:
-            // The Advanced page is cached. Apply changes that arrived while another
-            // page was mounted before showing its Mod card again.
-            dashboardPreferencePages.refreshModSync()
-        case .about, .notifications:
+        case .advanced, .about, .notifications:
             break
         }
     }

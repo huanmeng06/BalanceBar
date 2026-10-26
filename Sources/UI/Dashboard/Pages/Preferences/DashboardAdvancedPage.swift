@@ -6,28 +6,19 @@ final class DashboardAdvancedPage {
         "dashboard.advanced.logViewer"
     )
 
-    private var realtimeBoostRows: RealtimeBoostSettingsRows?
-
     struct Input {
         let relay: DashboardPreferencePageRelay
         let logViewer: NSView?
-
-        let modSyncStatus: ModSyncStatus
-        let modPanelState: ModPanelState
         let includeLogViewer: Bool
 
         init(
             relay: DashboardPreferencePageRelay,
             logViewer: NSView?,
-            includeLogViewer: Bool = true,
-            modSyncStatus: ModSyncStatus = .detecting,
-            modPanelState: ModPanelState = .intro(dismissChecked: false)
+            includeLogViewer: Bool = true
         ) {
             self.relay = relay
             self.logViewer = logViewer
             self.includeLogViewer = includeLogViewer
-            self.modSyncStatus = modSyncStatus
-            self.modPanelState = modPanelState
         }
     }
 
@@ -68,17 +59,7 @@ final class DashboardAdvancedPage {
             title: tr(.keyDashboardAdvancedPageDiagnostics),
             contentViews: contentViews
         )
-        let rows = RealtimeBoostSettingsRows(
-            status: input.modSyncStatus, operation: input.modPanelState,
-            onInstall: { [weak relay = input.relay] button in relay?.installModSync(button) },
-            onShowDescription: { [weak relay = input.relay] button in relay?.manageModSync(button) })
-        realtimeBoostRows = rows
-        let realtime = rows.makeSection()
-        return DashboardSettingsComponents.makeSettingsPageContent([realtime, logs])
-    }
-
-    func refreshModSync(_ status: ModSyncStatus?, operation: ModPanelState?) {
-        realtimeBoostRows?.update(status: status ?? .detecting, operation: operation ?? .intro(dismissChecked: false))
+        return DashboardSettingsComponents.makeSettingsPageContent([logs])
     }
 
     /// Keeps the Diagnostics log pane at the historical 190pt slot. The real
