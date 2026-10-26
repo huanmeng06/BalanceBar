@@ -624,7 +624,8 @@
 "claude.timeline.hover.time" = "時間";
 "claude.timeline.hover.duration" = "持續";
 "claude.timeline.hover.refreshes" = "刷新";
-"claude.timeline.hover.validity" = "每次有效";
+"claude.timeline.hover.validity" = "有效期限";
+"claude.timeline.hover.valid_until" = "有效期至";
 "claude.timeline.hover.refresh_count" = "%1$@ 次";
 "claude.timeline.duration.seconds" = "%1$@ 秒";
 "claude.timeline.duration.minutes" = "%1$@ 分鐘";

@@ -279,6 +279,7 @@
     case keyClaudeTimelineHoverDuration = "claude.timeline.hover.duration"
     case keyClaudeTimelineHoverRefreshes = "claude.timeline.hover.refreshes"
     case keyClaudeTimelineHoverValidity = "claude.timeline.hover.validity"
+    case keyClaudeTimelineHoverValidUntil = "claude.timeline.hover.valid_until"
     case keyClaudeTimelineHoverRefreshCount = "claude.timeline.hover.refresh_count"
     case keyClaudeTimelineDurationSeconds = "claude.timeline.duration.seconds"
     case keyClaudeTimelineDurationMinutes = "claude.timeline.duration.minutes"

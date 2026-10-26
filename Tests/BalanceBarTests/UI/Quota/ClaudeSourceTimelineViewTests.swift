@@ -150,7 +150,7 @@ final class ClaudeSourceTimelineViewTests: XCTestCase {
             .init(label: tr(.keyClaudeTimelineHoverTime), value: "07:59:00 – 现在"),
             .init(label: tr(.keyClaudeTimelineHoverDuration), value: ClaudeSourceTimelineView.durationText(60)),
             .init(label: tr(.keyClaudeTimelineHoverRefreshes), value: tr(.keyClaudeTimelineHoverRefreshCount, arguments: ["1"])),
-            .init(label: tr(.keyClaudeTimelineHoverValidity), value: ClaudeSourceTimelineView.durationText(120)),
+            .init(label: tr(.keyClaudeTimelineHoverValidUntil), value: "08:01:00"),
         ], "type heading, then range so far, duration, refreshes and each refresh's validity")
         let band = try! XCTUnwrap(layout.bands.first)
         let failure = view.hoverContent(for: .band(band))

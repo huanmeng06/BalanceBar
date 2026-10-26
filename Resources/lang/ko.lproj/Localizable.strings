@@ -624,7 +624,8 @@
 "claude.timeline.hover.time" = "시간";
 "claude.timeline.hover.duration" = "지속";
 "claude.timeline.hover.refreshes" = "갱신";
-"claude.timeline.hover.validity" = "회당 유효";
+"claude.timeline.hover.validity" = "유효 기간";
+"claude.timeline.hover.valid_until" = "유효 기한";
 "claude.timeline.hover.refresh_count" = "%1$@회";
 "claude.timeline.duration.seconds" = "%1$@초";
 "claude.timeline.duration.minutes" = "%1$@분";

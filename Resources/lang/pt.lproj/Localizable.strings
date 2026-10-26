@@ -624,7 +624,8 @@
 "claude.timeline.hover.time" = "Hora";
 "claude.timeline.hover.duration" = "Duração";
 "claude.timeline.hover.refreshes" = "Atualizações";
-"claude.timeline.hover.validity" = "Validade de cada";
+"claude.timeline.hover.validity" = "Validade";
+"claude.timeline.hover.valid_until" = "Válido até";
 "claude.timeline.hover.refresh_count" = "%1$@×";
 "claude.timeline.duration.seconds" = "%1$@ s";
 "claude.timeline.duration.minutes" = "%1$@ min";

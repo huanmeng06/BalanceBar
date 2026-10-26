@@ -630,8 +630,11 @@ final class ClaudeSourceTimelineView: NSView {
                       value: Self.durationText(min(piece.end, now()).timeIntervalSince(piece.start))),
                 .init(label: tr(.keyClaudeTimelineHoverRefreshes),
                       value: tr(.keyClaudeTimelineHoverRefreshCount, arguments: [String(piece.readings.count)])),
-                .init(label: tr(.keyClaudeTimelineHoverValidity),
-                      value: Self.durationText(first.expiresAt.timeIntervalSince(first.observedAt))),
+                // A block still running says when it runs out instead of how long each refresh lasts.
+                ongoing
+                    ? .init(label: tr(.keyClaudeTimelineHoverValidUntil), value: time(piece.end))
+                    : .init(label: tr(.keyClaudeTimelineHoverValidity),
+                            value: Self.durationText(first.expiresAt.timeIntervalSince(first.observedAt))),
             ])
         case let .band(band):
             let end = band.run.end ?? now()

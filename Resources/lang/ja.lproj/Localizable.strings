@@ -624,7 +624,8 @@
 "claude.timeline.hover.time" = "時間";
 "claude.timeline.hover.duration" = "継続";
 "claude.timeline.hover.refreshes" = "更新";
-"claude.timeline.hover.validity" = "各回の有効期間";
+"claude.timeline.hover.validity" = "有効期間";
+"claude.timeline.hover.valid_until" = "有効期限";
 "claude.timeline.hover.refresh_count" = "%1$@ 回";
 "claude.timeline.duration.seconds" = "%1$@ 秒";
 "claude.timeline.duration.minutes" = "%1$@ 分";

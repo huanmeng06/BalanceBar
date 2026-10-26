@@ -624,7 +624,8 @@
 "claude.timeline.hover.time" = "Время";
 "claude.timeline.hover.duration" = "Длительность";
 "claude.timeline.hover.refreshes" = "Обновления";
-"claude.timeline.hover.validity" = "Каждое действует";
+"claude.timeline.hover.validity" = "Срок действия";
+"claude.timeline.hover.valid_until" = "Действует до";
 "claude.timeline.hover.refresh_count" = "%1$@ раз";
 "claude.timeline.duration.seconds" = "%1$@ с";
 "claude.timeline.duration.minutes" = "%1$@ мин";
