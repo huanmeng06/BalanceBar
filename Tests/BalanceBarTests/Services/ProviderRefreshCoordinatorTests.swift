@@ -4304,8 +4304,8 @@ extension ProviderRefreshCoordinatorTests {
                 XCTAssertNil(snapshot.bankedReset)
                 XCTAssertNotNil(snapshot.notificationAccountScope)
                 // The slot shows "refreshing" while a read is in flight and the read time afterwards.
-                if snapshot.quotaStatus == .official(at: start) { rendered[0].fulfill() }
-                if snapshot.quotaStatus == .official(at: start.addingTimeInterval(300)) { rendered[1].fulfill() }
+                if snapshot.quotaStatus == .realtime(.oauthAPI, at: start) { rendered[0].fulfill() }
+                if snapshot.quotaStatus == .realtime(.oauthAPI, at: start.addingTimeInterval(300)) { rendered[1].fulfill() }
             }, claudeQuota: harness.pipeline, now: { clock.now })
         coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: false, switched: false)
         wait(for: [rendered[0]], timeout: 3)
@@ -4667,7 +4667,7 @@ extension ProviderRefreshCoordinatorTests {
         let stale = try XCTUnwrap(renders.last)
         XCTAssertEqual(stale.officialQuotaWindows.map(\.remaining), fresh.officialQuotaWindows.map(\.remaining))
         XCTAssertEqual(stale.date, fresh.date, "the card keeps the last successful refresh time")
-        XCTAssertEqual(stale.quotaStatus, .error(at: fresh.date))
+        XCTAssertEqual(stale.quotaStatus, .error(at: fresh.date, source: .oauthAPI))
         XCTAssertTrue(stale.staleReason?.contains("429") == true)
         let until = try XCTUnwrap(harness.pipeline.manualRefreshBlockedUntil(), "menu refresh waits for the server cooldown")
         XCTAssertGreaterThanOrEqual(until.timeIntervalSince(clock.now), QuotaConstants.minimumCooldown - 1)

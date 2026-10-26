@@ -311,11 +311,22 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         XCTAssertEqual(state?.windows.map(\.remaining), [77, 59])
     }
 
+    func testOfficialReadStopsBeingLiveAfterTenMinutes() throws {
+        let pipeline = makePipeline()
+        pipeline.requestFetch(reason: .initial)
+        _ = try XCTUnwrap(waitForState(pipeline) { $0.status == .realtime(.oauthAPI, at: Self.start) })
+        clock.advance(by: ClaudeQuotaPipeline.officialLiveFor + 1)
+        pipeline.tick()
+        pipeline.waitUntilIdle()
+        XCTAssertEqual(pipeline.latestState?.status, .official(at: Self.start, source: .oauthAPI),
+                       "an old official read is no longer live; the slot shows its age and source")
+    }
+
     func testFirstLaunchReadsOnceAndPublishesOfficialStatus() throws {
         let pipeline = makePipeline()
         pipeline.requestFetch(reason: .initial)
         let state = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
-        XCTAssertEqual(state.status, .official(at: Self.start))
+        XCTAssertEqual(state.status, .realtime(.oauthAPI, at: Self.start), "a fresh official read is live, labelled with its source")
         XCTAssertNil(state.failure)
         XCTAssertEqual(state.updatedAt, Self.start)
         XCTAssertEqual(state.windows.map(\.label), [tr(.keyResponseParsers5HourQuota), tr(.keyResponseParsers7DayQuota)])
@@ -546,13 +557,13 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         guard case .transport(let possibleProxy, _)? = failed.failure else { return XCTFail("expected a transport failure") }
         XCTAssertTrue(possibleProxy, "connection failures carry the proxy hint")
         XCTAssertEqual(failed.windows.map(\.remaining), [77, 59], "offline keeps the last official numbers")
-        XCTAssertEqual(failed.status, .error(at: Self.start))
+        XCTAssertEqual(failed.status, .error(at: Self.start, source: .oauthAPI))
 
         PipelineStubProtocol.set(.init(data: Self.usage))
         clock.advance(by: 360)
         pipeline.requestFetch(reason: .scheduled)
         let recovered = try XCTUnwrap(waitForState(pipeline) { $0.failure == nil && $0.updatedAt == Self.start.addingTimeInterval(540) })
-        XCTAssertEqual(recovered.status, .official(at: Self.start.addingTimeInterval(540)))
+        XCTAssertEqual(recovered.status, .realtime(.oauthAPI, at: Self.start.addingTimeInterval(540)))
     }
 
     func testMissingCredentialsAndInvalidResponsesAreReportedWithoutLosingValues() throws {
@@ -585,7 +596,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         pipeline.tick()
         waitForRequests(2)
         let confirmed = try XCTUnwrap(waitForState(pipeline) { $0.windows.first?.remaining == 98 })
-        XCTAssertEqual(confirmed.status, .official(at: clock.now))
+        XCTAssertEqual(confirmed.status, .realtime(.oauthAPI, at: clock.now))
         lock.lock()
         XCTAssertEqual(notified.last?.officialQuotaWindows.first?.remaining, 98, "the confirmed new cycle reaches the notification rules")
         lock.unlock()
@@ -603,7 +614,8 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
             if case .resetPending = $0.status { return true }
             return false
         })
-        XCTAssertEqual(state.windows.first?.remaining, 77, "an old-cycle reading is not a confirmation")
+        XCTAssertEqual(state.windows.first?.remaining, 100,
+                       "an old-cycle reading is not a confirmation; the card shows the window as already reset")
     }
 
     /// Issue #580: crossing the reset deadline inside the automatic minimum interval still
@@ -620,7 +632,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         waitForRequests(2)
 
         let confirmed = try XCTUnwrap(waitForState(pipeline) { $0.windows.first?.remaining == 98 })
-        XCTAssertEqual(confirmed.status, .official(at: clock.now), "the new cycle is confirmed without waiting")
+        XCTAssertEqual(confirmed.status, .realtime(.oauthAPI, at: clock.now), "the new cycle is confirmed without waiting")
     }
 
     /// Issue #580: while the reset waits for official confirmation, a manual refresh reaches
@@ -648,7 +660,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         pipeline.requestFetch(reason: .manual)
         waitForRequests(3)
         let confirmed = try XCTUnwrap(waitForState(pipeline) { $0.windows.first?.remaining == 98 })
-        XCTAssertEqual(confirmed.status, .official(at: clock.now))
+        XCTAssertEqual(confirmed.status, .realtime(.oauthAPI, at: clock.now))
     }
 
     /// Issue #580: an unconfirmed reset keeps retrying the official read on a 1 → 2 minute
@@ -672,7 +684,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         retryTimer.fireFirst()
         waitForRequests(3)
         let confirmed = try XCTUnwrap(waitForState(pipeline) { $0.windows.first?.remaining == 98 })
-        XCTAssertEqual(confirmed.status, .official(at: clock.now))
+        XCTAssertEqual(confirmed.status, .realtime(.oauthAPI, at: clock.now))
         XCTAssertEqual(retryTimer.delays, [60, 120], "the cadence backs off while confirmation is pending")
     }
 
@@ -729,9 +741,9 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         XCTAssertEqual(until.timeIntervalSince(Self.start), 600, accuracy: 1,
                        "one token refills ten minutes after the epoch anchor")
     }
-    /// Issue #580: a window past its reset keeps no future reset time; the card row explains
-    /// the wait instead of showing an unknown countdown.
-    func testCardWindowShowsAwaitingConfirmationInsteadOfUnknownWhilePending() {
+    /// A window past its reset with no newer reading shows as already reset (untouched, full
+    /// window length) instead of the stale reading; the card projects "now + length" for display.
+    func testCardWindowShowsAlreadyResetWhilePending() {
         let display = QuotaWindowDisplay(
             kind: .fiveHour, usedPercentage: 70, resetsAt: Self.start.addingTimeInterval(-60),
             isEstimated: false, state: .resetPendingConfirmation, hoverTextKey: "quota.merge.hover.reset_pending_confirmation")
@@ -740,8 +752,11 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
             state: .resetPendingConfirmation, hoverTextKey: "quota.merge.hover.reset_pending_confirmation")
         let windows = ClaudeQuotaPipeline.cardWindows(from: model, now: Self.start)
         XCTAssertEqual(windows.map(\.kind), [.fiveHour])
-        XCTAssertEqual(windows.first?.reset, tr(.keyQuotaCardResetAwaitingConfirmation))
-        XCTAssertNil(windows.first?.resetAt)
+        XCTAssertEqual(windows.first?.remaining, 100)
+        XCTAssertEqual(windows.first?.reset, ResponseParsingSupport.resetDescription(5 * 3_600, now: Self.start))
+        XCTAssertNil(windows.first?.resetAt, "no server reset yet; the card projects now + 5h when drawing")
+        let projected = windows.first?.projectingIdleReset(now: Self.start)
+        XCTAssertEqual(projected?.resetAt, Self.start.addingTimeInterval(5 * 3_600))
 
         // Outside the pending state an unknown reset stays unknown.
         let inProgress = QuotaWindowDisplay(
@@ -805,7 +820,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         clock.advance(by: 5 * 3_600)
         restarted.tick()
         let confirmed = try XCTUnwrap(waitForState(restarted) { $0.windows.first?.remaining == 98 })
-        XCTAssertEqual(confirmed.status, .official(at: clock.now))
+        XCTAssertEqual(confirmed.status, .realtime(.oauthAPI, at: clock.now))
     }
 
     // MARK: - Mod snapshots through the inbox (Issue #596)
@@ -883,7 +898,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         // A changed snapshot on the official cycle is displayed and counts as evidence.
         clock.advance(by: 305)
         try placeModSnapshot(five: 25, seven: 42, observedAt: Self.start.addingTimeInterval(310))
-        let realtime = try XCTUnwrap(waitForState(pipeline) { $0.status == .realtime })
+        let realtime = try XCTUnwrap(waitForState(pipeline) { $0.status.isNativeRealtime })
         XCTAssertEqual(realtime.display.window(for: .fiveHour)?.usedPercentage, 25)
         XCTAssertEqual(realtime.display.window(for: .sevenDay)?.usedPercentage, 42)
 
@@ -937,7 +952,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         let state = try XCTUnwrap(pipeline.latestState)
         XCTAssertEqual(state.display.window(for: .fiveHour)?.usedPercentage, 23)
         XCTAssertEqual(state.display.window(for: .sevenDay)?.usedPercentage, 41)
-        XCTAssertEqual(state.status, .official(at: Self.start))
+        XCTAssertEqual(state.status, .realtime(.oauthAPI, at: Self.start))
         XCTAssertEqual(PipelineStubProtocol.requestCount, 1, "rejected Mod data must not suppress the official read")
         XCTAssertEqual(mergeWindowKeys(pipeline), ["five_hour", "seven_day"])
     }
@@ -949,7 +964,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         pipeline.requestFetch(reason: .initial)
         _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
         try placeModSnapshot(five: 25, seven: 42, observedAt: Self.start.addingTimeInterval(5))
-        _ = try XCTUnwrap(waitForState(pipeline) { $0.status == .realtime })
+        _ = try XCTUnwrap(waitForState(pipeline) { $0.status.isNativeRealtime })
 
         // Later the same file is rewritten byte for byte (inbox rescan): the whole-snapshot
         // replay is suppressed upstream and the freshness measured from the snapshot's own
@@ -976,7 +991,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         // A snapshot from a concurrent session that the merge engine rejects (usage would
         // move backwards) must not overwrite the replay baseline.
         try placeModSnapshot(five: 25, seven: 42, observedAt: Self.start.addingTimeInterval(5))
-        _ = try XCTUnwrap(waitForState(pipeline) { $0.status == .realtime })
+        _ = try XCTUnwrap(waitForState(pipeline) { $0.status.isNativeRealtime })
         clock.advance(by: 305)
         try placeModSnapshot(five: 24, seven: 41, observedAt: Self.start.addingTimeInterval(310))
         XCTAssertTrue(pollUntil {
@@ -1009,7 +1024,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         // The same values measured again, now with the official baseline in place: fresh
         // evidence, displayed instead of being filtered as a replay of a rejected snapshot.
         try placeModSnapshot(five: 25, seven: 42, observedAt: Self.start.addingTimeInterval(10))
-        let attributed = try XCTUnwrap(waitForState(pipeline) { $0.status == .realtime })
+        let attributed = try XCTUnwrap(waitForState(pipeline) { $0.status.isNativeRealtime })
         XCTAssertEqual(attributed.display.window(for: .fiveHour)?.usedPercentage, 25)
     }
 
@@ -1071,7 +1086,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         pipeline.requestFetch(reason: .initial)
         _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
         try placeModSnapshot(five: 25, seven: 42, observedAt: Self.start.addingTimeInterval(5))
-        _ = try XCTUnwrap(waitForState(pipeline) { $0.status == .realtime })
+        _ = try XCTUnwrap(waitForState(pipeline) { $0.status.isNativeRealtime })
 
         try writeAccount("account-b", email: "b@example.com")
         // The switch clears the card and reads the new account officially.
@@ -1091,7 +1106,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
 
         // Account B's own snapshot is attributed and displayed.
         try placeModSnapshot(five: 24, seven: 42, observedAt: Self.start.addingTimeInterval(20), email: "b@example.com")
-        let attributed = try XCTUnwrap(waitForState(pipeline) { $0.status == .realtime })
+        let attributed = try XCTUnwrap(waitForState(pipeline) { $0.status.isNativeRealtime })
         XCTAssertEqual(attributed.display.window(for: .fiveHour)?.usedPercentage, 24)
     }
 
@@ -1184,7 +1199,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
 
         // The same values on the official cycle are attributed and displayed.
         try placeModSnapshot(five: 24, seven: 42, observedAt: Self.start.addingTimeInterval(10))
-        let attributed = try XCTUnwrap(waitForState(pipeline) { $0.status == .realtime })
+        let attributed = try XCTUnwrap(waitForState(pipeline) { $0.status.isNativeRealtime })
         XCTAssertEqual(attributed.display.window(for: .fiveHour)?.usedPercentage, 24)
     }
 
@@ -1200,9 +1215,86 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         // statusLine re-renders report both windows whenever any of them changed; a window
         // whose integer percentage did not move is still part of that fresh report.
         deliverStatusLine(session: "s1", five: 24, seven: 41, at: Self.start.addingTimeInterval(5))
-        let state = try XCTUnwrap(waitForState(pipeline) { $0.status == .realtime })
+        let state = try XCTUnwrap(waitForState(pipeline) { $0.status.isNativeRealtime })
         XCTAssertEqual(state.display.window(for: .fiveHour)?.usedPercentage, 24)
         XCTAssertEqual(state.display.window(for: .sevenDay)?.usedPercentage, 41)
+    }
+
+    func testFreshStatusLineOverridesUnauthorizedErrorStatus() throws {
+        let pipeline = makePipeline(
+            configuration: claudeV1TestConfiguration, statusLineEnabled: true,
+            withTestStatusLine: true, withInbox: true)
+        lastStatusLineSessions?.starts["s1"] = Self.start.addingTimeInterval(1)
+        pipeline.start()
+        pipeline.requestFetch(reason: .initial)
+        _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+
+        PipelineStubProtocol.set(.init(status: 401))
+        clock.advance(by: 600)
+        pipeline.requestFetch(reason: .manual)
+        _ = try XCTUnwrap(waitForState(pipeline) { $0.failure == .unauthorized })
+
+        deliverStatusLine(session: "s1", five: 24, seven: 41, at: clock.now)
+        let state = try XCTUnwrap(waitForState(pipeline) { $0.status.isNativeRealtime })
+        XCTAssertEqual(state.failure, .unauthorized, "the official read is still paused; only the card status recovers")
+
+        // Past the real-time freshness the local reading is still current evidence: no red card.
+        clock.advance(by: 300)
+        pipeline.tick()
+        pipeline.waitUntilIdle()
+        if case .error = pipeline.latestState?.status { XCTFail("a recent local reading must not look failed") }
+
+        // Without new local data for long enough the failure matters again.
+        clock.advance(by: ClaudeQuotaPipeline.localDataStaleAfter)
+        pipeline.tick()
+        pipeline.waitUntilIdle()
+        guard case .error = pipeline.latestState?.status else {
+            return XCTFail("expected error once local data went stale, got \(String(describing: pipeline.latestState?.status))")
+        }
+    }
+
+    func testStatusLineReadingBecomesAgeAndSourceOnceItIsNoLongerLive() throws {
+        let pipeline = makePipeline(
+            configuration: claudeV1TestConfiguration, statusLineEnabled: true,
+            withTestStatusLine: true, withInbox: true)
+        lastStatusLineSessions?.starts["s1"] = Self.start.addingTimeInterval(1)
+        pipeline.start()
+        pipeline.requestFetch(reason: .initial)
+        _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+
+        let at = Self.start.addingTimeInterval(5)
+        deliverStatusLine(session: "s1", five: 24, seven: 41, at: at)
+        let live = try XCTUnwrap(waitForState(pipeline) { $0.status.liveSource == .statusLine })
+        XCTAssertEqual(live.status, .realtime(.statusLine, at: at))
+
+        // Past the two-minute freshness the card keeps the values but says how old they are and who
+        // produced them, instead of a bare clock time.
+        clock.advance(by: 125)
+        pipeline.tick()
+        pipeline.waitUntilIdle()
+        XCTAssertEqual(pipeline.latestState?.status, .official(at: at, source: .statusLine))
+    }
+
+    /// A Mod reading that moved backwards inside the cycle is rejected for that window only. The other
+    /// window is still updated in real time, so the slot must not fall back to the stale/orange look.
+    func testModReadingKeepsTheSlotLiveWhenOneWindowIsRejected() throws {
+        let tracker = ClaudeRealtimeTracker(now: { [clock] in clock!.now })
+        let pipeline = makePipeline(realtimeTracker: tracker, configuration: claudeV1TestConfiguration, withInbox: true)
+        pipeline.start()
+        pipeline.requestFetch(reason: .initial)
+        _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+
+        try placeModSnapshot(five: 24, seven: 40, observedAt: Self.start.addingTimeInterval(5))
+        let state = try XCTUnwrap(waitForState(pipeline) { $0.display.window(for: .fiveHour)?.usedPercentage == 24 })
+        XCTAssertEqual(state.display.window(for: .sevenDay)?.usedPercentage, 41, "the lower seven-day value is rejected")
+        XCTAssertEqual(state.status.liveSource, .mod)
+
+        // Two minutes after that reading the slot shows its age and source.
+        clock.advance(by: 130)
+        pipeline.tick()
+        pipeline.waitUntilIdle()
+        XCTAssertEqual(pipeline.latestState?.status.liveSource, nil)
+        XCTAssertEqual(pipeline.latestState?.status, .official(at: Self.start.addingTimeInterval(5), source: .mod))
     }
 
     func testModPartialWindowChangeKeepsWholeSnapshotAsEvidence() throws {
@@ -1212,7 +1304,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         pipeline.requestFetch(reason: .initial)
         _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
         try placeModSnapshot(five: 24, seven: 42, observedAt: Self.start.addingTimeInterval(5))
-        _ = try XCTUnwrap(waitForState(pipeline) { $0.status == .realtime })
+        _ = try XCTUnwrap(waitForState(pipeline) { $0.status.isNativeRealtime })
 
         // One window changed, the other repeated its value: like statusLine's whole-payload
         // semantics, the whole snapshot is fresh evidence, so both windows are re-recorded.
@@ -1222,7 +1314,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         // The unchanged window's evidence moved with this snapshot (start+15 + 120s); a
         // per-window replay rule would have left it at start+5 + 120s and expired by now.
         clock.advance(by: 115) // start+125
-        XCTAssertEqual(pipeline.latestState?.status, .realtime)
+        XCTAssertTrue(pipeline.latestState?.status.isNativeRealtime ?? false)
     }
 
     func testPendingResetBlocksModDataFromSuppressingOfficialConfirmation() throws {
@@ -1246,9 +1338,10 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         let provisional = try XCTUnwrap(waitForState(pipeline) {
             $0.display.window(for: .fiveHour)?.usedPercentage == 2
         })
-        if case .resetPending = provisional.status {} else {
-            XCTFail("expected resetPending, got \(provisional.status)")
-        }
+        // The provisional reading is real next-cycle data from a local source: the card shows it
+        // as real-time instead of "waiting", while the engine keeps the window pending.
+        XCTAssertTrue(provisional.status.isNativeRealtime)
+        XCTAssertNotNil(pipeline.mergeStateForDiagnostics?.windows[QuotaWindowKind.fiveHour.rawValue]?.pendingResetOf)
 
         // Pending confirmation blocks realtime freshness, so reads still reach the server.
         clock.advance(by: 310)
@@ -1266,19 +1359,20 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
 
         deliverStatusLine(session: "s1", five: 24, seven: 42, at: Self.start.addingTimeInterval(5))
-        let native = try XCTUnwrap(waitForState(pipeline) { $0.status == .realtime })
+        let native = try XCTUnwrap(waitForState(pipeline) { $0.status.isNativeRealtime })
         XCTAssertEqual(native.display.window(for: .fiveHour)?.usedPercentage, 24)
+        XCTAssertEqual(native.status.liveSource, .statusLine, "the slot names the source of the newest reading")
 
         // A newer Mod snapshot takes over the display without summing with statusLine data.
         try placeModSnapshot(five: 25, seven: 43, observedAt: Self.start.addingTimeInterval(10))
         let mod = try XCTUnwrap(waitForState(pipeline) { $0.display.window(for: .fiveHour)?.usedPercentage == 25 })
-        XCTAssertEqual(mod.status, .realtime)
+        XCTAssertEqual(mod.status.liveSource, .mod)
         XCTAssertEqual(mod.display.window(for: .sevenDay)?.usedPercentage, 43)
 
         // A later statusLine render wins again; only one source's values are ever shown.
         deliverStatusLine(session: "s1", five: 27, seven: 42, at: Self.start.addingTimeInterval(20))
         let latest = try XCTUnwrap(waitForState(pipeline) { $0.display.window(for: .fiveHour)?.usedPercentage == 27 })
-        XCTAssertEqual(latest.status, .realtime)
+        XCTAssertEqual(latest.status.liveSource, .statusLine)
 
         // An older Mod snapshot cannot regress the display.
         try placeModSnapshot(five: 24, seven: 43, observedAt: Self.start.addingTimeInterval(8), as: "balancebar-mod-old.json")
@@ -1330,5 +1424,17 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         guard connected == 0 else { return false }
         _ = data.withUnsafeBytes { write(fd, $0.baseAddress, data.count) }
         return true
+    }
+}
+
+private extension StatusSlotState {
+    /// Live from statusLine or the Mod (a fresh official read is also `.realtime(.oauthAPI)`).
+    var isNativeRealtime: Bool {
+        liveSource == .statusLine || liveSource == .mod
+    }
+
+    var liveSource: StatusSlotLiveSource? {
+        if case let .realtime(source, _) = self { return source }
+        return nil
     }
 }

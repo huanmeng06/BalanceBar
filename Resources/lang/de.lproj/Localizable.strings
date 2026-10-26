@@ -576,15 +576,21 @@
 
 "quota.status.refreshing" = "Lädt…";
 "quota.status.realtime" = "Live";
+"quota.status.ago.minutes" = "vor %1$@ Min.";
+"quota.status.ago.hours" = "vor %1$@ Std.";
+"quota.status.ago.days" = "vor %1$@ T.";
+"quota.status.source.oauth_api" = "OAuth API";
+"quota.status.source.native_sync" = "Nativ";
+"quota.status.source.mod" = "Mod";
 "quota.status.hover.refreshing" = "Aktuelles Kontingent wird gelesen";
 "quota.status.hover.error" = "Aktualisierung fehlgeschlagen. Angezeigt werden die Daten von %1$@";
 "quota.status.hover.estimated" = "Geschätzt aus den Daten von %1$@, offizielle Bestätigung steht aus";
 "quota.status.hover.realtime" = "Aus Live-Daten dieses Macs";
 "quota.status.hover.official" = "Offizielle Daten, aktualisiert um %1$@";
+"quota.status.hover.local" = "Daten dieses Macs, aktualisiert um %1$@";
 "quota.status.hover.external_activity" = "Aktivität auf einem anderen Client erkannt; Aktualisierung erfolgt häufiger";
 "quota.status.reset_pending" = "Wahrscheinlich zurückgesetzt; Bestätigung steht aus";
 "quota.status.reset_pending_short" = "Offen";
-"quota.card.reset_awaiting_confirmation" = "Zurücksetzungszeit überschritten, warte auf Bestätigung";
 "quota.failure.open_usage_page" = "Offizielle Nutzungsseite öffnen";
 "quota.status.accessibility" = "Kontingentstatus: %1$@";
 "claude.refresh.login_expired" = "Die Claude-Code-Anmeldung ist abgelaufen. Führe einmal claude im Terminal aus, um sie wiederherzustellen; BalanceBar erneuert die Anmeldung nie selbst.";

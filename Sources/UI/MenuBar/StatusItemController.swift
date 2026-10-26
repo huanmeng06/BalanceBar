@@ -7193,6 +7193,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             applyQuotaStatus(quotaStatus, reason: snapshot.staleReason, to: slot)
             slot.identifier = NSUserInterfaceItemIdentifier("overview.refreshTime")
             slot.frame = Self.statusSlotFrame(in: headerFrame(layout.refreshTime))
+            // The slot extends left of the refresh-time column; the title yields the space.
+            provider.frame.size.width = max(0, min(provider.frame.width, slot.frame.minX - provider.frame.minX - 6))
             headerHost.addSubview(slot)
         } else if snapshot.kind == .official || snapshot.kind == .balance {
             let refreshTime = makeOverviewLabel("", font: .monospacedDigitSystemFont(ofSize: 12, weight: .regular))
@@ -8458,9 +8460,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     /// Shared by a rebuilt card and an in-place update, like `applyRefreshTime`.
     /// The failure reason, when any, is appended to the slot's hover text.
     private func applyQuotaStatus(_ state: StatusSlotState, reason: String?, to slot: StatusSlotView) {
+        slot.hoverDetail = reason
         slot.update(state: state)
-        guard let reason, !reason.isEmpty else { return }
-        slot.toolTip = (slot.toolTip.map { $0 + "\n" } ?? "") + reason
     }
 
     private func reconcileOverviewSectionsIfTracking() {

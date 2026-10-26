@@ -144,6 +144,23 @@ final class QuotaMergeEngineTests: XCTestCase {
         XCTAssertEqual(sink.events, [.resetConfirmed(window: .fiveHour)])
     }
 
+    /// The card presents a pending window showing a provisional grade-B next-cycle reading as in
+    /// progress (real data), while a pending window with no newer reading stays "waiting".
+    func testPresentationTreatsProvisionalNextCycleAsInProgress() {
+        let engine = makeEngine()
+        engine.merge(obs(80, resetsIn: 3_600))
+        clock = t0.addingTimeInterval(3_601)
+        var model = engine.refresh()
+        var presented = ClaudeQuotaPipeline.presentationModel(from: model, merged: engine.currentState)
+        XCTAssertEqual(presented.window(for: .fiveHour)?.state, .resetPendingConfirmation)
+
+        model = engine.merge(obs(5, resetsIn: 3_600 + 18_000, at: 3_602, trust: .b))
+        presented = ClaudeQuotaPipeline.presentationModel(from: model, merged: engine.currentState)
+        XCTAssertEqual(model.window(for: .fiveHour)?.state, .resetPendingConfirmation, "the engine keeps it pending")
+        XCTAssertEqual(presented.window(for: .fiveHour)?.state, .inProgress)
+        XCTAssertEqual(presented.window(for: .fiveHour)?.usedPercentage, 5)
+    }
+
     func testNotStartedReadingConfirmsReset() {
         let engine = makeEngine()
         engine.merge(obs(80, resetsIn: 60))

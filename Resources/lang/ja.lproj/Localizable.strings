@@ -576,15 +576,21 @@
 
 "quota.status.refreshing" = "更新中…";
 "quota.status.realtime" = "ライブ";
+"quota.status.ago.minutes" = "%1$@分前";
+"quota.status.ago.hours" = "%1$@時間前";
+"quota.status.ago.days" = "%1$@日前";
+"quota.status.source.oauth_api" = "OAuth API";
+"quota.status.source.native_sync" = "ネイティブ";
+"quota.status.source.mod" = "Mod";
 "quota.status.hover.refreshing" = "最新のクォータを取得中";
 "quota.status.hover.error" = "更新に失敗しました。%1$@ のデータを表示中";
 "quota.status.hover.estimated" = "%1$@ のデータから推定。公式の確認待ち";
 "quota.status.hover.realtime" = "この Mac のリアルタイムデータ";
 "quota.status.hover.official" = "公式データ（%1$@ に更新）";
+"quota.status.hover.local" = "この Mac のデータ（%1$@ に更新）";
 "quota.status.hover.external_activity" = "他のクライアントでの利用を検出したため、更新頻度を上げました";
 "quota.status.reset_pending" = "リセット済みの可能性があります。確認待ち";
 "quota.status.reset_pending_short" = "確認待ち";
-"quota.card.reset_awaiting_confirmation" = "リセット時間経過、確認待ち";
 "quota.failure.open_usage_page" = "公式の使用状況ページを開く";
 "quota.status.accessibility" = "クォータの状態：%1$@";
 "claude.refresh.login_expired" = "Claude Code のサインインが期限切れです。ターミナルで claude を一度実行すると復旧します。BalanceBar がサインインを自動更新することはありません。";

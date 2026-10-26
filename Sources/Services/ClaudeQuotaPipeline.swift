@@ -155,6 +155,8 @@ final class ClaudeQuotaPipeline {
     private var statusLineEnabled = false
     private var pendingReasons: [FetchRequestReason] = []
     private var failure: ClaudeQuotaFailure?
+    /// Start of the current unbroken run of failed official reads; nil while none is failing.
+    private var failureSince: Date?
     private var refreshing = false
     private var lastClientError: OfficialQuotaClientError?
     private var lastSuccessAt: Date?
@@ -459,7 +461,7 @@ final class ClaudeQuotaPipeline {
         realtimeTracker?.reset(epoch: change.epoch)
         statusLineSource?.accountDidChange(epoch: change.epoch)
         lock.withLock {
-            failure = nil
+            setFailureLocked(nil)
             refreshing = false
             lastSuccessAt = nil
         }
@@ -541,6 +543,9 @@ final class ClaudeQuotaPipeline {
         let displayed = engine.currentState.windows[observation.window.rawValue]?.displayed
         let accepted = displayed?.source == observation.source
             && displayed?.receivedAt == observation.receivedAt
+        diagnostics(
+            "claude native observation; source=\(observation.source); window=\(observation.window.rawValue); accepted=\(accepted)",
+            .debug)
         if accepted {
             realtimeTracker?.recordTrustedObservation(
                 window: observation.window,
@@ -581,10 +586,36 @@ final class ClaudeQuotaPipeline {
             newFailure = Self.failure(from: lock.withLock { lastClientError })
         }
         lock.withLock {
-            failure = newFailure
+            setFailureLocked(newFailure)
             refreshing = false
         }
+        if let newFailure {
+            diagnostics("claude official fetch failed; kind=\(Self.failureKind(newFailure))", .info)
+        }
         publish()
+    }
+
+    /// Records the failure and keeps `failureSince` at the start of the run. Caller holds `lock`.
+    private func setFailureLocked(_ newFailure: ClaudeQuotaFailure?) {
+        failure = newFailure
+        if newFailure == nil {
+            failureSince = nil
+        } else if failureSince == nil {
+            failureSince = now()
+        }
+    }
+
+    /// Non-secret failure category for diagnostics.
+    private static func failureKind(_ failure: ClaudeQuotaFailure) -> String {
+        switch failure {
+        case .missingCredentials: return "missing_credentials"
+        case .rateLimited: return "rate_limited"
+        case .unauthorized: return "unauthorized"
+        case let .transport(possibleProxy, description):
+            return "transport; possible_proxy=\(possibleProxy); detail=\(description)"
+        case let .http(status): return "http; status=\(status)"
+        case .invalidResponse: return "invalid_response"
+        }
     }
 
     private func merge(_ data: Data, delivery: FetchSchedulerDelivery, into engine: QuotaMergeEngine) -> ClaudeQuotaFailure? {
@@ -679,7 +710,7 @@ final class ClaudeQuotaPipeline {
             }
             guard let skipFailure else { return }
             queue.async { [self] in
-                lock.withLock { failure = skipFailure }
+                lock.withLock { setFailureLocked(skipFailure) }
                 publish()
             }
         case .requested, .completed:
@@ -702,24 +733,50 @@ final class ClaudeQuotaPipeline {
         let merged = engine.currentState
         let date = now()
         let updatedAt = merged.windows.values.compactMap { $0.displayed?.receivedAt }.max()
-        let (failure, refreshing, handler) = lock.withLock { (self.failure, self.refreshing, updateHandler) }
-        // A failure marks the displayed values as outdated without discarding them.
-        let shown = failure == nil ? model : QuotaDisplayModel(
-            windows: model.windows, isEstimated: model.isEstimated, state: .error, hoverTextKey: model.hoverTextKey)
-        // "Real-time" status: both standard windows are displayed by a trusted local source
-        // (statusLine or the Mod's inbox snapshots) and the tracker still considers them fresh.
-        let nativeDisplayed = realtimeTracker?.lastTrustedRealtimeObservationAt != nil
-            && [QuotaWindowKind.fiveHour, .sevenDay].allSatisfy { kind in
-                guard let source = engine.currentState.windows[kind.rawValue]?.displayed?.source else { return false }
-                return source == ClaudeStatusLineSource.identifier || source == SnapshotInbox.modSourceID
-            }
+        let (failure, failureSince, refreshing, handler) = lock.withLock {
+            (self.failure, self.failureSince, self.refreshing, updateHandler)
+        }
+        // Local evidence: readings displayed from statusLine or the Mod's inbox snapshots.
+        // `ClaudeRealtimeTracker` stays scheduler-only; a pending reset must not hide fresh
+        // local readings from the card, so freshness is read from the displayed readings.
+        let standard = [QuotaWindowKind.fiveHour, .sevenDay].map { merged.windows[$0.rawValue]?.displayed }
+        func isLocal(_ reading: QuotaMergedReading?) -> Bool {
+            guard let reading, reading.epoch == identity.accountEpoch else { return false }
+            return reading.source == ClaudeStatusLineSource.identifier || reading.source == SnapshotInbox.modSourceID
+        }
+        // "Live" status: the newest displayed reading comes from a local source and is fresh. One
+        // window may keep its official value (a local reading that moved backwards inside the cycle
+        // is rejected), which must not hide that the other window is being updated in real time.
+        let newestStandard = standard.compactMap { $0 }.max { $0.effectiveTime < $1.effectiveTime }
+        let nativeDisplayed = isLocal(newestStandard)
+            && date.timeIntervalSince(newestStandard!.effectiveTime) <= QuotaConstants.realtimeSourceFreshness
+        // A failed official read marks the displayed values as outdated without discarding
+        // them. It only concerns the Usage API, though: a local reading received after the
+        // failures began, and not older than `localDataStaleAfter`, is current evidence, so the
+        // failure stays in `failure` (diagnostics, menu subtitle) without turning the card red.
+        let localReadingIsCurrent = merged.windows.values.compactMap(\.displayed).contains { reading in
+            isLocal(reading)
+                && reading.effectiveTime >= (failureSince ?? .distantPast)
+                && date.timeIntervalSince(reading.effectiveTime) <= Self.localDataStaleAfter
+        }
+        let failureTaintsDisplay = failure != nil && !nativeDisplayed && !localReadingIsCurrent
+        // A pending window that already shows a provisional next-cycle reading from a local
+        // source is presented as in progress; the engine keeps it pending until grade-A data.
+        let presented = Self.presentationModel(from: model, merged: merged)
+        let shown = failureTaintsDisplay ? QuotaDisplayModel(
+            windows: presented.windows, isEstimated: presented.isEstimated, state: .error,
+            hoverTextKey: presented.hoverTextKey) : presented
         let status = StatusSlotState.resolve(
             model: shown,
             context: StatusSlotContext(isRefreshing: refreshing,
-                source: nativeDisplayed ? .realtime : .official, updatedAt: updatedAt))
+                source: Self.liveSource(of: standard, now: date, nativeDisplayed: nativeDisplayed),
+                // The slot's age is the reading's own time, not when BalanceBar happened to receive it
+                // (a Mod snapshot read at launch may have been written minutes earlier).
+                updatedAt: newestStandard?.effectiveTime ?? updatedAt,
+                lastSource: Self.statusSource(of: standard)))
         let next = ClaudeQuotaState(
             display: model,
-            windows: DevelopmentClaudeIdleDemo.windows() ?? Self.cardWindows(from: model, now: date),
+            windows: DevelopmentClaudeIdleDemo.windows() ?? Self.cardWindows(from: presented, now: date),
             accountEpoch: identity.accountEpoch,
             accountScope: Self.accountScope(for: identity.accountIdentity),
             predictionAccountKey: Self.predictionAccountKey(for: identity.accountIdentity),
@@ -739,23 +796,76 @@ final class ClaudeQuotaPipeline {
 
     // MARK: - Pure helpers
 
+    /// Source of the newest standard-window reading, for the "N 分钟前 · 来源" label.
+    static func statusSource(of standard: [QuotaMergedReading?]) -> StatusSlotLiveSource? {
+        guard let newest = standard.compactMap({ $0 }).max(by: { $0.effectiveTime < $1.effectiveTime }) else {
+            return nil
+        }
+        switch newest.source {
+        case ClaudeStatusLineSource.identifier: return .statusLine
+        case SnapshotInbox.modSourceID: return .mod
+        case sourceID: return .oauthAPI
+        default: return nil
+        }
+    }
+
+    /// How long an official (OAuth API) reading still counts as live on the status slot.
+    static let officialLiveFor: TimeInterval = 600
+
+    /// Source label for the status slot: the newest standard-window reading decides. A local source
+    /// is live while that reading is fresh (`nativeDisplayed`); an official read stays live for `officialLiveFor`.
+    static func liveSource(of standard: [QuotaMergedReading?], now: Date, nativeDisplayed: Bool) -> StatusSlotSource {
+        guard let newest = standard.compactMap({ $0 }).max(by: { $0.effectiveTime < $1.effectiveTime }) else {
+            return .official
+        }
+        switch newest.source {
+        case ClaudeStatusLineSource.identifier where nativeDisplayed: return .realtime(.statusLine)
+        case SnapshotInbox.modSourceID where nativeDisplayed: return .realtime(.mod)
+        case sourceID where now.timeIntervalSince(newest.effectiveTime) <= officialLiveFor: return .realtime(.oauthAPI)
+        default: return .official
+        }
+    }
+
+    /// How long a local (statusLine / Mod) reading keeps the card out of the error state
+    /// while official reads keep failing: about two automatic refresh cycles.
+    static let localDataStaleAfter: TimeInterval = 600
+
+    /// The model as the card presents it: a window awaiting confirmation that already displays a
+    /// grade-B reading of the next cycle is real data, not "waiting".
+    static func presentationModel(from model: QuotaDisplayModel, merged: QuotaMergeState) -> QuotaDisplayModel {
+        var changed = false
+        let windows = model.windows.map { window -> QuotaWindowDisplay in
+            guard window.state == .resetPendingConfirmation,
+                  let state = merged.windows[window.kind.rawValue],
+                  let pending = state.pendingResetOf,
+                  let displayed = state.displayed,
+                  displayed.trust == .b, displayed.effectiveTime > pending else { return window }
+            changed = true
+            return QuotaWindowDisplay(
+                kind: window.kind, usedPercentage: window.usedPercentage, resetsAt: window.resetsAt,
+                isEstimated: window.isEstimated, state: .inProgress, hoverTextKey: QuotaMergeEngine.hoverKey(.inProgress))
+        }
+        guard changed else { return model }
+        let aggregate = QuotaMergeEngine.aggregateState(windows.map(\.state))
+        return QuotaDisplayModel(windows: windows, isEstimated: model.isEstimated, state: aggregate,
+                                 hoverTextKey: QuotaMergeEngine.hoverKey(aggregate))
+    }
+
     private static let windowOrder = ["five_hour", "seven_day", "seven_day_sonnet", "seven_day_opus"]
 
     static func cardWindows(from model: QuotaDisplayModel, now: Date) -> [OfficialQuotaWindow] {
         model.windows
             .compactMap { display -> (Int, OfficialQuotaWindow)? in
                 guard let used = display.usedPercentage,
-                      let window = OfficialQuotaResponseParser.claudeWindow(
-                        for: display.kind, usedPercentage: used, resetsAt: display.resetsAt, now: now),
                       let order = windowOrder.firstIndex(of: display.kind.rawValue) else { return nil }
-                // A window past its reset keeps no future reset time; explain the wait
-                // instead of showing an unknown countdown.
-                let card = display.state == .resetPendingConfirmation && window.reset == nil
-                    ? OfficialQuotaWindow(kind: window.kind, remaining: window.remaining, label: window.label,
-                        daysText: window.daysText, reset: tr(.keyQuotaCardResetAwaitingConfirmation),
-                        durationSeconds: window.durationSeconds, resetAt: window.resetAt)
-                    : window
-                return (order, card)
+                // A window past its reset with no newer reading is shown as already reset: untouched
+                // (100%) with the window length, which the card projects to now + length.
+                // The old reading is not shown as if it still applied.
+                let pendingReset = display.state == .resetPendingConfirmation
+                guard let window = OfficialQuotaResponseParser.claudeWindow(
+                    for: display.kind, usedPercentage: pendingReset ? 0 : used,
+                    resetsAt: pendingReset ? nil : display.resetsAt, now: now) else { return nil }
+                return (order, window)
             }
             .sorted { $0.0 < $1.0 }
             .map(\.1)
@@ -823,6 +933,11 @@ private final class ClaudeUsageTransport: UsageFetchTransport {
         guard pipeline.hasAccount else {
             pipeline.recordClientError(.missingCredentials)
             completion(.failure("missing_account"))
+            return
+        }
+        if DevelopmentClaudeUnauthorizedSimulation.isActive {
+            pipeline.recordClientError(nil)
+            completion(.unauthorized)
             return
         }
         let epoch = pipeline.currentEpoch
@@ -893,5 +1008,17 @@ enum DevelopmentClaudeIdleDemo {
             OfficialQuotaWindow(kind: .sevenDay, remaining: 100, label: tr(.keyResponseParsers7DayQuota),
                 daysText: tr(.keyResponseParsers7Days), reset: "7d0h", durationSeconds: 7 * 86_400)
         ]
+    }
+}
+
+/// Makes the Claude usage request answer 401 for manual testing of the login-expired
+/// states. Only the development bundle honours `BALANCEBAR_SIMULATE_CLAUDE_401=1`.
+/// The resulting pause is persisted; delete the dev bundle's `claude-fetch-scheduler.json` to clear it.
+enum DevelopmentClaudeUnauthorizedSimulation {
+    static var isActive: Bool {
+        guard let id = Bundle.main.bundleIdentifier,
+              id == "com.huanmeng06.BalanceBar.dev" || id.hasPrefix("com.huanmeng06.BalanceBar.dev.")
+        else { return false }
+        return ProcessInfo.processInfo.environment["BALANCEBAR_SIMULATE_CLAUDE_401"] == "1"
     }
 }

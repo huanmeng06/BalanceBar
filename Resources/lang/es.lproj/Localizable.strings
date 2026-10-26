@@ -576,15 +576,21 @@
 
 "quota.status.refreshing" = "Cargando…";
 "quota.status.realtime" = "En vivo";
+"quota.status.ago.minutes" = "hace %1$@ min";
+"quota.status.ago.hours" = "hace %1$@ h";
+"quota.status.ago.days" = "hace %1$@ d";
+"quota.status.source.oauth_api" = "OAuth API";
+"quota.status.source.native_sync" = "Nativo";
+"quota.status.source.mod" = "Mod";
 "quota.status.hover.refreshing" = "Leyendo la cuota más reciente";
 "quota.status.hover.error" = "Error al actualizar. Se muestran los datos de las %1$@";
 "quota.status.hover.estimated" = "Estimado con los datos de las %1$@, pendiente de confirmación oficial";
 "quota.status.hover.realtime" = "Datos en vivo de este Mac";
 "quota.status.hover.official" = "Datos oficiales, actualizados a las %1$@";
+"quota.status.hover.local" = "Datos de este Mac, actualizados a las %1$@";
 "quota.status.hover.external_activity" = "Se detectó actividad en otro cliente; se actualiza con más frecuencia";
 "quota.status.reset_pending" = "Probablemente restablecida; pendiente de confirmación";
 "quota.status.reset_pending_short" = "Pendiente";
-"quota.card.reset_awaiting_confirmation" = "Hora de restablecimiento pasada, esperando confirmación";
 "quota.failure.open_usage_page" = "Abrir la página oficial de uso";
 "quota.status.accessibility" = "Estado de la cuota: %1$@";
 "claude.refresh.login_expired" = "El inicio de sesión de Claude Code ha caducado. Ejecuta claude una vez en una terminal para restaurarlo; BalanceBar nunca renueva el inicio de sesión por sí mismo.";

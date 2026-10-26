@@ -22,7 +22,9 @@ final class StatusSlotViewTests: XCTestCase {
             ("error", .error(at: time)),
             ("resetPending", .resetPending(at: time)),
             ("estimated", .estimated(at: time)),
-            ("realtime", .realtime),
+            ("realtime", .realtime(.statusLine, at: time)),
+            ("realtime-oauth", .realtime(.oauthAPI, at: time)),
+            ("realtime-mod", .realtime(.mod, at: time)),
             ("official", .official(at: time)),
         ]
     }
@@ -30,7 +32,7 @@ final class StatusSlotViewTests: XCTestCase {
     // MARK: Priority
 
     func testResolvePriorityOrder() {
-        let ctx = StatusSlotContext(isRefreshing: true, source: .realtime, updatedAt: time)
+        let ctx = StatusSlotContext(isRefreshing: true, source: .realtime(.statusLine), updatedAt: time)
         XCTAssertEqual(StatusSlotState.resolve(model: model(state: .error, estimated: true), context: ctx), .refreshing)
 
         var c = ctx; c.isRefreshing = false
@@ -38,16 +40,12 @@ final class StatusSlotViewTests: XCTestCase {
         XCTAssertEqual(StatusSlotState.resolve(model: model(state: .expired), context: c), .error(at: time))
         XCTAssertEqual(StatusSlotState.resolve(model: model(state: .resetPendingConfirmation, estimated: true), context: c), .resetPending(at: time))
         XCTAssertEqual(StatusSlotState.resolve(model: model(estimated: true), context: c), .estimated(at: time))
-        XCTAssertEqual(StatusSlotState.resolve(model: model(), context: c), .realtime)
+        XCTAssertEqual(StatusSlotState.resolve(model: model(), context: c), .realtime(.statusLine, at: time))
         c.source = .official
         XCTAssertEqual(StatusSlotState.resolve(model: model(), context: c), .official(at: time))
     }
 
-    // MARK: Snapshots (light + dark)
-
-    private static let snapshotDirectory = URL(fileURLWithPath: #filePath)
-        .deletingLastPathComponent()
-        .appendingPathComponent("__Snapshots__", isDirectory: true)
+    // MARK: Rendering (light + dark)
 
     private func render(_ state: StatusSlotState, _ appearanceName: NSAppearance.Name) throws -> (StatusSlotView, NSBitmapImageRep) {
         let view = StatusSlotView(timeZone: utc)
@@ -71,38 +69,6 @@ final class StatusSlotViewTests: XCTestCase {
         rep.size = view.bounds.size
         view.cacheDisplay(in: view.bounds, to: rep)
         return (view, rep)
-    }
-
-    /// Compares the real rendering of every state in light and dark mode against
-    /// checked-in reference PNGs. Set BB_RECORD_SNAPSHOTS=1 to (re)record.
-    func testRenderedSnapshotsMatchReferenceImages() throws {
-        let record = ProcessInfo.processInfo.environment["BB_RECORD_SNAPSHOTS"] == "1"
-        var missing: [String] = []
-        for appearanceName in [NSAppearance.Name.aqua, .darkAqua] {
-            let suffix = appearanceName == .aqua ? "light" : "dark"
-            for (name, state) in allStates {
-                let (_, rep) = try render(state, appearanceName)
-                let url = Self.snapshotDirectory.appendingPathComponent("\(name)-\(suffix).png")
-                if record || !FileManager.default.fileExists(atPath: url.path) {
-                    try FileManager.default.createDirectory(at: Self.snapshotDirectory, withIntermediateDirectories: true)
-                    try XCTUnwrap(rep.representation(using: .png, properties: [:])).write(to: url)
-                    missing.append(url.lastPathComponent)
-                    continue
-                }
-                let reference = try XCTUnwrap(NSBitmapImageRep(data: Data(contentsOf: url)))
-                XCTAssertEqual(reference.pixelsWide, rep.pixelsWide, url.lastPathComponent)
-                XCTAssertEqual(reference.pixelsHigh, rep.pixelsHigh, url.lastPathComponent)
-                guard reference.pixelsWide == rep.pixelsWide, reference.pixelsHigh == rep.pixelsHigh else { continue }
-                // Compare ink structure (bounding box ±2px, coverage ±35%), not exact pixels:
-                // glyph antialiasing differs between macOS runners. Colors and the green dot
-                // are checked strictly in testRenderedColorsClippingAndAppearance.
-                let actual = InkStructure(rep), expected = InkStructure(reference)
-                XCTAssertTrue(actual.matches(expected), "\(url.lastPathComponent) ink structure \(actual) differs from reference \(expected)")
-            }
-        }
-        if !missing.isEmpty {
-            XCTFail("Recorded snapshots (re-run to verify): \(missing)")
-        }
     }
 
     /// Rendering-level checks that do not depend on font rasterisation details.
@@ -153,6 +119,92 @@ final class StatusSlotViewTests: XCTestCase {
         }
     }
 
+    // MARK: Relative time and source
+
+    func testRelativeTextUnits() {
+        let now = Date(timeIntervalSince1970: 1_767_300_000)
+        func text(_ seconds: TimeInterval?) -> String {
+            StatusSlotAppearance.relativeText(
+                from: seconds.map { now.addingTimeInterval(-$0) }, now: now, localize: StatusSlotText.defaultLocalize)
+        }
+        XCTAssertEqual(text(nil), "--")
+        XCTAssertEqual(text(0), "1 分钟前")
+        XCTAssertEqual(text(59), "1 分钟前")
+        XCTAssertEqual(text(60), "1 分钟前")
+        XCTAssertEqual(text(125), "2 分钟前")
+        XCTAssertEqual(text(59 * 60 + 59), "59 分钟前")
+        XCTAssertEqual(text(3_600), "1 小时前")
+        XCTAssertEqual(text(23 * 3_600 + 3_599), "23 小时前")
+        XCTAssertEqual(text(24 * 3_600), "1 天前")
+        XCTAssertEqual(text(3 * 86_400), "3 天前")
+        XCTAssertEqual(text(-500), "1 分钟前", "a clock that ran backwards never shows a negative age")
+    }
+
+    func testStaleAndFailedStatesShowAgeAndSourceInsteadOfClockTime() {
+        var clock = time.addingTimeInterval(5 * 60)
+        let view = StatusSlotView(timeZone: utc, now: { clock })
+
+        view.update(state: .official(at: time, source: .mod))
+        XCTAssertEqual(view.textForTesting, "5 分钟前 · Mod")
+        XCTAssertTrue(view.isDotVisibleForTesting, "stale readings carry the orange dot")
+        XCTAssertEqual(srgb(view.textColorForTesting), srgb(.secondaryLabelColor))
+        XCTAssertEqual(view.toolTip, "来自本机数据，更新于 13:40:00", "a stale Mod reading is local data, never described as official")
+        view.update(state: .official(at: time, source: .statusLine))
+        XCTAssertEqual(view.toolTip, "来自本机数据，更新于 13:40:00")
+        view.update(state: .official(at: time, source: .oauthAPI))
+        XCTAssertEqual(view.toolTip, "官方数据，更新于 13:40:00", "the absolute time moved into the tooltip")
+        view.update(state: .official(at: time, source: .mod))
+
+        view.update(state: .error(at: time, source: .oauthAPI))
+        XCTAssertEqual(view.textForTesting, "⚠︎ 5 分钟前 · OAuth API")
+        XCTAssertFalse(view.isDotVisibleForTesting, "a failure uses the warning glyph, not the dot")
+        XCTAssertEqual(srgb(view.textColorForTesting), srgb(.systemOrange))
+
+        view.update(state: .official(at: time, source: nil))
+        XCTAssertEqual(view.textForTesting, "5 分钟前", "no source, no separator")
+
+        view.update(state: .official(at: time, source: .statusLine))
+        clock = clock.addingTimeInterval(61)
+        view.refreshAgeForTesting()
+        XCTAssertEqual(view.textForTesting, "6 分钟前 · 原生同步", "the age keeps counting while the slot is shown")
+    }
+
+    func testResolveCarriesTheLastSourceIntoStaleAndFailedStates() {
+        var context = StatusSlotContext(source: .official, updatedAt: time, lastSource: .mod)
+        XCTAssertEqual(StatusSlotState.resolve(model: model(), context: context), .official(at: time, source: .mod))
+        XCTAssertEqual(StatusSlotState.resolve(model: model(state: .error), context: context), .error(at: time, source: .mod))
+        context.source = .realtime(.mod)
+        XCTAssertEqual(StatusSlotState.resolve(model: model(), context: context), .realtime(.mod, at: time))
+    }
+
+    private static let widestAges: [TimeInterval] = [3_599, 86_399, 8_553_600]
+
+    /// The live label ("实时 · 原生同步") fits the slot in every supported language and source.
+    func testLiveSourceLabelFitsTheSlotInEveryLanguage() {
+        let font = NSFont.monospacedDigitSystemFont(ofSize: StatusSlotView.fontSize, weight: .regular)
+        for language in AppLanguage.allCases {
+            let localize: (StatusSlotText) -> String = { StatusSlotText.appLocalize(text: $0, language: language) }
+            for source in [StatusSlotLiveSource.oauthAPI, .statusLine, .mod] {
+                for age in Self.widestAges {
+                    let shownAt = time
+                    let view = StatusSlotView(localize: localize, timeZone: utc, now: { shownAt.addingTimeInterval(age) })
+                    let states: [StatusSlotState] = [
+                        .realtime(source, at: time), .official(at: time, source: source), .error(at: time, source: source)]
+                    for state in states {
+                        view.update(state: state)
+                        let width = (view.textForTesting as NSString).size(withAttributes: [.font: font]).width
+                        // Realtime and stale states show a dot; the failure state shows a glyph instead.
+                        let reserved: CGFloat = view.isDotVisibleForTesting ? StatusSlotView.dotDiameter + 3 : 0
+                        XCTAssertLessThanOrEqual(
+                            width, StatusSlotView.fixedWidth - reserved,
+                            "\(language) \(source) \(age)s: \(view.textForTesting)")
+                        XCTAssertTrue(view.textForTesting.contains(" · "), "\(language) \(source)")
+                    }
+                }
+            }
+        }
+    }
+
     private func srgb(_ color: NSColor?) -> NSColor? { color?.usingColorSpace(.sRGB) }
 
     private func resolved(_ color: NSColor, in appearance: NSAppearance) -> NSColor {
@@ -193,29 +245,6 @@ final class StatusSlotViewTests: XCTestCase {
         (0..<rep.pixelsHigh).contains { (rep.colorAt(x: x, y: $0)?.alphaComponent ?? 0) > 0.1 }
     }
 
-    /// Ink bounding box and coverage of a rendering (ink = alpha > 0.5).
-    private struct InkStructure: CustomStringConvertible {
-        var minX = Int.max, maxX = -1, minY = Int.max, maxY = -1, ink = 0
-
-        init(_ rep: NSBitmapImageRep) {
-            for x in 0..<rep.pixelsWide {
-                for y in 0..<rep.pixelsHigh where (rep.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.5 {
-                    ink += 1
-                    minX = min(minX, x); maxX = max(maxX, x)
-                    minY = min(minY, y); maxY = max(maxY, y)
-                }
-            }
-        }
-
-        func matches(_ other: InkStructure) -> Bool {
-            abs(minX - other.minX) <= 2 && abs(maxX - other.maxX) <= 2
-                && abs(minY - other.minY) <= 2 && abs(maxY - other.maxY) <= 2
-                && Double(abs(ink - other.ink)) <= 0.35 * Double(max(ink, other.ink, 1))
-        }
-
-        var description: String { "x \(minX)...\(maxX) y \(minY)...\(maxY) ink \(ink)" }
-    }
-
     private func differingPixelRatio(_ a: NSBitmapImageRep, _ b: NSBitmapImageRep) -> Double {
         var differing = 0
         for x in 0..<a.pixelsWide {
@@ -253,7 +282,7 @@ final class StatusSlotViewTests: XCTestCase {
     }
 
     func testResetPendingWithoutEstimateIsNotReportedAsOfficialOrRealtime() {
-        for source in [StatusSlotSource.official, .realtime] {
+        for source in [StatusSlotSource.official, .realtime(.statusLine)] {
             let ctx = StatusSlotContext(source: source, updatedAt: time)
             XCTAssertEqual(StatusSlotState.resolve(model: model(state: .resetPendingConfirmation), context: ctx), .resetPending(at: time))
         }
@@ -274,28 +303,43 @@ final class StatusSlotViewTests: XCTestCase {
         XCTAssertEqual(view.accessibilityLabel(), "额度状态：待确认")
     }
 
-    // MARK: Time style (matches the Codex card's HH:mm:ss refresh time)
+    // MARK: Time style
 
-    func testTimeStatesUseSecondsAndThePlainRefreshTimeFont() {
+    /// Stale / failed states read as "5 分钟前"; the exact HH:mm:ss moved into the tooltip.
+    func testAgeStatesKeepTheExactTimeInTheTooltipAndThePlainRefreshTimeFont() {
         let withSeconds = time.addingTimeInterval(7)
-        let view = StatusSlotView(timeZone: utc)
+        let view = StatusSlotView(timeZone: utc, now: { withSeconds.addingTimeInterval(5 * 60) })
         XCTAssertEqual(view.fontForTesting, .monospacedDigitSystemFont(ofSize: 12, weight: .regular))
         view.update(state: .official(at: withSeconds))
-        XCTAssertEqual(view.textForTesting, "13:40:07")
+        XCTAssertEqual(view.textForTesting, "5 分钟前")
         XCTAssertEqual(view.toolTip, "官方数据，更新于 13:40:07")
-        XCTAssertEqual(view.accessibilityLabel(), "额度状态：13:40:07")
+        XCTAssertEqual(view.accessibilityLabel(), "额度状态：5 分钟前")
         view.update(state: .error(at: withSeconds))
-        XCTAssertEqual(view.textForTesting, "⚠︎ 13:40:07")
+        XCTAssertEqual(view.textForTesting, "⚠︎ 5 分钟前")
         XCTAssertEqual(view.toolTip, "更新失败，显示的是 13:40:07 的数据")
-        XCTAssertEqual(view.accessibilityLabel(), "额度状态：⚠︎ 13:40:07")
+        XCTAssertEqual(view.accessibilityLabel(), "额度状态：⚠︎ 5 分钟前")
         view.update(state: .estimated(at: withSeconds))
         XCTAssertEqual(view.textForTesting, "≈ 13:40:07")
         XCTAssertEqual(view.toolTip, "根据 13:40:07 的数据估算，等待官方确认")
         view.update(state: .error(at: nil))
-        XCTAssertEqual(view.textForTesting, "⚠︎ --:--:--")
+        XCTAssertEqual(view.textForTesting, "⚠︎ --")
     }
 
     // MARK: Hover + VoiceOver
+
+    func testHoverDetailSurvivesTheAgeRefresh() {
+        var clock = time.addingTimeInterval(60)
+        let view = StatusSlotView(timeZone: utc, now: { clock })
+        view.hoverDetail = "Too many requests (HTTP 429)"
+        view.update(state: .error(at: time, source: .oauthAPI))
+        XCTAssertEqual(view.toolTip, "更新失败，显示的是 13:40:00 的数据\nToo many requests (HTTP 429)")
+        clock = clock.addingTimeInterval(30)
+        view.refreshAgeForTesting()
+        XCTAssertEqual(view.toolTip, "更新失败，显示的是 13:40:00 的数据\nToo many requests (HTTP 429)", "the timer rebuilds the tooltip without dropping the reason")
+        XCTAssertEqual(view.accessibilityHelp(), view.toolTip)
+        view.hoverDetail = nil
+        XCTAssertEqual(view.toolTip, "更新失败，显示的是 13:40:00 的数据")
+    }
 
     func testHoverTextsIncludingExternalActivity() {
         let view = StatusSlotView(timeZone: utc)

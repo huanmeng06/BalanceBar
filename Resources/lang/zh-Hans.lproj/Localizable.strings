@@ -576,15 +576,21 @@
 
 "quota.status.refreshing" = "刷新中…";
 "quota.status.realtime" = "实时";
+"quota.status.ago.minutes" = "%1$@ 分钟前";
+"quota.status.ago.hours" = "%1$@ 小时前";
+"quota.status.ago.days" = "%1$@ 天前";
+"quota.status.source.oauth_api" = "OAuth API";
+"quota.status.source.native_sync" = "原生同步";
+"quota.status.source.mod" = "Mod";
 "quota.status.hover.refreshing" = "正在读取最新额度";
 "quota.status.hover.error" = "更新失败，显示的是 %1$@ 的数据";
 "quota.status.hover.estimated" = "根据 %1$@ 的数据估算，等待官方确认";
 "quota.status.hover.realtime" = "来自本机实时数据";
 "quota.status.hover.official" = "官方数据，更新于 %1$@";
+"quota.status.hover.local" = "来自本机数据，更新于 %1$@";
 "quota.status.hover.external_activity" = "检测到其他端在使用，已提高更新频率";
 "quota.status.reset_pending" = "预计已重置，等待确认";
 "quota.status.reset_pending_short" = "待确认";
-"quota.card.reset_awaiting_confirmation" = "已过重置时间，等待确认";
 "quota.failure.open_usage_page" = "打开官方用量页";
 "quota.status.accessibility" = "额度状态：%1$@";
 "claude.refresh.login_expired" = "Claude Code 登录已过期。在终端运行一次 claude 即可恢复；BalanceBar 不会自行续期登录。";

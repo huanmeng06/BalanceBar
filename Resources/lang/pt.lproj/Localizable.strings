@@ -576,15 +576,21 @@
 
 "quota.status.refreshing" = "Lendo…";
 "quota.status.realtime" = "Ao vivo";
+"quota.status.ago.minutes" = "há %1$@ min";
+"quota.status.ago.hours" = "há %1$@ h";
+"quota.status.ago.days" = "há %1$@ d";
+"quota.status.source.oauth_api" = "OAuth API";
+"quota.status.source.native_sync" = "Nativo";
+"quota.status.source.mod" = "Mod";
 "quota.status.hover.refreshing" = "Lendo a cota mais recente";
 "quota.status.hover.error" = "Falha na atualização. Mostrando os dados das %1$@";
 "quota.status.hover.estimated" = "Estimado com os dados das %1$@, aguardando confirmação oficial";
 "quota.status.hover.realtime" = "Dados ao vivo deste Mac";
 "quota.status.hover.official" = "Dados oficiais, atualizados às %1$@";
+"quota.status.hover.local" = "Dados deste Mac, atualizados às %1$@";
 "quota.status.hover.external_activity" = "Atividade detectada em outro cliente; atualizando com mais frequência";
 "quota.status.reset_pending" = "Provável redefinição; aguardando confirmação";
 "quota.status.reset_pending_short" = "Pendente";
-"quota.card.reset_awaiting_confirmation" = "Hora de reinicialização passada, aguardando confirmação";
 "quota.failure.open_usage_page" = "Abrir a página oficial de uso";
 "quota.status.accessibility" = "Estado da cota: %1$@";
 "claude.refresh.login_expired" = "O login do Claude Code expirou. Execute claude uma vez no terminal para restaurá-lo; o BalanceBar nunca renova o login por conta própria.";

@@ -3529,11 +3529,11 @@ extension StatusItemControllerTests {
     func testClaudeCardShowsTheStatusSlotAndUpdatesItInPlaceThroughRefreshFailureAndRecovery() throws {
         let controller = makeController()
         defer { controller.teardown() }
-        let fetchedAt = Date(timeIntervalSince1970: 1_700_000_000)
+        let fetchedAt = Date().addingTimeInterval(-5 * 60 - 10)
         let window = OfficialQuotaWindow(kind: .fiveHour, remaining: 86, label: "5h", daysText: "5 hours",
             reset: "1h5m", durationSeconds: 18_000, resetAt: fetchedAt.addingTimeInterval(3_900))
         var official = Snapshot.official("Claude Official", 86, "5h", "1h5m", fetchedAt, windows: [window])
-        official.quotaStatus = .official(at: fetchedAt)
+        official.quotaStatus = .official(at: fetchedAt, source: .mod)
         let input = StatusItemController.MenuInput(choices: [], quickSwitchSummaries: [:], activeClient: .claude,
             openAIAccount: nil, statusLinks: [], showQuickSwitchMenu: false, showOpenChatGPTMenu: false,
             showOpenCCSwitchMenu: false, showStatusMenu: false, directProviderID: "claude-official")
@@ -3549,11 +3549,10 @@ extension StatusItemControllerTests {
             }
             return try XCTUnwrap(find(host))
         }
-        let timeText = StatusSlotAppearance.timeText(fetchedAt, timeZone: settings.displayTimeZone)
-        XCTAssertEqual(try slot().textForTesting, timeText)
-        // Same style as the Codex card's plain refresh time: HH:mm:ss at 12 pt monospaced digits.
-        XCTAssertEqual(timeText, AppDisplayTime.formatter(timeZone: settings.displayTimeZone).string(from: fetchedAt))
-        XCTAssertEqual(timeText.count, 8)
+        // A stale reading reads "5 分钟前 · Mod": its age and source, not a clock time.
+        let ageText = StatusSlotAppearance.relativeText(
+            from: fetchedAt, now: Date(), localize: StatusSlotText.appLocalize) + " · " + tr(.keyQuotaStatusSourceMod)
+        XCTAssertEqual(try slot().textForTesting, ageText)
         XCTAssertEqual(try slot().fontForTesting, .monospacedDigitSystemFont(ofSize: 12, weight: .regular))
         XCTAssertEqual(try slot().identifier?.rawValue, "overview.refreshTime")
         XCTAssertEqual(try slot().frame.size, NSSize(width: StatusSlotView.fixedWidth, height: StatusSlotView.fixedHeight))
@@ -3564,17 +3563,17 @@ extension StatusItemControllerTests {
         XCTAssertEqual(try slot().textForTesting, tr(.keyQuotaStatusRefreshing))
 
         var failed = official
-        failed.quotaStatus = .error(at: fetchedAt)
+        failed.quotaStatus = .error(at: fetchedAt, source: .mod)
         failed.staleReason = "Too many requests (HTTP 429)"
         controller.update(snapshot: failed, refreshDate: fetchedAt, menuInput: input, settings: settings)
-        XCTAssertEqual(try slot().textForTesting, "⚠︎ " + timeText)
+        XCTAssertEqual(try slot().textForTesting, "⚠︎ " + ageText)
         XCTAssertEqual(try slot().textColorForTesting, .systemOrange)
         XCTAssertTrue(try slot().toolTip?.contains("HTTP 429") == true, "the failure reason joins the hover text")
         XCTAssertTrue(try slot().accessibilityLabel()?.contains("⚠︎") == true)
         XCTAssertNotNil(try slot().accessibilityHelp())
 
         controller.update(snapshot: official, refreshDate: fetchedAt.addingTimeInterval(60), menuInput: input, settings: settings)
-        XCTAssertEqual(try slot().textForTesting, timeText)
+        XCTAssertEqual(try slot().textForTesting, ageText)
         XCTAssertFalse(try slot().toolTip?.contains("HTTP 429") == true, "recovery clears the failure reason")
     }
 

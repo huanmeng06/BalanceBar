@@ -576,15 +576,21 @@
 
 "quota.status.refreshing" = "업데이트 중…";
 "quota.status.realtime" = "실시간";
+"quota.status.ago.minutes" = "%1$@분 전";
+"quota.status.ago.hours" = "%1$@시간 전";
+"quota.status.ago.days" = "%1$@일 전";
+"quota.status.source.oauth_api" = "OAuth API";
+"quota.status.source.native_sync" = "네이티브";
+"quota.status.source.mod" = "Mod";
 "quota.status.hover.refreshing" = "최신 할당량을 읽는 중";
 "quota.status.hover.error" = "업데이트하지 못했습니다. %1$@ 기준 데이터를 표시합니다";
 "quota.status.hover.estimated" = "%1$@ 데이터로 추정한 값이며 공식 확인을 기다리는 중입니다";
 "quota.status.hover.realtime" = "이 Mac의 실시간 데이터";
 "quota.status.hover.official" = "공식 데이터, %1$@에 업데이트됨";
+"quota.status.hover.local" = "이 Mac의 데이터, %1$@에 업데이트됨";
 "quota.status.hover.external_activity" = "다른 클라이언트에서 사용 중임을 감지하여 업데이트 빈도를 높였습니다";
 "quota.status.reset_pending" = "초기화된 것으로 보이며 확인을 기다리는 중입니다";
 "quota.status.reset_pending_short" = "확인 대기";
-"quota.card.reset_awaiting_confirmation" = "초기화 시간 지남, 확인 대기 중";
 "quota.failure.open_usage_page" = "공식 사용량 페이지 열기";
 "quota.status.accessibility" = "할당량 상태: %1$@";
 "claude.refresh.login_expired" = "Claude Code 로그인이 만료되었습니다. 터미널에서 claude를 한 번 실행하면 복구됩니다. BalanceBar는 로그인을 직접 갱신하지 않습니다.";
