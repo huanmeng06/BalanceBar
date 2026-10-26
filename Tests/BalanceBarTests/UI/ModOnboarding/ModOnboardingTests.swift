@@ -1075,6 +1075,34 @@ extension ModSyncCoordinatorTests {
         wait(for: [reinstallDone, backToWaiting], timeout: 5)
         XCTAssertEqual(coordinator.status, .waitingForData)
     }
+
+    func testExternalUninstallThenReinstallClearsSnapshotEvidence() {
+        let emptyList = ModCommandResult(exitCode: 0, stdout: "[]", stderr: "")
+        let (coordinator, _) = makeCoordinator(
+            locator: "/bin/claude",
+            results: [probeVersion, listResult(), probeVersion, emptyList, probeVersion, listResult()])
+        let installed = expectation(description: "installed")
+        coordinator.onStatusChange = { _ in installed.fulfill() }
+        coordinator.startDetectionIfNeeded(force: true)
+        wait(for: [installed], timeout: 5)
+
+        let accepted = expectation(description: "accepted")
+        coordinator.onStatusChange = { if case .active = $0 { accepted.fulfill() } }
+        coordinator.ingest(.init(kind: .processed(accepted: true), window: .fiveHour, observedAt: nil, receivedAt: Date()))
+        wait(for: [accepted], timeout: 5)
+
+        // Uninstalled outside BalanceBar: detection alone must drop the evidence.
+        let removed = expectation(description: "removed")
+        coordinator.onStatusChange = { if case .notInstalled = $0 { removed.fulfill() } }
+        coordinator.startDetectionIfNeeded(force: true)
+        wait(for: [removed], timeout: 5)
+
+        let reinstalled = expectation(description: "reinstalled")
+        coordinator.onStatusChange = { if $0 == .waitingForData { reinstalled.fulfill() } }
+        coordinator.startDetectionIfNeeded(force: true)
+        wait(for: [reinstalled], timeout: 5)
+        XCTAssertEqual(coordinator.status, .waitingForData)
+    }
 }
 
 extension ModPanelSyncContextTests {
