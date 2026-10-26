@@ -48,6 +48,19 @@ final class ClaudeSourceTimelineViewTests: XCTestCase {
         XCTAssertEqual(oauth[0].rect.midY, layout.laneRect(.oauthAPI).midY, accuracy: 0.01)
     }
 
+    func testAReadingThatJustArrivedStaysLeftOfTheNowLine() {
+        let layout = layout(
+            readings: [reading(.statusLine, -1, 120)],
+            failures: [Run(start: now.addingTimeInterval(-1), end: nil, kind: .network)])
+        let bar = try! XCTUnwrap(layout.bars.first)
+        XCTAssertEqual(bar.rect.maxX, layout.nowX, accuracy: 0.01)
+        XCTAssertEqual(bar.rect.width, ClaudeSourceTimelineLayout.minimumMarkWidth, accuracy: 0.01)
+        let band = try! XCTUnwrap(layout.bands.first)
+        XCTAssertLessThanOrEqual(band.rect.maxX, layout.nowX + 0.01)
+        let early = self.layout(readings: [reading(.mod, -3_600, -3_600 + 0.1)]).bars
+        XCTAssertGreaterThanOrEqual(early.first?.rect.minX ?? 0, 60, "a mark at the left edge stays inside the chart too")
+    }
+
     func testFrequentReadingsMergeWithoutCrowdedDividers() {
         let readings = stride(from: -600.0, to: -300, by: 5).map { reading(.mod, $0, $0 + 120) }
         let bars = layout(readings: readings).bars

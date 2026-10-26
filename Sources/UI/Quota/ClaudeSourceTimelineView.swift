@@ -76,11 +76,15 @@ struct ClaudeSourceTimelineLayout {
         return CGRect(x: plot.minX, y: plot.minY + index * Self.laneHeight, width: plot.width, height: Self.laneHeight)
     }
 
+    /// A mark shorter than the minimum width grows leftwards, so a reading that just arrived never
+    /// pokes past the "now" line.
     private func barRect(_ source: StatusSlotLiveSource, from minX: CGFloat, to maxX: CGFloat) -> CGRect {
         let lane = laneRect(source)
+        let width = max(Self.minimumMarkWidth, maxX - minX)
+        let left = max(plot.minX, min(minX, plot.maxX - width))
         return CGRect(
-            x: minX, y: lane.midY - Self.barHeight / 2,
-            width: max(Self.minimumMarkWidth, maxX - minX), height: Self.barHeight)
+            x: left, y: lane.midY - Self.barHeight / 2,
+            width: min(width, plot.maxX - left), height: Self.barHeight)
     }
 
     private func makeBars(for source: StatusSlotLiveSource, readings: [ClaudeSourceTimeline.Reading]) -> [Bar] {
