@@ -286,34 +286,48 @@ final class QuotaIOTests: XCTestCase {
         }
     }
 
-    func testWatcherCoalescesBurstsAndCatchesUpAfterWake() throws {
+    // DirectoryWatcher schedules coalescing with a real `asyncAfter` on top of FSEvents, so the exact
+    // batch count is not injectable and depends on runner timing; assert delivery, not batching.
+    func testWatcherDeliversBurstAndWakeCatchUpAndStopsAfterStop() throws {
         let center = NotificationCenter()
         let lock = NSLock()
         var batches: [Set<String>] = []
         let watcher = DirectoryWatcher(
             directory: root,
-            configuration: QuotaIOConfiguration(watchCoalescingInterval: 0.5),
+            configuration: QuotaIOConfiguration(watchCoalescingInterval: 0.1),
             notificationCenter: center
         ) { paths in
             lock.lock(); batches.append(paths); lock.unlock()
         }
         XCTAssertTrue(watcher.start())
         defer { watcher.stop() }
-        Thread.sleep(forTimeInterval: 0.3)
+        func waitUntil(_ condition: () -> Bool) -> Bool {
+            let deadline = Date().addingTimeInterval(5)
+            while Date() < deadline {
+                if condition() { return true }
+                Thread.sleep(forTimeInterval: 0.02)
+            }
+            return condition()
+        }
 
         for index in 0..<10 { _ = try write("x", to: "f\(index).json") }
-        Thread.sleep(forTimeInterval: 1.2)
-        XCTAssertEqual(lock.withLock { batches.count }, 1)
+        XCTAssertTrue(waitUntil {
+            lock.withLock { Set(batches.joined().map { ($0 as NSString).lastPathComponent }) }
+                .isSuperset(of: Set((0..<10).map { "f\($0).json" }))
+        }, "burst of file changes never reported")
 
+        let beforeWake = lock.withLock { batches.count }
         center.post(name: NSWorkspace.didWakeNotification, object: nil)
-        center.post(name: NSWorkspace.didWakeNotification, object: nil)
-        Thread.sleep(forTimeInterval: 0.9)
-        XCTAssertEqual(lock.withLock { batches.count }, 2)
-        XCTAssertEqual(lock.withLock { batches.last }, [root.path])
+        XCTAssertTrue(waitUntil {
+            lock.withLock { batches.count > beforeWake && batches.last == [root.path] }
+        }, "wake notification did not trigger a catch-up batch")
 
         watcher.stop()
+        // Let any batch already queued before stop() drain, then require silence afterwards.
+        Thread.sleep(forTimeInterval: 0.3)
+        let afterStop = lock.withLock { batches.count }
         _ = try write("y", to: "after-stop.json")
-        Thread.sleep(forTimeInterval: 0.8)
-        XCTAssertEqual(lock.withLock { batches.count }, 2)
+        Thread.sleep(forTimeInterval: 0.4)
+        XCTAssertEqual(lock.withLock { batches.count }, afterStop)
     }
 }

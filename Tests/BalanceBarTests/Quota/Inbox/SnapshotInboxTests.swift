@@ -46,7 +46,7 @@ final class SnapshotInboxTests: XCTestCase {
         identity: FakeIdentity = FakeIdentity(),
         retry: TimeInterval = 0.05,
         now: @escaping () -> Date = Date.init,
-        settle: TimeInterval = 0.5
+        settle: TimeInterval = 0.1
     ) -> [QuotaObservation] {
         let collector = Collector()
         let source = SnapshotInbox(
@@ -57,6 +57,9 @@ final class SnapshotInboxTests: XCTestCase {
         )
         inboxes.append(source)
         source.start { collector.add($0) }
+        // Start-up (directory creation, watcher, initial scan) runs on the source queue, so draining it
+        // makes the initial scan deterministic; `settle` only covers the scheduled half-write retry.
+        source.queue.sync {}
         Thread.sleep(forTimeInterval: settle)
         source.stop()
         return collector.all
@@ -222,7 +225,7 @@ final class SnapshotInboxTests: XCTestCase {
         )
         inboxes.append(source)
         source.start { collector.add($0) }
-        Thread.sleep(forTimeInterval: 0.3)
+        source.queue.sync {} // watcher is running once the start-up block has finished
         try place(fixture: "hud-0.11.3.json")
         let deadline = Date().addingTimeInterval(5)
         while collector.all.count < 2, Date() < deadline { Thread.sleep(forTimeInterval: 0.05) }
@@ -242,7 +245,7 @@ final class SnapshotInboxTests: XCTestCase {
         )
         inboxes.append(source)
         source.start { collector.add($0) }
-        Thread.sleep(forTimeInterval: 0.4)
+        source.queue.sync {}
         try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
         try fixtureData("hud-0.11.3.json").write(to: target)
         let deadline = Date().addingTimeInterval(5)
@@ -369,7 +372,7 @@ final class SnapshotInboxTests: XCTestCase {
         try placeSnapshot(source: "balancebar-mod", emailHash: nil, as: "missing.json")
         // An unrelated source without a hash is not a Mod snapshot and not a rejection.
         try placeSnapshot(source: "unrelated-producer", emailHash: nil, as: "other.json")
-        Thread.sleep(forTimeInterval: 0.5)
+        XCTAssertTrue(waitUntil(timeout: 5) { reasons.all.count >= 2 })
         source.stop()
         // Paths are processed in sorted order, so only the set of reasons is deterministic.
         XCTAssertEqual(reasons.all.count, 2)
