@@ -612,7 +612,7 @@
 "claude.source_tag.all_clients" = "모든 환경";
 "claude.source_tag.terminal" = "터미널 CLI";
 "claude.source_tag.desktop" = "데스크톱 우선";
-"claude.timeline.title" = "데이터 소스 타임라인";
+"claude.timeline.title" = "데이터 소스 모니터";
 "claude.timeline.now" = "지금";
 "claude.timeline.empty" = "최근 60분간 데이터 없음";
 "claude.timeline.failure.network" = "네트워크 오류";

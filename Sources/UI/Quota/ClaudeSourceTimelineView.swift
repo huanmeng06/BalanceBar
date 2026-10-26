@@ -272,8 +272,9 @@ final class ClaudeSourceTimelineView: NSView {
     private let timeZone: TimeZone
     private let now: () -> Date
     let statusSlot: StatusSlotView
-    /// The board's heading, 「时间来源分布图」.
+    /// The board's heading, 「数据来源监视器」.
     let titleLabel = NSTextField(labelWithString: tr(.keyClaudeTimelineTitle))
+    private let titleIcon = DashboardRefreshPage.agentIconStrip(["Claude"])
     private let canvas = TimelineCanvas()
     private let liftHost = TimelineFlippedView()
     private let liftLayer = CALayer()
@@ -342,12 +343,15 @@ final class ClaudeSourceTimelineView: NSView {
         liftHost.layer?.addSublayer(liftLayer)
         addSubview(liftHost)
 
-        titleLabel.font = .systemFont(ofSize: 13, weight: .semibold)
+        // Same as a settings row title, followed by the Claude mark like those rows.
+        titleLabel.font = .systemFont(ofSize: 14, weight: .semibold)
         titleLabel.textColor = .labelColor
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         addSubview(titleLabel)
+        titleIcon.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(titleIcon)
         statusSlot.translatesAutoresizingMaskIntoConstraints = false
         addSubview(statusSlot)
         NSLayoutConstraint.activate([
@@ -355,7 +359,9 @@ final class ClaudeSourceTimelineView: NSView {
             statusSlot.topAnchor.constraint(equalTo: topAnchor),
             titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor),
             titleLabel.centerYAnchor.constraint(equalTo: statusSlot.centerYAnchor),
-            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: statusSlot.leadingAnchor, constant: -8)
+            titleIcon.leadingAnchor.constraint(equalTo: titleLabel.trailingAnchor, constant: SettingsRowView.titleAccessorySpacing),
+            titleIcon.centerYAnchor.constraint(equalTo: titleLabel.centerYAnchor),
+            titleIcon.trailingAnchor.constraint(lessThanOrEqualTo: statusSlot.leadingAnchor, constant: -8)
         ])
         setAccessibilityElement(true)
         setAccessibilityRole(.image)
@@ -479,6 +485,10 @@ final class ClaudeSourceTimelineView: NSView {
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = timeZone
         formatter.dateFormat = "HH:mm"
+        // The left edge is where history is cut off; label it so the clipped marks have a time.
+        let startText = formatter.string(from: layout.start) as NSString
+        let startEndX = layout.plot.minX + startText.size(withAttributes: axis).width
+        startText.draw(at: NSPoint(x: layout.plot.minX, y: axisY), withAttributes: axis)
         for tick in layout.ticks {
             let guide = NSBezierPath()
             guide.move(to: NSPoint(x: tick.x, y: layout.plot.minY))
@@ -490,7 +500,7 @@ final class ClaudeSourceTimelineView: NSView {
             let text = formatter.string(from: tick.date) as NSString
             let width = text.size(withAttributes: axis).width
             let minX = tick.x - width / 2
-            guard minX >= layout.plot.minX, minX + width + 8 <= nowLabelX else { continue }
+            guard minX >= startEndX + 8, minX + width + 8 <= nowLabelX else { continue }
             text.draw(at: NSPoint(x: minX, y: axisY), withAttributes: axis)
         }
         nowText.draw(at: NSPoint(x: nowLabelX, y: axisY), withAttributes: nowAttributes)

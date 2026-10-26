@@ -612,7 +612,7 @@
 "claude.source_tag.all_clients" = "Tutti i client";
 "claude.source_tag.terminal" = "Terminale CLI";
 "claude.source_tag.desktop" = "Desktop prima";
-"claude.timeline.title" = "Cronologia delle fonti dati";
+"claude.timeline.title" = "Monitor delle fonti dati";
 "claude.timeline.now" = "Ora";
 "claude.timeline.empty" = "Nessun dato negli ultimi 60 minuti";
 "claude.timeline.failure.network" = "Errore di rete";

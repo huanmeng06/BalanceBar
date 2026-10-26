@@ -612,7 +612,7 @@
 "claude.source_tag.all_clients" = "全端通用";
 "claude.source_tag.terminal" = "终端 CLI";
 "claude.source_tag.desktop" = "桌面端优先";
-"claude.timeline.title" = "时间来源分布图";
+"claude.timeline.title" = "数据来源监视器";
 "claude.timeline.now" = "现在";
 "claude.timeline.empty" = "最近 60 分钟暂无数据";
 "claude.timeline.failure.network" = "网络错误";

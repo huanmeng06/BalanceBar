@@ -612,7 +612,7 @@
 "claude.source_tag.all_clients" = "Все клиенты";
 "claude.source_tag.terminal" = "Терминал CLI";
 "claude.source_tag.desktop" = "Сначала десктоп";
-"claude.timeline.title" = "Хронология источников данных";
+"claude.timeline.title" = "Монитор источников данных";
 "claude.timeline.now" = "Сейчас";
 "claude.timeline.empty" = "Нет данных за последние 60 минут";
 "claude.timeline.failure.network" = "Ошибка сети";
