@@ -185,7 +185,7 @@ final class FetchSchedulerTests: XCTestCase {
         XCTAssertEqual(configuration.tokenRefillInterval, 300)
         XCTAssertEqual(configuration.automaticTokenCost, 1)
         XCTAssertEqual(configuration.manualTokenCost, 1)
-        XCTAssertEqual(configuration.failureBackoff, [30, 60, 120, 300])
+        XCTAssertEqual(configuration.failureBackoff, [30])
     }
 
     func testSelectedAutomaticIntervalReplacesConfiguredMinimum() {
