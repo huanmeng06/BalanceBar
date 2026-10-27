@@ -38,6 +38,14 @@ final class ClaudeSourceTimelineViewTests: XCTestCase {
         XCTAssertNil(ClaudeSourceTimelineView.activeSource(nil))
     }
 
+    func testALongBlockLiftsWithoutGrowingPastTheCard() {
+        let short = ClaudeSourceTimelineView.liftScale(for: CGSize(width: 40, height: 22))
+        XCTAssertEqual(short.x, 1.12, accuracy: 0.001)
+        let long = ClaudeSourceTimelineView.liftScale(for: CGSize(width: 800, height: 22))
+        XCTAssertEqual(800 * (long.x - 1) / 2, 4, accuracy: 0.001)
+        XCTAssertEqual(long.y, 1.12, accuracy: 0.001)
+    }
+
     func testTouchingReadingsMergeIntoOneBarAndAreClippedAtNow() {
         let layout = layout(readings: [
             reading(.oauthAPI, -1_800, -1_200),

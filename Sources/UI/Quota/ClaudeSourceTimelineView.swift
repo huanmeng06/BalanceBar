@@ -248,6 +248,9 @@ final class ClaudeSourceTimelineView: NSView {
     /// Hover look and timings, matching the menu's focus blur and the reset card's lift.
     enum Hover {
         static let liftScale: CGFloat = 1.12
+        /// A long block grows at most this much on each side, so a box spanning the whole chart
+        /// stays inside the card instead of scaling 12% past its edges.
+        static let maximumLiftGrowth: CGFloat = 4
         static let liftShadowOpacity: Float = 0.3
         static let blurRadius: CGFloat = 3
         static let recededAlpha: CGFloat = 0.5
@@ -759,7 +762,13 @@ final class ClaudeSourceTimelineView: NSView {
     private var reduceMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
 
     private func liftedRect(_ rect: CGRect) -> CGRect {
-        rect.insetBy(dx: -rect.width * (Hover.liftScale - 1) / 2, dy: -rect.height * (Hover.liftScale - 1) / 2)
+        let scale = Self.liftScale(for: rect.size)
+        return rect.insetBy(dx: -rect.width * (scale.x - 1) / 2, dy: -rect.height * (scale.y - 1) / 2)
+    }
+
+    static func liftScale(for size: CGSize) -> (x: CGFloat, y: CGFloat) {
+        let x = size.width > 0 ? min(Hover.liftScale, 1 + 2 * Hover.maximumLiftGrowth / size.width) : Hover.liftScale
+        return (x, Hover.liftScale)
     }
 
     private func styleLift(for target: ClaudeSourceTimelineLayout.HoverTarget) {
@@ -808,10 +817,12 @@ final class ClaudeSourceTimelineView: NSView {
     /// fades: it is a standalone rounded card, so on the way down it dissolves into the continuous
     /// bar underneath instead of landing as a box with its own corners.
     private func animateLift(up: Bool) {
-        let scale = up ? Hover.liftScale : 1
+        let lifted = Self.liftScale(for: liftLayer.bounds.size)
+        let target = up ? CATransform3DMakeScale(lifted.x, lifted.y, 1) : CATransform3DIdentity
         let opacity: Float = up ? Hover.liftShadowOpacity : 0
         let generation = hoverGeneration
-        let currentScale = (liftLayer.presentation()?.value(forKeyPath: "transform.scale") as? CGFloat) ?? (up ? 1 : Hover.liftScale)
+        let currentTransform = liftLayer.presentation()?.transform
+            ?? (up ? CATransform3DIdentity : CATransform3DMakeScale(lifted.x, lifted.y, 1))
         let currentOpacity = liftLayer.presentation()?.shadowOpacity ?? liftLayer.shadowOpacity
         let currentAlpha = liftLayer.presentation()?.opacity ?? (up ? 0 : 1)
         CATransaction.begin()
@@ -820,7 +831,7 @@ final class ClaudeSourceTimelineView: NSView {
             guard let self, !up, self.hoverGeneration == generation else { return }
             self.liftLayer.isHidden = true
         }
-        liftLayer.transform = CATransform3DMakeScale(scale, scale, 1)
+        liftLayer.transform = target
         liftLayer.shadowOpacity = opacity
         liftLayer.opacity = up ? 1 : 0
         if !reduceMotion {
@@ -830,9 +841,9 @@ final class ClaudeSourceTimelineView: NSView {
             fade.duration = up ? 0.12 : Hover.restoreDuration
             fade.timingFunction = CAMediaTimingFunction(name: up ? .easeOut : .easeIn)
             liftLayer.add(fade, forKey: "liftFade")
-            let spring = CASpringAnimation(keyPath: "transform.scale")
-            spring.fromValue = currentScale
-            spring.toValue = scale
+            let spring = CASpringAnimation(keyPath: "transform")
+            spring.fromValue = NSValue(caTransform3D: currentTransform)
+            spring.toValue = NSValue(caTransform3D: target)
             spring.stiffness = Hover.springStiffness
             spring.damping = Hover.springDamping
             spring.duration = spring.settlingDuration
