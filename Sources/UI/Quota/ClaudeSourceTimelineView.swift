@@ -283,6 +283,9 @@ final class ClaudeSourceTimelineView: NSView {
     private let liftLayer = CALayer()
     private let liftFill = CAShapeLayer()
     private let liftTint = CAShapeLayer()
+    /// The failure box's diagonal stripes, so a lifted failure still reads as one.
+    private let liftStripes = CAShapeLayer()
+    private let liftStripesMask = CAShapeLayer()
     private(set) var content: Content = .empty
     private var refreshTimer: Timer?
     private var occlusionObserver: NSObjectProtocol?
@@ -343,6 +346,10 @@ final class ClaudeSourceTimelineView: NSView {
         liftLayer.shadowOpacity = 0
         liftLayer.addSublayer(liftFill)
         liftLayer.addSublayer(liftTint)
+        liftStripes.lineWidth = 1.5
+        liftStripes.fillColor = nil
+        liftStripes.mask = liftStripesMask
+        liftLayer.addSublayer(liftStripes)
         liftHost.layer?.addSublayer(liftLayer)
         addSubview(liftHost)
 
@@ -780,7 +787,9 @@ final class ClaudeSourceTimelineView: NSView {
             // The block in use right now stays darker than the others while lifted, too.
             let inUse = piece.end >= now() && (content.status == nil || piece.source == Self.activeSource(content.status))
             tintAlpha = inUse ? 0.5 : 0.32
+            liftStripes.isHidden = true
         case .band:
+            liftStripes.isHidden = false
             color = .systemRed
             tintAlpha = 0.18
         }
@@ -792,6 +801,7 @@ final class ClaudeSourceTimelineView: NSView {
             liftTint.fillColor = color.withAlphaComponent(tintAlpha).cgColor
             liftTint.strokeColor = color.cgColor
             liftTint.lineWidth = 1.5
+            liftStripes.strokeColor = NSColor.systemRed.withAlphaComponent(0.28).cgColor
             CATransaction.commit()
         }
     }
@@ -808,6 +818,20 @@ final class ClaudeSourceTimelineView: NSView {
         liftTint.frame = local
         liftFill.path = path
         liftTint.path = path
+        // Same stripes as drawBand: every 7pt, one bar-height wide, clipped inside the outline.
+        let stripes = CGMutablePath()
+        var x = local.minX - local.height
+        while x < local.maxX {
+            stripes.move(to: CGPoint(x: x, y: local.maxY))
+            stripes.addLine(to: CGPoint(x: x + local.height, y: local.minY))
+            x += 7
+        }
+        liftStripes.frame = local
+        liftStripes.path = stripes
+        liftStripesMask.frame = local
+        liftStripesMask.path = CGPath(
+            roundedRect: local.insetBy(dx: 1.5, dy: 1.5), cornerWidth: max(0, radius - 0.75),
+            cornerHeight: max(0, radius - 0.75), transform: nil)
         liftLayer.shadowPath = CGPath(roundedRect: local, cornerWidth: radius, cornerHeight: radius, transform: nil)
         liftLayer.isHidden = false
         CATransaction.commit()
