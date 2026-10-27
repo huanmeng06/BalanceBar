@@ -406,6 +406,9 @@ enum DashboardSettingsSearchCatalog {
                 tr(.keyDashboardAdvancedPageValidityMinutes, arguments: [String(Int($0 / 60))])
             })
             values.append(tr(.keyClaudeTimelineTitle))
+            values.append(contentsOf: AppPreferences.claudeCalibrationIntervals.map {
+                DashboardAdvancedPage.validityWarning(calibrationInterval: $0)
+            })
         }
         return values
     }

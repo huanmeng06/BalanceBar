@@ -69,17 +69,24 @@ final class DashboardAdvancedPage {
             guard let row = sourceValidityRows[key] else { continue }
             let detail: String?
             if preferences.claudeLocalValidityMayGap(value) {
-                let selectedMinutes = max(1, Int(ceil(value / 60)))
-                let recommendedMinutes = max(1, Int(ceil(preferences.claudeLocalValidityWarningThreshold / 60)))
-                detail = tr(.keyDashboardAdvancedPageSourceValidityWarning, arguments: [
-                    String(selectedMinutes), String(recommendedMinutes)
-                ])
+                detail = Self.validityWarning(calibrationInterval: preferences.claudeCalibrationInterval)
             } else {
                 detail = nil
             }
             row.updateDetail(detail)
             row.detailLabel.textColor = detail == nil ? .secondaryLabelColor : .systemOrange
         }
+    }
+
+    /// Warning copy for a given official calibration interval; shared with the settings search corpus.
+    static func validityWarning(calibrationInterval: TimeInterval) -> String {
+        let threshold = calibrationInterval
+            + AppPreferences.claudeValidityPrefetchLead
+            + AppPreferences.claudeValiditySchedulingSlack
+        return tr(.keyDashboardAdvancedPageSourceValidityWarning, arguments: [
+            String(max(1, Int(ceil(calibrationInterval / 60)))),
+            String(max(1, Int(ceil(threshold / 60))))
+        ])
     }
 
     private static func validityTitle(_ seconds: TimeInterval) -> String {
