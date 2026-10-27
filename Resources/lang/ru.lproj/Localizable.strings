@@ -144,6 +144,7 @@
 "dashboard.advanced.page.source_validity_oauth" = "Срок действия официальной квоты";
 "dashboard.advanced.page.source_validity_native_sync" = "Срок действия нативной синхронизации";
 "dashboard.advanced.page.source_validity_mod" = "Срок действия данных Mod";
+"dashboard.advanced.page.source_validity_warning" = "Срок действия короткий: после истечения свежие данные могут появиться только при следующей официальной калибровке (каждые %1$@ мин). Рекомендуется не менее %2$@ мин.";
 "dashboard.advanced.page.validity_minutes" = "%1$@ мин";
 "dashboard.general.and.refresh.pages.update_channel" = "Канал обновлений";
 "dashboard.general.and.refresh.pages.update_channel_description" = "Выберите, проверять ли стабильные или бета-версии";
