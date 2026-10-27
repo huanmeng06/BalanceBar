@@ -821,8 +821,12 @@ final class ClaudeSourceTimelineView: NSView {
         let target = up ? CATransform3DMakeScale(lifted.x, lifted.y, 1) : CATransform3DIdentity
         let opacity: Float = up ? Hover.liftShadowOpacity : 0
         let generation = hoverGeneration
-        let currentTransform = liftLayer.presentation()?.transform
-            ?? (up ? CATransform3DIdentity : CATransform3DMakeScale(lifted.x, lifted.y, 1))
+        // Start from how far the lift has progressed, re-expressed in this block's own scales: the
+        // layer may just have been resized to another block, and the previous block's horizontal
+        // scale on a much wider box would pop out far past it before springing back.
+        let progressY = liftLayer.presentation().map { $0.transform.m22 } ?? (up ? 1 : lifted.y)
+        let progress = lifted.y > 1 ? (progressY - 1) / (lifted.y - 1) : 0
+        let currentTransform = CATransform3DMakeScale(1 + (lifted.x - 1) * progress, progressY, 1)
         let currentOpacity = liftLayer.presentation()?.shadowOpacity ?? liftLayer.shadowOpacity
         let currentAlpha = liftLayer.presentation()?.opacity ?? (up ? 0 : 1)
         CATransaction.begin()
