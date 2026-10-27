@@ -1887,12 +1887,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         case AppPreferences.claudeOAuthValidityKey:
             preferences.claudeOAuthValidity = value
             claudeQuota.sourceValidityChanged()
+            dashboardComposition.refreshClaudeSourceValidity()
         case AppPreferences.claudeStatusLineValidityKey:
             preferences.claudeStatusLineValidity = value
             claudeQuota.sourceValidityChanged()
+            dashboardComposition.refreshClaudeSourceValidity()
         case AppPreferences.claudeModValidityKey:
             preferences.claudeModValidity = value
             claudeQuota.sourceValidityChanged()
+            dashboardComposition.refreshClaudeSourceValidity()
         case "codexUsageRefreshInterval":
             codexUsageRefreshInterval = value
             updateTrailingDeadlineAfterIntervalChange()

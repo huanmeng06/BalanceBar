@@ -2163,7 +2163,20 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertTrue(timeline.isDescendant(of: section.footerCardView), "on its own board in the same section")
         XCTAssertEqual(timeline.titleLabel.stringValue, tr(.keyClaudeTimelineTitle))
         for view in section.contentViews {
-            XCTAssertEqual((view as? SettingsRowView)?.detailLabel.stringValue, "")
+            let row = try XCTUnwrap(view as? SettingsRowView)
+            if row.titleLabel.stringValue == tr(.keyDashboardAdvancedPageSourceValidityOauth) {
+                XCTAssertEqual(row.detailLabel.stringValue, "")
+            } else if row.titleLabel.stringValue == tr(.keyDashboardAdvancedPageSourceValidityNativeSync) {
+                XCTAssertEqual(
+                    row.detailLabel.stringValue,
+                    tr(.keyDashboardAdvancedPageSourceValidityWarning, arguments: ["5", "6"]))
+                XCTAssertEqual(row.detailLabel.textColor, .systemOrange)
+            } else {
+                XCTAssertEqual(
+                    row.detailLabel.stringValue,
+                    tr(.keyDashboardAdvancedPageSourceValidityWarning, arguments: ["5", "6"]))
+                XCTAssertEqual(row.detailLabel.textColor, .systemOrange)
+            }
         }
 
         mod.selectItem(at: 0)
@@ -2171,6 +2184,29 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(changes.count, 1)
         XCTAssertEqual(changes.first?.0, AppPreferences.claudeModValidityKey)
         XCTAssertEqual(changes.first?.1, 60)
+    }
+
+    @MainActor
+    func testAdvancedPageClearsAccessibilityHelpWhenTheValidityWarningDisappears() throws {
+        let suite = "BalanceBarTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.claudeCalibrationInterval = 300
+        preferences.claudeStatusLineValidity = 120
+        let advanced = DashboardAdvancedPage()
+        let page = advanced.make(.init(
+            relay: DashboardPreferencePageRelay(), logViewer: nil, includeLogViewer: false, preferences: preferences))
+        let native = try XCTUnwrap(descendants(of: page).compactMap { $0 as? NSPopUpButton }
+            .first { $0.identifier?.rawValue == AppPreferences.claudeStatusLineValidityKey })
+        XCTAssertEqual(
+            native.accessibilityHelp(),
+            DashboardAdvancedPage.validityWarning(calibrationInterval: 300))
+
+        preferences.claudeStatusLineValidity = 600
+        advanced.refreshSourceValidityWarnings(preferences: preferences)
+        let help = native.accessibilityHelp() ?? ""
+        XCTAssertTrue(help.isEmpty, "stale warning help must not outlive the warning")
     }
 
     func testAdvancedPageOnlyOffersOAuthValiditiesAtLeastTheCalibrationInterval() throws {
@@ -2194,6 +2230,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
         advanced.refreshOAuthValidity(preferences: preferences)
         XCTAssertEqual(oauth.itemTitles.count, AppPreferences.claudeOAuthValidityOptions.count)
         XCTAssertEqual(oauth.itemTitles.first, tr(.keyDashboardAdvancedPageValidityMinutes, arguments: ["5"]))
+
+        let section = try XCTUnwrap(SettingsSectionView.enclosing(oauth))
+        let native = try XCTUnwrap(section.contentViews[1] as? SettingsRowView)
+        XCTAssertEqual(
+            native.detailLabel.stringValue,
+            tr(.keyDashboardAdvancedPageSourceValidityWarning, arguments: ["5", "6"]))
     }
 
     func testSettingsSwitchFactoryKeepsTheStockNativeSwitch() {

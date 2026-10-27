@@ -1034,4 +1034,20 @@ extension AppPreferencesTests {
         preferences.claudeCalibrationInterval = 300
         XCTAssertEqual(preferences.claudeOAuthValidity, 300, "shortening the interval restores the saved choice")
     }
+
+    func testClaudeLocalValidityWarningThresholdIncludesPrefetchBuffer() throws {
+        let suite = "BalanceBarTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+
+        preferences.claudeCalibrationInterval = 300
+        XCTAssertEqual(preferences.claudeLocalValidityWarningThreshold, 315)
+        XCTAssertTrue(preferences.claudeLocalValidityMayGap(300))
+        XCTAssertFalse(preferences.claudeLocalValidityMayGap(600))
+
+        preferences.claudeCalibrationInterval = 900
+        XCTAssertEqual(preferences.claudeLocalValidityWarningThreshold, 915)
+        XCTAssertTrue(preferences.claudeLocalValidityMayGap(600))
+    }
 }

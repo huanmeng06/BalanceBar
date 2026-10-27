@@ -144,6 +144,7 @@
 "dashboard.advanced.page.source_validity_oauth" = "Validità della quota ufficiale";
 "dashboard.advanced.page.source_validity_native_sync" = "Validità della sincronizzazione nativa";
 "dashboard.advanced.page.source_validity_mod" = "Validità del push del Mod";
+"dashboard.advanced.page.source_validity_warning" = "La validità è breve: dopo la scadenza, i dati aggiornati potrebbero arrivare solo alla prossima calibrazione ufficiale (ogni %1$@ min). Si consigliano almeno %2$@ min.";
 "dashboard.advanced.page.validity_minutes" = "%1$@ min";
 "dashboard.general.and.refresh.pages.update_channel" = "Canale degli aggiornamenti";
 "dashboard.general.and.refresh.pages.update_channel_description" = "Scegli se verificare le versioni stabili o beta";

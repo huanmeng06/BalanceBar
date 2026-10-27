@@ -144,6 +144,7 @@
 "dashboard.advanced.page.source_validity_oauth" = "Official quota validity";
 "dashboard.advanced.page.source_validity_native_sync" = "Native sync validity";
 "dashboard.advanced.page.source_validity_mod" = "Mod push validity";
+"dashboard.advanced.page.source_validity_warning" = "Validity is short: once it expires, fresh data may not arrive until the next official calibration (every %1$@ min). Set at least %2$@ min.";
 "dashboard.advanced.page.validity_minutes" = "%1$@ min";
 "dashboard.general.and.refresh.pages.update_channel" = "Update Channel";
 "dashboard.general.and.refresh.pages.update_channel_description" = "Choose whether to check Stable or Beta releases";

@@ -174,13 +174,17 @@ enum DashboardSettingsAccessibility {
         control.setAccessibilityTitleUIElement(titleLabel)
         titleLabel.setAccessibilityElement(false)
 
+        var help = ""
         if let detailLabel, !detailLabel.isHidden {
-            let help = sourceAccessibilityText(of: detailLabel)
+            help = sourceAccessibilityText(of: detailLabel)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            if !help.isEmpty {
-                control.setAccessibilityHelp(help)
-                detailLabel.setAccessibilityElement(false)
-            }
+        }
+        if !help.isEmpty {
+            control.setAccessibilityHelp(help)
+            detailLabel?.setAccessibilityElement(false)
+        } else if control.accessibilityHelp() != nil {
+            // A detail that went away (e.g. a dismissed warning) must not leave stale help behind.
+            control.setAccessibilityHelp(nil)
         }
     }
 
