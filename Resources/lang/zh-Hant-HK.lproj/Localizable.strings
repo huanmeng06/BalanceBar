@@ -605,7 +605,6 @@
 "status.item.controller.refresh_now_just_refreshed" = "剛剛已刷新";
 "status.item.controller.refresh_now_recent_result" = "剛剛已刷新 · %1$@ 秒後可再試";
 "status.item.controller.refresh_now_awaiting_confirmation" = "等待官方確認重置，點擊立即向官方確認";
-"status.item.controller.refresh_now_failure_backoff" = "請求失敗，%1$@ 秒後自動重試";
 "status.item.controller.refresh_now_out_of_tokens" = "刷新過於頻繁，%1$@ 秒後可重試";
 "claude.status_line.enabled" = "Claude Code 原生同步";
 "claude.status_line.description" = "每次回答結束後由 Claude Code 自動推送，不用裝外掛";

@@ -605,7 +605,6 @@
 "status.item.controller.refresh_now_just_refreshed" = "Acabou de atualizar";
 "status.item.controller.refresh_now_recent_result" = "Acabou de atualizar · nova tentativa em %1$@ s";
 "status.item.controller.refresh_now_awaiting_confirmation" = "Aguardando confirmação da reinicialização; clique para confirmar agora";
-"status.item.controller.refresh_now_failure_backoff" = "A requisição falhou; nova tentativa automática em %1$@ s";
 "status.item.controller.refresh_now_out_of_tokens" = "Atualizações frequentes demais; tente de novo em %1$@ s";
 "claude.status_line.enabled" = "Sincronização nativa do Claude Code";
 "claude.status_line.description" = "Enviado pelo Claude Code após cada resposta; não requer plugin";

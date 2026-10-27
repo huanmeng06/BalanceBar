@@ -200,7 +200,10 @@ public struct FetchSchedulerConfiguration: Equatable {
     /// Requests arriving within this window are merged into one evaluation.
     /// Not yet in `QuotaConstants`; candidate for promotion there.
     public var coalescingWindow: TimeInterval = 1
-    /// Backoff applied to consecutive non-429 failures.
+    /// How long before the displayed local source expires the official prefetch starts.
+    public var sourceExpiryPrefetchLead: TimeInterval = QuotaConstants.sourceExpiryPrefetchLead
+    /// Debounce applied to automatic requests after non-429 failures. Manual
+    /// refreshes ignore it.
     public var failureBackoff: [TimeInterval] = []
     /// While a 401 pause holds, how often the owner may re-read credentials to notice a new
     /// login. `0` waits for an explicit request instead.
@@ -218,7 +221,7 @@ public struct FetchSchedulerConfiguration: Equatable {
         value.automaticTokenCost = 1
         value.manualTokenCost = 1
         value.manualRefreshWindow = 300
-        value.failureBackoff = [60, 120, 240, 480, 900]
+        value.failureBackoff = [30]
         value.unauthorizedRecheckInterval = 300
         return value
     }

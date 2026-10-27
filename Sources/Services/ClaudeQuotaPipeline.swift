@@ -25,8 +25,6 @@ enum ClaudeManualRefreshNotice: Equatable {
     /// A reset passed and is awaiting official confirmation; a manual refresh asks the
     /// Usage API directly instead of being suppressed by the recent-result window.
     case awaitingResetConfirmation
-    /// The last request failed and the failure backoff holds requests until the given date.
-    case failureBackoff(until: Date)
     /// The request budget is exhausted; the next token arrives at the given date.
     case outOfTokens(until: Date)
     case inFlight
@@ -310,7 +308,7 @@ final class ClaudeQuotaPipeline {
     }
 
     /// Why a manual refresh would be skipped right now, in the scheduler's own precedence
-    /// (401 pause, cooldown, in-flight, failure backoff, recent result, budget). Reads the
+    /// (401 pause, cooldown, in-flight, recent result, budget; a plain failure never blocks it). Reads the
     /// scheduler's queue-protected snapshot so the menu never disagrees with the actual
     /// decision (e.g. a success persisted before a restart still suppresses).
     func manualRefreshNotice() -> ClaudeManualRefreshNotice? {
@@ -320,7 +318,6 @@ final class ClaudeQuotaPipeline {
             return .rateLimited(until: status.at.addingTimeInterval(status.cooldownRemaining))
         }
         if status.isBusy { return .inFlight }
-        if let until = status.failureBackoffUntil, until > status.at { return .failureBackoff(until: until) }
         let pending = earliestPendingReset()
         if let lastSuccessAt = status.lastSuccessAt,
            now().timeIntervalSince(lastSuccessAt) < manualRefreshWindow,

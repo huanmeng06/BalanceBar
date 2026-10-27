@@ -272,7 +272,7 @@ final class ClaudeSourceTimelineView: NSView {
 
     private let provider: () -> Content
     private let localize: (StatusSlotText) -> String
-    private let timeZone: TimeZone
+    private var timeZone: TimeZone
     private let now: () -> Date
     let statusSlot: StatusSlotView
     /// The board's heading, 「数据来源监视器」.
@@ -392,6 +392,14 @@ final class ClaudeSourceTimelineView: NSView {
 
     override var intrinsicContentSize: NSSize {
         NSSize(width: NSView.noIntrinsicMetric, height: ClaudeSourceTimelineLayout.height)
+    }
+
+    /// Switches the display time zone: axis marks, tooltips and the status slot follow it.
+    func updateTimeZone(_ timeZone: TimeZone) {
+        guard self.timeZone != timeZone else { return }
+        self.timeZone = timeZone
+        statusSlot.updateTimeZone(timeZone)
+        reload()
     }
 
     /// Pulls the latest history and status; called on new events, setting changes and the timer.

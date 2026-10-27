@@ -172,7 +172,7 @@ final class StatusSlotView: NSView {
     private let label = NSTextField(labelWithString: "")
     private let dot = NSView()
     private let localize: (StatusSlotText) -> String
-    private let timeZone: TimeZone
+    private var timeZone: TimeZone
     private let now: () -> Date
     private var ageTimer: Timer?
     private(set) var state: StatusSlotState = .official(at: nil)
@@ -224,6 +224,13 @@ final class StatusSlotView: NSView {
     deinit { ageTimer?.invalidate() }
 
     override var intrinsicContentSize: NSSize { NSSize(width: Self.fixedWidth, height: Self.fixedHeight) }
+
+    /// Re-renders the current state's times in another display time zone.
+    func updateTimeZone(_ timeZone: TimeZone) {
+        guard self.timeZone != timeZone else { return }
+        self.timeZone = timeZone
+        apply()
+    }
 
     func update(state: StatusSlotState, externalActivityDetected: Bool = false) {
         self.state = state

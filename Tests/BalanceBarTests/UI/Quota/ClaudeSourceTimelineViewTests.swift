@@ -323,6 +323,26 @@ final class ClaudeSourceTimelineViewTests: XCTestCase {
         }
     }
 
+    func testDisplayTimeZoneChangeReachesAxisTooltipsAndStatusSlot() {
+        let content = ClaudeSourceTimelineView.Content(
+            timeline: .init(readings: [reading(.mod, -60, 60)], failures: []),
+            status: .official(at: now.addingTimeInterval(-60)))
+        let view = ClaudeSourceTimelineView(provider: { content }, localize: StatusSlotText.defaultLocalize, timeZone: utc, now: { self.now })
+        view.frame = NSRect(x: 0, y: 0, width: 600, height: ClaudeSourceTimelineLayout.height)
+        let slotBefore = view.statusSlot.hoverText
+        func validUntil() -> String? {
+            let layout = view.makeLayout()
+            let bar = layout.bars.first { $0.source == .mod }
+            return bar.flatMap { layout.hoverTarget(at: CGPoint(x: $0.rect.midX, y: $0.rect.midY)) }
+                .map { view.hoverContent(for: $0) }?.rows.last?.value
+        }
+        XCTAssertEqual(validUntil(), "08:01:00")
+
+        view.updateTimeZone(TimeZone(secondsFromGMT: 9 * 3600)!)
+        XCTAssertEqual(validUntil(), "17:01:00")
+        XCTAssertNotEqual(view.statusSlot.hoverText, slotBefore)
+    }
+
     func testStatusSlotIsHiddenUntilThePipelinePublishes() {
         let view = ClaudeSourceTimelineView(provider: { .empty }, timeZone: utc, now: { self.now })
         XCTAssertTrue(view.statusSlot.isHidden)

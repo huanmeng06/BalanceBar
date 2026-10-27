@@ -605,7 +605,6 @@
 "status.item.controller.refresh_now_just_refreshed" = "Appena aggiornato";
 "status.item.controller.refresh_now_recent_result" = "Appena aggiornato · riprova tra %1$@ s";
 "status.item.controller.refresh_now_awaiting_confirmation" = "In attesa della conferma del ripristino; clicca per confermare ora";
-"status.item.controller.refresh_now_failure_backoff" = "Richiesta non riuscita; nuovo tentativo automatico tra %1$@ s";
 "status.item.controller.refresh_now_out_of_tokens" = "Aggiornamenti troppo frequenti; riprova tra %1$@ s";
 "claude.status_line.enabled" = "Sincronizzazione nativa Claude Code";
 "claude.status_line.description" = "Inviato da Claude Code dopo ogni risposta; nessun plugin necessario";
