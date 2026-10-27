@@ -942,32 +942,49 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         waitForRequests(2)
     }
 
-    func testModSnapshotWithoutGradeABaselineFallsBackToOfficialData() throws {
-        try placeModSnapshot(
-            five: 90, seven: 95, observedAt: Self.start.addingTimeInterval(1),
-            fiveReset: Self.start.addingTimeInterval(100_000), sevenReset: Self.start.addingTimeInterval(200_000))
+    func testModSnapshotOnAnUnrelatedCycleIsRejectedAfterOfficialBaseline() throws {
         let pipeline = makePipeline(configuration: claudeV1TestConfiguration, withInbox: true)
         pipeline.start()
         pipeline.requestFetch(reason: .initial)
         _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+        try placeModSnapshot(
+            five: 90, seven: 95, observedAt: Self.start.addingTimeInterval(1),
+            fiveReset: Self.start.addingTimeInterval(100_000), sevenReset: Self.start.addingTimeInterval(200_000))
         let inbox = try XCTUnwrap(lastInbox)
         XCTAssertTrue(pollUntil {
-            // Without a baseline the merge engine rejects the snapshot (log); once the
-            // official read has landed first, the cycle verification rejects it (health).
-            let healthRejected = inbox.adapters.contains { adapter in
+            inbox.adapters.contains { adapter in
                 if case let .degraded(reason) = adapter.health,
                    reason.contains("cycle_unverified_against_official") { return true }
                 return false
             }
-            return healthRejected
-                || self.diagnosticLines.all.contains { $0.contains("reason=not_displayed_by_merge") }
-        }, "the engine rejection should be diagnosed")
+        }, "a snapshot that cannot be tied to the official cycle is rejected as a whole")
         let state = try XCTUnwrap(pipeline.latestState)
         XCTAssertEqual(state.display.window(for: .fiveHour)?.usedPercentage, 23)
         XCTAssertEqual(state.display.window(for: .sevenDay)?.usedPercentage, 41)
         XCTAssertEqual(state.status, .realtime(.oauthAPI, at: Self.start))
         XCTAssertEqual(PipelineStubProtocol.requestCount, 1, "rejected Mod data must not suppress the official read")
         XCTAssertEqual(mergeWindowKeys(pipeline), ["five_hour", "seven_day"])
+    }
+
+    func testModReadingBelowTheOfficialValueWithinToleranceStillCountsAsLiveEvidence() throws {
+        let pipeline = makePipeline(
+            configuration: claudeV1TestConfiguration, withTestStatusLine: true, withInbox: true)
+        pipeline.start()
+        pipeline.requestFetch(reason: .initial)
+        _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+
+        // The official API says 41 for the 7-day window; the Mod rounds it down to 40. The display
+        // never moves backwards, yet the Mod window is evidence that the local source is alive.
+        clock.advance(by: 305)
+        try placeModSnapshot(five: 25, seven: 40, observedAt: Self.start.addingTimeInterval(310))
+        let realtime = try XCTUnwrap(waitForState(pipeline) { $0.status.isNativeRealtime })
+        XCTAssertEqual(realtime.display.window(for: .fiveHour)?.usedPercentage, 25)
+        XCTAssertEqual(realtime.display.window(for: .sevenDay)?.usedPercentage, 41, "the display never moves backwards")
+
+        pipeline.requestFetch(reason: .scheduled)
+        quiet(pipeline)
+        XCTAssertEqual(PipelineStubProtocol.requestCount, 1, "both windows are fresh local evidence")
+        XCTAssertTrue(diagnosticLines.all.contains { $0.contains("skip=realtimeSourceFresh") })
     }
 
     func testRescannedOldModSnapshotDoesNotCreateFreshness() throws {
@@ -1043,6 +1060,10 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
 
     func testModSupersetWindowsAndForeignInboxSourcesNeverReachTheClaudeEngine() throws {
         try FileManager.default.createDirectory(at: inboxDirectoryURL, withIntermediateDirectories: true)
+        let pipeline = makePipeline(configuration: claudeV1TestConfiguration, withInbox: true)
+        pipeline.start()
+        pipeline.requestFetch(reason: .initial)
+        _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
         // Mod superset: the extra windows must not create engine state or reset confirmations.
         let superset: [String: Any] = [
             "updated_at": Self.isoFormatter.string(from: Self.start.addingTimeInterval(1)),
@@ -1059,6 +1080,17 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         ]
         try JSONSerialization.data(withJSONObject: superset)
             .write(to: inboxDirectoryURL.appendingPathComponent("balancebar-mod-superset.json"))
+        let inbox = try XCTUnwrap(lastInbox)
+        XCTAssertTrue(pollUntil {
+            // The official cycle is known, so the superset snapshot is rejected wholesale by the
+            // cycle verification and never displays.
+            inbox.adapters.contains { adapter in
+                if case let .degraded(reason) = adapter.health,
+                   reason.contains("cycle_unverified_against_official") { return true }
+                return false
+            }
+        })
+
         // An unrelated inbox source with plausible values must be ignored entirely.
         let foreign: [String: Any] = [
             "updated_at": Self.isoFormatter.string(from: Self.start.addingTimeInterval(1)),
@@ -1067,24 +1099,6 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         ]
         try JSONSerialization.data(withJSONObject: foreign)
             .write(to: inboxDirectoryURL.appendingPathComponent("foreign.json"))
-
-        let pipeline = makePipeline(configuration: claudeV1TestConfiguration, withInbox: true)
-        pipeline.start()
-        pipeline.requestFetch(reason: .initial)
-        _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
-        let inbox = try XCTUnwrap(lastInbox)
-        XCTAssertTrue(pollUntil {
-            // The superset snapshot is either rejected wholesale by the cycle verification
-            // (health) or passed through and rejected by the merge engine (log) — whichever
-            // official read wins the race; both prove it never displayed.
-            let healthRejected = inbox.adapters.contains { adapter in
-                if case let .degraded(reason) = adapter.health,
-                   reason.contains("cycle_unverified_against_official") { return true }
-                return false
-            }
-            return healthRejected
-                || self.diagnosticLines.all.contains { $0.contains("reason=not_displayed_by_merge") }
-        })
         quiet(pipeline)
         XCTAssertEqual(mergeWindowKeys(pipeline), ["five_hour", "seven_day"])
         let state = try XCTUnwrap(pipeline.latestState)

@@ -302,16 +302,33 @@ public final class QuotaMergeEngine: QuotaMerging {
             drift.didAccept(observation, previous: previous)
             return true
         case .b:
-            guard let gradeA = window.latestGradeA,
-                  gradeA.epoch == observation.epoch,
-                  reading.usedPercentage >= gradeA.usedPercentage - QuotaConstants.gradeBTolerancePercentagePoints,
-                  sameCycle(reading.resetsAt, gradeA.resetsAt) else { return false }
+            if let gradeA = window.latestGradeA, gradeA.epoch == observation.epoch {
+                guard reading.usedPercentage >= gradeA.usedPercentage - QuotaConstants.gradeBTolerancePercentagePoints,
+                      sameCycle(reading.resetsAt, gradeA.resetsAt) else { return false }
+            } else {
+                // No official baseline for this account (not signed in, or nothing read yet): the
+                // local sources are the only evidence, and the newest reading wins. Without a
+                // grade-A anchor the cycle is held by the displayed reading instead.
+                guard Self.isAdmissibleWithoutBaseline(reading, after: window.displayed) else { return false }
+            }
             let previous = window.displayed
             window.displayed = reading
             state.windows[key] = window
             drift.didAccept(observation, previous: previous)
             return true
         }
+    }
+
+    /// A grade-B reading with no grade-A baseline follows the displayed reading: the same cycle
+    /// may not move usage backwards, a later cycle starts over, and an earlier cycle is stale.
+    /// A reading or display without a reset time cannot prove a cycle change, so usage must not fall.
+    static func isAdmissibleWithoutBaseline(_ reading: QuotaMergedReading, after displayed: QuotaMergedReading?) -> Bool {
+        guard let displayed else { return true }
+        if let resetsAt = reading.resetsAt, let displayedReset = displayed.resetsAt,
+           !sameResetInstant(resetsAt, displayedReset) {
+            return resetsAt > displayedReset
+        }
+        return reading.usedPercentage >= displayed.usedPercentage
     }
 
     private func isNextCycle(_ reading: QuotaMergedReading, after pending: Date) -> Bool {

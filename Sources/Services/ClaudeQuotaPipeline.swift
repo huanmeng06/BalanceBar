@@ -545,10 +545,27 @@ final class ClaudeQuotaPipeline {
            displayed.epoch == observation.epoch,
            Self.sameCycle(displayed.resetsAt, observation.resetsAt),
            observation.usedPercentage < displayed.usedPercentage {
+            // The official API and the local sources round differently (e.g. the Mod reports 41
+            // where the official API reported 42). Below an official reading and inside the
+            // tolerance, the local reading is not shown, but it still proves the local source is
+            // alive for this window; without it the window would never count as fresh local data.
+            // Between two local readings a regression is concurrent-session noise, never evidence.
+            let tolerated = displayed.trust == .a
+                && displayed.usedPercentage - observation.usedPercentage
+                    <= QuotaConstants.gradeBTolerancePercentagePoints
+            let observedAt = observation.observedAt ?? observation.receivedAt
+            guard tolerated, observedAt >= displayed.effectiveTime else {
+                diagnostics(
+                    "claude native observation rejected; reason=usage_decreased_within_cycle; source=\(observation.source); window=\(observation.window.rawValue)",
+                    .debug)
+                return false
+            }
             diagnostics(
-                "claude native observation rejected; reason=usage_decreased_within_cycle; source=\(observation.source); window=\(observation.window.rawValue)",
+                "claude native observation kept as evidence only; reason=usage_within_tolerance_below_display; source=\(observation.source); window=\(observation.window.rawValue)",
                 .debug)
-            return false
+            recordLocalEvidence(observation)
+            publish()
+            return true
         }
         _ = engine.merge(observation)
         let displayed = engine.currentState.windows[observation.window.rawValue]?.displayed
@@ -557,18 +574,22 @@ final class ClaudeQuotaPipeline {
         diagnostics(
             "claude native observation; source=\(observation.source); window=\(observation.window.rawValue); accepted=\(accepted)",
             .debug)
-        if accepted {
-            realtimeTracker?.recordTrustedObservation(
-                window: observation.window,
-                observedAt: observation.observedAt ?? observation.receivedAt,
-                epoch: observation.epoch,
-                source: Self.statusSource(forSourceID: observation.source) ?? .statusLine)
-            if let source = Self.statusSource(forSourceID: observation.source) {
-                sourceTimeline.recordReading(source: source, observedAt: observation.observedAt ?? observation.receivedAt)
-            }
-        }
+        if accepted { recordLocalEvidence(observation) }
         publish()
         return accepted
+    }
+
+    /// Trusted real-time evidence from a local source: freshness for the scheduler and a block on
+    /// the source timeline.
+    private func recordLocalEvidence(_ observation: QuotaObservation) {
+        realtimeTracker?.recordTrustedObservation(
+            window: observation.window,
+            observedAt: observation.observedAt ?? observation.receivedAt,
+            epoch: observation.epoch,
+            source: Self.statusSource(forSourceID: observation.source) ?? .statusLine)
+        if let source = Self.statusSource(forSourceID: observation.source) {
+            sourceTimeline.recordReading(source: source, observedAt: observation.observedAt ?? observation.receivedAt)
+        }
     }
 
     /// Sources disagree below a second; see `QuotaMergeEngine.sameResetInstant`.

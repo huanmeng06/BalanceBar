@@ -66,7 +66,7 @@ final class QuotaMergeEngineTests: XCTestCase {
     func testGradeBAdmissionRules() {
         struct Case { let name: String; let seedA: Bool; let bUsed: Double; let bResetsIn: TimeInterval?; let expected: Double? }
         let cases = [
-            Case(name: "no grade-A yet", seedA: false, bUsed: 50, bResetsIn: 3_600, expected: nil),
+            Case(name: "no grade-A yet", seedA: false, bUsed: 50, bResetsIn: 3_600, expected: 50),
             Case(name: "higher than A", seedA: true, bUsed: 45, bResetsIn: 3_600, expected: 45),
             Case(name: "within tolerance below A", seedA: true, bUsed: 38.5, bResetsIn: 3_600, expected: 38.5),
             Case(name: "below tolerance", seedA: true, bUsed: 37, bResetsIn: 3_600, expected: 40),
@@ -203,8 +203,8 @@ final class QuotaMergeEngineTests: XCTestCase {
         engine.merge(obs(40))
         engine.merge(obs(45, at: 5, trust: .b))
         var model = engine.merge(obs(.sevenDay, 5, resetsIn: 86_400, trust: .b, account: "acct-2", epoch: 1))
-        XCTAssertNil(model.window(for: .fiveHour)?.usedPercentage)
-        XCTAssertNil(model.window(for: .sevenDay)?.usedPercentage, "grade-B isolated after switch")
+        XCTAssertNil(model.window(for: .fiveHour)?.usedPercentage, "the previous account's readings are gone")
+        XCTAssertEqual(model.window(for: .sevenDay)?.usedPercentage, 5, "only the new account's own local reading is shown")
 
         model = engine.merge(obs(41, at: 6, account: "acct-1", epoch: 0))
         XCTAssertNil(model.window(for: .fiveHour)?.usedPercentage, "stale epoch rejected")
@@ -274,15 +274,15 @@ final class QuotaMergeEngineTests: XCTestCase {
         XCTAssertEqual(model.window(for: .fiveHour)?.usedPercentage, 42)
     }
 
-    func testEpochSwitchPersistsEvenWhenObservationRejected() {
+    func testEpochSwitchPersistsWithTheNewAccountsFirstLocalReading() {
         let store = MemoryStore()
         let engine = makeEngine(store: store)
         engine.merge(obs(40))
         let model = engine.merge(obs(45, at: 5, trust: .b, account: "acct-b", epoch: 1))
-        XCTAssertNil(model.window(for: .fiveHour)?.usedPercentage)
+        XCTAssertEqual(model.window(for: .fiveHour)?.usedPercentage, 45)
 
         let restarted = makeEngine(store: store)
-        XCTAssertEqual(restarted.displayModel.state, .noData)
+        XCTAssertEqual(restarted.displayModel.window(for: .fiveHour)?.usedPercentage, 45)
         XCTAssertEqual(restarted.currentState.accountID, "acct-b")
         XCTAssertEqual(restarted.currentState.epoch, AccountEpoch(1))
     }
@@ -323,5 +323,73 @@ final class QuotaMergeEngineTests: XCTestCase {
         engine.merge(obs(39, resetsIn: 3_601.6, at: 20, trust: .b))
         XCTAssertEqual(engine.currentState.windows[QuotaWindowKind.fiveHour.rawValue]?.displayed?.usedPercentage, 38,
                        "more than a second apart is another cycle")
+    }
+
+    // MARK: - Grade B without an official baseline
+
+    private func displayedUsage(_ engine: QuotaMergeEngine, _ window: QuotaWindowKind = .fiveHour) -> Double? {
+        engine.currentState.windows[window.rawValue]?.displayed?.usedPercentage
+    }
+
+    func testGradeBIsAdoptedWithoutOfficialBaselineAndNewestWins() {
+        let engine = makeEngine()
+        engine.merge(obs(15, at: 0, trust: .b))
+        XCTAssertEqual(displayedUsage(engine), 15)
+        engine.merge(obs(17, at: 10, trust: .b))
+        XCTAssertEqual(displayedUsage(engine), 17)
+        XCTAssertNil(engine.currentState.windows[QuotaWindowKind.fiveHour.rawValue]?.latestGradeA,
+                     "a local reading never becomes the official baseline")
+    }
+
+    func testGradeBWithoutBaselineRejectsUsageDecreaseWithinCycle() {
+        let engine = makeEngine()
+        engine.merge(obs(17, at: 0, trust: .b))
+        engine.merge(obs(12, at: 10, trust: .b))
+        XCTAssertEqual(displayedUsage(engine), 17)
+    }
+
+    func testGradeBWithoutBaselineAcceptsLaterCycleAndRejectsEarlierCycle() {
+        let engine = makeEngine()
+        engine.merge(obs(80, resetsIn: 3_600, at: 0, trust: .b))
+        engine.merge(obs(5, resetsIn: 3_600 + 18_000, at: 10, trust: .b))
+        XCTAssertEqual(displayedUsage(engine), 5, "a later cycle starts over")
+        engine.merge(obs(60, resetsIn: 3_600, at: 20, trust: .b))
+        XCTAssertEqual(displayedUsage(engine), 5, "an earlier cycle is stale")
+    }
+
+    func testGradeBWithoutBaselineIgnoresOlderTimestamp() {
+        let engine = makeEngine()
+        engine.merge(obs(20, at: 20, trust: .b))
+        engine.merge(obs(30, at: 10, trust: .b))
+        XCTAssertEqual(displayedUsage(engine), 20)
+    }
+
+    func testGradeBWithoutBaselineRespectsEpochAndAccount() {
+        let engine = makeEngine()
+        engine.merge(obs(20, at: 0, trust: .b, account: "acct-1", epoch: 1))
+        engine.merge(obs(30, at: 10, trust: .b, account: "acct-2", epoch: 1))
+        XCTAssertEqual(displayedUsage(engine), 20, "another account in the same epoch is rejected")
+        engine.merge(obs(40, at: 20, trust: .b, account: "acct-1", epoch: 0))
+        XCTAssertEqual(displayedUsage(engine), 20, "an older epoch is rejected")
+    }
+
+    func testOfficialReadingStillCorrectsLocalReadingAndRestoresBaselineRules() {
+        let engine = makeEngine()
+        engine.merge(obs(50, at: 0, trust: .b))
+        engine.merge(obs(30, at: 10))
+        XCTAssertEqual(displayedUsage(engine), 30, "grade A keeps its right to correct a local reading")
+        engine.merge(obs(20, at: 20, trust: .b))
+        XCTAssertEqual(displayedUsage(engine), 30, "with a baseline again, a reading below the tolerance is rejected")
+    }
+
+    func testGradeBWithoutBaselineShowsNextCycleProvisionallyAfterReset() {
+        let engine = makeEngine()
+        engine.merge(obs(90, resetsIn: 60, at: 0, trust: .b))
+        clock = t0.addingTimeInterval(120)
+        _ = engine.refresh()
+        engine.merge(obs(3, resetsIn: 60 + 18_000, at: 130, trust: .b))
+        XCTAssertEqual(displayedUsage(engine), 3)
+        XCTAssertNotNil(engine.currentState.windows[QuotaWindowKind.fiveHour.rawValue]?.pendingResetOf,
+                        "the window stays pending until the official API confirms the reset")
     }
 }
