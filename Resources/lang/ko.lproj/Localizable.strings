@@ -604,7 +604,6 @@
 "status.item.controller.refresh_now_just_refreshed" = "방금 업데이트됨";
 "status.item.controller.refresh_now_recent_result" = "방금 업데이트됨 · %1$@초 후 재시도 가능";
 "status.item.controller.refresh_now_awaiting_confirmation" = "공식 초기화 확인 대기 중, 클릭하면 즉시 확인합니다";
-"status.item.controller.refresh_now_failure_backoff" = "요청 실패, %1$@초 후 자동 재시도";
 "status.item.controller.refresh_now_out_of_tokens" = "새로고침이 너무 잦습니다. %1$@초 후 재시도할 수 있습니다";
 "claude.status_line.enabled" = "Claude Code 네이티브 동기화";
 "claude.status_line.description" = "답변이 끝날 때마다 Claude Code가 자동 전송하며, 플러그인이 필요 없습니다";

@@ -604,7 +604,6 @@
 "status.item.controller.refresh_now_just_refreshed" = "Gerade aktualisiert";
 "status.item.controller.refresh_now_recent_result" = "Gerade aktualisiert · Wiederholung in %1$@ s";
 "status.item.controller.refresh_now_awaiting_confirmation" = "Warte auf offizielle Bestätigung des Zurücksetzens; klicken, um jetzt zu bestätigen";
-"status.item.controller.refresh_now_failure_backoff" = "Anfrage fehlgeschlagen; automatische Wiederholung in %1$@ s";
 "status.item.controller.refresh_now_out_of_tokens" = "Zu häufig aktualisiert; Wiederholung in %1$@ s möglich";
 "claude.status_line.enabled" = "Native Synchronisierung mit Claude Code";
 "claude.status_line.description" = "Wird nach jeder Antwort von Claude Code gesendet; kein Plugin nötig";

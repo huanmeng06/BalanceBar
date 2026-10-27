@@ -704,9 +704,9 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         XCTAssertEqual(retryTimer.delays, [60, 120], "the cadence backs off while confirmation is pending")
     }
 
-    /// Issue #580 review: while the pending confirmation's request failed and the backoff
-    /// holds clicks back, the menu must say so instead of promising an immediate read.
-    func testManualRefreshNoticeExplainsFailureBackoffWhilePending() throws {
+    /// A plain failed read never locks the manual refresh: the menu offers a retry instead of
+    /// a countdown.
+    func testManualRefreshNoticeDoesNotBlockAfterAPlainFailure() throws {
         PipelineStubProtocol.set(.init(data: Self.nearReset))
         let tracker = ClaudeRealtimeTracker(now: { [clock] in clock!.now })
         let pipeline = makePipeline(realtimeTracker: tracker, configuration: claudeV1TestConfiguration)
@@ -719,11 +719,8 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         waitForRequests(2)
         quiet(pipeline)
         XCTAssertEqual(pipeline.latestState?.display.state, .resetPendingConfirmation)
-        guard case let .failureBackoff(until)? = pipeline.manualRefreshNotice() else {
-            return XCTFail("expected a failure-backoff notice, got \(String(describing: pipeline.manualRefreshNotice()))")
-        }
-        XCTAssertEqual(until.timeIntervalSince(clock.now), 60, accuracy: 1,
-                       "the subtitle counts down to the real retry moment")
+        XCTAssertEqual(pipeline.manualRefreshNotice(), .awaitingResetConfirmation,
+                       "only the pending-confirmation hint remains; no failure countdown")
     }
 
     /// Issue #580 review: an exhausted request budget must be explained too, not offered
