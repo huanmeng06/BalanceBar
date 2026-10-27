@@ -251,6 +251,8 @@ final class DashboardPreferencePages {
         generalPage.refreshDisplayTimeZone(selection)
         searchGeneralPage.refreshDisplayTimeZone(selection)
         notificationsPage?.refreshDisplayTimeZone()
+        advancedPage.refreshDisplayTimeZone(preferences.effectiveDisplayTimeZone)
+        searchAdvancedPage.refreshDisplayTimeZone(preferences.effectiveDisplayTimeZone)
     }
 
     func refreshNotifications() {

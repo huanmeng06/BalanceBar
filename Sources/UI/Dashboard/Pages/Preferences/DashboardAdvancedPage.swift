@@ -41,6 +41,11 @@ final class DashboardAdvancedPage {
         view.reload()
     }
 
+    /// Moves the timeline to the current display time zone; the cached page is not rebuilt.
+    func refreshDisplayTimeZone(_ timeZone: TimeZone) {
+        sourceTimelineView?.updateTimeZone(timeZone)
+    }
+
     /// Re-lists the official-validity choices (never shorter than the calibration interval) and
     /// selects the effective value.
     func refreshOAuthValidity(preferences: AppPreferences) {

@@ -51,21 +51,22 @@ final class ClaudeSourceTimelineTests: XCTestCase {
         XCTAssertEqual(readings[0].expiresAt, start.addingTimeInterval(120))
     }
 
-    func testFailureRunOpensUpdatesItsKindAndEndsOnTheNextOfficialRead() {
+    func testFailureRunSplitsOnANewKindAndEndsOnTheNextOfficialRead() {
         let timeline = makeTimeline(now: { self.start.addingTimeInterval(600) })
         timeline.recordFailure(.network, at: start)
         timeline.recordFailure(.network, at: start.addingTimeInterval(60))
         timeline.recordFailure(.rateLimited, at: start.addingTimeInterval(120))
         XCTAssertEqual(timeline.snapshot().failures, [
-            ClaudeSourceTimeline.FailureRun(start: start, end: nil, kind: .rateLimited)
-        ])
+            ClaudeSourceTimeline.FailureRun(start: start, end: start.addingTimeInterval(120), kind: .network),
+            ClaudeSourceTimeline.FailureRun(start: start.addingTimeInterval(120), end: nil, kind: .rateLimited)
+        ], "a new category closes the earlier run instead of rewriting it")
         timeline.recordOfficialSuccess(at: start.addingTimeInterval(300))
         let snapshot = timeline.snapshot()
-        XCTAssertEqual(snapshot.failures.first?.end, start.addingTimeInterval(300))
+        XCTAssertEqual(snapshot.failures.last?.end, start.addingTimeInterval(300))
         XCTAssertEqual(snapshot.readings.map(\.source), [.oauthAPI])
 
         timeline.recordFailure(.unauthorized, at: start.addingTimeInterval(400))
-        XCTAssertEqual(timeline.snapshot().failures.count, 2, "a failure after a success opens a new run")
+        XCTAssertEqual(timeline.snapshot().failures.count, 3, "a failure after a success opens a new run")
     }
 
     func testFailureKindsAreGroupedForDisplay() {

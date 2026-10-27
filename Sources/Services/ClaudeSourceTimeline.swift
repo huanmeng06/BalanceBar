@@ -113,13 +113,13 @@ final class ClaudeSourceTimeline {
         if changed { notify() }
     }
 
-    /// Opens a failure run, or updates the category of the one in progress.
+    /// Opens a failure run. The same category continues the run in progress; a different one
+    /// ends it at `date` and opens a new run there, so earlier time keeps its own category.
     func recordFailure(_ kind: FailureKind, at date: Date) {
         let changed = lock.withLock { () -> Bool in
             if let last = failures.indices.last, failures[last].end == nil {
                 guard failures[last].kind != kind else { return false }
-                failures[last].kind = kind
-                return true
+                failures[last].end = max(date, failures[last].start)
             }
             failures.append(FailureRun(start: date, end: nil, kind: kind))
             pruneLocked(at: now())
