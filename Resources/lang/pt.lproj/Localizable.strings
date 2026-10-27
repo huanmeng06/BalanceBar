@@ -582,7 +582,6 @@
 
 "quota.status.refreshing" = "Lendo…";
 "quota.status.realtime" = "Ao vivo";
-"quota.status.expired" = "Expirado";
 "quota.status.ago.minutes" = "há %1$@ min";
 "quota.status.ago.hours" = "há %1$@ h";
 "quota.status.ago.days" = "há %1$@ d";

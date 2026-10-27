@@ -3546,7 +3546,7 @@ extension StatusItemControllerTests {
             return try XCTUnwrap(find(host))
         }
         // A stale reading reads "5 分钟前 · Mod": its age and source, not a clock time.
-        let ageText = StatusSlotText.appLocalize(.expired) + " · " + tr(.keyQuotaStatusSourceMod)
+        let ageText = String(format: StatusSlotText.appLocalize(.agoMinutes), "5") + " · " + tr(.keyQuotaStatusSourceMod)
         XCTAssertEqual(try slot().textForTesting, ageText)
         XCTAssertEqual(try slot().fontForTesting, .monospacedDigitSystemFont(ofSize: 12, weight: .regular))
         XCTAssertEqual(try slot().identifier?.rawValue, "overview.refreshTime")

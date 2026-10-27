@@ -581,7 +581,6 @@
 
     case keyQuotaStatusRefreshing = "quota.status.refreshing"
     case keyQuotaStatusRealtime = "quota.status.realtime"
-    case keyQuotaStatusExpired = "quota.status.expired"
     case keyQuotaStatusHoverRefreshing = "quota.status.hover.refreshing"
     case keyQuotaStatusHoverError = "quota.status.hover.error"
     case keyQuotaStatusHoverEstimated = "quota.status.hover.estimated"

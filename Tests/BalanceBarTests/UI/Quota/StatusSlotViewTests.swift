@@ -145,7 +145,7 @@ final class StatusSlotViewTests: XCTestCase {
         let view = StatusSlotView(timeZone: utc, now: { clock })
 
         view.update(state: .official(at: time, source: .mod))
-        XCTAssertEqual(view.textForTesting, "过期 · Mod", "an expired local source is marked as such")
+        XCTAssertEqual(view.textForTesting, "5 分钟前 · Mod", "a stale local source keeps showing its age")
         XCTAssertTrue(view.isDotVisibleForTesting, "stale readings carry the orange dot")
         XCTAssertEqual(srgb(view.textColorForTesting), srgb(.secondaryLabelColor))
         XCTAssertEqual(view.toolTip, "来自本机数据，更新于 13:40:00", "a stale Mod reading is local data, never described as official")
@@ -164,7 +164,7 @@ final class StatusSlotViewTests: XCTestCase {
         XCTAssertEqual(view.textForTesting, "5 分钟前", "no source, no separator")
 
         view.update(state: .official(at: time, source: .statusLine))
-        XCTAssertEqual(view.textForTesting, "过期 · 原生同步")
+        XCTAssertEqual(view.textForTesting, "5 分钟前 · 原生同步")
         view.update(state: .official(at: time, source: .oauthAPI))
         XCTAssertEqual(view.textForTesting, "5 分钟前 · OAuth API", "an official reading still shows its age")
         clock = clock.addingTimeInterval(61)

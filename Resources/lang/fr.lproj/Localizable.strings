@@ -582,7 +582,6 @@
 
 "quota.status.refreshing" = "En cours…";
 "quota.status.realtime" = "En direct";
-"quota.status.expired" = "Périmé";
 "quota.status.ago.minutes" = "il y a %1$@ min";
 "quota.status.ago.hours" = "il y a %1$@ h";
 "quota.status.ago.days" = "il y a %1$@ j";

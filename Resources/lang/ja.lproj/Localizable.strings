@@ -582,7 +582,6 @@
 
 "quota.status.refreshing" = "更新中…";
 "quota.status.realtime" = "ライブ";
-"quota.status.expired" = "期限切れ";
 "quota.status.ago.minutes" = "%1$@分前";
 "quota.status.ago.hours" = "%1$@時間前";
 "quota.status.ago.days" = "%1$@日前";

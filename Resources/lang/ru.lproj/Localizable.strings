@@ -582,7 +582,6 @@
 
 "quota.status.refreshing" = "Чтение…";
 "quota.status.realtime" = "Онлайн";
-"quota.status.expired" = "Устарело";
 "quota.status.ago.minutes" = "%1$@ мин";
 "quota.status.ago.hours" = "%1$@ ч";
 "quota.status.ago.days" = "%1$@ дн";

@@ -582,7 +582,6 @@
 
 "quota.status.refreshing" = "更新中…";
 "quota.status.realtime" = "即時";
-"quota.status.expired" = "過期";
 "quota.status.ago.minutes" = "%1$@ 分鐘前";
 "quota.status.ago.hours" = "%1$@ 小時前";
 "quota.status.ago.days" = "%1$@ 天前";

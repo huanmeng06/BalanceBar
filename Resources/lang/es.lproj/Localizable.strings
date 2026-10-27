@@ -582,7 +582,6 @@
 
 "quota.status.refreshing" = "Cargando…";
 "quota.status.realtime" = "En vivo";
-"quota.status.expired" = "Caduco";
 "quota.status.ago.minutes" = "hace %1$@ min";
 "quota.status.ago.hours" = "hace %1$@ h";
 "quota.status.ago.days" = "hace %1$@ d";

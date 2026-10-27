@@ -582,7 +582,6 @@
 
 "quota.status.refreshing" = "Lädt…";
 "quota.status.realtime" = "Live";
-"quota.status.expired" = "Veraltet";
 "quota.status.ago.minutes" = "vor %1$@ Min.";
 "quota.status.ago.hours" = "vor %1$@ Std.";
 "quota.status.ago.days" = "vor %1$@ T.";

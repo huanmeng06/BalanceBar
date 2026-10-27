@@ -582,7 +582,6 @@
 
 "quota.status.refreshing" = "Updating…";
 "quota.status.realtime" = "Live";
-"quota.status.expired" = "Stale";
 "quota.status.ago.minutes" = "%1$@ min ago";
 "quota.status.ago.hours" = "%1$@ hr ago";
 "quota.status.ago.days" = "%1$@ d ago";

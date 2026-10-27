@@ -582,7 +582,6 @@
 
 "quota.status.refreshing" = "Carico…";
 "quota.status.realtime" = "Live";
-"quota.status.expired" = "Scaduto";
 "quota.status.ago.minutes" = "%1$@ min fa";
 "quota.status.ago.hours" = "%1$@ h fa";
 "quota.status.ago.days" = "%1$@ g fa";

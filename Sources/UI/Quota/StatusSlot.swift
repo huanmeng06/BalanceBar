@@ -74,7 +74,6 @@ enum StatusSlotState: Equatable {
 enum StatusSlotText: String, CaseIterable {
     case refreshing = "quota.status.refreshing"
     case realtime = "quota.status.realtime"
-    case expired = "quota.status.expired"
     case hoverRefreshing = "quota.status.hover.refreshing"
     case hoverError = "quota.status.hover.error"
     case hoverEstimated = "quota.status.hover.estimated"
@@ -97,7 +96,6 @@ enum StatusSlotText: String, CaseIterable {
         switch self {
         case .refreshing: return "刷新中…"
         case .realtime: return "实时"
-        case .expired: return "过期"
         case .hoverRefreshing: return "正在读取最新额度"
         case .hoverError: return "更新失败，显示的是 %@ 的数据"
         case .hoverEstimated: return "根据 %@ 的数据估算，等待官方确认"
@@ -334,13 +332,7 @@ final class StatusSlotView: NSView {
             dot.isHidden = false
             dot.layer?.backgroundColor = NSColor.systemGreen.cgColor
         case let .official(at, source):
-            // A local source that outlived its validity keeps showing its old reading, marked as
-            // expired until a newer reading (local or official) arrives.
-            if let source, source != .oauthAPI {
-                label.stringValue = localize(.expired) + " · " + sourceName(source)
-            } else {
-                label.stringValue = ageText(at, source)
-            }
+            label.stringValue = ageText(at, source)
             label.textColor = .secondaryLabelColor
             dot.isHidden = false
             dot.layer?.backgroundColor = NSColor.systemOrange.cgColor
