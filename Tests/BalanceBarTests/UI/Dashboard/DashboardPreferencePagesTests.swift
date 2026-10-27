@@ -2163,7 +2163,20 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertTrue(timeline.isDescendant(of: section.footerCardView), "on its own board in the same section")
         XCTAssertEqual(timeline.titleLabel.stringValue, tr(.keyClaudeTimelineTitle))
         for view in section.contentViews {
-            XCTAssertEqual((view as? SettingsRowView)?.detailLabel.stringValue, "")
+            let row = try XCTUnwrap(view as? SettingsRowView)
+            if row.titleLabel.stringValue == tr(.keyDashboardAdvancedPageSourceValidityOauth) {
+                XCTAssertEqual(row.detailLabel.stringValue, "")
+            } else if row.titleLabel.stringValue == tr(.keyDashboardAdvancedPageSourceValidityNativeSync) {
+                XCTAssertEqual(
+                    row.detailLabel.stringValue,
+                    tr(.keyDashboardAdvancedPageSourceValidityWarning, arguments: ["5", "6"]))
+                XCTAssertEqual(row.detailLabel.textColor, .systemOrange)
+            } else {
+                XCTAssertEqual(
+                    row.detailLabel.stringValue,
+                    tr(.keyDashboardAdvancedPageSourceValidityWarning, arguments: ["2", "6"]))
+                XCTAssertEqual(row.detailLabel.textColor, .systemOrange)
+            }
         }
 
         mod.selectItem(at: 0)
@@ -2194,6 +2207,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
         advanced.refreshOAuthValidity(preferences: preferences)
         XCTAssertEqual(oauth.itemTitles.count, AppPreferences.claudeOAuthValidityOptions.count)
         XCTAssertEqual(oauth.itemTitles.first, tr(.keyDashboardAdvancedPageValidityMinutes, arguments: ["5"]))
+
+        let section = try XCTUnwrap(SettingsSectionView.enclosing(oauth))
+        let native = try XCTUnwrap(section.contentViews[1] as? SettingsRowView)
+        XCTAssertEqual(
+            native.detailLabel.stringValue,
+            tr(.keyDashboardAdvancedPageSourceValidityWarning, arguments: ["2", "6"]))
     }
 
     func testSettingsSwitchFactoryKeepsTheStockNativeSwitch() {

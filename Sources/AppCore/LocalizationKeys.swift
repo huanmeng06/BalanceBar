@@ -179,6 +179,7 @@
     case keyDashboardAdvancedPageSourceValidityOauth = "dashboard.advanced.page.source_validity_oauth"
     case keyDashboardAdvancedPageSourceValidityNativeSync = "dashboard.advanced.page.source_validity_native_sync"
     case keyDashboardAdvancedPageSourceValidityMod = "dashboard.advanced.page.source_validity_mod"
+    case keyDashboardAdvancedPageSourceValidityWarning = "dashboard.advanced.page.source_validity_warning"
     case keyDashboardAdvancedPageValidityMinutes = "dashboard.advanced.page.validity_minutes"
     case keyDashboardGeneralAndRefreshPagesUpdateChannel = "dashboard.general.and.refresh.pages.update_channel"
     case keyDashboardGeneralAndRefreshPagesUpdateChannelDescription = "dashboard.general.and.refresh.pages.update_channel_description"

@@ -144,6 +144,7 @@
 "dashboard.advanced.page.source_validity_oauth" = "官方額度有效期";
 "dashboard.advanced.page.source_validity_native_sync" = "原生同步有效期";
 "dashboard.advanced.page.source_validity_mod" = "Mod 推送有效期";
+"dashboard.advanced.page.source_validity_warning" = "可能出現過期銜接：官方校準每 %1$@ 分鐘一次，建議至少 %2$@ 分鐘。";
 "dashboard.advanced.page.validity_minutes" = "%1$@ 分鐘";
 "dashboard.general.and.refresh.pages.update_channel" = "更新頻道";
 "dashboard.general.and.refresh.pages.update_channel_description" = "選擇要檢查的正式版或 Beta 測試版更新";

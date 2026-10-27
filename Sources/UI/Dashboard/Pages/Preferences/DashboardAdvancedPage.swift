@@ -33,6 +33,7 @@ final class DashboardAdvancedPage {
     /// update its choices without rebuilding the cached page.
     private weak var oauthValidityPopup: NSPopUpButton?
     private weak var sourceTimelineView: ClaudeSourceTimelineView?
+    private var sourceValidityRows: [String: SettingsRowView] = [:]
 
     /// Redraws the source timeline after a new reading, failure, status or validity change.
     /// A page that is not on screen skips it; the view reloads itself when it enters a window.
@@ -54,6 +55,30 @@ final class DashboardAdvancedPage {
         }
         if let index = choices.firstIndex(where: { abs($0 - selected) < 0.001 }) {
             popup.selectItem(at: index)
+        }
+        refreshSourceValidityWarnings(preferences: preferences)
+    }
+
+    /// Updates the local-source warning without rebuilding the cached Advanced page.
+    func refreshSourceValidityWarnings(preferences: AppPreferences) {
+        let values: [(String, TimeInterval)] = [
+            (AppPreferences.claudeStatusLineValidityKey, preferences.claudeStatusLineValidity),
+            (AppPreferences.claudeModValidityKey, preferences.claudeModValidity),
+        ]
+        for (key, value) in values {
+            guard let row = sourceValidityRows[key] else { continue }
+            let detail: String?
+            if preferences.claudeLocalValidityMayGap(value) {
+                let selectedMinutes = max(1, Int(ceil(value / 60)))
+                let recommendedMinutes = max(1, Int(ceil(preferences.claudeLocalValidityWarningThreshold / 60)))
+                detail = tr(.keyDashboardAdvancedPageSourceValidityWarning, arguments: [
+                    String(selectedMinutes), String(recommendedMinutes)
+                ])
+            } else {
+                detail = nil
+            }
+            row.updateDetail(detail)
+            row.detailLabel.textColor = detail == nil ? .secondaryLabelColor : .systemOrange
         }
     }
 
@@ -139,22 +164,28 @@ final class DashboardAdvancedPage {
         let timeline = ClaudeSourceTimelineView(
             provider: input.sourceTimeline, timeZone: input.preferences.effectiveDisplayTimeZone)
         sourceTimelineView = timeline
+        let rows = [
+            SettingsRowView(
+                title: tr(.keyDashboardAdvancedPageSourceValidityOauth),
+                titleAccessory: DashboardRefreshPage.agentIconStrip(["Claude"]),
+                accessoryView: controls[0]),
+            SettingsRowView(
+                title: tr(.keyDashboardAdvancedPageSourceValidityNativeSync),
+                titleAccessory: DashboardRefreshPage.agentIconStrip(["Claude"]),
+                accessoryView: controls[1]),
+            SettingsRowView(
+                title: tr(.keyDashboardAdvancedPageSourceValidityMod),
+                titleAccessory: DashboardRefreshPage.agentIconStrip(["Claude"]),
+                accessoryView: controls[2]),
+        ]
+        sourceValidityRows = [
+            AppPreferences.claudeStatusLineValidityKey: rows[1],
+            AppPreferences.claudeModValidityKey: rows[2],
+        ]
+        refreshSourceValidityWarnings(preferences: input.preferences)
         return SettingsSectionView(
             title: tr(.keyDashboardAdvancedPageSourceValidity),
-            contentViews: [
-                SettingsRowView(
-                    title: tr(.keyDashboardAdvancedPageSourceValidityOauth),
-                    titleAccessory: DashboardRefreshPage.agentIconStrip(["Claude"]),
-                    accessoryView: controls[0]),
-                SettingsRowView(
-                    title: tr(.keyDashboardAdvancedPageSourceValidityNativeSync),
-                    titleAccessory: DashboardRefreshPage.agentIconStrip(["Claude"]),
-                    accessoryView: controls[1]),
-                SettingsRowView(
-                    title: tr(.keyDashboardAdvancedPageSourceValidityMod),
-                    titleAccessory: DashboardRefreshPage.agentIconStrip(["Claude"]),
-                    accessoryView: controls[2])
-            ],
+            contentViews: rows,
             footerView: timeline)
     }
 
