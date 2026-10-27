@@ -11,23 +11,40 @@ final class DashboardAdvancedPage {
         let logViewer: NSView?
         let includeLogViewer: Bool
         let preferences: AppPreferences
+        /// Recent Claude source activity and the card's current status for the timeline.
+        let sourceTimeline: () -> ClaudeSourceTimelineView.Content
 
         init(
             relay: DashboardPreferencePageRelay,
             logViewer: NSView?,
             includeLogViewer: Bool = true,
-            preferences: AppPreferences = AppPreferences()
+            preferences: AppPreferences = AppPreferences(),
+            sourceTimeline: @escaping () -> ClaudeSourceTimelineView.Content = { .empty }
         ) {
             self.relay = relay
             self.logViewer = logViewer
             self.includeLogViewer = includeLogViewer
             self.preferences = preferences
+            self.sourceTimeline = sourceTimeline
         }
     }
 
     /// The official-validity selector, kept so a calibration-interval change on the Refresh page can
     /// update its choices without rebuilding the cached page.
     private weak var oauthValidityPopup: NSPopUpButton?
+    private weak var sourceTimelineView: ClaudeSourceTimelineView?
+
+    /// Redraws the source timeline after a new reading, failure, status or validity change.
+    /// A page that is not on screen skips it; the view reloads itself when it enters a window.
+    func refreshSourceTimeline() {
+        guard let view = sourceTimelineView, view.window != nil else { return }
+        view.reload()
+    }
+
+    /// Moves the timeline to the current display time zone; the cached page is not rebuilt.
+    func refreshDisplayTimeZone(_ timeZone: TimeZone) {
+        sourceTimelineView?.updateTimeZone(timeZone)
+    }
 
     /// Re-lists the official-validity choices (never shorter than the calibration interval) and
     /// selects the effective value.
@@ -123,6 +140,10 @@ final class DashboardAdvancedPage {
             stack.alignment = .trailing
             return stack
         }
+        // The live timeline replaces the old rules footnote (Issue #619).
+        let timeline = ClaudeSourceTimelineView(
+            provider: input.sourceTimeline, timeZone: input.preferences.effectiveDisplayTimeZone)
+        sourceTimelineView = timeline
         return SettingsSectionView(
             title: tr(.keyDashboardAdvancedPageSourceValidity),
             contentViews: [
@@ -139,7 +160,7 @@ final class DashboardAdvancedPage {
                     titleAccessory: DashboardRefreshPage.agentIconStrip(["Claude"]),
                     accessoryView: controls[2])
             ],
-            footnote: tr(.keyDashboardAdvancedPageSourceValidityFootnote))
+            footerView: timeline)
     }
 
     /// Keeps the Diagnostics log pane at the historical 190pt slot. The real

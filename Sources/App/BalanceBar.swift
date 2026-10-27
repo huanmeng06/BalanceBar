@@ -467,7 +467,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 guard let self else { return nil }
                 return self.modSyncCoordinator.status
             },
-            modPanelState: { [weak self] in self?.modSyncCoordinator.controller.state }
+            modPanelState: { [weak self] in self?.modSyncCoordinator.controller.state },
+            claudeSourceTimeline: { [weak self] in
+                guard let self else { return .empty }
+                return ClaudeSourceTimelineView.Content(
+                    timeline: self.claudeQuota.sourceTimeline.snapshot(),
+                    status: self.claudeQuota.latestState?.status)
+            }
         ),
         actions: DashboardCompositionActions(
             onManualRefresh: { [weak self] in self?.performManualRefresh(source: "dashboard") },
@@ -588,6 +594,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var dashboardSection: DashboardSection { dashboardComposition.section }
     private var displayTimeZoneObservers: [NSObjectProtocol] = []
     private let languageChangeGate = DashboardLanguageChangeGate()
+    /// Coalesces bursts of Claude source events into one timeline redraw (main thread).
+    private var claudeSourceTimelineRefreshPending = false
     private var timer: Timer?
     private var updateCheckTimer: Timer?
     private var activityCoordinator: ActivityCoordinator!
@@ -763,6 +771,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         // every Mod snapshot outcome and inbox rejection is forwarded to the coordinator.
         self.claudeQuota.modSnapshotEventSink = { [weak self] event in
             self?.modSyncCoordinator.ingest(event)
+        }
+        self.claudeQuota.sourceTimeline.onChange = { [weak self] in
+            DispatchQueue.main.async { [weak self] in
+                guard let self, !self.claudeSourceTimelineRefreshPending else { return }
+                self.claudeSourceTimelineRefreshPending = true
+                DispatchQueue.main.async { [weak self] in
+                    self?.claudeSourceTimelineRefreshPending = false
+                    self?.dashboardComposition.refreshClaudeSourceTimeline()
+                }
+            }
         }
         modSyncCoordinator.onStatusChange = { [weak self] _ in
             DispatchQueue.main.async { [weak self] in

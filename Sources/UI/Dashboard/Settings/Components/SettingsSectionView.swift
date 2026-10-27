@@ -21,6 +21,12 @@ final class SettingsSectionView: NSView {
     let contentStack = NSStackView()
     /// Section-wide caption under the card, aligned with row text.
     let footnoteLabel: NSTextField?
+    /// Section-wide view in its own card under the rows' card (e.g. a live chart).
+    let footerView: NSView?
+    /// The second card hosting `footerView`; unused without one.
+    let footerCardView = SettingsSectionCardView()
+    static let cardToFooterCardSpacing: CGFloat = 12
+    static let footerCardVerticalInset: CGFloat = 12
     private(set) var contentViews: [NSView]
     private(set) var separators: [NSView] = []
     private var searchNaturalHeightConstraint: NSLayoutConstraint?
@@ -34,11 +40,13 @@ final class SettingsSectionView: NSView {
         title: String,
         contentViews: [NSView],
         separatorIndices: Set<Int>? = nil,
-        footnote: String? = nil
+        footnote: String? = nil,
+        footerView: NSView? = nil
     ) {
         headingLabel = NSTextField(labelWithString: title)
         cardView = SettingsSectionCardView()
         footnoteLabel = footnote.map { NSTextField(wrappingLabelWithString: $0) }
+        self.footerView = footerView
         self.contentViews = contentViews
         super.init(frame: .zero)
         configure(title: title, separatorIndices: separatorIndices)
@@ -48,13 +56,15 @@ final class SettingsSectionView: NSView {
         title: String?,
         contentViews: [NSView],
         separatorIndices: Set<Int>? = nil,
-        footnote: String? = nil
+        footnote: String? = nil,
+        footerView: NSView? = nil
     ) {
         self.init(
             title: title ?? "",
             contentViews: contentViews,
             separatorIndices: separatorIndices,
-            footnote: footnote
+            footnote: footnote,
+            footerView: footerView
         )
     }
 
@@ -152,6 +162,18 @@ final class SettingsSectionView: NSView {
             contentStack.addView(footnoteLabel, in: .top)
             contentStack.setCustomSpacing(Self.cardToFootnoteSpacing, after: cardView)
         }
+        if let footerView {
+            // A second card of the same chrome, set apart from the rows but in the same section.
+            footerView.translatesAutoresizingMaskIntoConstraints = false
+            footerCardView.edgeInsets = NSEdgeInsets(
+                top: Self.footerCardVerticalInset, left: SettingsLayout.rowHorizontalInset,
+                bottom: Self.footerCardVerticalInset, right: SettingsLayout.rowHorizontalInset)
+            footerCardView.addArrangedSubview(footerView)
+            footerView.widthAnchor.constraint(
+                equalTo: footerCardView.widthAnchor, constant: -2 * SettingsLayout.rowHorizontalInset).isActive = true
+            contentStack.addView(footerCardView, in: .top)
+            contentStack.setCustomSpacing(Self.cardToFooterCardSpacing, after: footnoteLabel ?? cardView)
+        }
 
         addSubview(contentStack)
         NSLayoutConstraint.activate([
@@ -167,6 +189,9 @@ final class SettingsSectionView: NSView {
                 footnoteLabel.leadingAnchor.constraint(equalTo: contentStack.leadingAnchor, constant: inset),
                 footnoteLabel.trailingAnchor.constraint(equalTo: contentStack.trailingAnchor, constant: -inset)
             ])
+        }
+        if footerView != nil {
+            footerCardView.widthAnchor.constraint(equalTo: contentStack.widthAnchor).isActive = true
         }
         reconcileSeparators()
     }

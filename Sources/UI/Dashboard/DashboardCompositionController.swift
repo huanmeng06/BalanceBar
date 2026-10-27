@@ -25,6 +25,7 @@ struct DashboardCompositionState {
     let notificationConfiguration: DashboardNotificationPageConfiguration?
     let modSyncStatus: () -> ModSyncStatus?
     let modPanelState: () -> ModPanelState?
+    let claudeSourceTimeline: () -> ClaudeSourceTimelineView.Content
 
     init(
         preferences: AppPreferences,
@@ -48,7 +49,8 @@ struct DashboardCompositionState {
         aggregationSnapshots: @escaping () -> [String: Snapshot] = { [:] },
         isAggregationMode: @escaping () -> Bool = { false },
         modSyncStatus: @escaping () -> ModSyncStatus? = { nil },
-        modPanelState: @escaping () -> ModPanelState? = { nil }
+        modPanelState: @escaping () -> ModPanelState? = { nil },
+        claudeSourceTimeline: @escaping () -> ClaudeSourceTimelineView.Content = { .empty }
     ) {
         self.preferences = preferences
         self.devBundleIdentifier = devBundleIdentifier
@@ -72,6 +74,7 @@ struct DashboardCompositionState {
         self.notificationConfiguration = notificationConfiguration
         self.modSyncStatus = modSyncStatus
         self.modPanelState = modPanelState
+        self.claudeSourceTimeline = claudeSourceTimeline
     }
 }
 
@@ -294,7 +297,8 @@ final class DashboardCompositionController {
             },
             onClamp: actions.onClamp,
             onInstallModSync: actions.onInstallModSync,
-            modPanelStateProvider: state.modPanelState
+            modPanelStateProvider: state.modPanelState,
+            claudeSourceTimelineProvider: state.claudeSourceTimeline
         ),
         launchAtLoginController: launchAtLoginController,
         launchWithChatGPTController: launchWithChatGPTController,
@@ -726,6 +730,12 @@ final class DashboardCompositionController {
     /// The calibration interval bounds the official-validity choices on the Advanced page.
     func refreshClaudeSourceValidity() {
         dashboardPreferencePages.refreshClaudeSourceValidity()
+    }
+
+    /// New Claude source activity or status: redraws the Advanced page's timeline if it exists.
+    /// The chart carries no searchable text, so search data stays valid.
+    func refreshClaudeSourceTimeline() {
+        dashboardPreferencePages.refreshClaudeSourceTimeline()
     }
 
     func refreshLaunchAtLogin() {
