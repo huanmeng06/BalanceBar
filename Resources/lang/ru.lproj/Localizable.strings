@@ -582,6 +582,7 @@
 
 "quota.status.refreshing" = "Чтение…";
 "quota.status.realtime" = "Онлайн";
+"quota.status.expired" = "Устарело";
 "quota.status.ago.minutes" = "%1$@ мин";
 "quota.status.ago.hours" = "%1$@ ч";
 "quota.status.ago.days" = "%1$@ дн";
@@ -605,7 +606,6 @@
 "status.item.controller.refresh_now_just_refreshed" = "Только что обновлено";
 "status.item.controller.refresh_now_recent_result" = "Только что обновлено · повтор через %1$@ с";
 "status.item.controller.refresh_now_awaiting_confirmation" = "Ожидание подтверждения сброса; нажмите, чтобы подтвердить сейчас";
-"status.item.controller.refresh_now_failure_backoff" = "Запрос не удался; автоматический повтор через %1$@ с";
 "status.item.controller.refresh_now_out_of_tokens" = "Слишком частое обновление; повтор через %1$@ с";
 "claude.status_line.enabled" = "Нативная синхронизация Claude Code";
 "claude.status_line.description" = "Claude Code отправляет данные после каждого ответа; плагин не нужен";

@@ -582,6 +582,7 @@
 
 "quota.status.refreshing" = "Cargando…";
 "quota.status.realtime" = "En vivo";
+"quota.status.expired" = "Caduco";
 "quota.status.ago.minutes" = "hace %1$@ min";
 "quota.status.ago.hours" = "hace %1$@ h";
 "quota.status.ago.days" = "hace %1$@ d";
@@ -605,7 +606,6 @@
 "status.item.controller.refresh_now_just_refreshed" = "Recién actualizado";
 "status.item.controller.refresh_now_recent_result" = "Recién actualizado · reintenta en %1$@ s";
 "status.item.controller.refresh_now_awaiting_confirmation" = "Esperando confirmación del restablecimiento; haz clic para confirmar ahora";
-"status.item.controller.refresh_now_failure_backoff" = "La petición falló; reintento automático en %1$@ s";
 "status.item.controller.refresh_now_out_of_tokens" = "Actualizas con demasiada frecuencia; reintenta en %1$@ s";
 "claude.status_line.enabled" = "Sincronización nativa de Claude Code";
 "claude.status_line.description" = "Claude Code lo envía tras cada respuesta; no requiere plugin";

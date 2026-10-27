@@ -582,6 +582,7 @@
 
 "quota.status.refreshing" = "Updating…";
 "quota.status.realtime" = "Live";
+"quota.status.expired" = "Stale";
 "quota.status.ago.minutes" = "%1$@ min ago";
 "quota.status.ago.hours" = "%1$@ hr ago";
 "quota.status.ago.days" = "%1$@ d ago";
@@ -605,7 +606,6 @@
 "status.item.controller.refresh_now_just_refreshed" = "Just refreshed";
 "status.item.controller.refresh_now_recent_result" = "Just refreshed · retry in %1$@ s";
 "status.item.controller.refresh_now_awaiting_confirmation" = "Awaiting official reset confirmation; click to confirm now";
-"status.item.controller.refresh_now_failure_backoff" = "Last request failed; retrying automatically in %1$@ s";
 "status.item.controller.refresh_now_out_of_tokens" = "Refreshing too often, retry in %1$@ s";
 "claude.status_line.enabled" = "Claude Code native sync";
 "claude.status_line.description" = "Pushed by Claude Code after each reply; no plugin needed";

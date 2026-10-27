@@ -185,7 +185,7 @@ final class FetchSchedulerTests: XCTestCase {
         XCTAssertEqual(configuration.tokenRefillInterval, 300)
         XCTAssertEqual(configuration.automaticTokenCost, 1)
         XCTAssertEqual(configuration.manualTokenCost, 1)
-        XCTAssertEqual(configuration.failureBackoff, [60, 120, 240, 480, 900])
+        XCTAssertEqual(configuration.failureBackoff, [30, 60, 120, 300])
     }
 
     func testSelectedAutomaticIntervalReplacesConfiguredMinimum() {
@@ -202,16 +202,73 @@ final class FetchSchedulerTests: XCTestCase {
         XCTAssertEqual(transport.completions.count, 1)
     }
 
-    func testClaudeFailureBackoffStartsAtLastAttempt() {
+    func testClaudeFailureBackoffDebouncesOnlyAutomaticRequests() {
         let scheduler = makeScheduler(configuration: .claudeV1)
         request(scheduler, .initial)
         complete(scheduler, .failure("network"))
-        clock.advance(59)
+        clock.advance(29)
         request(scheduler, .scheduled)
         XCTAssertEqual(lastSkip, .failureBackoff)
         clock.advance(1)
         request(scheduler, .scheduled)
         XCTAssertEqual(transport.completions.count, 1)
+    }
+
+    func testPlainFailureNeverLocksOutAManualRefresh() {
+        let scheduler = makeScheduler(configuration: .claudeV1)
+        request(scheduler, .initial)
+        complete(scheduler, .failure("network"))
+        request(scheduler, .manual)
+        XCTAssertEqual(transport.completions.count, 1, "the user can retry right after a plain failure")
+        complete(scheduler, .failure("network"))
+        request(scheduler, .manual)
+        XCTAssertEqual(transport.completions.count, 1, "and again after a second one")
+    }
+
+    func testRateLimitStillHoldsAManualRefreshAfterFailures() {
+        let scheduler = makeScheduler(configuration: .claudeV1)
+        request(scheduler, .initial)
+        complete(scheduler, .rateLimited(retryAfter: "600"))
+        request(scheduler, .manual)
+        XCTAssertEqual(lastSkip, .cooldown)
+        XCTAssertTrue(transport.completions.isEmpty)
+    }
+
+    func testLocalSourcePrefetchStartsShortlyBeforeItExpires() {
+        let realtime = FakeRealtime()
+        let scheduler = makeScheduler(realtime: realtime, cap: 3_600, configuration: .claudeV1)
+        scheduler.setDemand(true)
+        request(scheduler, .initial)
+        complete(scheduler, .success(Data()))
+        clock.advance(60)
+        realtime.realtimeFreshUntil = clock.now.addingTimeInterval(600) // 540 s after the interval has passed
+        clock.advance(300)
+        // 600 s validity, 300 s elapsed: 300 s left, well before the prefetch lead.
+        request(scheduler, .scheduled)
+        XCTAssertEqual(lastSkip, .realtimeSourceFresh)
+        clock.advance(300 - QuotaConstants.sourceExpiryPrefetchLead - 1)
+        request(scheduler, .scheduled)
+        XCTAssertEqual(lastSkip, .realtimeSourceFresh, "still more than the lead before expiry")
+        clock.advance(2)
+        request(scheduler, .scheduled)
+        XCTAssertEqual(transport.completions.count, 1, "inside the lead the official read starts before expiry")
+    }
+
+    func testPrefetchWaitsForTheOfficialIntervalWhenTheLocalSourceExpiresFirst() {
+        let realtime = FakeRealtime()
+        let scheduler = makeScheduler(realtime: realtime, cap: 3_600, configuration: .claudeV1)
+        scheduler.setDemand(true)
+        request(scheduler, .initial)
+        let delay = armedDelay {
+            complete(scheduler, .success(Data()))
+            realtime.realtimeFreshUntil = clock.now.addingTimeInterval(120)
+            scheduler.rearm()
+            scheduler.waitUntilIdle()
+        }
+        XCTAssertEqual(delay, 300, "the local source expires first; the read waits for the 5-minute interval")
+        clock.advance(300)
+        request(scheduler, .scheduled)
+        XCTAssertEqual(transport.completions.count, 1, "and starts immediately once the interval is met")
     }
 
     /// Issue #580 review: menus need the real failure-backoff deadline to explain
@@ -220,8 +277,8 @@ final class FetchSchedulerTests: XCTestCase {
         let scheduler = makeScheduler(configuration: .claudeV1)
         request(scheduler, .scheduled)
         complete(scheduler, .failure("network"))
-        XCTAssertEqual(scheduler.statusSnapshot().failureBackoffUntil, clock.now.addingTimeInterval(60))
-        clock.advance(61)
+        XCTAssertEqual(scheduler.statusSnapshot().failureBackoffUntil, clock.now.addingTimeInterval(30))
+        clock.advance(31)
         XCTAssertNil(scheduler.statusSnapshot().failureBackoffUntil, "the backoff has ended")
         XCTAssertNil(scheduler.statusSnapshot().manualTokensReadyAt, "remaining tokens still cover a manual read")
     }
@@ -621,7 +678,7 @@ final class FetchSchedulerTests: XCTestCase {
         complete(scheduler, .failure("invalid_response"))
         XCTAssertNil(store.state?.lastServerSuccessAt)
         XCTAssertEqual(store.state?.consecutiveFailures, 1)
-        request(scheduler, .manual)
+        request(scheduler, .scheduled)
         XCTAssertEqual(lastSkip, .failureBackoff)
     }
 }

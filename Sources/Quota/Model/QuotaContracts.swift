@@ -11,6 +11,9 @@ public enum QuotaConstants {
     /// How long a real-time source remains fresh for request suppression.
     public static let realtimeSourceFreshness: TimeInterval = 120
 
+    /// How long before the displayed local source expires the official prefetch starts.
+    public static let sourceExpiryPrefetchLead: TimeInterval = 10
+
     /// Maximum allowed difference for a grade-B observation, in percentage points.
     public static let gradeBTolerancePercentagePoints: Double = 2
 

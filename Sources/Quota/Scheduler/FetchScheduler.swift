@@ -204,7 +204,10 @@ public final class FetchScheduler: FetchScheduling {
             return log(.skipped, reasons: reasons, skip: .cooldown)
         }
 
-        if let lastServerAttemptAt,
+        // A plain failure only debounces automatic retries; the user may always try again by hand
+        // (401, 429 and an in-flight request above still hold manual requests back).
+        if !reasons.contains(.manual),
+           let lastServerAttemptAt,
            consecutiveFailures > 0,
            now.timeIntervalSince(lastServerAttemptAt) < failureBackoffInterval {
             return log(.skipped, reasons: reasons, skip: .failureBackoff)
@@ -253,7 +256,7 @@ public final class FetchScheduler: FetchScheduling {
         }
         if !reasons.contains(.resetConfirmation),
            let freshUntil = realtimeFreshUntil(),
-           now < freshUntil,
+           now < freshUntil.addingTimeInterval(-configuration.sourceExpiryPrefetchLead),
            !calibrationCapExceeded(now: now) {
             return log(.skipped, reasons: reasons, skip: .realtimeSourceFresh)
         }
@@ -462,9 +465,12 @@ public final class FetchScheduler: FetchScheduling {
         }
         if let freshUntil = realtimeFreshUntil(),
            !calibrationCapExceeded(now: now) {
-            if freshUntil > next {
-                // Wake when local data goes stale, or at the calibration cap, whichever is first.
-                var wake = freshUntil
+            // The official read starts a little before the displayed local source expires, so the
+            // handoff has data ready; the minimum interval above still holds it back when needed.
+            let prefetchAt = freshUntil.addingTimeInterval(-configuration.sourceExpiryPrefetchLead)
+            if prefetchAt > next {
+                // Wake just before local data goes stale, or at the calibration cap, whichever is first.
+                var wake = prefetchAt
                 if let cap = calibrationIntervalCap() ?? configuration.realtimeCalibrationCap, cap > 0,
                    let successAt = currentEpochLastSuccessAt {
                     wake = min(wake, successAt.addingTimeInterval(cap))

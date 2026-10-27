@@ -582,6 +582,7 @@
 
 "quota.status.refreshing" = "更新中…";
 "quota.status.realtime" = "ライブ";
+"quota.status.expired" = "期限切れ";
 "quota.status.ago.minutes" = "%1$@分前";
 "quota.status.ago.hours" = "%1$@時間前";
 "quota.status.ago.days" = "%1$@日前";
@@ -605,7 +606,6 @@
 "status.item.controller.refresh_now_just_refreshed" = "直前に更新済み";
 "status.item.controller.refresh_now_recent_result" = "直前に更新済み · %1$@秒後に再試行できます";
 "status.item.controller.refresh_now_awaiting_confirmation" = "公式のリセット確認を待っています。クリックで今すぐ確認します";
-"status.item.controller.refresh_now_failure_backoff" = "リクエスト失敗、%1$@秒後に自動再試行します";
 "status.item.controller.refresh_now_out_of_tokens" = "更新が頻繁すぎます。%1$@秒後に再試行できます";
 "claude.status_line.enabled" = "Claude Code ネイティブ同期";
 "claude.status_line.description" = "回答が終わるたびに Claude Code が自動送信します。プラグインは不要です";

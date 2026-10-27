@@ -3512,10 +3512,6 @@ extension StatusItemControllerTests {
         _ = controller.validateMenuItem(refresh)
         assertRefresh(subtitle: tr(.keyStatusItemControllerRefreshNowAwaitingConfirmation),
                       "a pending reset explains itself instead of silently skipping")
-        notice = .failureBackoff(until: Date().addingTimeInterval(-10))
-        _ = controller.validateMenuItem(refresh)
-        assertRefresh(subtitle: tr(.keyStatusItemControllerRefreshNowFailureBackoff, arguments: ["0"]),
-                      "a failure backoff counts down to the automatic retry")
         notice = .outOfTokens(until: Date().addingTimeInterval(-10))
         _ = controller.validateMenuItem(refresh)
         assertRefresh(subtitle: tr(.keyStatusItemControllerRefreshNowOutOfTokens, arguments: ["0"]),
@@ -3550,8 +3546,7 @@ extension StatusItemControllerTests {
             return try XCTUnwrap(find(host))
         }
         // A stale reading reads "5 分钟前 · Mod": its age and source, not a clock time.
-        let ageText = StatusSlotAppearance.relativeText(
-            from: fetchedAt, now: Date(), localize: StatusSlotText.appLocalize) + " · " + tr(.keyQuotaStatusSourceMod)
+        let ageText = StatusSlotText.appLocalize(.expired) + " · " + tr(.keyQuotaStatusSourceMod)
         XCTAssertEqual(try slot().textForTesting, ageText)
         XCTAssertEqual(try slot().fontForTesting, .monospacedDigitSystemFont(ofSize: 12, weight: .regular))
         XCTAssertEqual(try slot().identifier?.rawValue, "overview.refreshTime")
@@ -3566,7 +3561,9 @@ extension StatusItemControllerTests {
         failed.quotaStatus = .error(at: fetchedAt, source: .mod)
         failed.staleReason = "Too many requests (HTTP 429)"
         controller.update(snapshot: failed, refreshDate: fetchedAt, menuInput: input, settings: settings)
-        XCTAssertEqual(try slot().textForTesting, "⚠︎ " + ageText)
+        let failedAge = StatusSlotAppearance.relativeText(
+            from: fetchedAt, now: Date(), localize: StatusSlotText.appLocalize) + " · " + tr(.keyQuotaStatusSourceMod)
+        XCTAssertEqual(try slot().textForTesting, "⚠︎ " + failedAge, "a failed read keeps showing the age")
         XCTAssertEqual(try slot().textColorForTesting, .systemOrange)
         XCTAssertTrue(try slot().toolTip?.contains("HTTP 429") == true, "the failure reason joins the hover text")
         XCTAssertTrue(try slot().accessibilityLabel()?.contains("⚠︎") == true)
