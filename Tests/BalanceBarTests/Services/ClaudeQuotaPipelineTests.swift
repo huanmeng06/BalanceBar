@@ -1487,6 +1487,91 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         XCTAssertEqual(pipeline.latestState?.display.window(for: .fiveHour)?.usedPercentage, 27)
     }
 
+    // MARK: Source timeline (Issue #619)
+
+    func testSourceTimelineRecordsOfficialReadsAndFailureRuns() throws {
+        let pipeline = makePipeline()
+        pipeline.requestFetch(reason: .initial)
+        _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+        XCTAssertEqual(pipeline.sourceTimeline.snapshot().readings.map(\.source), [.oauthAPI])
+        XCTAssertEqual(pipeline.sourceTimeline.snapshot().readings.first?.observedAt, Self.start)
+
+        PipelineStubProtocol.set(.init(error: URLError(.notConnectedToInternet)))
+        clock.advance(by: 180)
+        pipeline.requestFetch(reason: .scheduled)
+        _ = try XCTUnwrap(waitForState(pipeline) { $0.failure != nil })
+        XCTAssertEqual(pipeline.sourceTimeline.snapshot().failures, [
+            ClaudeSourceTimeline.FailureRun(start: Self.start.addingTimeInterval(180), end: nil, kind: .network)
+        ])
+
+        PipelineStubProtocol.set(.init(data: Self.usage))
+        clock.advance(by: 360)
+        pipeline.requestFetch(reason: .scheduled)
+        _ = try XCTUnwrap(waitForState(pipeline) { $0.failure == nil && $0.updatedAt == Self.start.addingTimeInterval(540) })
+        let snapshot = pipeline.sourceTimeline.snapshot()
+        XCTAssertEqual(snapshot.failures.first?.end, Self.start.addingTimeInterval(540), "the next adopted read ends the run")
+        XCTAssertEqual(snapshot.readings.map(\.observedAt), [Self.start, Self.start.addingTimeInterval(540)])
+        XCTAssertEqual(snapshot.readings.last?.expiresAt, Self.start.addingTimeInterval(540 + ClaudeSourceValidity.defaults.oauth))
+    }
+
+    func testSourceTimelineRecordsOnlyAdoptedLocalReadingsAndFollowsValidityChanges() throws {
+        var validity = ClaudeSourceValidity.defaults
+        let pipeline = makePipeline(
+            configuration: claudeV1TestConfiguration, statusLineEnabled: true,
+            withTestStatusLine: true, withInbox: true, sourceValidity: { validity })
+        lastStatusLineSessions?.starts["s1"] = Self.start.addingTimeInterval(1)
+        pipeline.start()
+        pipeline.requestFetch(reason: .initial)
+        _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+
+        deliverStatusLine(session: "s1", five: 24, seven: 42, at: Self.start.addingTimeInterval(5))
+        _ = try XCTUnwrap(waitForState(pipeline) { $0.status.isNativeRealtime })
+        try placeModSnapshot(five: 25, seven: 43, observedAt: Self.start.addingTimeInterval(10))
+        _ = try XCTUnwrap(waitForState(pipeline) { $0.display.window(for: .fiveHour)?.usedPercentage == 25 })
+        // An older Mod snapshot that would move both windows backwards is rejected and never drawn.
+        try placeModSnapshot(five: 24, seven: 42, observedAt: Self.start.addingTimeInterval(8), as: "balancebar-mod-old.json")
+        XCTAssertTrue(pollUntil {
+            self.diagnosticLines.all.contains { $0.contains("reason=usage_decreased_within_cycle") }
+        })
+        pipeline.waitUntilIdle()
+
+        let readings = pipeline.sourceTimeline.snapshot().readings
+        XCTAssertEqual(readings.map(\.source), [.oauthAPI, .statusLine, .mod], "one entry per adopted 5h/7d pair")
+        XCTAssertEqual(readings.map(\.observedAt), [0, 5, 10].map { Self.start.addingTimeInterval($0) })
+
+        // A longer Mod validity stretches the reading that is still valid now.
+        validity.mod = 300
+        pipeline.sourceValidityChanged()
+        XCTAssertEqual(pipeline.sourceTimeline.snapshot().readings.last?.expiresAt, Self.start.addingTimeInterval(310))
+    }
+
+    func testSourceTimelineSurvivesARelaunchForTheSameAccount() throws {
+        let first = makePipeline()
+        first.requestFetch(reason: .initial)
+        _ = try XCTUnwrap(waitForState(first) { !$0.windows.isEmpty })
+        first.sourceTimeline.flushPendingSave()
+
+        clock.advance(by: 120)
+        let relaunched = makePipeline()
+        relaunched.start()
+        _ = try XCTUnwrap(waitForState(relaunched) { !$0.windows.isEmpty })
+        XCTAssertEqual(relaunched.sourceTimeline.snapshot().readings.map(\.observedAt), [Self.start])
+    }
+
+    func testSourceTimelineIsClearedOnAccountSwitch() throws {
+        let pipeline = makePipeline()
+        pipeline.requestFetch(reason: .initial)
+        let first = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+        XCTAssertFalse(pipeline.sourceTimeline.snapshot().readings.isEmpty)
+        clock.advance(by: 180)
+        PipelineStubProtocol.set(.init(data: Self.nextCycle))
+        try writeAccount("account-b", email: "b@example.com")
+        _ = try XCTUnwrap(waitForState(pipeline) { $0.accountEpoch != first.accountEpoch && !$0.windows.isEmpty })
+        XCTAssertEqual(
+            pipeline.sourceTimeline.snapshot().readings.map(\.observedAt), [Self.start.addingTimeInterval(180)],
+            "only the new account's read remains")
+    }
+
     /// Sends one statusLine payload over the test socket and waits for the source to read it.
     private func deliverStatusLine(
         session: String = "s1", five: Double, seven: Double, at date: Date,

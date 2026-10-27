@@ -405,6 +405,7 @@ enum DashboardSettingsSearchCatalog {
             values.append(contentsOf: Set(minutes).sorted().map {
                 tr(.keyDashboardAdvancedPageValidityMinutes, arguments: [String(Int($0 / 60))])
             })
+            values.append(tr(.keyClaudeTimelineTitle))
         }
         return values
     }

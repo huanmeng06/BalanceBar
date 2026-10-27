@@ -38,6 +38,7 @@ struct DashboardPreferencePageActions {
     let onClamp: () -> Void
     var onInstallModSync: ((NSView) -> Void)? = nil
     var modPanelStateProvider: () -> ModPanelState? = { nil }
+    var claudeSourceTimelineProvider: () -> ClaudeSourceTimelineView.Content = { .empty }
 }
 
 final class DashboardPreferencePages {
@@ -176,7 +177,8 @@ final class DashboardPreferencePages {
                 relay: relay,
                 logViewer: forSearch ? nil : logsPage.makeViewer(),
                 includeLogViewer: !forSearch,
-                preferences: preferences
+                preferences: preferences,
+                sourceTimeline: actions.claudeSourceTimelineProvider
             ))
         case .notifications:
             notificationsPage?.showRoot()
@@ -239,11 +241,18 @@ final class DashboardPreferencePages {
         searchAdvancedPage.refreshOAuthValidity(preferences: preferences)
     }
 
+    func refreshClaudeSourceTimeline() {
+        advancedPage.refreshSourceTimeline()
+        searchAdvancedPage.refreshSourceTimeline()
+    }
+
     func refreshDisplayTimeZone() {
         let selection = preferences.displayTimeZoneSelection
         generalPage.refreshDisplayTimeZone(selection)
         searchGeneralPage.refreshDisplayTimeZone(selection)
         notificationsPage?.refreshDisplayTimeZone()
+        advancedPage.refreshDisplayTimeZone(preferences.effectiveDisplayTimeZone)
+        searchAdvancedPage.refreshDisplayTimeZone(preferences.effectiveDisplayTimeZone)
     }
 
     func refreshNotifications() {
