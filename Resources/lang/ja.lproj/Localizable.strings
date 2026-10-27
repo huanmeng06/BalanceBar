@@ -144,7 +144,7 @@
 "dashboard.advanced.page.source_validity_oauth" = "公式クォータの有効時間";
 "dashboard.advanced.page.source_validity_native_sync" = "ネイティブ同期の有効時間";
 "dashboard.advanced.page.source_validity_mod" = "Mod プッシュの有効時間";
-"dashboard.advanced.page.source_validity_warning" = "古いデータへの切り替えが発生する可能性があります。公式校正は %1$@ 分ごとのため、少なくとも %2$@ 分を推奨します。";
+"dashboard.advanced.page.source_validity_warning" = "有効期間が短めです。期限切れ後、次の公式校正（%1$@ 分ごと）まで最新データが届かない場合があります。%2$@ 分以上を推奨します。";
 "dashboard.advanced.page.validity_minutes" = "%1$@分";
 "dashboard.general.and.refresh.pages.update_channel" = "更新チャンネル";
 "dashboard.general.and.refresh.pages.update_channel_description" = "正式版またはベータテストの更新を確認するか選択します";

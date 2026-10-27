@@ -155,7 +155,7 @@ final class ClaudeSourceTimelineViewTests: XCTestCase {
         let reading = view.hoverContent(for: try! XCTUnwrap(layout.hoverTarget(at: CGPoint(x: modBar.rect.midX, y: modBar.rect.midY))))
         XCTAssertEqual(reading.title, "Mod")
         XCTAssertEqual(reading.rows, [
-            .init(label: tr(.keyClaudeTimelineHoverTime), value: "07:59:00 – 现在"),
+            .init(label: tr(.keyClaudeTimelineHoverTime), value: "07:59:00 – " + tr(.keyClaudeTimelineNow)),
             .init(label: tr(.keyClaudeTimelineHoverDuration), value: ClaudeSourceTimelineView.durationText(60)),
             .init(label: tr(.keyClaudeTimelineHoverRefreshes), value: tr(.keyClaudeTimelineHoverRefreshCount, arguments: ["1"])),
             .init(label: tr(.keyClaudeTimelineHoverValidUntil), value: "08:01:00"),
