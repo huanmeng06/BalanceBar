@@ -528,7 +528,10 @@ final class ClaudeQuotaPipeline {
     /// Two further guards protect what the cycle cannot prove. Without an official baseline the
     /// snapshot only carries an email hash, which two organizations of one email share; a snapshot
     /// produced before this account became active here may belong to the other one, so it is
-    /// rejected. And while a reset awaits confirmation, only a complete snapshot (both standard
+    /// rejected. This is a known limit, not an organization proof: a snapshot written after the
+    /// switch by a session still running under the other organization of the same email cannot be
+    /// told apart until an official baseline exists (the Mod Schema carries no organization).
+    /// And while a reset awaits confirmation, only a complete snapshot (both standard
     /// windows with reset times) may establish the next cycle.
     fileprivate func verifySnapshotCycle(
         window: QuotaWindowKind, resetsAt: Date?, updatedAt: Date, isComplete: Bool
