@@ -58,8 +58,10 @@ public final class SnapshotInbox: QuotaSource {
     /// authoritative state. Return `false` when the window cannot be tied to that state
     /// (the whole snapshot is then rejected), `true` when it is verified, and `nil` when
     /// there is no baseline to check against. The check is snapshot atomic: a snapshot in
-    /// which one window fails is never partially attributed.
-    public var cycleVerification: ((QuotaWindowKind, Date?) -> Bool?)?
+    /// which one window fails is never partially attributed. `updatedAt` is the snapshot's
+    /// production time and `isComplete` tells whether it carries both standard windows,
+    /// each with a reset time.
+    public var cycleVerification: ((QuotaWindowKind, Date?, _ updatedAt: Date, _ isComplete: Bool) -> Bool?)?
 
     /// Read-only rejection reporting for the settings entry: invoked on the inbox queue
     /// whenever a Mod snapshot is rejected before emission. Pure notification; the
@@ -326,7 +328,11 @@ public final class SnapshotInbox: QuotaSource {
         // consumer's authoritative cycle rejects the whole snapshot, so a snapshot that
         // cannot be fully attributed is never partially accepted.
         if let verify = cycleVerification {
-            for window in parsed.windows where verify(window.kind, window.resetsAt) == false {
+            let isComplete = [QuotaWindowKind.fiveHour, .sevenDay].allSatisfy { kind in
+                parsed.windows.contains { $0.kind == kind && $0.resetsAt != nil }
+            }
+            for window in parsed.windows
+            where verify(window.kind, window.resetsAt, parsed.updatedAt, isComplete) == false {
                 unverifiedSnapshotRejections += 1
                 adapter.health = .degraded(reason: "rejected snapshot: cycle_unverified_against_official")
                 if isModSnapshot { rejectionObserver?(.cycleUnverified) }

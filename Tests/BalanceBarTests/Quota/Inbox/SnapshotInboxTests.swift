@@ -385,7 +385,7 @@ final class SnapshotInboxTests: XCTestCase {
             inboxDirectory: inbox, identity: FakeIdentity(),
             configuration: SnapshotInboxConfiguration(halfWriteRetryDelay: 0.05))
         source.rejectionObserver = { reasons.append($0) }
-        source.cycleVerification = { _, _ in false }
+        source.cycleVerification = { _, _, _, _ in false }
         inboxes.append(source)
         source.start { _ in }
         try placeSnapshot(source: "balancebar-mod", emailHash: SnapshotInbox.emailHash("user@example.com"), as: "cycle.json")
@@ -431,7 +431,7 @@ final class SnapshotInboxTests: XCTestCase {
             inboxDirectory: inbox, identity: FakeIdentity(),
             configuration: SnapshotInboxConfiguration(halfWriteRetryDelay: 0.05))
         source.rejectionObserver = { reasons.append($0) }
-        source.cycleVerification = { _, _ in false }
+        source.cycleVerification = { _, _, _, _ in false }
         inboxes.append(source)
         source.start { _ in }
         // Wrong hash on a non-Mod producer: rejected, but not a Mod failure.

@@ -327,7 +327,8 @@ public final class QuotaMergeEngine: QuotaMerging {
     /// may not move usage backwards, a later cycle starts over, and an earlier cycle is stale.
     /// A reading or display without a reset time cannot prove a cycle change, so usage must not fall.
     static func isAdmissibleWithoutBaseline(_ reading: QuotaMergedReading, after displayed: QuotaMergedReading?) -> Bool {
-        guard let displayed else { return true }
+        // Without any displayed reading the reset time is the only proof of the cycle.
+        guard let displayed else { return reading.resetsAt != nil }
         if let resetsAt = reading.resetsAt, let displayedReset = displayed.resetsAt,
            !sameResetInstant(resetsAt, displayedReset) {
             return resetsAt > displayedReset

@@ -418,6 +418,14 @@ final class QuotaMergeEngineTests: XCTestCase {
         XCTAssertEqual(displayedUsage(engine), 40)
     }
 
+    func testGradeBWithoutBaselineCannotEstablishAWindowWithoutResetTime() {
+        let engine = makeEngine()
+        engine.merge(obs(40, resetsIn: nil, at: 0, trust: .b))
+        XCTAssertNil(displayedUsage(engine), "no reset time, no proof of the cycle")
+        engine.merge(obs(40, resetsIn: 3_600, at: 10, trust: .b))
+        XCTAssertEqual(displayedUsage(engine), 40)
+    }
+
     func testGradeBWithoutBaselineRejectsReplayAndSameEmailDifferentOrganization() {
         let engine = makeEngine()
         engine.merge(obs(40, at: 10, trust: .b, account: "claude:acc-1:org-a"))

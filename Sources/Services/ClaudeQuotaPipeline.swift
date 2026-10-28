@@ -161,6 +161,9 @@ final class ClaudeQuotaPipeline {
     private var refreshing = false
     private var lastClientError: OfficialQuotaClientError?
     private var lastSuccessAt: Date?
+    /// When the active account was first seen by this process; Mod snapshots produced earlier
+    /// cannot be attributed to it without an official baseline.
+    private var accountActiveSince: Date
     private var state: ClaudeQuotaState?
     /// Whether any window is awaiting official reset confirmation (pipeline queue).
     private var awaitingResetConfirmation = false
@@ -237,6 +240,7 @@ final class ClaudeQuotaPipeline {
         self.identity = identity
         self.identityQueue = identityQueue
         self.now = now
+        accountActiveSince = now()
         self.realtimeTracker = realtimeTracker
         self.sourceValidity = sourceValidity
         sourceTimeline = ClaudeSourceTimeline(
@@ -271,8 +275,8 @@ final class ClaudeQuotaPipeline {
         }
         // Inbox snapshots are verified against the official cycle as a whole before they are
         // attributed; the inbox rejects a snapshot when any of its windows fails.
-        snapshotInbox?.cycleVerification = { [weak self] window, resetsAt in
-            self?.verifySnapshotCycle(window: window, resetsAt: resetsAt)
+        snapshotInbox?.cycleVerification = { [weak self] window, resetsAt, updatedAt, isComplete in
+            self?.verifySnapshotCycle(window: window, resetsAt: resetsAt, updatedAt: updatedAt, isComplete: isComplete)
         }
         // Forward inbox-level rejections (account attribution, cycle verification) to the
         // settings entry; a forwarding-time timestamp is enough because the inbox does not
@@ -468,6 +472,7 @@ final class ClaudeQuotaPipeline {
                 kind: .accountChanged, window: nil, observedAt: nil, receivedAt: now()))
         }
         engine.accountDidChange(epoch: change.epoch, accountID: change.identity?.stableID)
+        lock.withLock { accountActiveSince = now() }
         realtimeTracker?.reset(epoch: change.epoch)
         sourceTimeline.reset(accountKey: ClaudeSourceTimeline.accountKey(forStableID: change.identity?.stableID))
         statusLineSource?.accountDidChange(epoch: change.epoch)
@@ -519,11 +524,21 @@ final class ClaudeQuotaPipeline {
     /// baseline yet — the merge engine's grade-B rules reject those anyway, and while a
     /// reset awaits confirmation the engine's own provisional rules govern, exactly like
     /// the statusLine path).
-    fileprivate func verifySnapshotCycle(window: QuotaWindowKind, resetsAt: Date?) -> Bool? {
+    ///
+    /// Two further guards protect what the cycle cannot prove. Without an official baseline the
+    /// snapshot only carries an email hash, which two organizations of one email share; a snapshot
+    /// produced before this account became active here may belong to the other one, so it is
+    /// rejected. And while a reset awaits confirmation, only a complete snapshot (both standard
+    /// windows with reset times) may establish the next cycle.
+    fileprivate func verifySnapshotCycle(
+        window: QuotaWindowKind, resetsAt: Date?, updatedAt: Date, isComplete: Bool
+    ) -> Bool? {
         guard let engine else { return nil }
         let state = engine.currentState.windows[window.rawValue]
-        guard let gradeA = state?.latestGradeA, gradeA.epoch == identity.accountEpoch else { return nil }
-        guard state?.pendingResetOf == nil else { return true }
+        let baseline = state?.latestGradeA.flatMap { $0.epoch == identity.accountEpoch ? $0 : nil }
+        if baseline == nil, updatedAt < lock.withLock({ accountActiveSince }) { return false }
+        if state?.pendingResetOf != nil { return isComplete }
+        guard let gradeA = baseline else { return nil }
         guard let gradeAReset = gradeA.resetsAt, let reset = resetsAt,
               QuotaMergeEngine.sameResetInstant(reset, gradeAReset) else { return false }
         return true
