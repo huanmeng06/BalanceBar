@@ -555,6 +555,7 @@ final class ClaudeQuotaPipeline {
                     <= QuotaConstants.gradeBTolerancePercentagePoints
             let observedAt = observation.observedAt ?? observation.receivedAt
             guard tolerated, observedAt >= displayed.effectiveTime else {
+                if !tolerated { logSourceConflict(observation, displayed: displayed, reason: "lower_than_displayed") }
                 diagnostics(
                     "claude native observation rejected; reason=usage_decreased_within_cycle; source=\(observation.source); window=\(observation.window.rawValue)",
                     .debug)
@@ -567,16 +568,39 @@ final class ClaudeQuotaPipeline {
             publish()
             return true
         }
+        let previous = engine.currentState.windows[observation.window.rawValue]?.displayed
         _ = engine.merge(observation)
         let displayed = engine.currentState.windows[observation.window.rawValue]?.displayed
         let accepted = displayed?.source == observation.source
             && displayed?.receivedAt == observation.receivedAt
+        if !accepted, let previous, (observation.observedAt ?? observation.receivedAt) < previous.effectiveTime {
+            logSourceConflict(observation, displayed: previous, reason: "older_than_displayed")
+        }
         diagnostics(
             "claude native observation; source=\(observation.source); window=\(observation.window.rawValue); accepted=\(accepted)",
             .debug)
         if accepted { recordLocalEvidence(observation) }
         publish()
         return accepted
+    }
+
+    /// Writes a redacted error line when two different sources disagree about one cycle of a window
+    /// beyond the rounding tolerance. The newer validated reading already won; this is diagnostics only.
+    private func logSourceConflict(
+        _ observation: QuotaObservation, displayed: QuotaMergedReading, reason: String
+    ) {
+        guard displayed.source != observation.source,
+              displayed.epoch == observation.epoch,
+              Self.sameCycle(displayed.resetsAt, observation.resetsAt),
+              abs(displayed.usedPercentage - observation.usedPercentage)
+                > QuotaConstants.gradeBTolerancePercentagePoints else { return }
+        diagnostics(
+            "claude source conflict; reason=\(reason); window=\(observation.window.rawValue); "
+                + "displayed_source=\(displayed.source); observed_source=\(observation.source); "
+                + "displayed_used=\(displayed.usedPercentage); observed_used=\(observation.usedPercentage); "
+                + "displayed_at=\(displayed.effectiveTime.timeIntervalSince1970); "
+                + "observed_at=\((observation.observedAt ?? observation.receivedAt).timeIntervalSince1970)",
+            .error)
     }
 
     /// Trusted real-time evidence from a local source: freshness for the scheduler and a block on
@@ -676,7 +700,12 @@ final class ClaudeQuotaPipeline {
                 trust: .a,
                 accountID: account.stableID,
                 epoch: delivery.epoch) else { continue }
+            let previous = engine.currentState.windows[observation.window.rawValue]?.displayed
             engine.merge(observation)
+            if let previous, previous.trust == .b,
+               engine.currentState.windows[observation.window.rawValue]?.displayed?.source == Self.sourceID {
+                logSourceConflict(observation, displayed: previous, reason: "official_corrected_local")
+            }
         }
         statusLineSource?.setGradeAResets(Dictionary(uniqueKeysWithValues: readings.map {
             ($0.quotaKind, $0.resetsAt)

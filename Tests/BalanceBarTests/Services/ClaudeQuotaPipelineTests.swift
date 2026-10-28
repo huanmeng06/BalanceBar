@@ -1433,7 +1433,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         XCTAssertTrue(pipeline.latestState?.status.isNativeRealtime ?? false)
     }
 
-    func testPendingResetBlocksModDataFromSuppressingOfficialConfirmation() throws {
+    func testCompleteModNextCycleConfirmsPendingResetAndShowsLiveWithoutOfficialConfirmation() throws {
         PipelineStubProtocol.set(.init(data: Self.nearReset))
         let retryTimer = ManualRetryTimer()
         let pipeline = makePipeline(
@@ -1445,24 +1445,37 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         pipeline.tick()
         waitForRequests(2)
 
-        // The Mod's next-cycle snapshot is shown provisionally but the window stays pending.
-        // Its seven-day window still describes the current official cycle, so the snapshot
-        // is coherent and passes the snapshot-atomic cycle verification.
+        // The Mod's snapshot carries the next five-hour cycle with its reset time. Its seven-day
+        // window still describes the current official cycle, so the snapshot passes the
+        // snapshot-atomic cycle verification and establishes the new cycle by itself.
         try placeModSnapshot(
             five: 2, seven: 42, observedAt: Self.start.addingTimeInterval(125),
             fiveReset: Self.start.addingTimeInterval(10_000), sevenReset: Self.nearResetSevenReset)
-        let provisional = try XCTUnwrap(waitForState(pipeline) {
-            $0.display.window(for: .fiveHour)?.usedPercentage == 2
+        let live = try XCTUnwrap(waitForState(pipeline) {
+            $0.display.window(for: .fiveHour)?.usedPercentage == 2 && $0.status.isNativeRealtime
         })
-        // The provisional reading is real next-cycle data from a local source: the card shows it
-        // as real-time instead of "waiting", while the engine keeps the window pending.
-        XCTAssertTrue(provisional.status.isNativeRealtime)
-        XCTAssertNotNil(pipeline.mergeStateForDiagnostics?.windows[QuotaWindowKind.fiveHour.rawValue]?.pendingResetOf)
+        XCTAssertEqual(live.display.window(for: .fiveHour)?.state, .inProgress)
+        XCTAssertNil(pipeline.mergeStateForDiagnostics?.windows[QuotaWindowKind.fiveHour.rawValue]?.pendingResetOf,
+                     "no waiting for official confirmation")
+    }
 
-        // Pending confirmation blocks realtime freshness, so reads still reach the server.
-        clock.advance(by: 310)
-        pipeline.requestFetch(reason: .scheduled)
-        waitForRequests(3)
+    func testModReadingContradictingTheOfficialValueIsRejectedAndLoggedAsAConflict() throws {
+        let pipeline = makePipeline(configuration: claudeV1TestConfiguration, withInbox: true)
+        pipeline.start()
+        pipeline.requestFetch(reason: .initial)
+        _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+
+        // Official five-hour value is 23; a Mod reading of 10 is far below the rounding tolerance.
+        try placeModSnapshot(five: 10, seven: 42, observedAt: Self.start.addingTimeInterval(5))
+        XCTAssertTrue(pollUntil {
+            self.diagnosticLines.all.contains {
+                $0.contains("claude source conflict") && $0.contains("reason=lower_than_displayed")
+            }
+        })
+        quiet(pipeline)
+        XCTAssertEqual(pipeline.latestState?.display.window(for: .fiveHour)?.usedPercentage, 23)
+        let conflict = try XCTUnwrap(diagnosticLines.all.first { $0.contains("claude source conflict") })
+        XCTAssertFalse(conflict.contains("@"), "the conflict line carries no account data")
     }
 
     func testStatusLineAndModCoexistenceKeepsTheLatestTrustedValues() throws {

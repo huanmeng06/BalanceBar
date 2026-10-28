@@ -272,16 +272,20 @@ public final class QuotaMergeEngine: QuotaMerging {
             guard reading.effectiveTime > pending,
                   reading.effectiveTime >= window.displayed?.effectiveTime ?? .distantPast,
                   isNextCycle(reading, after: pending) else { return false }
-            if observation.trust == .a {
-                // Only a fresh grade-A reading of the next cycle confirms the reset.
-                window = QuotaMergedWindow(displayed: reading, latestGradeA: reading, pendingResetOf: nil)
+            if observation.trust == .a || reading.resetsAt != nil {
+                // A fresh grade-A reading of the next cycle confirms the reset. So does a complete
+                // grade-B reading that carries its own later reset time: it proves the new cycle
+                // without the official API. The old cycle's A-baseline no longer applies to it.
+                let baseline = observation.trust == .a ? reading : nil
+                window = QuotaMergedWindow(displayed: reading, latestGradeA: baseline, pendingResetOf: nil)
                 state.windows[key] = window
                 events.append(.resetConfirmed(window: observation.window))
                 drift.didAccept(observation, previous: nil)
                 return true
             }
-            // A grade-B reading of the next cycle is shown provisionally; the window stays
-            // pending until grade-A data confirms it, and `latestGradeA` is not overwritten.
+            // A grade-B reading without a reset time cannot prove the next cycle: it is shown
+            // provisionally; the window stays pending until a complete reading confirms it, and
+            // `latestGradeA` is not overwritten.
             let previous = window.displayed
             window.displayed = reading
             state.windows[key] = window
