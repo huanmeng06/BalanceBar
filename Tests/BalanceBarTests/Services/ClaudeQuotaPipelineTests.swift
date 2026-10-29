@@ -156,8 +156,8 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
 
     private var configurationURL: URL { directory.appendingPathComponent("claude.json") }
 
-    private func writeAccount(_ uuid: String, email: String) throws {
-        let object = ["oauthAccount": ["accountUuid": uuid, "emailAddress": email, "organizationUuid": "org"]]
+    private func writeAccount(_ uuid: String, email: String, organization: String = "org") throws {
+        let object = ["oauthAccount": ["accountUuid": uuid, "emailAddress": email, "organizationUuid": organization]]
         try JSONSerialization.data(withJSONObject: object).write(to: configurationURL, options: .atomic)
     }
 
@@ -211,6 +211,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         omitSevenDay: Bool = false,
         email: String = "a@example.com",
         emailHash: String? = nil,
+        organization: String? = "org",
         as name: String = "balancebar-mod-test.json"
     ) throws {
         var fiveHour: [String: Any] = ["used_percentage": five]
@@ -226,6 +227,12 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
             "account": ["email_hash": emailHash ?? SnapshotInbox.emailHash(email)],
         ]
         if !omitSevenDay { object["seven_day"] = sevenHour }
+        if let organization {
+            object["account"] = [
+                "email_hash": emailHash ?? SnapshotInbox.emailHash(email),
+                "organization_hash": SnapshotInbox.hash(organization),
+            ]
+        }
         try FileManager.default.createDirectory(at: inboxDirectoryURL, withIntermediateDirectories: true)
         try JSONSerialization.data(withJSONObject: object)
             .write(to: inboxDirectoryURL.appendingPathComponent(name), options: .atomic)
@@ -1794,6 +1801,62 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
 
         try placeModSnapshot(five: 25, seven: 42, observedAt: Self.start.addingTimeInterval(10))
         let live = try XCTUnwrap(waitForState(pipeline) { $0.display.window(for: .fiveHour)?.usedPercentage == 25 })
+        XCTAssertTrue(live.status.isNativeRealtime)
+    }
+
+    func testSameEmailOtherOrganizationSnapshotIsRejectedAndNewOrganizationSnapshotIsAcceptedWithoutBaseline() throws {
+        let pipeline = makePipeline(configuration: claudeV1TestConfiguration, withInbox: true)
+        pipeline.start()
+        try placeModSnapshot(five: 20, seven: 40, observedAt: Self.start.addingTimeInterval(10),
+                             as: "balancebar-mod-aaaa-org1.json")
+        let first = try XCTUnwrap(waitForState(pipeline) { $0.display.window(for: .fiveHour)?.usedPercentage == 20 })
+
+        // Switch to another organization of the same account and email; no official read happened.
+        clock.advance(by: 60)
+        try writeAccount("account-a", email: "a@example.com", organization: "org-2")
+        _ = try XCTUnwrap(waitForState(pipeline) { $0.accountEpoch != first.accountEpoch })
+
+        // A session still running under the old organization writes a fresh snapshot: rejected.
+        clock.advance(by: 30)
+        try placeModSnapshot(five: 77, seven: 88, observedAt: clock.now, as: "balancebar-mod-aaaa-org1.json")
+        let inbox = try XCTUnwrap(lastInbox)
+        XCTAssertTrue(pollUntil {
+            inbox.adapters.contains { adapter in
+                if case let .degraded(reason) = adapter.health, reason.contains("organization hash") { return true }
+                return false
+            }
+        })
+        quiet(pipeline)
+        XCTAssertNotEqual(pipeline.latestState?.display.window(for: .fiveHour)?.usedPercentage, 77)
+
+        // The new organization writes its own file: accepted.
+        clock.advance(by: 10)
+        try placeModSnapshot(five: 30, seven: 50, observedAt: clock.now, organization: "org-2",
+                             as: "balancebar-mod-aaaa-org2.json")
+        let live = try XCTUnwrap(waitForState(pipeline) { $0.display.window(for: .fiveHour)?.usedPercentage == 30 })
+        XCTAssertTrue(live.status.isNativeRealtime)
+    }
+
+    func testLegacyModSnapshotWithoutOrganizationIsRejectedWithoutBaselineButAcceptedWithOne() throws {
+        let pipeline = makePipeline(configuration: claudeV1TestConfiguration, withInbox: true)
+        pipeline.start()
+        try placeModSnapshot(five: 25, seven: 42, observedAt: Self.start.addingTimeInterval(10), organization: nil)
+        let inbox = try XCTUnwrap(lastInbox)
+        XCTAssertTrue(pollUntil {
+            inbox.adapters.contains { adapter in
+                if case let .degraded(reason) = adapter.health, reason.contains("cycle_unverified") { return true }
+                return false
+            }
+        })
+        quiet(pipeline)
+        XCTAssertNotEqual(pipeline.latestState?.display.window(for: .fiveHour)?.usedPercentage, 25)
+
+        // With an official baseline the cycle check governs and the legacy snapshot is unchanged behavior.
+        pipeline.requestFetch(reason: .initial)
+        _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+        clock.advance(by: 305)
+        try placeModSnapshot(five: 26, seven: 43, observedAt: Self.start.addingTimeInterval(310), organization: nil)
+        let live = try XCTUnwrap(waitForState(pipeline) { $0.display.window(for: .fiveHour)?.usedPercentage == 26 })
         XCTAssertTrue(live.status.isNativeRealtime)
     }
 

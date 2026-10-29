@@ -2,6 +2,7 @@ import {
   buildSnapshot,
   errorText,
   extractEmail,
+  extractOrganization,
   hashEmail,
   inboxCandidates,
   snapshotFilename,
@@ -28,14 +29,18 @@ async function readConfiguredInbox($) {
 }
 
 /// Re-read on every observation so an account switch is never attributed to the old account.
-async function readEmailHash($, home) {
+async function readAccountHashes($, home) {
   try {
-    if (!home) return null
+    if (!home) return { emailHash: null, organizationHash: null }
     const text = await $.fs.read(`${home.replace(/\/$/, "")}/.claude.json`)
     const email = extractEmail(text)
-    return email ? await hashEmail(email) : null
+    const organization = extractOrganization(text)
+    return {
+      emailHash: email ? await hashEmail(email) : null,
+      organizationHash: organization ? await hashEmail(organization) : null,
+    }
   } catch {
-    return null
+    return { emailHash: null, organizationHash: null }
   }
 }
 
@@ -61,10 +66,10 @@ export async function recordMeasure($) {
   try {
     const usage = await $.session.usage()
     const home = await readHome($)
-    const emailHash = await readEmailHash($, home)
-    const snapshot = buildSnapshot({ now: new Date().toISOString(), usage, emailHash })
+    const { emailHash, organizationHash } = await readAccountHashes($, home)
+    const snapshot = buildSnapshot({ now: new Date().toISOString(), usage, emailHash, organizationHash })
     if (!snapshot) return false
-    return await writeSnapshot($, snapshot, snapshotFilename(emailHash))
+    return await writeSnapshot($, snapshot, snapshotFilename(emailHash, organizationHash))
   } catch {
     return false
   }

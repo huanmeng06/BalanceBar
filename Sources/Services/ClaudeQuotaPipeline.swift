@@ -296,8 +296,9 @@ final class ClaudeQuotaPipeline {
         }
         // Inbox snapshots are verified against the official cycle as a whole before they are
         // attributed; the inbox rejects a snapshot when any of its windows fails.
-        snapshotInbox?.cycleVerification = { [weak self] window, resetsAt, updatedAt, isComplete in
-            self?.verifySnapshotCycle(window: window, resetsAt: resetsAt, updatedAt: updatedAt, isComplete: isComplete)
+        snapshotInbox?.cycleVerification = { [weak self] window, resetsAt, updatedAt, isComplete, organizationProven in
+            self?.verifySnapshotCycle(window: window, resetsAt: resetsAt, updatedAt: updatedAt, isComplete: isComplete,
+                                       organizationProven: organizationProven)
         }
         // Forward inbox-level rejections (account attribution, cycle verification) to the
         // settings entry; a forwarding-time timestamp is enough because the inbox does not
@@ -599,16 +600,18 @@ final class ClaudeQuotaPipeline {
     /// produced before this account became active here may belong to the other one, so it is
     /// rejected. This is a known limit, not an organization proof: a snapshot written after the
     /// switch by a session still running under the other organization of the same email cannot be
-    /// told apart until an official baseline exists (the Mod Schema carries no organization).
+    /// told apart until an official baseline exists, unless the Mod snapshot carries an organization hash
+    /// (checked by the inbox; an older Mod without one is rejected here while there is no baseline).
     /// And while a reset awaits confirmation, only a complete snapshot (both standard
     /// windows with reset times) may establish the next cycle.
     fileprivate func verifySnapshotCycle(
-        window: QuotaWindowKind, resetsAt: Date?, updatedAt: Date, isComplete: Bool
+        window: QuotaWindowKind, resetsAt: Date?, updatedAt: Date, isComplete: Bool,
+        organizationProven: Bool
     ) -> Bool? {
         guard let engine else { return nil }
         let state = engine.currentState.windows[window.rawValue]
         let baseline = state?.latestGradeA.flatMap { $0.epoch == identity.accountEpoch ? $0 : nil }
-        if baseline == nil, updatedAt < lock.withLock({ accountActiveSince }) { return false }
+        if baseline == nil, !organizationProven || updatedAt < lock.withLock({ accountActiveSince }) { return false }
         if state?.pendingResetOf != nil { return isComplete }
         guard let gradeA = baseline else { return nil }
         guard let gradeAReset = gradeA.resetsAt, let reset = resetsAt,

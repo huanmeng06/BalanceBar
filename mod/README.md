@@ -10,12 +10,12 @@ Mods and simply produce no snapshots (see `docs/research/mod-spike.md`).
 - Subscribes only to `session.measure`; every failure is swallowed so the session is never affected.
 - Capability detection: if `$.session.usage()` is missing, throws, or has no usable `rateLimits`, nothing is written.
 - Output: `updated_at`, `five_hour`/`seven_day` (when present), `source: "balancebar-mod"`,
-  `account.email_hash` (`sha256:` of the lowercased account email; plaintext email and tokens are never written),
+  `account.email_hash` and `account.organization_hash` (`sha256:` of the lowercased account email / `oauthAccount.organizationUuid`; plaintext email, organization and tokens are never written; the organization hash is omitted when Claude Code exposes no organization),
   and `windows[]` keeping Claude's raw `kind`. `resets_at` is written only when Claude supplies an ISO string;
   other formats are omitted rather than guessed.
 - Destination: first existing directory of `~/Library/Application Support/BalanceBar/inbox/`,
   then `~/.claude/balancebar-inbox/`. Directories are never created. `BALANCEBAR_MOD_INBOX` overrides (testing).
-- One file per account, `balancebar-mod-<hash16>.json`, overwritten with the latest observation.
+- One file per account and organization, `balancebar-mod-<email16>-<org16>.json` (`balancebar-mod-<email16>.json` without an organization), overwritten with the latest observation.
 
 ## Validate and test
 

@@ -1,5 +1,5 @@
 import { expect, test } from "claude-code/testing"
-import { buildSnapshot, extractEmail, hashEmail, inboxCandidates, snapshotFilename } from "../hooks/snapshot.js"
+import { buildSnapshot, extractEmail, extractOrganization, hashEmail, inboxCandidates, snapshotFilename } from "../hooks/snapshot.js"
 import { recordMeasure, writeSnapshot } from "../hooks/register.js"
 
 const NOW = "2026-10-19T00:00:00.000Z"
@@ -97,4 +97,33 @@ test("account switch is picked up on the next measure", async () => {
   expect(names.length).toBe(2)
   expect(names[0] === names[1]).toBe(false)
   expect(JSON.parse(written[names[1]]).account.email_hash).toBe(await hashEmail("b@example.com"))
+})
+
+test("organization hash is written and selects a per-organization file", async () => {
+  const config = (org: string) => JSON.stringify({ oauthAccount: { emailAddress: "a@example.com", organizationUuid: org } })
+  const run = async (org: string) => {
+    const { $, written } = fakeContext({
+      fs: { exists: async () => true, read: async () => config(org), write: async (path: string, data: string) => { written[path] = data } },
+    })
+    expect(await recordMeasure($)).toBe(true)
+    const [path, body] = Object.entries(written)[0]
+    return { path, account: JSON.parse(body).account, body }
+  }
+  const one = await run("ORG-1")
+  const two = await run("org-2")
+  expect(one.account.organization_hash).toBe(await hashEmail("org-1"))
+  expect(one.account.email_hash).toBe(two.account.email_hash)
+  expect(one.path).not.toBe(two.path)
+  expect(one.body.toLowerCase().includes("org-1")).toBe(false)
+  expect(one.path.endsWith(".json")).toBe(true)
+})
+
+test("without an organization the legacy email-only file name and account shape are kept", async () => {
+  expect(extractOrganization(JSON.stringify({ oauthAccount: { organizationUuid: "  " } }))).toBe(null)
+  expect(extractOrganization("not json")).toBe(null)
+  expect(snapshotFilename("sha256:0123456789abcdef0123", null)).toBe("balancebar-mod-0123456789abcdef.json")
+  expect(snapshotFilename("sha256:0123456789abcdef0123", "sha256:fedcba9876543210ffff"))
+    .toBe("balancebar-mod-0123456789abcdef-fedcba9876543210.json")
+  const s = buildSnapshot({ now: NOW, usage, emailHash: "sha256:abc", organizationHash: null })!
+  expect(s.account).toEqual({ email_hash: "sha256:abc" })
 })

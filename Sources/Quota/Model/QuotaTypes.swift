@@ -26,17 +26,23 @@ public struct AccountIdentity: Codable, Equatable, Hashable {
     /// The method used to produce `stableID`.
     public let idSource: AccountIdentitySource
 
+    /// The lowercased organization UUID, when the provider exposed one. Used only to prove
+    /// which organization a local snapshot belongs to (compared as a hash, never persisted).
+    public let organizationUUID: String?
+
     /// Creates an account identity from a provider identifier or email fallback.
     public init(
         stableID: String,
         email: String? = nil,
         plan: String? = nil,
-        idSource: AccountIdentitySource
+        idSource: AccountIdentitySource,
+        organizationUUID: String? = nil
     ) {
         self.stableID = stableID
         self.email = email
         self.plan = plan
         self.idSource = idSource
+        self.organizationUUID = organizationUUID
     }
 
     /// Creates an account identity using the alternate `source` label.
@@ -70,6 +76,7 @@ public struct AccountIdentity: Codable, Equatable, Hashable {
         plan = try container.decodeIfPresent(String.self, forKey: .plan)
         idSource = try container.decodeIfPresent(AccountIdentitySource.self, forKey: .idSource)
             ?? container.decode(AccountIdentitySource.self, forKey: .source)
+        organizationUUID = nil
     }
 
     public func encode(to encoder: Encoder) throws {

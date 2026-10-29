@@ -34,7 +34,7 @@ function topLevel(window) {
 }
 
 /// Returns null (write nothing) when usage has no usable rateLimits.
-export function buildSnapshot({ now, usage, emailHash }) {
+export function buildSnapshot({ now, usage, emailHash, organizationHash }) {
   if (!Array.isArray(usage?.rateLimits)) return null
   const windows = usage.rateLimits.map(normalizeWindow).filter(Boolean)
   if (windows.length === 0) return null
@@ -45,13 +45,16 @@ export function buildSnapshot({ now, usage, emailHash }) {
   if (fiveHour) snapshot.five_hour = topLevel(fiveHour)
   if (sevenDay) snapshot.seven_day = topLevel(sevenDay)
   snapshot.source = "balancebar-mod"
-  if (emailHash) snapshot.account = { email_hash: emailHash }
+  if (emailHash) {
+    snapshot.account = { email_hash: emailHash }
+    if (organizationHash) snapshot.account.organization_hash = organizationHash
+  }
   snapshot.windows = windows
   return snapshot
 }
 
-export async function hashEmail(email) {
-  const normalized = String(email).trim().toLowerCase()
+export async function hashEmail(value) {
+  const normalized = String(value).trim().toLowerCase()
   const digest = await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(normalized))
   const hex = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("")
   return `sha256:${hex}`
@@ -67,7 +70,23 @@ export function extractEmail(configText) {
   }
 }
 
-export function snapshotFilename(emailHash) {
-  const suffix = emailHash ? emailHash.replace("sha256:", "").slice(0, 16) : "unknown"
-  return `balancebar-mod-${suffix}.json`
+/// Extracts only the organization UUID from ~/.claude.json text; it is hashed before use.
+export function extractOrganization(configText) {
+  try {
+    const organization = JSON.parse(configText)?.oauthAccount?.organizationUuid
+    return typeof organization === "string" && organization.trim() ? organization : null
+  } catch {
+    return null
+  }
+}
+
+function hashPrefix(hash) {
+  return hash.replace("sha256:", "").slice(0, 16)
+}
+
+/// One file per email + organization; without an organization the legacy email-only name is kept.
+export function snapshotFilename(emailHash, organizationHash) {
+  const suffix = emailHash ? hashPrefix(emailHash) : "unknown"
+  const organization = emailHash && organizationHash ? `-${hashPrefix(organizationHash)}` : ""
+  return `balancebar-mod-${suffix}${organization}.json`
 }
