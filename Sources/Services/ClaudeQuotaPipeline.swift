@@ -161,6 +161,9 @@ final class ClaudeQuotaPipeline {
     private var refreshing = false
     private var lastClientError: OfficialQuotaClientError?
     private var lastSuccessAt: Date?
+    /// When the active account was first seen by this process; Mod snapshots produced earlier
+    /// cannot be attributed to it without an official baseline.
+    private var accountActiveSince: Date
     private var state: ClaudeQuotaState?
     /// Whether any window is awaiting official reset confirmation (pipeline queue).
     private var awaitingResetConfirmation = false
@@ -237,6 +240,7 @@ final class ClaudeQuotaPipeline {
         self.identity = identity
         self.identityQueue = identityQueue
         self.now = now
+        accountActiveSince = now()
         self.realtimeTracker = realtimeTracker
         self.sourceValidity = sourceValidity
         sourceTimeline = ClaudeSourceTimeline(
@@ -271,8 +275,8 @@ final class ClaudeQuotaPipeline {
         }
         // Inbox snapshots are verified against the official cycle as a whole before they are
         // attributed; the inbox rejects a snapshot when any of its windows fails.
-        snapshotInbox?.cycleVerification = { [weak self] window, resetsAt in
-            self?.verifySnapshotCycle(window: window, resetsAt: resetsAt)
+        snapshotInbox?.cycleVerification = { [weak self] window, resetsAt, updatedAt, isComplete in
+            self?.verifySnapshotCycle(window: window, resetsAt: resetsAt, updatedAt: updatedAt, isComplete: isComplete)
         }
         // Forward inbox-level rejections (account attribution, cycle verification) to the
         // settings entry; a forwarding-time timestamp is enough because the inbox does not
@@ -468,6 +472,7 @@ final class ClaudeQuotaPipeline {
                 kind: .accountChanged, window: nil, observedAt: nil, receivedAt: now()))
         }
         engine.accountDidChange(epoch: change.epoch, accountID: change.identity?.stableID)
+        lock.withLock { accountActiveSince = now() }
         realtimeTracker?.reset(epoch: change.epoch)
         sourceTimeline.reset(accountKey: ClaudeSourceTimeline.accountKey(forStableID: change.identity?.stableID))
         statusLineSource?.accountDidChange(epoch: change.epoch)
@@ -519,11 +524,24 @@ final class ClaudeQuotaPipeline {
     /// baseline yet — the merge engine's grade-B rules reject those anyway, and while a
     /// reset awaits confirmation the engine's own provisional rules govern, exactly like
     /// the statusLine path).
-    fileprivate func verifySnapshotCycle(window: QuotaWindowKind, resetsAt: Date?) -> Bool? {
+    ///
+    /// Two further guards protect what the cycle cannot prove. Without an official baseline the
+    /// snapshot only carries an email hash, which two organizations of one email share; a snapshot
+    /// produced before this account became active here may belong to the other one, so it is
+    /// rejected. This is a known limit, not an organization proof: a snapshot written after the
+    /// switch by a session still running under the other organization of the same email cannot be
+    /// told apart until an official baseline exists (the Mod Schema carries no organization).
+    /// And while a reset awaits confirmation, only a complete snapshot (both standard
+    /// windows with reset times) may establish the next cycle.
+    fileprivate func verifySnapshotCycle(
+        window: QuotaWindowKind, resetsAt: Date?, updatedAt: Date, isComplete: Bool
+    ) -> Bool? {
         guard let engine else { return nil }
         let state = engine.currentState.windows[window.rawValue]
-        guard let gradeA = state?.latestGradeA, gradeA.epoch == identity.accountEpoch else { return nil }
-        guard state?.pendingResetOf == nil else { return true }
+        let baseline = state?.latestGradeA.flatMap { $0.epoch == identity.accountEpoch ? $0 : nil }
+        if baseline == nil, updatedAt < lock.withLock({ accountActiveSince }) { return false }
+        if state?.pendingResetOf != nil { return isComplete }
+        guard let gradeA = baseline else { return nil }
         guard let gradeAReset = gradeA.resetsAt, let reset = resetsAt,
               QuotaMergeEngine.sameResetInstant(reset, gradeAReset) else { return false }
         return true
@@ -545,30 +563,75 @@ final class ClaudeQuotaPipeline {
            displayed.epoch == observation.epoch,
            Self.sameCycle(displayed.resetsAt, observation.resetsAt),
            observation.usedPercentage < displayed.usedPercentage {
+            // The official API and the local sources round differently (e.g. the Mod reports 41
+            // where the official API reported 42). Below an official reading and inside the
+            // tolerance, the local reading is not shown, but it still proves the local source is
+            // alive for this window; without it the window would never count as fresh local data.
+            // Between two local readings a regression is concurrent-session noise, never evidence.
+            let tolerated = displayed.trust == .a
+                && displayed.usedPercentage - observation.usedPercentage
+                    <= QuotaConstants.gradeBTolerancePercentagePoints
+            let observedAt = observation.observedAt ?? observation.receivedAt
+            guard tolerated, observedAt >= displayed.effectiveTime else {
+                if !tolerated { logSourceConflict(observation, displayed: displayed, reason: "lower_than_displayed") }
+                diagnostics(
+                    "claude native observation rejected; reason=usage_decreased_within_cycle; source=\(observation.source); window=\(observation.window.rawValue)",
+                    .debug)
+                return false
+            }
             diagnostics(
-                "claude native observation rejected; reason=usage_decreased_within_cycle; source=\(observation.source); window=\(observation.window.rawValue)",
+                "claude native observation kept as evidence only; reason=usage_within_tolerance_below_display; source=\(observation.source); window=\(observation.window.rawValue)",
                 .debug)
-            return false
+            recordLocalEvidence(observation)
+            publish()
+            return true
         }
+        let previous = engine.currentState.windows[observation.window.rawValue]?.displayed
         _ = engine.merge(observation)
         let displayed = engine.currentState.windows[observation.window.rawValue]?.displayed
         let accepted = displayed?.source == observation.source
             && displayed?.receivedAt == observation.receivedAt
+        if !accepted, let previous, (observation.observedAt ?? observation.receivedAt) < previous.effectiveTime {
+            logSourceConflict(observation, displayed: previous, reason: "older_than_displayed")
+        }
         diagnostics(
             "claude native observation; source=\(observation.source); window=\(observation.window.rawValue); accepted=\(accepted)",
             .debug)
-        if accepted {
-            realtimeTracker?.recordTrustedObservation(
-                window: observation.window,
-                observedAt: observation.observedAt ?? observation.receivedAt,
-                epoch: observation.epoch,
-                source: Self.statusSource(forSourceID: observation.source) ?? .statusLine)
-            if let source = Self.statusSource(forSourceID: observation.source) {
-                sourceTimeline.recordReading(source: source, observedAt: observation.observedAt ?? observation.receivedAt)
-            }
-        }
+        if accepted { recordLocalEvidence(observation) }
         publish()
         return accepted
+    }
+
+    /// Writes a redacted error line when two different sources disagree about one cycle of a window
+    /// beyond the rounding tolerance. The newer validated reading already won; this is diagnostics only.
+    private func logSourceConflict(
+        _ observation: QuotaObservation, displayed: QuotaMergedReading, reason: String
+    ) {
+        guard displayed.source != observation.source,
+              displayed.epoch == observation.epoch,
+              Self.sameCycle(displayed.resetsAt, observation.resetsAt),
+              abs(displayed.usedPercentage - observation.usedPercentage)
+                > QuotaConstants.gradeBTolerancePercentagePoints else { return }
+        diagnostics(
+            "claude source conflict; reason=\(reason); window=\(observation.window.rawValue); "
+                + "displayed_source=\(displayed.source); observed_source=\(observation.source); "
+                + "displayed_used=\(displayed.usedPercentage); observed_used=\(observation.usedPercentage); "
+                + "displayed_at=\(displayed.effectiveTime.timeIntervalSince1970); "
+                + "observed_at=\((observation.observedAt ?? observation.receivedAt).timeIntervalSince1970)",
+            .error)
+    }
+
+    /// Trusted real-time evidence from a local source: freshness for the scheduler and a block on
+    /// the source timeline.
+    private func recordLocalEvidence(_ observation: QuotaObservation) {
+        realtimeTracker?.recordTrustedObservation(
+            window: observation.window,
+            observedAt: observation.observedAt ?? observation.receivedAt,
+            epoch: observation.epoch,
+            source: Self.statusSource(forSourceID: observation.source) ?? .statusLine)
+        if let source = Self.statusSource(forSourceID: observation.source) {
+            sourceTimeline.recordReading(source: source, observedAt: observation.observedAt ?? observation.receivedAt)
+        }
     }
 
     /// Sources disagree below a second; see `QuotaMergeEngine.sameResetInstant`.
@@ -655,7 +718,12 @@ final class ClaudeQuotaPipeline {
                 trust: .a,
                 accountID: account.stableID,
                 epoch: delivery.epoch) else { continue }
+            let previous = engine.currentState.windows[observation.window.rawValue]?.displayed
             engine.merge(observation)
+            if let previous, previous.trust == .b,
+               engine.currentState.windows[observation.window.rawValue]?.displayed?.source == Self.sourceID {
+                logSourceConflict(observation, displayed: previous, reason: "official_corrected_local")
+            }
         }
         statusLineSource?.setGradeAResets(Dictionary(uniqueKeysWithValues: readings.map {
             ($0.quotaKind, $0.resetsAt)

@@ -66,7 +66,7 @@ final class QuotaMergeEngineTests: XCTestCase {
     func testGradeBAdmissionRules() {
         struct Case { let name: String; let seedA: Bool; let bUsed: Double; let bResetsIn: TimeInterval?; let expected: Double? }
         let cases = [
-            Case(name: "no grade-A yet", seedA: false, bUsed: 50, bResetsIn: 3_600, expected: nil),
+            Case(name: "no grade-A yet", seedA: false, bUsed: 50, bResetsIn: 3_600, expected: 50),
             Case(name: "higher than A", seedA: true, bUsed: 45, bResetsIn: 3_600, expected: 45),
             Case(name: "within tolerance below A", seedA: true, bUsed: 38.5, bResetsIn: 3_600, expected: 38.5),
             Case(name: "below tolerance", seedA: true, bUsed: 37, bResetsIn: 3_600, expected: 40),
@@ -131,10 +131,10 @@ final class QuotaMergeEngineTests: XCTestCase {
         engine.refresh()
         XCTAssertEqual(scheduler.reasons.count, 1, "confirmation requested once per reset")
 
-        // Old-cycle and grade-B readings do not confirm.
+        // Old-cycle readings and grade-B readings without a reset time do not confirm.
         model = engine.merge(obs(80, resetsIn: 3_600, at: 3_602))
         XCTAssertEqual(model.window(for: .fiveHour)?.state, .resetPendingConfirmation)
-        model = engine.merge(obs(2, resetsIn: 3_600 + 18_000, at: 3_603, trust: .b))
+        model = engine.merge(obs(0, resetsIn: nil, at: 3_603, trust: .b))
         XCTAssertEqual(model.window(for: .fiveHour)?.state, .resetPendingConfirmation)
         XCTAssertTrue(sink.events.isEmpty)
 
@@ -154,11 +154,11 @@ final class QuotaMergeEngineTests: XCTestCase {
         var presented = ClaudeQuotaPipeline.presentationModel(from: model, merged: engine.currentState)
         XCTAssertEqual(presented.window(for: .fiveHour)?.state, .resetPendingConfirmation)
 
-        model = engine.merge(obs(5, resetsIn: 3_600 + 18_000, at: 3_602, trust: .b))
+        model = engine.merge(obs(0, resetsIn: nil, at: 3_602, trust: .b))
         presented = ClaudeQuotaPipeline.presentationModel(from: model, merged: engine.currentState)
         XCTAssertEqual(model.window(for: .fiveHour)?.state, .resetPendingConfirmation, "the engine keeps it pending")
         XCTAssertEqual(presented.window(for: .fiveHour)?.state, .inProgress)
-        XCTAssertEqual(presented.window(for: .fiveHour)?.usedPercentage, 5)
+        XCTAssertEqual(presented.window(for: .fiveHour)?.usedPercentage, 0)
     }
 
     func testNotStartedReadingConfirmsReset() {
@@ -170,30 +170,45 @@ final class QuotaMergeEngineTests: XCTestCase {
         XCTAssertEqual(sink.events, [.resetConfirmed(window: .fiveHour)])
     }
 
-    /// Issue #580: while a reset awaits official confirmation, a grade-B reading of the
-    /// next cycle updates the display immediately and provisionally; only grade-A confirms.
-    func testPendingResetShowsGradeBNextCycleProvisionally() {
+    /// Issue #625: a complete grade-B reading (own later reset time) of the next cycle confirms the
+    /// pending reset without the official API; one without a reset time stays provisional.
+    func testCompleteGradeBNextCycleConfirmsPendingResetAndIncompleteOneDoesNot() {
         let engine = makeEngine()
         engine.merge(obs(80, resetsIn: 3_600))
         clock = t0.addingTimeInterval(3_601)
         _ = engine.refresh()
         XCTAssertEqual(scheduler.reasons, [.resetConfirmation])
 
-        var model = engine.merge(obs(5, resetsIn: 3_600 + 18_000, at: 3_602, trust: .b))
-        XCTAssertEqual(model.window(for: .fiveHour)?.usedPercentage, 5, "the next cycle is shown immediately")
+        var model = engine.merge(obs(0, resetsIn: nil, at: 3_602, trust: .b))
         XCTAssertEqual(model.window(for: .fiveHour)?.state, .resetPendingConfirmation,
-                       "the window stays marked as awaiting official confirmation")
-        XCTAssertTrue(sink.events.isEmpty, "grade-B never confirms a reset")
+                       "a reading without a reset time cannot prove the next cycle")
+        XCTAssertTrue(sink.events.isEmpty)
 
-        // A stale grade-B reading of the same cycle does not regress the display.
-        model = engine.merge(obs(4, resetsIn: 3_600 + 18_000, at: 3_601, trust: .b))
+        model = engine.merge(obs(5, resetsIn: 3_600 + 18_000, at: 3_603, trust: .b))
         XCTAssertEqual(model.window(for: .fiveHour)?.usedPercentage, 5)
-
-        // Grade-A of the next cycle confirms and replaces the provisional value.
-        model = engine.merge(obs(6, resetsIn: 3_600 + 18_000, at: 3_605))
-        XCTAssertEqual(model.window(for: .fiveHour)?.usedPercentage, 6)
-        XCTAssertEqual(model.window(for: .fiveHour)?.state, .inProgress)
+        XCTAssertEqual(model.window(for: .fiveHour)?.state, .inProgress, "no waiting for the official API")
         XCTAssertEqual(sink.events, [.resetConfirmed(window: .fiveHour)])
+        let window = engine.currentState.windows[QuotaWindowKind.fiveHour.rawValue]
+        XCTAssertNil(window?.pendingResetOf)
+        XCTAssertNil(window?.latestGradeA, "the old cycle's official baseline no longer applies")
+
+        // Same cycle again: usage may not fall, and the official API can still correct it.
+        model = engine.merge(obs(4, resetsIn: 3_600 + 18_000, at: 3_604, trust: .b))
+        XCTAssertEqual(model.window(for: .fiveHour)?.usedPercentage, 5)
+        model = engine.merge(obs(7, resetsIn: 3_600 + 18_000, at: 3_605))
+        XCTAssertEqual(model.window(for: .fiveHour)?.usedPercentage, 7)
+    }
+
+    /// A grade-B reading of the old cycle or older than the pending deadline never confirms.
+    func testGradeBOfOldCycleDoesNotConfirmPendingReset() {
+        let engine = makeEngine()
+        engine.merge(obs(80, resetsIn: 3_600))
+        clock = t0.addingTimeInterval(3_601)
+        _ = engine.refresh()
+        let model = engine.merge(obs(5, resetsIn: 3_600, at: 3_602, trust: .b))
+        XCTAssertEqual(model.window(for: .fiveHour)?.usedPercentage, 80)
+        XCTAssertNotNil(engine.currentState.windows[QuotaWindowKind.fiveHour.rawValue]?.pendingResetOf)
+        XCTAssertTrue(sink.events.isEmpty)
     }
 
     // MARK: - Account switching
@@ -203,8 +218,8 @@ final class QuotaMergeEngineTests: XCTestCase {
         engine.merge(obs(40))
         engine.merge(obs(45, at: 5, trust: .b))
         var model = engine.merge(obs(.sevenDay, 5, resetsIn: 86_400, trust: .b, account: "acct-2", epoch: 1))
-        XCTAssertNil(model.window(for: .fiveHour)?.usedPercentage)
-        XCTAssertNil(model.window(for: .sevenDay)?.usedPercentage, "grade-B isolated after switch")
+        XCTAssertNil(model.window(for: .fiveHour)?.usedPercentage, "the previous account's readings are gone")
+        XCTAssertEqual(model.window(for: .sevenDay)?.usedPercentage, 5, "only the new account's own local reading is shown")
 
         model = engine.merge(obs(41, at: 6, account: "acct-1", epoch: 0))
         XCTAssertNil(model.window(for: .fiveHour)?.usedPercentage, "stale epoch rejected")
@@ -274,15 +289,15 @@ final class QuotaMergeEngineTests: XCTestCase {
         XCTAssertEqual(model.window(for: .fiveHour)?.usedPercentage, 42)
     }
 
-    func testEpochSwitchPersistsEvenWhenObservationRejected() {
+    func testEpochSwitchPersistsWithTheNewAccountsFirstLocalReading() {
         let store = MemoryStore()
         let engine = makeEngine(store: store)
         engine.merge(obs(40))
         let model = engine.merge(obs(45, at: 5, trust: .b, account: "acct-b", epoch: 1))
-        XCTAssertNil(model.window(for: .fiveHour)?.usedPercentage)
+        XCTAssertEqual(model.window(for: .fiveHour)?.usedPercentage, 45)
 
         let restarted = makeEngine(store: store)
-        XCTAssertEqual(restarted.displayModel.state, .noData)
+        XCTAssertEqual(restarted.displayModel.window(for: .fiveHour)?.usedPercentage, 45)
         XCTAssertEqual(restarted.currentState.accountID, "acct-b")
         XCTAssertEqual(restarted.currentState.epoch, AccountEpoch(1))
     }
@@ -323,5 +338,119 @@ final class QuotaMergeEngineTests: XCTestCase {
         engine.merge(obs(39, resetsIn: 3_601.6, at: 20, trust: .b))
         XCTAssertEqual(engine.currentState.windows[QuotaWindowKind.fiveHour.rawValue]?.displayed?.usedPercentage, 38,
                        "more than a second apart is another cycle")
+    }
+
+    // MARK: - Grade B without an official baseline
+
+    private func displayedUsage(_ engine: QuotaMergeEngine, _ window: QuotaWindowKind = .fiveHour) -> Double? {
+        engine.currentState.windows[window.rawValue]?.displayed?.usedPercentage
+    }
+
+    func testGradeBIsAdoptedWithoutOfficialBaselineAndNewestWins() {
+        let engine = makeEngine()
+        engine.merge(obs(15, at: 0, trust: .b))
+        XCTAssertEqual(displayedUsage(engine), 15)
+        engine.merge(obs(17, at: 10, trust: .b))
+        XCTAssertEqual(displayedUsage(engine), 17)
+        XCTAssertNil(engine.currentState.windows[QuotaWindowKind.fiveHour.rawValue]?.latestGradeA,
+                     "a local reading never becomes the official baseline")
+    }
+
+    func testGradeBWithoutBaselineRejectsUsageDecreaseWithinCycle() {
+        let engine = makeEngine()
+        engine.merge(obs(17, at: 0, trust: .b))
+        engine.merge(obs(12, at: 10, trust: .b))
+        XCTAssertEqual(displayedUsage(engine), 17)
+    }
+
+    func testGradeBWithoutBaselineAcceptsLaterCycleAndRejectsEarlierCycle() {
+        let engine = makeEngine()
+        engine.merge(obs(80, resetsIn: 3_600, at: 0, trust: .b))
+        engine.merge(obs(5, resetsIn: 3_600 + 18_000, at: 10, trust: .b))
+        XCTAssertEqual(displayedUsage(engine), 5, "a later cycle starts over")
+        engine.merge(obs(60, resetsIn: 3_600, at: 20, trust: .b))
+        XCTAssertEqual(displayedUsage(engine), 5, "an earlier cycle is stale")
+    }
+
+    func testGradeBWithoutBaselineIgnoresOlderTimestamp() {
+        let engine = makeEngine()
+        engine.merge(obs(20, at: 20, trust: .b))
+        engine.merge(obs(30, at: 10, trust: .b))
+        XCTAssertEqual(displayedUsage(engine), 20)
+    }
+
+    func testGradeBWithoutBaselineRespectsEpochAndAccount() {
+        let engine = makeEngine()
+        engine.merge(obs(20, at: 0, trust: .b, account: "acct-1", epoch: 1))
+        engine.merge(obs(30, at: 10, trust: .b, account: "acct-2", epoch: 1))
+        XCTAssertEqual(displayedUsage(engine), 20, "another account in the same epoch is rejected")
+        engine.merge(obs(40, at: 20, trust: .b, account: "acct-1", epoch: 0))
+        XCTAssertEqual(displayedUsage(engine), 20, "an older epoch is rejected")
+    }
+
+    func testOfficialReadingStillCorrectsLocalReadingAndRestoresBaselineRules() {
+        let engine = makeEngine()
+        engine.merge(obs(50, at: 0, trust: .b))
+        engine.merge(obs(30, at: 10))
+        XCTAssertEqual(displayedUsage(engine), 30, "grade A keeps its right to correct a local reading")
+        engine.merge(obs(20, at: 20, trust: .b))
+        XCTAssertEqual(displayedUsage(engine), 30, "with a baseline again, a reading below the tolerance is rejected")
+    }
+
+    func testGradeBWithoutBaselineEstablishesNextCycleAfterReset() {
+        let engine = makeEngine()
+        engine.merge(obs(90, resetsIn: 60, at: 0, trust: .b))
+        clock = t0.addingTimeInterval(120)
+        _ = engine.refresh()
+        engine.merge(obs(3, resetsIn: 60 + 18_000, at: 130, trust: .b))
+        XCTAssertEqual(displayedUsage(engine), 3)
+        XCTAssertNil(engine.currentState.windows[QuotaWindowKind.fiveHour.rawValue]?.pendingResetOf,
+                     "a complete local reading establishes the new cycle without the official API")
+    }
+
+    func testGradeBWithoutBaselineRejectsLowerUsageWhenResetTimeIsMissing() {
+        let engine = makeEngine()
+        engine.merge(obs(40, resetsIn: 3_600, at: 0, trust: .b))
+        engine.merge(obs(35, resetsIn: nil, at: 10, trust: .b))
+        XCTAssertEqual(displayedUsage(engine), 40, "a missing reset time is not a new cycle")
+        engine.merge(obs(40, resetsIn: 3_600, at: 20, trust: .b))
+        engine.merge(obs(35, resetsIn: 3_600, at: 30, trust: .b))
+        XCTAssertEqual(displayedUsage(engine), 40)
+    }
+
+    func testGradeBWithoutBaselineCannotEstablishAWindowWithoutResetTime() {
+        let engine = makeEngine()
+        engine.merge(obs(40, resetsIn: nil, at: 0, trust: .b))
+        XCTAssertNil(displayedUsage(engine), "no reset time, no proof of the cycle")
+        engine.merge(obs(40, resetsIn: 3_600, at: 10, trust: .b))
+        XCTAssertEqual(displayedUsage(engine), 40)
+    }
+
+    func testGradeBWithoutBaselineRejectsReplayAndSameEmailDifferentOrganization() {
+        let engine = makeEngine()
+        engine.merge(obs(40, at: 10, trust: .b, account: "claude:acc-1:org-a"))
+        engine.merge(obs(40, at: 5, trust: .b, account: "claude:acc-1:org-a"))
+        XCTAssertEqual(engine.currentState.windows[QuotaWindowKind.fiveHour.rawValue]?.displayed?.observedAt,
+                       t0.addingTimeInterval(10), "an older replay cannot replace the newer reading")
+        engine.merge(obs(90, at: 20, trust: .b, account: "claude:acc-1:org-b"))
+        XCTAssertEqual(displayedUsage(engine), 40, "another organization behind the same email is another account")
+    }
+
+    func testOlderOfficialReadingDoesNotOverwriteNewerLocalReading() {
+        let engine = makeEngine()
+        engine.merge(obs(50, at: 20, trust: .b))
+        engine.merge(obs(30, at: 10))
+        XCTAssertEqual(displayedUsage(engine), 50, "the later produced reading wins")
+    }
+
+    func testAccountSwitchClearsLocalReadingsWithoutBaseline() {
+        let engine = makeEngine()
+        engine.merge(obs(60, at: 0, trust: .b, account: "acct-1", epoch: 0))
+        _ = engine.accountDidChange(epoch: AccountEpoch(1), accountID: "acct-2")
+        XCTAssertNil(displayedUsage(engine))
+        engine.merge(obs(10, at: 10, trust: .b, account: "acct-1", epoch: 0))
+        XCTAssertNil(displayedUsage(engine), "the previous epoch is rejected")
+        engine.merge(obs(10, at: 20, trust: .b, account: "acct-2", epoch: 1))
+        XCTAssertEqual(displayedUsage(engine), 10)
     }
 }

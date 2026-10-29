@@ -237,6 +237,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         fiveReset: Date? = nil,
         sevenReset: Date? = nil,
         omitResets: Bool = false,
+        omitSevenDay: Bool = false,
         email: String = "a@example.com",
         emailHash: String? = nil,
         as name: String = "balancebar-mod-test.json"
@@ -247,13 +248,13 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
             fiveHour["resets_at"] = Self.isoFormatter.string(from: fiveReset ?? Self.usageFiveReset)
             sevenHour["resets_at"] = Self.isoFormatter.string(from: sevenReset ?? Self.usageSevenReset)
         }
-        let object: [String: Any] = [
+        var object: [String: Any] = [
             "updated_at": Self.isoFormatter.string(from: observedAt),
             "five_hour": fiveHour,
-            "seven_day": sevenHour,
             "source": "balancebar-mod",
             "account": ["email_hash": emailHash ?? SnapshotInbox.emailHash(email)],
         ]
+        if !omitSevenDay { object["seven_day"] = sevenHour }
         try FileManager.default.createDirectory(at: inboxDirectoryURL, withIntermediateDirectories: true)
         try JSONSerialization.data(withJSONObject: object)
             .write(to: inboxDirectoryURL.appendingPathComponent(name), options: .atomic)
@@ -942,32 +943,49 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         waitForRequests(2)
     }
 
-    func testModSnapshotWithoutGradeABaselineFallsBackToOfficialData() throws {
-        try placeModSnapshot(
-            five: 90, seven: 95, observedAt: Self.start.addingTimeInterval(1),
-            fiveReset: Self.start.addingTimeInterval(100_000), sevenReset: Self.start.addingTimeInterval(200_000))
+    func testModSnapshotOnAnUnrelatedCycleIsRejectedAfterOfficialBaseline() throws {
         let pipeline = makePipeline(configuration: claudeV1TestConfiguration, withInbox: true)
         pipeline.start()
         pipeline.requestFetch(reason: .initial)
         _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+        try placeModSnapshot(
+            five: 90, seven: 95, observedAt: Self.start.addingTimeInterval(1),
+            fiveReset: Self.start.addingTimeInterval(100_000), sevenReset: Self.start.addingTimeInterval(200_000))
         let inbox = try XCTUnwrap(lastInbox)
         XCTAssertTrue(pollUntil {
-            // Without a baseline the merge engine rejects the snapshot (log); once the
-            // official read has landed first, the cycle verification rejects it (health).
-            let healthRejected = inbox.adapters.contains { adapter in
+            inbox.adapters.contains { adapter in
                 if case let .degraded(reason) = adapter.health,
                    reason.contains("cycle_unverified_against_official") { return true }
                 return false
             }
-            return healthRejected
-                || self.diagnosticLines.all.contains { $0.contains("reason=not_displayed_by_merge") }
-        }, "the engine rejection should be diagnosed")
+        }, "a snapshot that cannot be tied to the official cycle is rejected as a whole")
         let state = try XCTUnwrap(pipeline.latestState)
         XCTAssertEqual(state.display.window(for: .fiveHour)?.usedPercentage, 23)
         XCTAssertEqual(state.display.window(for: .sevenDay)?.usedPercentage, 41)
         XCTAssertEqual(state.status, .realtime(.oauthAPI, at: Self.start))
         XCTAssertEqual(PipelineStubProtocol.requestCount, 1, "rejected Mod data must not suppress the official read")
         XCTAssertEqual(mergeWindowKeys(pipeline), ["five_hour", "seven_day"])
+    }
+
+    func testModReadingBelowTheOfficialValueWithinToleranceStillCountsAsLiveEvidence() throws {
+        let pipeline = makePipeline(
+            configuration: claudeV1TestConfiguration, withTestStatusLine: true, withInbox: true)
+        pipeline.start()
+        pipeline.requestFetch(reason: .initial)
+        _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+
+        // The official API says 41 for the 7-day window; the Mod rounds it down to 40. The display
+        // never moves backwards, yet the Mod window is evidence that the local source is alive.
+        clock.advance(by: 305)
+        try placeModSnapshot(five: 25, seven: 40, observedAt: Self.start.addingTimeInterval(310))
+        let realtime = try XCTUnwrap(waitForState(pipeline) { $0.status.isNativeRealtime })
+        XCTAssertEqual(realtime.display.window(for: .fiveHour)?.usedPercentage, 25)
+        XCTAssertEqual(realtime.display.window(for: .sevenDay)?.usedPercentage, 41, "the display never moves backwards")
+
+        pipeline.requestFetch(reason: .scheduled)
+        quiet(pipeline)
+        XCTAssertEqual(PipelineStubProtocol.requestCount, 1, "both windows are fresh local evidence")
+        XCTAssertTrue(diagnosticLines.all.contains { $0.contains("skip=realtimeSourceFresh") })
     }
 
     func testRescannedOldModSnapshotDoesNotCreateFreshness() throws {
@@ -1043,6 +1061,10 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
 
     func testModSupersetWindowsAndForeignInboxSourcesNeverReachTheClaudeEngine() throws {
         try FileManager.default.createDirectory(at: inboxDirectoryURL, withIntermediateDirectories: true)
+        let pipeline = makePipeline(configuration: claudeV1TestConfiguration, withInbox: true)
+        pipeline.start()
+        pipeline.requestFetch(reason: .initial)
+        _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
         // Mod superset: the extra windows must not create engine state or reset confirmations.
         let superset: [String: Any] = [
             "updated_at": Self.isoFormatter.string(from: Self.start.addingTimeInterval(1)),
@@ -1059,6 +1081,17 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         ]
         try JSONSerialization.data(withJSONObject: superset)
             .write(to: inboxDirectoryURL.appendingPathComponent("balancebar-mod-superset.json"))
+        let inbox = try XCTUnwrap(lastInbox)
+        XCTAssertTrue(pollUntil {
+            // The official cycle is known, so the superset snapshot is rejected wholesale by the
+            // cycle verification and never displays.
+            inbox.adapters.contains { adapter in
+                if case let .degraded(reason) = adapter.health,
+                   reason.contains("cycle_unverified_against_official") { return true }
+                return false
+            }
+        })
+
         // An unrelated inbox source with plausible values must be ignored entirely.
         let foreign: [String: Any] = [
             "updated_at": Self.isoFormatter.string(from: Self.start.addingTimeInterval(1)),
@@ -1067,24 +1100,6 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         ]
         try JSONSerialization.data(withJSONObject: foreign)
             .write(to: inboxDirectoryURL.appendingPathComponent("foreign.json"))
-
-        let pipeline = makePipeline(configuration: claudeV1TestConfiguration, withInbox: true)
-        pipeline.start()
-        pipeline.requestFetch(reason: .initial)
-        _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
-        let inbox = try XCTUnwrap(lastInbox)
-        XCTAssertTrue(pollUntil {
-            // The superset snapshot is either rejected wholesale by the cycle verification
-            // (health) or passed through and rejected by the merge engine (log) — whichever
-            // official read wins the race; both prove it never displayed.
-            let healthRejected = inbox.adapters.contains { adapter in
-                if case let .degraded(reason) = adapter.health,
-                   reason.contains("cycle_unverified_against_official") { return true }
-                return false
-            }
-            return healthRejected
-                || self.diagnosticLines.all.contains { $0.contains("reason=not_displayed_by_merge") }
-        })
         quiet(pipeline)
         XCTAssertEqual(mergeWindowKeys(pipeline), ["five_hour", "seven_day"])
         let state = try XCTUnwrap(pipeline.latestState)
@@ -1419,7 +1434,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         XCTAssertTrue(pipeline.latestState?.status.isNativeRealtime ?? false)
     }
 
-    func testPendingResetBlocksModDataFromSuppressingOfficialConfirmation() throws {
+    func testCompleteModNextCycleConfirmsPendingResetAndShowsLiveWithoutOfficialConfirmation() throws {
         PipelineStubProtocol.set(.init(data: Self.nearReset))
         let retryTimer = ManualRetryTimer()
         let pipeline = makePipeline(
@@ -1431,24 +1446,85 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         pipeline.tick()
         waitForRequests(2)
 
-        // The Mod's next-cycle snapshot is shown provisionally but the window stays pending.
-        // Its seven-day window still describes the current official cycle, so the snapshot
-        // is coherent and passes the snapshot-atomic cycle verification.
+        // The Mod's snapshot carries the next five-hour cycle with its reset time. Its seven-day
+        // window still describes the current official cycle, so the snapshot passes the
+        // snapshot-atomic cycle verification and establishes the new cycle by itself.
         try placeModSnapshot(
             five: 2, seven: 42, observedAt: Self.start.addingTimeInterval(125),
             fiveReset: Self.start.addingTimeInterval(10_000), sevenReset: Self.nearResetSevenReset)
-        let provisional = try XCTUnwrap(waitForState(pipeline) {
-            $0.display.window(for: .fiveHour)?.usedPercentage == 2
+        let live = try XCTUnwrap(waitForState(pipeline) {
+            $0.display.window(for: .fiveHour)?.usedPercentage == 2 && $0.status.isNativeRealtime
         })
-        // The provisional reading is real next-cycle data from a local source: the card shows it
-        // as real-time instead of "waiting", while the engine keeps the window pending.
-        XCTAssertTrue(provisional.status.isNativeRealtime)
-        XCTAssertNotNil(pipeline.mergeStateForDiagnostics?.windows[QuotaWindowKind.fiveHour.rawValue]?.pendingResetOf)
+        XCTAssertEqual(live.display.window(for: .fiveHour)?.state, .inProgress)
+        XCTAssertNil(pipeline.mergeStateForDiagnostics?.windows[QuotaWindowKind.fiveHour.rawValue]?.pendingResetOf,
+                     "no waiting for official confirmation")
+    }
 
-        // Pending confirmation blocks realtime freshness, so reads still reach the server.
-        clock.advance(by: 310)
-        pipeline.requestFetch(reason: .scheduled)
-        waitForRequests(3)
+    func testIncompleteModSnapshotCannotEstablishTheNextCycleWhileResetIsPending() throws {
+        PipelineStubProtocol.set(.init(data: Self.nearReset))
+        let pipeline = makePipeline(
+            configuration: claudeV1TestConfiguration, confirmationTimer: ManualRetryTimer(), withInbox: true)
+        pipeline.start()
+        pipeline.requestFetch(reason: .initial)
+        _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+        clock.advance(by: 120)
+        pipeline.tick()
+        waitForRequests(2)
+
+        try placeModSnapshot(
+            five: 2, seven: 42, observedAt: Self.start.addingTimeInterval(125),
+            fiveReset: Self.start.addingTimeInterval(10_000), sevenReset: Self.nearResetSevenReset,
+            omitSevenDay: true)
+        let inbox = try XCTUnwrap(lastInbox)
+        XCTAssertTrue(pollUntil {
+            inbox.adapters.contains { adapter in
+                if case let .degraded(reason) = adapter.health, reason.contains("cycle_unverified") { return true }
+                return false
+            }
+        }, "a snapshot without both windows cannot confirm the next cycle")
+        quiet(pipeline)
+        XCTAssertNotNil(pipeline.mergeStateForDiagnostics?.windows[QuotaWindowKind.fiveHour.rawValue]?.pendingResetOf)
+        XCTAssertNotEqual(pipeline.latestState?.display.window(for: .fiveHour)?.usedPercentage, 2)
+    }
+
+    func testModSnapshotProducedBeforeTheAccountWasActiveIsRejectedWithoutOfficialBaseline() throws {
+        let pipeline = makePipeline(configuration: claudeV1TestConfiguration, withInbox: true)
+        pipeline.start()
+        // No official read: the email hash cannot tell two organizations of one email apart, so a
+        // snapshot produced before this account became active here is not attributed to it.
+        try placeModSnapshot(five: 90, seven: 95, observedAt: Self.start.addingTimeInterval(-3_600))
+        let inbox = try XCTUnwrap(lastInbox)
+        XCTAssertTrue(pollUntil {
+            inbox.adapters.contains { adapter in
+                if case let .degraded(reason) = adapter.health, reason.contains("cycle_unverified") { return true }
+                return false
+            }
+        })
+        quiet(pipeline)
+        XCTAssertNotEqual(pipeline.latestState?.display.window(for: .fiveHour)?.usedPercentage, 90)
+
+        try placeModSnapshot(five: 25, seven: 42, observedAt: Self.start.addingTimeInterval(10))
+        let live = try XCTUnwrap(waitForState(pipeline) { $0.display.window(for: .fiveHour)?.usedPercentage == 25 })
+        XCTAssertTrue(live.status.isNativeRealtime)
+    }
+
+    func testModReadingContradictingTheOfficialValueIsRejectedAndLoggedAsAConflict() throws {
+        let pipeline = makePipeline(configuration: claudeV1TestConfiguration, withInbox: true)
+        pipeline.start()
+        pipeline.requestFetch(reason: .initial)
+        _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+
+        // Official five-hour value is 23; a Mod reading of 10 is far below the rounding tolerance.
+        try placeModSnapshot(five: 10, seven: 42, observedAt: Self.start.addingTimeInterval(5))
+        XCTAssertTrue(pollUntil {
+            self.diagnosticLines.all.contains {
+                $0.contains("claude source conflict") && $0.contains("reason=lower_than_displayed")
+            }
+        })
+        quiet(pipeline)
+        XCTAssertEqual(pipeline.latestState?.display.window(for: .fiveHour)?.usedPercentage, 23)
+        let conflict = try XCTUnwrap(diagnosticLines.all.first { $0.contains("claude source conflict") })
+        XCTAssertFalse(conflict.contains("@"), "the conflict line carries no account data")
     }
 
     func testStatusLineAndModCoexistenceKeepsTheLatestTrustedValues() throws {

@@ -272,16 +272,20 @@ public final class QuotaMergeEngine: QuotaMerging {
             guard reading.effectiveTime > pending,
                   reading.effectiveTime >= window.displayed?.effectiveTime ?? .distantPast,
                   isNextCycle(reading, after: pending) else { return false }
-            if observation.trust == .a {
-                // Only a fresh grade-A reading of the next cycle confirms the reset.
-                window = QuotaMergedWindow(displayed: reading, latestGradeA: reading, pendingResetOf: nil)
+            if observation.trust == .a || reading.resetsAt != nil {
+                // A fresh grade-A reading of the next cycle confirms the reset. So does a complete
+                // grade-B reading that carries its own later reset time: it proves the new cycle
+                // without the official API. The old cycle's A-baseline no longer applies to it.
+                let baseline = observation.trust == .a ? reading : nil
+                window = QuotaMergedWindow(displayed: reading, latestGradeA: baseline, pendingResetOf: nil)
                 state.windows[key] = window
                 events.append(.resetConfirmed(window: observation.window))
                 drift.didAccept(observation, previous: nil)
                 return true
             }
-            // A grade-B reading of the next cycle is shown provisionally; the window stays
-            // pending until grade-A data confirms it, and `latestGradeA` is not overwritten.
+            // A grade-B reading without a reset time cannot prove the next cycle: it is shown
+            // provisionally; the window stays pending until a complete reading confirms it, and
+            // `latestGradeA` is not overwritten.
             let previous = window.displayed
             window.displayed = reading
             state.windows[key] = window
@@ -302,16 +306,34 @@ public final class QuotaMergeEngine: QuotaMerging {
             drift.didAccept(observation, previous: previous)
             return true
         case .b:
-            guard let gradeA = window.latestGradeA,
-                  gradeA.epoch == observation.epoch,
-                  reading.usedPercentage >= gradeA.usedPercentage - QuotaConstants.gradeBTolerancePercentagePoints,
-                  sameCycle(reading.resetsAt, gradeA.resetsAt) else { return false }
+            if let gradeA = window.latestGradeA, gradeA.epoch == observation.epoch {
+                guard reading.usedPercentage >= gradeA.usedPercentage - QuotaConstants.gradeBTolerancePercentagePoints,
+                      sameCycle(reading.resetsAt, gradeA.resetsAt) else { return false }
+            } else {
+                // No official baseline for this account (not signed in, or nothing read yet): the
+                // local sources are the only evidence, and the newest reading wins. Without a
+                // grade-A anchor the cycle is held by the displayed reading instead.
+                guard Self.isAdmissibleWithoutBaseline(reading, after: window.displayed) else { return false }
+            }
             let previous = window.displayed
             window.displayed = reading
             state.windows[key] = window
             drift.didAccept(observation, previous: previous)
             return true
         }
+    }
+
+    /// A grade-B reading with no grade-A baseline follows the displayed reading: the same cycle
+    /// may not move usage backwards, a later cycle starts over, and an earlier cycle is stale.
+    /// A reading or display without a reset time cannot prove a cycle change, so usage must not fall.
+    static func isAdmissibleWithoutBaseline(_ reading: QuotaMergedReading, after displayed: QuotaMergedReading?) -> Bool {
+        // Without any displayed reading the reset time is the only proof of the cycle.
+        guard let displayed else { return reading.resetsAt != nil }
+        if let resetsAt = reading.resetsAt, let displayedReset = displayed.resetsAt,
+           !sameResetInstant(resetsAt, displayedReset) {
+            return resetsAt > displayedReset
+        }
+        return reading.usedPercentage >= displayed.usedPercentage
     }
 
     private func isNextCycle(_ reading: QuotaMergedReading, after pending: Date) -> Bool {
