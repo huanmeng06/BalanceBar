@@ -484,10 +484,11 @@ final class SnapshotInboxTests: XCTestCase {
             source.noteProcessed(source: "some-other-tool", accountID: "acct-1", receivedAt: receivedAt, accepted: true)
         }
         source.queue.sync {}
+        let base = collector.all.count // the initial scan and the watcher may both have delivered
         try placeSnapshot(source: "some-other-tool", emailHash: nil, as: "o.json", percentage: 20,
                           updatedAt: "2026-10-17T06:13:00Z")
         source.queue.sync { source.process(paths: [inbox.appendingPathComponent("o.json").path]) }
-        XCTAssertEqual(collector.all.count, 1)
+        XCTAssertEqual(collector.all.count, base)
         source.stop()
     }
 

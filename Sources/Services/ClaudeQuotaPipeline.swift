@@ -176,9 +176,12 @@ final class ClaudeQuotaPipeline {
     private var modAvailableSince: Date?
     /// Newest Mod snapshot per window that was produced after the suspension but arrived before
     /// detection confirmed the Mod available; the detection it triggered may resume live status
-    /// with it. Dropped whenever the Mod becomes unavailable again or the account changes.
+    /// with it. A verdict of "unavailable" drops the candidates it covers; an account change drops all.
     private var modResumeCandidates: [QuotaWindowKind: QuotaObservation] = [:]
-    private var lastModDetectionRequestAt: Date?
+    /// Production time of the newest snapshot an "unavailable" verdict has covered: a rescan of
+    /// the same file (or anything older) is not a candidate again, so a stray snapshot cannot
+    /// keep re-triggering detections.
+    private var modCandidateFloor: Date?
     /// Whether any window is awaiting official reset confirmation (pipeline queue).
     private var awaitingResetConfirmation = false
     /// Confirmation requests already repeated by the retry timer in the current pending period.
@@ -224,15 +227,15 @@ final class ClaudeQuotaPipeline {
     }
     private var modSnapshotEventHandler: ((ModSnapshotEvent) -> Void)?
 
-    /// Asks the settings coordinator for one Mod availability check (forced, no polling). Fired
-    /// on the pipeline queue when a snapshot produced after the suspension arrives while the Mod
-    /// is not yet confirmed available, at most once per `modDetectionRequestThrottle`.
+    /// Asks the settings coordinator for a Mod availability check (forced, no polling). Fired
+    /// on the pipeline queue once per snapshot produced after the suspension that arrives while
+    /// the Mod is not yet confirmed available. The coordinator serializes checks and queues one
+    /// follow-up when a check is already running, so a request is never lost.
     var modDetectionRequester: (() -> Void)? {
         get { lock.withLock { modDetectionRequestHandler } }
         set { lock.withLock { modDetectionRequestHandler = newValue } }
     }
     private var modDetectionRequestHandler: (() -> Void)?
-    static let modDetectionRequestThrottle: TimeInterval = 30
 
     /// - Parameters:
     ///   - calibrationIntervalCap: Upper bound for how long a fresh real-time source may suppress requests.
@@ -369,11 +372,20 @@ final class ClaudeQuotaPipeline {
     /// The Mod was found uninstalled or disabled: it loses live eligibility at once and stops
     /// deferring official reads. Its last reading stays displayed with its own time.
     /// Idempotent; the first suspension moment is kept.
-    func modBecameUnavailable(reason: ModUnavailableReason) {
+    ///
+    /// - Parameter checkedAt: When the detection behind this verdict began. Only resume
+    ///   candidates that arrived before it are covered by the verdict; a snapshot that arrived
+    ///   while the check was already running keeps waiting for the follow-up check. `nil` (the
+    ///   in-app uninstall) covers everything.
+    func modBecameUnavailable(reason: ModUnavailableReason, checkedAt: Date? = nil) {
         queue.async { [self] in
             let first = lock.withLock { () -> Bool in
                 modAvailableSince = nil
-                modResumeCandidates = [:]
+                let covered = modResumeCandidates.filter { checkedAt == nil || $0.value.receivedAt <= checkedAt! }
+                if let newest = covered.values.map({ $0.observedAt ?? $0.receivedAt }).max() {
+                    modCandidateFloor = max(modCandidateFloor ?? newest, newest)
+                }
+                modResumeCandidates = modResumeCandidates.filter { covered[$0.key] == nil }
                 guard modSuspendedAt == nil else { return false }
                 modSuspendedAt = now()
                 return true
@@ -557,6 +569,7 @@ final class ClaudeQuotaPipeline {
         lock.withLock {
             accountActiveSince = now()
             modResumeCandidates = [:]
+            modCandidateFloor = nil
         }
         realtimeTracker?.reset(epoch: change.epoch)
         sourceTimeline.reset(accountKey: ClaudeSourceTimeline.accountKey(forStableID: change.identity?.stableID))
@@ -730,12 +743,15 @@ final class ClaudeQuotaPipeline {
                 if suspendedAt > producedAt { return .rejected("snapshot_before_suspension") }
                 guard let since = modAvailableSince else {
                     // Produced after the suspension: keep it for the detection it asks for.
-                    guard modDetectionRequestHandler != nil else { return .rejected("snapshot_while_mod_unavailable") }
+                    guard modDetectionRequestHandler != nil,
+                          modCandidateFloor.map({ producedAt > $0 }) ?? true else {
+                        return .rejected("snapshot_while_mod_unavailable")
+                    }
+                    // One request per snapshot: its second window shares the production time.
+                    let isNewSnapshot = modResumeCandidates.values.allSatisfy {
+                        ($0.observedAt ?? $0.receivedAt) < producedAt }
                     modResumeCandidates[observation.window] = observation
-                    let due = lastModDetectionRequestAt.map {
-                        now().timeIntervalSince($0) >= Self.modDetectionRequestThrottle } ?? true
-                    if due { lastModDetectionRequestAt = now() }
-                    return .awaitingDetection(request: due)
+                    return .awaitingDetection(request: isNewSnapshot)
                 }
                 if producedAt <= since { return .rejected("snapshot_before_available_confirmation") }
                 modSuspendedAt = nil

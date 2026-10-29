@@ -22,7 +22,12 @@ final class ModSyncCoordinator {
     private var environment: ModEnvironment?
     private var evidence = ModSnapshotEvidence()
     private var detectionInFlight = false
-    private var lastDetectionStartedAt = Date.distantPast
+    /// When the running (or last finished) detection began; read by the verdict callbacks, which
+    /// fire inside that detection's completion.
+    private(set) var lastDetectionStartedAt = Date.distantPast
+    /// A snapshot asked for a check while one was already running; that check may predate the
+    /// snapshot, so exactly one follow-up runs after it.
+    private var detectionRerunRequested = false
     /// Guards one-shot silence rechecks against a later status/evidence change.
     private var silenceScheduleGeneration: UInt64 = 0
     /// Invalidates queued card polls when Advanced/search stops showing Mod status.
@@ -126,6 +131,20 @@ final class ModSyncCoordinator {
             } else {
                 self.recomputeStatus()
             }
+            if self.detectionRerunRequested {
+                self.detectionRerunRequested = false
+                self.startDetectionIfNeeded(force: true)
+            }
+        }
+    }
+
+    /// A Mod snapshot arrived that may prove the Mod is back: check now, or right after the
+    /// running check when one is in flight (it may have started before the snapshot).
+    func requestDetectionForSnapshot() {
+        if detectionInFlight {
+            detectionRerunRequested = true
+        } else {
+            startDetectionIfNeeded(force: true)
         }
     }
 
@@ -426,6 +445,22 @@ extension LocalizationKey {
         case .statusRejectedAccount: return .modSyncStatusRejectedAccount
         case .statusRejectedCycle: return .modSyncStatusRejectedCycle
         case .statusInstallationUnknown: return .modSyncStatusInstallationUnknown
+        }
+    }
+}
+
+extension ModSyncCoordinator {
+    /// Connects the Mod lifecycle both ways: verdicts reach the pipeline, and a pipeline snapshot
+    /// that needs an availability check reaches the coordinator (main thread).
+    func bind(to pipeline: ClaudeQuotaPipeline) {
+        onModUnavailable = { [weak self, weak pipeline] reason in
+            // In-app uninstalls are not tied to a check; every other verdict is.
+            let checkedAt = reason == .inAppUninstall ? nil : self?.lastDetectionStartedAt
+            pipeline?.modBecameUnavailable(reason: reason, checkedAt: checkedAt)
+        }
+        onModAvailable = { [weak pipeline] in pipeline?.modBecameAvailable() }
+        pipeline.modDetectionRequester = { [weak self] in
+            DispatchQueue.main.async { self?.requestDetectionForSnapshot() }
         }
     }
 }
