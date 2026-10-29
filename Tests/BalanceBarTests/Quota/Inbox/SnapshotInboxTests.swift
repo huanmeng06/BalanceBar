@@ -92,10 +92,10 @@ final class SnapshotInboxTests: XCTestCase {
     /// Writes a Schema v1 snapshot with the given source and account email hash.
     private func placeSnapshot(
         source: String?, emailHash: String?, as name: String = "snapshot.json",
-        percentage: Double = 10
+        percentage: Double = 10, updatedAt: String = "2026-10-17T06:12:03Z"
     ) throws {
         var object: [String: Any] = [
-            "updated_at": "2026-10-17T06:12:03Z",
+            "updated_at": updatedAt,
             "five_hour": ["used_percentage": percentage, "resets_at": "2026-10-17T09:00:00Z"],
         ]
         if let source { object["source"] = source }
@@ -423,6 +423,73 @@ final class SnapshotInboxTests: XCTestCase {
         Thread.sleep(forTimeInterval: 0.5)
         source.stop()
         XCTAssertEqual(reasons.all, [], "a whole-snapshot replay is healthy, not a rejection")
+    }
+
+    /// Issue #634 F1/F2: an unchanged percentage must not hide a newer Mod snapshot. Same values
+    /// and a strictly later production time are emitted again (the merge engine renews the
+    /// reading's time); the same production time (a file re-read) and an older one stay replays.
+    func testSameValueNewerModSnapshotIsEmittedWhileReplaysStayDropped() throws {
+        let hash = SnapshotInbox.emailHash("user@example.com")
+        let collector = Collector()
+        let source = SnapshotInbox(
+            inboxDirectory: inbox, identity: FakeIdentity(),
+            configuration: SnapshotInboxConfiguration(halfWriteRetryDelay: 0.05))
+        inboxes.append(source)
+        source.start { collector.add($0) }
+        func place(_ updatedAt: String) throws {
+            try placeSnapshot(source: "balancebar-mod", emailHash: hash, as: "mod.json", percentage: 20,
+                              updatedAt: updatedAt)
+        }
+        func adoptAll() {
+            for receivedAt in collector.all.map(\.receivedAt) {
+                source.noteProcessed(source: "balancebar-mod", accountID: "acct-1", receivedAt: receivedAt, accepted: true)
+            }
+            source.queue.sync {}
+        }
+        func reread() { source.queue.sync { source.process(paths: [inbox.appendingPathComponent("mod.json").path]) } }
+        try place("2026-10-17T06:12:03Z")
+        XCTAssertTrue(waitUntil { !collector.all.isEmpty })
+        Thread.sleep(forTimeInterval: 1.5) // let directory catch-up rescans settle
+        source.queue.sync {}
+        adoptAll()
+        let base = collector.all.count // the initial scan and the watcher may both have delivered
+
+        reread() // same file, same production time
+        try place("2026-10-17T06:11:00Z")
+        reread() // older production time, same values
+        XCTAssertEqual(collector.all.count, base, "replays are not emitted")
+
+        try place("2026-10-17T06:13:00Z")
+        reread()
+        XCTAssertEqual(collector.all.count, base + 1, "same values, later production time")
+        XCTAssertEqual(collector.all.last?.observedAt, ISO8601DateFormatter().date(from: "2026-10-17T06:13:00Z"))
+        adoptAll()
+        reread() // the renewed production time is now the replay baseline
+        XCTAssertEqual(collector.all.count, base + 1)
+        source.stop()
+    }
+
+    func testNonModSameValueNewerSnapshotIsStillADroppedReplay() throws {
+        let collector = Collector()
+        let source = SnapshotInbox(
+            inboxDirectory: inbox, identity: FakeIdentity(),
+            configuration: SnapshotInboxConfiguration(halfWriteRetryDelay: 0.05))
+        inboxes.append(source)
+        source.start { collector.add($0) }
+        try placeSnapshot(source: "some-other-tool", emailHash: nil, as: "o.json", percentage: 20)
+        XCTAssertTrue(waitUntil { !collector.all.isEmpty })
+        Thread.sleep(forTimeInterval: 1.5)
+        source.queue.sync {}
+        for receivedAt in collector.all.map(\.receivedAt) {
+            source.noteProcessed(source: "some-other-tool", accountID: "acct-1", receivedAt: receivedAt, accepted: true)
+        }
+        source.queue.sync {}
+        let base = collector.all.count // the initial scan and the watcher may both have delivered
+        try placeSnapshot(source: "some-other-tool", emailHash: nil, as: "o.json", percentage: 20,
+                          updatedAt: "2026-10-17T06:13:00Z")
+        source.queue.sync { source.process(paths: [inbox.appendingPathComponent("o.json").path]) }
+        XCTAssertEqual(collector.all.count, base)
+        source.stop()
     }
 
     func testNonModRejectionsAreNotReportedAsModFailures() throws {

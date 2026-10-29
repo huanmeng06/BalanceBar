@@ -90,7 +90,7 @@ public final class SnapshotInbox: QuotaSource {
     /// rejected never updates it, so the previously adopted values keep being recognized as
     /// duplicates and rejected data cannot make a later same-value snapshot look new.
     /// In-memory only.
-    private var adoptedSnapshots: [String: [EmittedWindow]] = [:]
+    private var adoptedSnapshots: [String: AdoptedSnapshot] = [:]
     /// Emitted snapshots awaiting adoption feedback from the pipeline (`noteProcessed`).
     private var pendingAdoptions: [PendingKey: PendingSnapshot] = [:]
     /// Diagnostics counters (inbox-queue confined); tests read them through `queue.sync`.
@@ -103,6 +103,12 @@ public final class SnapshotInbox: QuotaSource {
         let resetsAt: Date?
     }
 
+    private struct AdoptedSnapshot {
+        let fingerprint: [EmittedWindow]
+        /// Production time of the newest snapshot with this fingerprint that was seen.
+        var updatedAt: Date
+    }
+
     private struct PendingKey: Hashable {
         let accountID: String
         let source: String
@@ -112,6 +118,7 @@ public final class SnapshotInbox: QuotaSource {
     private struct PendingSnapshot {
         let emissionKey: String
         let fingerprint: [EmittedWindow]
+        let updatedAt: Date
         var remaining: Int
         var acceptedAny = false
         let createdAt: Date
@@ -183,7 +190,8 @@ public final class SnapshotInbox: QuotaSource {
             pending.acceptedAny = pending.acceptedAny || accepted
             if pending.remaining <= 0 {
                 if pending.acceptedAny {
-                    self.adoptedSnapshots[pending.emissionKey] = pending.fingerprint
+                    self.adoptedSnapshots[pending.emissionKey] = AdoptedSnapshot(
+                        fingerprint: pending.fingerprint, updatedAt: pending.updatedAt)
                 }
                 self.pendingAdoptions[key] = nil
             } else {
@@ -346,7 +354,11 @@ public final class SnapshotInbox: QuotaSource {
         let fingerprint = parsed.windows.map { EmittedWindow(
             kind: $0.kind, usedPercentage: $0.usedPercentage, resetsAt: $0.resetsAt) }
         let emissionKey = "\(account.stableID)/\(epoch.rawValue)/\(source)"
-        if adoptedSnapshots[emissionKey] == fingerprint {
+        // A Mod snapshot with the same values but a later production time is not a replay: the
+        // Mod is still alive, and the merge engine renews the reading's time (same value,
+        // newer) instead of letting a steady integer percentage age out.
+        if let adopted = adoptedSnapshots[emissionKey], adopted.fingerprint == fingerprint,
+           !isModSnapshot || parsed.updatedAt <= adopted.updatedAt {
             suppressedReplayCount += 1
             adapter.health = .healthy
             return
@@ -354,7 +366,7 @@ public final class SnapshotInbox: QuotaSource {
         pruneStalePendingAdoptions()
         pendingAdoptions[PendingKey(accountID: account.stableID, source: source, receivedAt: received)] =
             PendingSnapshot(
-                emissionKey: emissionKey, fingerprint: fingerprint,
+                emissionKey: emissionKey, fingerprint: fingerprint, updatedAt: parsed.updatedAt,
                 remaining: parsed.windows.count, createdAt: received)
         for window in parsed.windows {
             guard let observation = QuotaObservation(

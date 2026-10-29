@@ -753,6 +753,22 @@ final class ModSyncCoordinatorTests: XCTestCase {
         return (coordinator, runner)
     }
 
+    /// A snapshot-triggered request that arrives while a check is running is not dropped: exactly
+    /// one follow-up check runs after it (the running one may predate the snapshot).
+    func testSnapshotRequestDuringARunningCheckQueuesExactlyOneFollowUp() {
+        let version = ModCommandResult(exitCode: 0, stdout: "2.1.291 (Claude Code)", stderr: "")
+        let list = ModCommandResult(exitCode: 0, stdout: String(decoding: listJSON(), as: UTF8.self), stderr: "")
+        let (coordinator, runner) = makeCoordinator(
+            locator: "/bin/claude", results: [version, list, version, list, version, list])
+        coordinator.startDetectionIfNeeded(force: true)
+        coordinator.requestDetectionForSnapshot()
+        coordinator.requestDetectionForSnapshot() // coalesced with the first
+        let deadline = Date().addingTimeInterval(3)
+        while Date() < deadline, runner.calls.count < 4 { RunLoop.main.run(until: Date().addingTimeInterval(0.02)) }
+        RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+        XCTAssertEqual(runner.calls.count, 4, "one check plus exactly one follow-up")
+    }
+
     func testDetectionDrivesWaitingForDataAndSnapshotEvidenceDrivesActive() {
         let (coordinator, runner) = makeCoordinator(
             locator: "/bin/claude",
