@@ -61,12 +61,35 @@ export async function writeSnapshot($, snapshot, filename) {
   return false
 }
 
+/// The account a session started under. The Mod API gives a session no identity of its own
+/// (`$.session.identity()` answers only managed installs), so the only identity source is the
+/// global ~/.claude.json, which an account or organization switch rewrites under sessions that
+/// are still running. A session therefore remembers what the file said when it first measured
+/// and writes nothing once the file disagrees: its usage can no longer be proven to belong to
+/// the account the file now names.
+export function createSessionBinding() {
+  return { bound: null }
+}
+
+function matchesBinding(binding, hashes) {
+  if (!binding) return true
+  if (!binding.bound) {
+    // Only an identified account can be bound; an unidentified one is rejected downstream.
+    if (hashes.emailHash) binding.bound = hashes
+    return true
+  }
+  return binding.bound.emailHash === hashes.emailHash
+    && binding.bound.organizationHash === hashes.organizationHash
+}
+
 /// Capability detection: a missing usage() throws and is treated as "write nothing".
-export async function recordMeasure($) {
+export async function recordMeasure($, binding = null) {
   try {
     const usage = await $.session.usage()
     const home = await readHome($)
-    const { emailHash, organizationHash } = await readAccountHashes($, home)
+    const hashes = await readAccountHashes($, home)
+    if (!matchesBinding(binding, hashes)) return false
+    const { emailHash, organizationHash } = hashes
     const snapshot = buildSnapshot({ now: new Date().toISOString(), usage, emailHash, organizationHash })
     if (!snapshot) return false
     return await writeSnapshot($, snapshot, snapshotFilename(emailHash, organizationHash))
@@ -76,8 +99,15 @@ export async function recordMeasure($) {
 }
 
 export function register(on) {
+  const binding = createSessionBinding()
+  on("session.start", async ($, event, next) => {
+    // Bind at session start, before any switch can happen under a running session.
+    const home = await readHome($)
+    matchesBinding(binding, await readAccountHashes($, home))
+    return next(event)
+  })
   on("session.measure", async ($, event, next) => {
-    await recordMeasure($).catch((error) => errorText(error))
+    await recordMeasure($, binding).catch((error) => errorText(error))
     return next(event)
   })
 }

@@ -1,6 +1,6 @@
 import { expect, test } from "claude-code/testing"
 import { buildSnapshot, extractEmail, extractOrganization, hashEmail, inboxCandidates, snapshotFilename } from "../hooks/snapshot.js"
-import { recordMeasure, writeSnapshot } from "../hooks/register.js"
+import { createSessionBinding, recordMeasure, writeSnapshot } from "../hooks/register.js"
 
 const NOW = "2026-10-19T00:00:00.000Z"
 const usage = {
@@ -126,4 +126,28 @@ test("without an organization the legacy email-only file name and account shape 
     .toBe("balancebar-mod-0123456789abcdef-fedcba9876543210.json")
   const s = buildSnapshot({ now: NOW, usage, emailHash: "sha256:abc", organizationHash: null })!
   expect(s.account).toEqual({ email_hash: "sha256:abc" })
+})
+
+test("a session whose account or organization changed under it writes nothing", async () => {
+  let config = JSON.stringify({ oauthAccount: { emailAddress: "a@example.com", organizationUuid: "org-a" } })
+  const { $, written } = fakeContext({
+    fs: { exists: async () => true, read: async () => config, write: async (path: string, data: string) => { written[path] = data } },
+  })
+  const sessionA = createSessionBinding()
+  expect(await recordMeasure($, sessionA)).toBe(true)
+
+  // The global config now names organization B, but session A keeps measuring organization A's usage.
+  for (const key of Object.keys(written)) delete written[key]
+  config = JSON.stringify({ oauthAccount: { emailAddress: "a@example.com", organizationUuid: "org-b" } })
+  expect(await recordMeasure($, sessionA)).toBe(false)
+  expect(Object.keys(written).length).toBe(0)
+
+  // A session started after the switch is bound to B and writes B's own file.
+  const sessionB = createSessionBinding()
+  expect(await recordMeasure($, sessionB)).toBe(true)
+  expect(JSON.parse(Object.values(written)[0]).account.organization_hash).toBe(await hashEmail("org-b"))
+
+  // A different email under the same session is refused the same way.
+  config = JSON.stringify({ oauthAccount: { emailAddress: "c@example.com", organizationUuid: "org-b" } })
+  expect(await recordMeasure($, sessionB)).toBe(false)
 })
