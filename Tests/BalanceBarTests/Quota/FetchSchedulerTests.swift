@@ -261,6 +261,40 @@ final class FetchSchedulerTests: XCTestCase {
         XCTAssertEqual(dispatched, 3)
     }
 
+    func testDispatchLogNamesTheTrigger() {
+        let realtime = FakeRealtime()
+        let scheduler = makeScheduler(realtime: realtime, configuration: .claudeV1)
+        func lastTrigger() -> FetchDispatchTrigger? { logs.last(where: { $0.kind == .dispatched })?.trigger }
+        request(scheduler, .initial)
+        XCTAssertEqual(lastTrigger(), .firstRead)
+        complete(scheduler, .success(Data()))
+
+        // Local source valid for an hour; 15 minutes after the official read the floor applies.
+        clock.advance(15 * 60)
+        realtime.lastTrustedRealtimeObservationAt = clock.now
+        realtime.realtimeFreshUntil = clock.now.addingTimeInterval(3_600)
+        request(scheduler, .scheduled)
+        XCTAssertEqual(lastTrigger(), .calibrationFloor)
+        complete(scheduler, .success(Data()))
+
+        // Inside the 10 s lead before the local source expires, below the cap.
+        clock.advance(400)
+        realtime.realtimeFreshUntil = clock.now.addingTimeInterval(5)
+        request(scheduler, .scheduled)
+        XCTAssertEqual(lastTrigger(), .sourceExpiryPrefetch)
+        complete(scheduler, .success(Data()))
+
+        clock.advance(400)
+        realtime.realtimeFreshUntil = clock.now.addingTimeInterval(-1)
+        request(scheduler, .scheduled)
+        XCTAssertEqual(lastTrigger(), .localExpiredOrAbsent)
+        complete(scheduler, .success(Data()))
+
+        clock.advance(400)
+        request(scheduler, .manual)
+        XCTAssertEqual(lastTrigger(), .manualRefresh)
+    }
+
     func testManualRefreshReachesTheOfficialSourceWhileLocalDataIsStillValid() {
         let realtime = FakeRealtime()
         let scheduler = makeScheduler(realtime: realtime, configuration: .claudeV1)

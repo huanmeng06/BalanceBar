@@ -811,7 +811,7 @@ final class ClaudeQuotaPipeline {
     private func logDispatch(_ event: FetchSchedulerLogEvent) {
         let reasons = event.reasons.map { String(describing: $0) }.joined(separator: ",")
         diagnostics(
-            "claude fetch dispatched; reasons=\(reasons); tokens=\(event.tokens)",
+            "claude fetch dispatched; trigger=\(event.trigger?.rawValue ?? "unknown"); reasons=\(reasons); tokens=\(event.tokens)",
             event.reasons.contains(.manual) ? .info : .debug)
     }
 
