@@ -4,7 +4,7 @@ import Foundation
 ///
 /// Freshness is reported only when both standard windows belong to the same account
 /// epoch and neither a reset nor an identity conflict is pending. How long an observation
-/// stays fresh is the user's per-source validity (statusLine / Mod).
+/// stays fresh is the user's per-source validity (Mod).
 final class ClaudeRealtimeTracker: RealtimeSourceFreshnessProviding, ManualRefreshFreePathChecking {
     private let validity: () -> ClaudeSourceValidity
     private let now: () -> Date
@@ -20,10 +20,10 @@ final class ClaudeRealtimeTracker: RealtimeSourceFreshnessProviding, ManualRefre
         self.now = now
     }
 
-    /// Fixed freshness for both local sources (tests).
+    /// Fixed local-source freshness (tests).
     convenience init(freshness: TimeInterval, now: @escaping () -> Date = Date.init) {
         self.init(
-            validity: { ClaudeSourceValidity(oauth: ClaudeSourceValidity.defaults.oauth, statusLine: freshness, mod: freshness) },
+            validity: { ClaudeSourceValidity(oauth: ClaudeSourceValidity.defaults.oauth, mod: freshness) },
             now: now)
     }
 
@@ -52,7 +52,7 @@ final class ClaudeRealtimeTracker: RealtimeSourceFreshnessProviding, ManualRefre
     /// own timestamp when it carries one, otherwise the local receipt time). Rescanning an
     /// old file therefore cannot extend freshness: its observation time stays in the past.
     func recordTrustedObservation(
-        window: QuotaWindowKind, observedAt: Date, epoch: AccountEpoch, source: StatusSlotLiveSource = .statusLine
+        window: QuotaWindowKind, observedAt: Date, epoch: AccountEpoch, source: StatusSlotLiveSource = .mod
     ) {
         guard window == .fiveHour || window == .sevenDay else { return }
         lock.withLock {

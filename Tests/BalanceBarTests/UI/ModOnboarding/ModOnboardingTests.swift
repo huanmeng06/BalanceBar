@@ -623,7 +623,7 @@ final class ModPanelSyncContextTests: XCTestCase {
         ])
         XCTAssertEqual(lines(.uninstallSucceeded, sync: nil), [
             "# 已卸载 ✓",
-            "额度已改为定时向官方查询。「Claude Code 原生同步」和其他插件不受影响。",
+            "额度已改为定时向官方查询。其他插件不受影响。",
             "<关闭>",
         ])
         let commands = ModInstallPlan.standard.copyableUninstallCommands.replacingOccurrences(of: "\n", with: "\n$ ")
@@ -1649,9 +1649,9 @@ final class RealtimeBoostAdvancedCardTests: XCTestCase {
         let refreshSection = try XCTUnwrap(descendants(general).compactMap { $0 as? SettingsSectionView }
             .first { $0.contentViews.contains { ($0 as? SettingsRowView)?.titleLabel.stringValue == "BalanceBar Mod realtime boost" } })
         let rows = refreshSection.contentViews.compactMap { $0 as? SettingsRowView }
-        let nativeSync = try XCTUnwrap(rows.firstIndex { $0.titleLabel.stringValue == tr(.keyClaudeStatusLineEnabled) })
+        let calibration = try XCTUnwrap(rows.firstIndex { $0.titleLabel.stringValue == tr(.keyClaudeQuotaCalibration) })
         let mod = try XCTUnwrap(rows.firstIndex { $0.titleLabel.stringValue == "BalanceBar Mod realtime boost" })
-        XCTAssertEqual(mod, nativeSync + 1, "the Mod row sits directly below Claude Code native sync")
+        XCTAssertEqual(mod, calibration + 1, "the Mod row sits directly below the official calibration row")
 
         let card = rows[mod]
         XCTAssertEqual(card.identifier, DashboardPageSearch.rowIdentifier)

@@ -51,9 +51,9 @@ final class ClaudeRealtimeTrackerTests: XCTestCase {
 
     func testEachWindowExpiresWithItsOwnSourceValidity() {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
-        var validity = ClaudeSourceValidity(oauth: 600, statusLine: 300, mod: 60)
+        var validity = ClaudeSourceValidity(oauth: 300, mod: 60)
         let tracker = ClaudeRealtimeTracker(validity: { validity }, now: { now })
-        tracker.recordTrustedObservation(window: .fiveHour, observedAt: now, epoch: .initial, source: .statusLine)
+        tracker.recordTrustedObservation(window: .fiveHour, observedAt: now, epoch: .initial, source: .oauthAPI)
         tracker.recordTrustedObservation(window: .sevenDay, observedAt: now, epoch: .initial, source: .mod)
         XCTAssertEqual(tracker.realtimeFreshUntil, now.addingTimeInterval(60), "the shorter Mod validity ends freshness")
         XCTAssertEqual(tracker.lastTrustedRealtimeObservationAt, now)
@@ -67,7 +67,7 @@ final class ClaudeRealtimeTrackerTests: XCTestCase {
 
     func testFreePathUsesTheOldestObservationAge() {
         var now = Date(timeIntervalSince1970: 1_800_000_000)
-        let tracker = ClaudeRealtimeTracker(validity: { ClaudeSourceValidity(oauth: 600, statusLine: 600, mod: 600) }, now: { now })
+        let tracker = ClaudeRealtimeTracker(validity: { ClaudeSourceValidity(oauth: 600, mod: 600) }, now: { now })
         tracker.recordTrustedObservation(window: .fiveHour, observedAt: now, epoch: .initial)
         tracker.recordTrustedObservation(window: .sevenDay, observedAt: now, epoch: .initial)
         now = now.addingTimeInterval(200)

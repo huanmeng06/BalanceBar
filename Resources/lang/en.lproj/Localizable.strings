@@ -142,7 +142,6 @@
 "dashboard.advanced.page.records_runtime_status_and_errors" = "Records runtime status and errors";
 "dashboard.advanced.page.source_validity" = "Validity of each Claude data source";
 "dashboard.advanced.page.source_validity_oauth" = "Official quota validity";
-"dashboard.advanced.page.source_validity_native_sync" = "Native sync validity";
 "dashboard.advanced.page.source_validity_mod" = "Mod push validity";
 "dashboard.advanced.page.source_validity_warning" = "Validity is short: once it expires, fresh data may not arrive until the next official calibration (every %1$@ min). Set at least %2$@ min.";
 "dashboard.advanced.page.validity_minutes" = "%1$@ min";
@@ -586,7 +585,6 @@
 "quota.status.ago.hours" = "%1$@ hr ago";
 "quota.status.ago.days" = "%1$@ d ago";
 "quota.status.source.oauth_api" = "OAuth API";
-"quota.status.source.native_sync" = "Native";
 "quota.status.source.mod" = "Mod";
 "quota.status.hover.refreshing" = "Reading the latest quota";
 "quota.status.hover.error" = "Update failed. Showing data from %1$@";
@@ -606,11 +604,8 @@
 "status.item.controller.refresh_now_recent_result" = "Just refreshed · retry in %1$@ s";
 "status.item.controller.refresh_now_awaiting_confirmation" = "Awaiting official reset confirmation; click to confirm now";
 "status.item.controller.refresh_now_out_of_tokens" = "Refreshing too often, retry in %1$@ s";
-"claude.status_line.enabled" = "Claude Code native sync";
-"claude.status_line.description" = "Pushed by Claude Code after each reply; no plugin needed";
-"claude.status_line.calibration" = "Claude official quota calibration";
+"claude.quota.calibration" = "Claude official quota calibration";
 "claude.source_tag.all_clients" = "All clients";
-"claude.source_tag.terminal" = "Terminal CLI";
 "claude.source_tag.desktop" = "Desktop first";
 "claude.timeline.title" = "Data source monitor";
 "claude.timeline.now" = "Now";
@@ -620,7 +615,7 @@
 "claude.timeline.failure.unauthorized" = "Sign-in expired";
 "claude.timeline.failure.server_error" = "Server error";
 "claude.timeline.failure.missing_credentials" = "Not signed in";
-"claude.timeline.tooltip.oauth_rule" = "While native sync or Mod data is valid, BalanceBar doesn’t query the official API; it still calibrates at least hourly.";
+"claude.timeline.tooltip.oauth_rule" = "While Mod data is valid, BalanceBar doesn’t query the official API; it still calibrates at least hourly.";
 "claude.timeline.hover.time" = "Time";
 "claude.timeline.hover.duration" = "Duration";
 "claude.timeline.hover.refreshes" = "Refreshes";
@@ -634,14 +629,7 @@
 "claude.timeline.accessibility.count" = "%1$@ %2$@ times";
 "claude.timeline.accessibility.failures" = "%1$@ failure periods";
 "claude.refresh.every_minutes" = "Every %1$@ min";
-"claude.status_line.calibration_detail" = "Polls the official source on a timer as a fallback; longer intervals avoid rate limits";
-"claude.status_line.disable_confirm_title" = "Turn off Claude Code native sync?";
-"claude.status_line.disable_confirm_message" = "Claude quota will only refresh at the fixed interval and won't update right after each reply.";
-"claude.status_line.disable_confirm_action" = "Turn Off";
-"claude.status_line.disable_confirm_cancel" = "Cancel";
-"claude.status_line.disable_failed_title" = "Couldn't turn off Claude Code native sync";
-"claude.status_line.disable_failed_message" = "You added custom fields to the Claude Code statusLine, and BalanceBar can't remove its own command without losing them, so sync stays on. Edit statusLine in ~/.claude/settings.json yourself, or remove those fields and try again.";
-"claude.status_line.disable_failed_ok" = "OK";
+"claude.quota.calibration_detail" = "Polls the official source on a timer as a fallback; longer intervals avoid rate limits";
 
 // BalanceBar Mod realtime sync (Issue #597)
 "claude.mod_sync.title" = "BalanceBar Mod realtime boost";
@@ -675,7 +663,7 @@
 "mod.uninstall.step1" = "Uninstall Mod";
 "mod.uninstall.step2" = "Remove source";
 "mod.uninstall.done" = "Uninstalled ✓";
-"mod.uninstall.done_note" = "Quota is now checked against the official source on a timer. “Claude Code native sync” and other plugins are not affected.";
+"mod.uninstall.done_note" = "Quota is now checked against the official source on a timer. Other plugins are not affected.";
 "mod.failure.uninstall_command" = "Uninstall did not finish. Run the following commands in Terminal:";
 "mod.failure.copy_enable" = "Copy enable command";
 "mod.failure.inbox" = "The snapshot inbox could not be created (insufficient permissions or wrong owner). Check ~/Library/Application Support/BalanceBar/inbox and try again.";
@@ -711,7 +699,7 @@
 "mod.ui.refresh" = "Check again";
 "mod.ui.retry" = "Retry";
 "mod.ui.confirm_uninstall" = "Uninstall BalanceBar Mod?";
-"mod.ui.confirm_uninstall_note" = "After uninstalling, Claude quota is checked against the official source on a timer instead of updating in real time. “Claude Code native sync” and other plugins are not affected.";
+"mod.ui.confirm_uninstall_note" = "After uninstalling, Claude quota is checked against the official source on a timer instead of updating in real time. Other plugins are not affected.";
 "mod.ui.confirm_uninstall_action" = "Uninstall";
 "mod.ui.uninstall_reload_hint" = "Existing sessions can run the command below to apply the removal right away.";
 "mod.ui.cancel" = "Cancel";

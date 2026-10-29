@@ -142,7 +142,6 @@
 "dashboard.advanced.page.records_runtime_status_and_errors" = "記錄執行狀態與錯誤";
 "dashboard.advanced.page.source_validity" = "不同 Claude 資料來源的有效期";
 "dashboard.advanced.page.source_validity_oauth" = "官方額度有效期";
-"dashboard.advanced.page.source_validity_native_sync" = "原生同步有效期";
 "dashboard.advanced.page.source_validity_mod" = "Mod 推送有效期";
 "dashboard.advanced.page.source_validity_warning" = "有效期偏短：資料過期後，可能要等到下次官方校準（每 %1$@ 分鐘一次）才有新資料。建議設為至少 %2$@ 分鐘。";
 "dashboard.advanced.page.validity_minutes" = "%1$@ 分鐘";
@@ -586,7 +585,6 @@
 "quota.status.ago.hours" = "%1$@ 小時前";
 "quota.status.ago.days" = "%1$@ 天前";
 "quota.status.source.oauth_api" = "OAuth API";
-"quota.status.source.native_sync" = "原生同步";
 "quota.status.source.mod" = "Mod";
 "quota.status.hover.refreshing" = "正在讀取最新額度";
 "quota.status.hover.error" = "更新失敗，顯示的是 %1$@ 的資料";
@@ -606,11 +604,8 @@
 "status.item.controller.refresh_now_recent_result" = "剛剛已刷新 · %1$@ 秒後可再試";
 "status.item.controller.refresh_now_awaiting_confirmation" = "等待官方確認重置，點擊立即向官方確認";
 "status.item.controller.refresh_now_out_of_tokens" = "刷新過於頻繁，%1$@ 秒後可重試";
-"claude.status_line.enabled" = "Claude Code 原生同步";
-"claude.status_line.description" = "每次回答結束後由 Claude Code 自動推送，不用裝外掛";
-"claude.status_line.calibration" = "Claude 官方額度校準";
+"claude.quota.calibration" = "Claude 官方額度校準";
 "claude.source_tag.all_clients" = "全端通用";
-"claude.source_tag.terminal" = "終端機 CLI";
 "claude.source_tag.desktop" = "桌面版優先";
 "claude.timeline.title" = "資料來源監視器";
 "claude.timeline.now" = "現在";
@@ -620,7 +615,7 @@
 "claude.timeline.failure.unauthorized" = "登入失效";
 "claude.timeline.failure.server_error" = "服務異常";
 "claude.timeline.failure.missing_credentials" = "未登入";
-"claude.timeline.tooltip.oauth_rule" = "原生同步或 Mod 數據有效期內不向官方查詢；至少每小時向官方校準一次。";
+"claude.timeline.tooltip.oauth_rule" = "Mod 數據有效期內不向官方查詢；至少每小時向官方校準一次。";
 "claude.timeline.hover.time" = "時間";
 "claude.timeline.hover.duration" = "持續";
 "claude.timeline.hover.refreshes" = "刷新";
@@ -634,14 +629,7 @@
 "claude.timeline.accessibility.count" = "%1$@ %2$@ 次";
 "claude.timeline.accessibility.failures" = "失敗 %1$@ 段";
 "claude.refresh.every_minutes" = "每 %1$@ 分鐘";
-"claude.status_line.calibration_detail" = "定時向官方查詢作為備援；間隔越長越不容易被限流";
-"claude.status_line.disable_confirm_title" = "關閉 Claude Code 原生同步？";
-"claude.status_line.disable_confirm_message" = "關閉後，Claude 額度只會按固定間隔刷新，無法在每次回答結束後即時更新。";
-"claude.status_line.disable_confirm_action" = "關閉";
-"claude.status_line.disable_confirm_cancel" = "取消";
-"claude.status_line.disable_failed_title" = "無法關閉 Claude Code 原生同步";
-"claude.status_line.disable_failed_message" = "你在 Claude Code 的 statusLine 設定中加入了自訂欄位，BalanceBar 無法在不遺失它們的情況下移除自己的指令，因此保持開啟。請手動編輯 ~/.claude/settings.json 的 statusLine，或先移除這些欄位後再關閉。";
-"claude.status_line.disable_failed_ok" = "好";
+"claude.quota.calibration_detail" = "定時向官方查詢作為備援；間隔越長越不容易被限流";
 
 // BalanceBar Mod realtime sync (Issue #597)
 "claude.mod_sync.title" = "BalanceBar Mod 即時增強";
@@ -675,7 +663,7 @@
 "mod.uninstall.step1" = "解除安裝 Mod";
 "mod.uninstall.step2" = "移除安裝來源";
 "mod.uninstall.done" = "已解除安裝 ✓";
-"mod.uninstall.done_note" = "額度已改為定時向官方查詢。「Claude Code 原生同步」和其他外掛不受影響。";
+"mod.uninstall.done_note" = "額度已改為定時向官方查詢。其他外掛不受影響。";
 "mod.failure.uninstall_command" = "解除安裝未完成。請在終端機中執行下面的指令：";
 "mod.failure.copy_enable" = "複製啟用指令";
 "mod.failure.inbox" = "快照收件匣無法建立（權限不足或擁有者不符）。請檢查 ~/Library/Application Support/BalanceBar/inbox 後重試。";
@@ -711,7 +699,7 @@
 "mod.ui.refresh" = "重新偵測";
 "mod.ui.retry" = "重試";
 "mod.ui.confirm_uninstall" = "卸載 BalanceBar Mod？";
-"mod.ui.confirm_uninstall_note" = "卸載後，Claude 額度改為定時向官方查詢，不再即時更新。「Claude Code 原生同步」和其他外掛不受影響。";
+"mod.ui.confirm_uninstall_note" = "卸載後，Claude 額度改為定時向官方查詢，不再即時更新。其他外掛不受影響。";
 "mod.ui.confirm_uninstall_action" = "卸載";
 "mod.ui.uninstall_reload_hint" = "已有會話可執行下面的指令，讓卸載立即生效。";
 "mod.ui.cancel" = "取消";

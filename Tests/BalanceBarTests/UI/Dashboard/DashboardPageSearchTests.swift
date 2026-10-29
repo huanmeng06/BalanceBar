@@ -2749,8 +2749,7 @@ final class DashboardPageSearchTests: XCTestCase {
                 .keyDashboardRefreshOfficialScope,
                 .keyDashboardRefreshAPIScope,
                 .keyDashboardGeneralAndRefreshPagesRefreshNow,
-                .keyClaudeStatusLineCalibration,
-                .keyClaudeStatusLineEnabled
+                .keyClaudeQuotaCalibration
             ] {
                 XCTAssertTrue(titles.contains(tr(key)), "\(language) search catalog lacks \(key.rawValue)")
             }

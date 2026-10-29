@@ -343,7 +343,7 @@ public final class QuotaMergeEngine: QuotaMerging {
     }
 
     /// Sources disagree below a second: the OAuth API returns fractional reset times
-    /// (e.g. `…600.483`) while Claude Code statusLine reports whole seconds (`…600`).
+    /// (e.g. `…600.483`) while the Mod's snapshots report whole seconds (`…600`).
     /// Rounding both would split `.5` and above into different seconds.
     static func sameResetInstant(_ lhs: Date, _ rhs: Date) -> Bool {
         abs(lhs.timeIntervalSince1970 - rhs.timeIntervalSince1970) < 1

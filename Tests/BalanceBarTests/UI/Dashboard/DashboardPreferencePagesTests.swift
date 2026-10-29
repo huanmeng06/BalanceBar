@@ -2083,30 +2083,27 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let section = try XCTUnwrap(SettingsSectionView.enclosing(officialRow))
         XCTAssertNil(section.footnoteLabel)
         // One "Refresh" heading, two cards: the shared Codex/Grok and API selectors,
-        // then the Claude rows (calibration, native sync, BalanceBar Mod status).
+        // then the Claude rows (calibration, BalanceBar Mod status).
         XCTAssertEqual(section.contentViews.count, 2)
         XCTAssertTrue(section.contentViews[0] === officialRow)
         XCTAssertTrue(section.contentViews[1] === apiRow)
         let claudeSection = try XCTUnwrap(SettingsSectionView.enclosing(
             try XCTUnwrap(descendants(of: page).compactMap { $0 as? SettingsRowView }
-                .first { $0.titleLabel.stringValue == tr(.keyClaudeStatusLineCalibration) })))
+                .first { $0.titleLabel.stringValue == tr(.keyClaudeQuotaCalibration) })))
         XCTAssertFalse(claudeSection === section)
         XCTAssertTrue(claudeSection.headingLabel.isHidden, "the second card has no heading of its own")
-        XCTAssertEqual(claudeSection.contentViews.count, 3)
+        XCTAssertEqual(claudeSection.contentViews.count, 2)
         let calibrationRow = try XCTUnwrap(claudeSection.contentViews[0] as? SettingsRowView)
-        XCTAssertEqual(calibrationRow.titleLabel.stringValue, tr(.keyClaudeStatusLineCalibration))
-        XCTAssertEqual(calibrationRow.detailLabel.stringValue, tr(.keyClaudeStatusLineCalibrationDetail))
+        XCTAssertEqual(calibrationRow.titleLabel.stringValue, tr(.keyClaudeQuotaCalibration))
+        XCTAssertEqual(calibrationRow.detailLabel.stringValue, tr(.keyClaudeQuotaCalibrationDetail))
         let calibrationPopup = try XCTUnwrap(descendants(of: calibrationRow).compactMap { $0 as? NSPopUpButton }
             .first { $0.identifier?.rawValue == AppPreferences.claudeCalibrationIntervalKey })
         XCTAssertEqual(calibrationPopup.itemTitles.count, AppPreferences.claudeCalibrationIntervals.count)
         XCTAssertEqual(calibrationPopup.titleOfSelectedItem, tr(.keyClaudeRefreshEveryMinutes, arguments: ["5"]))
-        let nativeRow = try XCTUnwrap(claudeSection.contentViews[1] as? SettingsRowView)
-        XCTAssertEqual(nativeRow.titleLabel.stringValue, tr(.keyClaudeStatusLineEnabled))
-        XCTAssertNotNil(descendants(of: nativeRow).first { ($0 as? NSControl)?.identifier?.rawValue == "claudeStatusLineEnabled" })
-        let modRow = try XCTUnwrap(claudeSection.contentViews[2] as? SettingsRowView)
+        let modRow = try XCTUnwrap(claudeSection.contentViews[1] as? SettingsRowView)
         XCTAssertEqual(modRow.titleLabel.stringValue, tr(.modCardRowTitle))
-        let tags = [calibrationRow, nativeRow, modRow].map { ($0.titleAccessory as? AgentIconTagAccessoryView)?.tagView.text }
-        XCTAssertEqual(tags, [tr(.keyClaudeSourceTagAllClients), tr(.keyClaudeSourceTagTerminal), tr(.keyClaudeSourceTagDesktop)],
+        let tags = [calibrationRow, modRow].map { ($0.titleAccessory as? AgentIconTagAccessoryView)?.tagView.text }
+        XCTAssertEqual(tags, [tr(.keyClaudeSourceTagAllClients), tr(.keyClaudeSourceTagDesktop)],
                        "each Claude source names who it is for next to the Claude mark")
         XCTAssertTrue(modRow.detailLabel.stringValue.hasPrefix(tr(.modCardRowDescription) + "\n● "),
                       "the Mod row explains itself above the status line")
@@ -2127,7 +2124,6 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let preferences = AppPreferences(defaults: defaults)
-        preferences.claudeStatusLineValidity = 300
         let relay = DashboardPreferencePageRelay()
         var changes: [(String, TimeInterval)] = []
         relay.onInterval = { changes.append(($0, $1)) }
@@ -2138,17 +2134,15 @@ final class DashboardPreferencePagesTests: XCTestCase {
             try XCTUnwrap(descendants(of: page).compactMap { $0 as? NSPopUpButton }.first { $0.identifier?.rawValue == key })
         }
         let oauth = try popup(AppPreferences.claudeOAuthValidityKey)
-        let statusLine = try popup(AppPreferences.claudeStatusLineValidityKey)
         let mod = try popup(AppPreferences.claudeModValidityKey)
         XCTAssertEqual(oauth.itemTitles.count, AppPreferences.claudeOAuthValidityOptions.count)
-        XCTAssertEqual(statusLine.itemTitles.count, AppPreferences.claudeLocalValidityOptions.count)
+        XCTAssertEqual(mod.itemTitles.count, AppPreferences.claudeLocalValidityOptions.count)
         XCTAssertEqual(oauth.titleOfSelectedItem, tr(.keyDashboardAdvancedPageValidityMinutes, arguments: ["10"]))
-        XCTAssertEqual(statusLine.titleOfSelectedItem, tr(.keyDashboardAdvancedPageValidityMinutes, arguments: ["5"]))
         XCTAssertEqual(mod.titleOfSelectedItem, tr(.keyDashboardAdvancedPageValidityMinutes, arguments: ["2"]))
 
         let section = try XCTUnwrap(SettingsSectionView.enclosing(oauth))
         XCTAssertEqual(section.headingLabel.stringValue, tr(.keyDashboardAdvancedPageSourceValidity))
-        XCTAssertEqual(section.contentViews.count, 3)
+        XCTAssertEqual(section.contentViews.count, 2)
         XCTAssertEqual(
             (section.contentViews[0] as? SettingsRowView)?.titleLabel.stringValue,
             tr(.keyDashboardAdvancedPageSourceValidityOauth))
@@ -2166,11 +2160,6 @@ final class DashboardPreferencePagesTests: XCTestCase {
             let row = try XCTUnwrap(view as? SettingsRowView)
             if row.titleLabel.stringValue == tr(.keyDashboardAdvancedPageSourceValidityOauth) {
                 XCTAssertEqual(row.detailLabel.stringValue, "")
-            } else if row.titleLabel.stringValue == tr(.keyDashboardAdvancedPageSourceValidityNativeSync) {
-                XCTAssertEqual(
-                    row.detailLabel.stringValue,
-                    tr(.keyDashboardAdvancedPageSourceValidityWarning, arguments: ["5", "6"]))
-                XCTAssertEqual(row.detailLabel.textColor, .systemOrange)
             } else {
                 XCTAssertEqual(
                     row.detailLabel.stringValue,
@@ -2193,17 +2182,17 @@ final class DashboardPreferencePagesTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         let preferences = AppPreferences(defaults: defaults)
         preferences.claudeCalibrationInterval = 300
-        preferences.claudeStatusLineValidity = 120
+        preferences.claudeModValidity = 120
         let advanced = DashboardAdvancedPage()
         let page = advanced.make(.init(
             relay: DashboardPreferencePageRelay(), logViewer: nil, includeLogViewer: false, preferences: preferences))
         let native = try XCTUnwrap(descendants(of: page).compactMap { $0 as? NSPopUpButton }
-            .first { $0.identifier?.rawValue == AppPreferences.claudeStatusLineValidityKey })
+            .first { $0.identifier?.rawValue == AppPreferences.claudeModValidityKey })
         XCTAssertEqual(
             native.accessibilityHelp(),
             DashboardAdvancedPage.validityWarning(calibrationInterval: 300))
 
-        preferences.claudeStatusLineValidity = 600
+        preferences.claudeModValidity = 600
         advanced.refreshSourceValidityWarnings(preferences: preferences)
         let help = native.accessibilityHelp() ?? ""
         XCTAssertTrue(help.isEmpty, "stale warning help must not outlive the warning")
@@ -2250,117 +2239,6 @@ final class DashboardPreferencePagesTests: XCTestCase {
             ObjectIdentifier(NSSwitch.self),
             "settings must use Apple's NSSwitch rendering and animation, never a custom-drawn subclass"
         )
-    }
-
-    func testDecliningTheDisableConfirmationKeepsClaudeNativeSyncOn() {
-        let relay = DashboardPreferencePageRelay()
-        var toggles: [(String, Bool)] = []
-        relay.onToggle = { toggles.append(($0, $1)) }
-        var asked: [String] = []
-        relay.confirmDisable = { asked.append($0); return false }
-        let sync = NSSwitch()
-        sync.identifier = NSUserInterfaceItemIdentifier("claudeStatusLineEnabled")
-        sync.state = .off
-        relay.toggle(sync)
-        XCTAssertEqual(sync.state, .off, "the switch stays off until the confirmation is answered")
-        XCTAssertTrue(asked.isEmpty, "confirmation waits for the native turn-off animation")
-        XCTAssertTrue(toggles.isEmpty)
-
-        RunLoop.current.run(until: Date().addingTimeInterval(0.35))
-        XCTAssertEqual(asked, ["claudeStatusLineEnabled"])
-        XCTAssertEqual(sync.state, .on, "declining leaves the switch on")
-        XCTAssertTrue(toggles.isEmpty)
-
-        relay.confirmDisable = { _ in true }
-        sync.state = .off
-        relay.toggle(sync)
-        RunLoop.current.run(until: Date().addingTimeInterval(0.35))
-        XCTAssertEqual(sync.state, .off)
-        XCTAssertEqual(toggles.count, 1)
-        XCTAssertEqual(toggles.first?.1, false)
-
-        sync.state = .on
-        relay.toggle(sync)
-        XCTAssertEqual(toggles.count, 2, "turning on never asks")
-        XCTAssertEqual(toggles.last?.1, true)
-    }
-
-    func testRapidOffOnOffOnlyRunsTheLatestDisableConfirmation() {
-        let relay = DashboardPreferencePageRelay()
-        var asked = 0
-        relay.confirmDisable = { _ in
-            asked += 1
-            return true
-        }
-        var toggles: [(String, Bool)] = []
-        relay.onToggle = { toggles.append(($0, $1)) }
-        let sync = NSSwitch()
-        sync.identifier = NSUserInterfaceItemIdentifier("claudeStatusLineEnabled")
-        sync.state = .on
-
-        // OFF -> ON -> OFF inside the 0.2s confirmation window. The first
-        // delayed confirmation was superseded and must never run.
-        sync.state = .off
-        relay.toggle(sync)
-        sync.state = .on
-        relay.toggle(sync)
-        sync.state = .off
-        relay.toggle(sync)
-
-        RunLoop.current.run(until: Date().addingTimeInterval(0.35))
-        XCTAssertEqual(asked, 1, "rapid switching must ask exactly once")
-        XCTAssertEqual(
-            toggles.filter { !$0.1 }.count,
-            1,
-            "rapid switching must request at most one disable"
-        )
-        XCTAssertEqual(toggles.last?.1, false)
-    }
-
-    func testTurningBackOnCancelsThePendingDisableConfirmation() {
-        let relay = DashboardPreferencePageRelay()
-        var asked = 0
-        relay.confirmDisable = { _ in
-            asked += 1
-            return true
-        }
-        var toggles: [(String, Bool)] = []
-        relay.onToggle = { toggles.append(($0, $1)) }
-        let sync = NSSwitch()
-        sync.identifier = NSUserInterfaceItemIdentifier("claudeStatusLineEnabled")
-
-        sync.state = .off
-        relay.toggle(sync)
-        sync.state = .on
-        relay.toggle(sync)
-
-        RunLoop.current.run(until: Date().addingTimeInterval(0.35))
-        XCTAssertEqual(asked, 0, "turning back on invalidates the pending confirmation")
-        XCTAssertEqual(toggles.map { $0.1 }, [true])
-    }
-
-    func testOtherSettingsDoNotCancelAPendingDisableConfirmation() {
-        let relay = DashboardPreferencePageRelay()
-        var asked = 0
-        relay.confirmDisable = { _ in
-            asked += 1
-            return false
-        }
-        let sync = NSSwitch()
-        sync.identifier = NSUserInterfaceItemIdentifier("claudeStatusLineEnabled")
-        sync.state = .off
-        relay.toggle(sync)
-
-        // The generation token is per setting: an unrelated switch must not
-        // silently swallow the Claude confirmation.
-        let other = NSSwitch()
-        other.identifier = NSUserInterfaceItemIdentifier("silentLaunch")
-        other.state = .off
-        relay.toggle(other)
-
-        RunLoop.current.run(until: Date().addingTimeInterval(0.35))
-        XCTAssertEqual(asked, 1)
-        XCTAssertEqual(sync.state, .on, "declining still restores the Claude switch")
     }
 
     func testRefreshIntervalPopupsExpandForLongSpanishAndFrenchTitles() throws {

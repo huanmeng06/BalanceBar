@@ -16,9 +16,9 @@ final class ClaudeSourceTimelineTests: XCTestCase {
         timeline.onChange = { changes += 1 }
         timeline.recordReading(source: .mod, observedAt: start)
         timeline.recordReading(source: .mod, observedAt: start.addingTimeInterval(0.4))
-        timeline.recordReading(source: .statusLine, observedAt: start)
+        timeline.recordReading(source: .oauthAPI, observedAt: start)
         let readings = timeline.snapshot().readings
-        XCTAssertEqual(readings.map(\.source), [.mod, .statusLine])
+        XCTAssertEqual(readings.map(\.source), [.mod, .oauthAPI])
         XCTAssertEqual(readings.first?.expiresAt, start.addingTimeInterval(ClaudeSourceValidity.defaults.mod))
         XCTAssertEqual(changes, 2, "the duplicate 7d half of a pair is not a change")
     }
@@ -151,7 +151,7 @@ final class ClaudeSourceTimelineTests: XCTestCase {
     func testOldEntriesArePrunedAndResetClearsEverything() {
         var now = start
         let timeline = makeTimeline(now: { now })
-        timeline.recordReading(source: .statusLine, observedAt: start)
+        timeline.recordReading(source: .mod, observedAt: start)
         timeline.recordFailure(.network, at: start)
         timeline.recordOfficialSuccess(at: start.addingTimeInterval(10))
         now = start.addingTimeInterval(ClaudeSourceTimeline.retention + 200)

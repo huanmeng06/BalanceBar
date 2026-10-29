@@ -15,7 +15,7 @@ struct ClaudeSourceTimelineLayout {
     static let minimumDividerSpacing: CGFloat = 5
     static let minimumMarkWidth: CGFloat = 4
     /// Top to bottom, as in the design sketch (Issue #619).
-    static let lanes: [StatusSlotLiveSource] = [.mod, .statusLine, .oauthAPI]
+    static let lanes: [StatusSlotLiveSource] = [.mod, .oauthAPI]
     static let height: CGFloat = headerHeight + laneHeight * CGFloat(lanes.count) + axisGap + axisLabelHeight
 
     /// One continuous bar: overlapping or touching validity periods of the same source.
@@ -422,7 +422,6 @@ final class ClaudeSourceTimelineView: NSView {
     private func laneName(_ source: StatusSlotLiveSource) -> String {
         switch source {
         case .oauthAPI: return localize(.sourceOAuthAPI)
-        case .statusLine: return localize(.sourceStatusLine)
         case .mod: return localize(.sourceMod)
         }
     }
@@ -445,7 +444,6 @@ final class ClaudeSourceTimelineView: NSView {
     private static func color(for source: StatusSlotLiveSource) -> NSColor {
         switch source {
         case .oauthAPI: return .systemBlue
-        case .statusLine: return .systemPurple
         case .mod: return .systemOrange
         }
     }

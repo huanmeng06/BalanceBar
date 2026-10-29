@@ -138,7 +138,6 @@ final class ClaudeQuotaPipeline {
     private let sourceValidity: () -> ClaudeSourceValidity
     /// Recent source activity for the Advanced settings timeline; observation only.
     let sourceTimeline: ClaudeSourceTimeline
-    private let statusLineSource: ClaudeStatusLineSource?
     private let snapshotInbox: SnapshotInbox?
     private let confirmationTimer: SchedulerTimer
     fileprivate let now: () -> Date
@@ -153,7 +152,6 @@ final class ClaudeQuotaPipeline {
     private var observerToken: AnyObject?
     private var wakeObserver: NSObjectProtocol?
     private var started = false
-    private var statusLineEnabled = false
     private var pendingReasons: [FetchRequestReason] = []
     private var failure: ClaudeQuotaFailure?
     /// Start of the current unbroken run of failed official reads; nil while none is failing.
@@ -252,9 +250,7 @@ final class ClaudeQuotaPipeline {
         confirmationTimer: SchedulerTimer = DispatchSchedulerTimer(),
         schedulerConfiguration: FetchSchedulerConfiguration = FetchSchedulerConfiguration(),
         realtimeTracker: ClaudeRealtimeTracker? = nil,
-        statusLineSource: ClaudeStatusLineSource? = nil,
         snapshotInbox: SnapshotInbox? = nil,
-        statusLineEnabled: Bool = false,
         sourceValidity: @escaping () -> ClaudeSourceValidity = { .defaults },
         now: @escaping () -> Date = Date.init,
         diagnostics: @escaping (String, SwitchLog.Level) -> Void = { message, level in
@@ -273,10 +269,8 @@ final class ClaudeQuotaPipeline {
         sourceTimeline = ClaudeSourceTimeline(
             validity: sourceValidity, now: now,
             fileURL: stateDirectory.appendingPathComponent("claude-source-timeline.json"))
-        self.statusLineSource = statusLineSource
         self.snapshotInbox = snapshotInbox
         self.confirmationTimer = confirmationTimer
-        self.statusLineEnabled = statusLineEnabled
         stateStore = ObservedFetchSchedulerStateStore(
             base: FileFetchSchedulerStateStore(fileURL: stateDirectory.appendingPathComponent("claude-fetch-scheduler.json")))
         mergeFileStore = QuotaMergeFileStore(url: stateDirectory.appendingPathComponent("claude-quota-merge.json"))
@@ -286,7 +280,7 @@ final class ClaudeQuotaPipeline {
             stateStore: stateStore,
             clock: schedulerClock,
             timer: schedulerTimer,
-            freePathChecker: statusLineSource,
+            freePathChecker: realtimeTracker,
             realtimeFreshness: realtimeTracker,
             calibrationIntervalCap: calibrationIntervalCap,
             automaticIntervalOverride: automaticInterval,
@@ -318,7 +312,6 @@ final class ClaudeQuotaPipeline {
 
     deinit {
         if let wakeObserver { NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver) }
-        statusLineSource?.stop()
         snapshotInbox?.stop()
         identity.stopMonitoring()
     }
@@ -473,21 +466,6 @@ final class ClaudeQuotaPipeline {
         scheduler.rearm()
     }
 
-    func setStatusLineEnabled(_ enabled: Bool) {
-        queue.async { [self] in
-            statusLineEnabled = enabled
-            guard let statusLineSource else { return }
-            if enabled {
-                statusLineSource.start { [weak self] observation in
-                    self?.queue.async { self?.receiveNative(observation) }
-                }
-            } else {
-                statusLineSource.stop()
-                realtimeTracker?.reset(epoch: identity.accountEpoch)
-            }
-        }
-    }
-
     /// Re-evaluates reset deadlines; may ask the scheduler to confirm a reset.
     func tick() {
         queue.async { [self] in
@@ -535,11 +513,6 @@ final class ClaudeQuotaPipeline {
         let adapter = QuotaNotificationAdapter(processor: notificationRouter, providerID: "claude")
         self.adapter = adapter
         engine = QuotaMergeEngine(scheduler: scheduler, notifications: adapter, store: restoring, now: now)
-        if statusLineEnabled, let statusLineSource {
-            statusLineSource.start { [weak self] observation in
-                self?.queue.async { self?.receiveNative(observation) }
-            }
-        }
         snapshotInbox?.start { [weak self] observation in
             self?.queue.async { self?.receiveInbox(observation) }
         }
@@ -573,7 +546,6 @@ final class ClaudeQuotaPipeline {
         }
         realtimeTracker?.reset(epoch: change.epoch)
         sourceTimeline.reset(accountKey: ClaudeSourceTimeline.accountKey(forStableID: change.identity?.stableID))
-        statusLineSource?.accountDidChange(epoch: change.epoch)
         lock.withLock {
             setFailureLocked(nil)
             refreshing = false
@@ -620,8 +592,7 @@ final class ClaudeQuotaPipeline {
     /// apart by its quota cycle: a window whose reset time does not match the latest
     /// official reading fails, which rejects the whole snapshot (`nil` when there is no
     /// baseline yet — the merge engine's grade-B rules reject those anyway, and while a
-    /// reset awaits confirmation the engine's own provisional rules govern, exactly like
-    /// the statusLine path).
+    /// reset awaits confirmation the engine's own provisional rules govern).
     ///
     /// Two further guards protect what the cycle cannot prove. Without an official baseline the
     /// snapshot only carries an email hash, which two organizations of one email share; a snapshot
@@ -647,8 +618,7 @@ final class ClaudeQuotaPipeline {
 
     /// Merges one native observation; returns whether the engine now displays it, which is
     /// the only state that counts as trusted real-time evidence. Whole-snapshot replays are
-    /// already filtered upstream (statusLine filters them per session, the inbox per
-    /// snapshot), so an accepted observation always records evidence — including a window
+    /// already filtered upstream (the inbox, per snapshot), so an accepted observation always records evidence — including a window
     /// that did not change while its snapshot sibling did.
     @discardableResult
     private func receiveNative(_ observation: QuotaObservation) -> Bool {
@@ -784,7 +754,7 @@ final class ClaudeQuotaPipeline {
             window: observation.window,
             observedAt: observation.observedAt ?? observation.receivedAt,
             epoch: observation.epoch,
-            source: Self.statusSource(forSourceID: observation.source) ?? .statusLine)
+            source: Self.statusSource(forSourceID: observation.source) ?? .mod)
         if let source = Self.statusSource(forSourceID: observation.source) {
             sourceTimeline.recordReading(source: source, observedAt: observation.observedAt ?? observation.receivedAt)
         }
@@ -881,9 +851,6 @@ final class ClaudeQuotaPipeline {
                 logSourceConflict(observation, displayed: previous, reason: "official_corrected_local")
             }
         }
-        statusLineSource?.setGradeAResets(Dictionary(uniqueKeysWithValues: readings.map {
-            ($0.quotaKind, $0.resetsAt)
-        }))
         adapter?.update(engine.displayModel, accountScope: Self.accountScope(for: account))
         return nil
     }
@@ -989,13 +956,13 @@ final class ClaudeQuotaPipeline {
         let (failure, failureSince, refreshing, handler) = lock.withLock {
             (self.failure, self.failureSince, self.refreshing, updateHandler)
         }
-        // Local evidence: readings displayed from statusLine or the Mod's inbox snapshots.
+        // Local evidence: readings displayed from the Mod's inbox snapshots.
         // `ClaudeRealtimeTracker` stays scheduler-only; a pending reset must not hide fresh
         // local readings from the card, so freshness is read from the displayed readings.
         let standard = [QuotaWindowKind.fiveHour, .sevenDay].map { merged.windows[$0.rawValue]?.displayed }
         func isLocal(_ reading: QuotaMergedReading?) -> Bool {
             guard let reading, reading.epoch == identity.accountEpoch else { return false }
-            return reading.source == ClaudeStatusLineSource.identifier || reading.source == SnapshotInbox.modSourceID
+            return reading.source == SnapshotInbox.modSourceID
         }
         let validity = sourceValidity()
         let modSuspended = lock.withLock { modSuspendedAt != nil }
@@ -1059,7 +1026,6 @@ final class ClaudeQuotaPipeline {
     /// Maps an observation's source label to the status-slot source; nil for unknown sources.
     static func statusSource(forSourceID id: String) -> StatusSlotLiveSource? {
         switch id {
-        case ClaudeStatusLineSource.identifier: return .statusLine
         case SnapshotInbox.modSourceID: return .mod
         case sourceID: return .oauthAPI
         default: return nil
@@ -1081,7 +1047,7 @@ final class ClaudeQuotaPipeline {
         guard let newest = standard.compactMap({ $0 }).max(by: { $0.effectiveTime < $1.effectiveTime }),
               let source = statusSource(forSourceID: newest.source) else { return .official }
         switch source {
-        case .statusLine, .mod: return nativeDisplayed ? .realtime(source) : .official
+        case .mod: return nativeDisplayed ? .realtime(source) : .official
         case .oauthAPI:
             return now.timeIntervalSince(newest.effectiveTime) <= officialValidity ? .realtime(.oauthAPI) : .official
         }
@@ -1242,7 +1208,6 @@ extension ClaudeQuotaPipeline {
             .appendingPathComponent("Quota", isDirectory: true)
         let identity = ClaudeAccountIdentityProvider(workQueue: identityQueue)
         let tracker = ClaudeRealtimeTracker(validity: sourceValidity, now: Date.init)
-        let source = ClaudeStatusLineSource(accountProvider: identity, tracker: tracker)
         // The BalanceBar Mod writes Schema v1 snapshots into the shared inbox; its account
         // attribution is verified fail closed inside the inbox before anything reaches the engine.
         let inbox = SnapshotInbox(identity: identity)
@@ -1255,7 +1220,6 @@ extension ClaudeQuotaPipeline {
             automaticInterval: automaticInterval,
             schedulerConfiguration: .claudeV1,
             realtimeTracker: tracker,
-            statusLineSource: source,
             snapshotInbox: inbox,
             sourceValidity: sourceValidity)
     }

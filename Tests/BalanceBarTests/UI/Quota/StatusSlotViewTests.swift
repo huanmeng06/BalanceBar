@@ -22,7 +22,6 @@ final class StatusSlotViewTests: XCTestCase {
             ("error", .error(at: time)),
             ("resetPending", .resetPending(at: time)),
             ("estimated", .estimated(at: time)),
-            ("realtime", .realtime(.statusLine, at: time)),
             ("realtime-oauth", .realtime(.oauthAPI, at: time)),
             ("realtime-mod", .realtime(.mod, at: time)),
             ("official", .official(at: time)),
@@ -32,7 +31,7 @@ final class StatusSlotViewTests: XCTestCase {
     // MARK: Priority
 
     func testResolvePriorityOrder() {
-        let ctx = StatusSlotContext(isRefreshing: true, source: .realtime(.statusLine), updatedAt: time)
+        let ctx = StatusSlotContext(isRefreshing: true, source: .realtime(.mod), updatedAt: time)
         XCTAssertEqual(StatusSlotState.resolve(model: model(state: .error, estimated: true), context: ctx), .refreshing)
 
         var c = ctx; c.isRefreshing = false
@@ -40,7 +39,7 @@ final class StatusSlotViewTests: XCTestCase {
         XCTAssertEqual(StatusSlotState.resolve(model: model(state: .expired), context: c), .error(at: time))
         XCTAssertEqual(StatusSlotState.resolve(model: model(state: .resetPendingConfirmation, estimated: true), context: c), .resetPending(at: time))
         XCTAssertEqual(StatusSlotState.resolve(model: model(estimated: true), context: c), .estimated(at: time))
-        XCTAssertEqual(StatusSlotState.resolve(model: model(), context: c), .realtime(.statusLine, at: time))
+        XCTAssertEqual(StatusSlotState.resolve(model: model(), context: c), .realtime(.mod, at: time))
         c.source = .official
         XCTAssertEqual(StatusSlotState.resolve(model: model(), context: c), .official(at: time))
     }
@@ -149,8 +148,6 @@ final class StatusSlotViewTests: XCTestCase {
         XCTAssertTrue(view.isDotVisibleForTesting, "stale readings carry the orange dot")
         XCTAssertEqual(srgb(view.textColorForTesting), srgb(.secondaryLabelColor))
         XCTAssertEqual(view.toolTip, "来自本机数据，更新于 13:40:00", "a stale Mod reading is local data, never described as official")
-        view.update(state: .official(at: time, source: .statusLine))
-        XCTAssertEqual(view.toolTip, "来自本机数据，更新于 13:40:00")
         view.update(state: .official(at: time, source: .oauthAPI))
         XCTAssertEqual(view.toolTip, "官方数据，更新于 13:40:00", "the absolute time moved into the tooltip")
         view.update(state: .official(at: time, source: .mod))
@@ -163,8 +160,6 @@ final class StatusSlotViewTests: XCTestCase {
         view.update(state: .official(at: time, source: nil))
         XCTAssertEqual(view.textForTesting, "5 分钟前", "no source, no separator")
 
-        view.update(state: .official(at: time, source: .statusLine))
-        XCTAssertEqual(view.textForTesting, "5 分钟前 · 原生同步")
         view.update(state: .official(at: time, source: .oauthAPI))
         XCTAssertEqual(view.textForTesting, "5 分钟前 · OAuth API", "an official reading still shows its age")
         clock = clock.addingTimeInterval(61)
@@ -182,12 +177,12 @@ final class StatusSlotViewTests: XCTestCase {
 
     private static let widestAges: [TimeInterval] = [3_599, 86_399, 8_553_600]
 
-    /// The live label ("实时 · 原生同步") fits the slot in every supported language and source.
+    /// The live label ("实时 · Mod") fits the slot in every supported language and source.
     func testLiveSourceLabelFitsTheSlotInEveryLanguage() {
         let font = NSFont.monospacedDigitSystemFont(ofSize: StatusSlotView.fontSize, weight: .regular)
         for language in AppLanguage.allCases {
             let localize: (StatusSlotText) -> String = { StatusSlotText.appLocalize(text: $0, language: language) }
-            for source in [StatusSlotLiveSource.oauthAPI, .statusLine, .mod] {
+            for source in [StatusSlotLiveSource.oauthAPI, .mod] {
                 for age in Self.widestAges {
                     let shownAt = time
                     let view = StatusSlotView(localize: localize, timeZone: utc, now: { shownAt.addingTimeInterval(age) })
@@ -285,7 +280,7 @@ final class StatusSlotViewTests: XCTestCase {
     }
 
     func testResetPendingWithoutEstimateIsNotReportedAsOfficialOrRealtime() {
-        for source in [StatusSlotSource.official, .realtime(.statusLine)] {
+        for source in [StatusSlotSource.official, .realtime(.mod)] {
             let ctx = StatusSlotContext(source: source, updatedAt: time)
             XCTAssertEqual(StatusSlotState.resolve(model: model(state: .resetPendingConfirmation), context: ctx), .resetPending(at: time))
         }

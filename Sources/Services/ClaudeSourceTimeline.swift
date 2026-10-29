@@ -271,7 +271,7 @@ private struct StoredHistory: Codable {
         var expiresAt: TimeInterval
 
         private static let sources: [(String, StatusSlotLiveSource)] = [
-            ("oauth", .oauthAPI), ("statusLine", .statusLine), ("mod", .mod),
+            ("oauth", .oauthAPI), ("mod", .mod),
         ]
 
         init(_ reading: ClaudeSourceTimeline.Reading) {

@@ -476,16 +476,6 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertEqual(preferences.codexUsageRefreshInterval, 10)
     }
 
-    func testClaudeStatusLineBridgeDefaultsOnUntilAChoiceIsSaved() {
-        let (preferences, defaults, suite) = makePreferences()
-        defer { defaults.removePersistentDomain(forName: suite) }
-        XCTAssertTrue(preferences.claudeStatusLineEnabled)
-        XCTAssertFalse(preferences.claudeStatusLineEnabledIsConfigured)
-        preferences.claudeStatusLineEnabled = false
-        XCTAssertFalse(AppPreferences(defaults: defaults).claudeStatusLineEnabled)
-        XCTAssertTrue(AppPreferences(defaults: defaults).claudeStatusLineEnabledIsConfigured)
-    }
-
     func testLegacyTrailingRefreshValuesAreIgnored() {
         let (preferences, defaults, suite) = makePreferences()
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -997,21 +987,19 @@ extension AppPreferencesTests {
         let (preferences, defaults, suite) = makePreferences()
         defer { defaults.removePersistentDomain(forName: suite) }
         XCTAssertEqual(preferences.claudeSourceValidity, .defaults)
-        XCTAssertEqual(ClaudeSourceValidity.defaults, ClaudeSourceValidity(oauth: 600, statusLine: 120, mod: 120))
+        XCTAssertEqual(ClaudeSourceValidity.defaults, ClaudeSourceValidity(oauth: 600, mod: 120))
 
         preferences.claudeOAuthValidity = 1_800
-        preferences.claudeStatusLineValidity = 300
         preferences.claudeModValidity = 60
         XCTAssertEqual(
             AppPreferences(defaults: defaults).claudeSourceValidity,
-            ClaudeSourceValidity(oauth: 1_800, statusLine: 300, mod: 60))
+            ClaudeSourceValidity(oauth: 1_800, mod: 60))
 
         preferences.claudeOAuthValidity = 7
-        preferences.claudeStatusLineValidity = 7_200
         defaults.set(5, forKey: AppPreferences.claudeModValidityKey)
         XCTAssertEqual(preferences.claudeSourceValidity, .defaults, "values outside the options fall back to the default")
         XCTAssertTrue(AppPreferences.claudeOAuthValidityOptions.contains(ClaudeSourceValidity.defaults.oauth))
-        XCTAssertTrue(AppPreferences.claudeLocalValidityOptions.contains(ClaudeSourceValidity.defaults.statusLine))
+        XCTAssertTrue(AppPreferences.claudeLocalValidityOptions.contains(ClaudeSourceValidity.defaults.mod))
     }
 
     func testOAuthValidityNeverFallsBelowTheCalibrationInterval() throws {
