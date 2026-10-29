@@ -785,6 +785,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         modSyncCoordinator.onModUnavailable = { [weak self] in
             self?.claudeQuota.modBecameUnavailable()
         }
+        modSyncCoordinator.onModAvailable = { [weak self] in
+            self?.claudeQuota.modBecameAvailable()
+        }
         modSyncCoordinator.onStatusChange = { [weak self] _ in
             DispatchQueue.main.async { [weak self] in
                 self?.dashboardComposition.refreshModSync()

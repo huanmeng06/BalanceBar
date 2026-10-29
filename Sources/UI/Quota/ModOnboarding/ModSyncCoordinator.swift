@@ -40,6 +40,8 @@ final class ModSyncCoordinator {
     /// The Mod was found uninstalled or disabled (a successful check, or an in-app uninstall):
     /// the pipeline must stop treating its readings as live. Fired on the main thread.
     var onModUnavailable: (() -> Void)?
+    /// A successful check found the Mod installed and enabled again.
+    var onModAvailable: (() -> Void)?
     /// The "don't show this in the menu" preference changed; rebuild the status menu.
     var onPromptChange: (() -> Void)?
 
@@ -115,7 +117,11 @@ final class ModSyncCoordinator {
             // same way: re-enabling must wait for a new snapshot.
             let modUnavailable = environment.claudeFound && environment.installationCheck == .ok
                 && environment.installation?.isEnabled != true
-            if modUnavailable { self.onModUnavailable?() }
+            if modUnavailable {
+                self.onModUnavailable?()
+            } else if environment.claudeFound, environment.installationCheck == .ok {
+                self.onModAvailable?()
+            }
             if wasEnabled, modUnavailable {
                 self.resetSnapshotEvidence()
             } else {

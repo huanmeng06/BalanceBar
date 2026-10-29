@@ -1122,6 +1122,8 @@ extension ModSyncCoordinatorTests {
             ])
         var unavailable = 0
         coordinator.onModUnavailable = { unavailable += 1 }
+        var available = 0
+        coordinator.onModAvailable = { available += 1 }
         func detect(_ description: String, until reached: @escaping (ModSyncStatus) -> Bool) {
             let done = expectation(description: description)
             coordinator.onStatusChange = { if reached($0) { done.fulfill() } }
@@ -1130,13 +1132,16 @@ extension ModSyncCoordinatorTests {
         }
         detect("installed") { $0 == .waitingForData }
         detect("check failed") { $0 == .installationUnknown }
+        XCTAssertEqual(available, 1)
         XCTAssertEqual(unavailable, 0, "a failed plugin-list check is not proof of removal")
         detect("uninstalled") { if case .notInstalled = $0 { return true } else { return false } }
         XCTAssertEqual(unavailable, 1)
         detect("reinstalled") { $0 == .waitingForData }
         XCTAssertEqual(unavailable, 1)
+        XCTAssertEqual(available, 2)
         detect("disabled") { $0 == .disabled }
         XCTAssertEqual(unavailable, 2)
+        XCTAssertEqual(available, 2)
     }
 
     func testMissingCLIDoesNotClearEvidenceOfInstalledMod() {
