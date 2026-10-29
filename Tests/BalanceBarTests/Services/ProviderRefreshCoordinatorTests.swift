@@ -4670,7 +4670,7 @@ extension ProviderRefreshCoordinatorTests {
         XCTAssertEqual(stale.quotaStatus, .error(at: fresh.date, source: .oauthAPI))
         XCTAssertTrue(stale.staleReason?.contains("429") == true)
         let until = try XCTUnwrap(harness.pipeline.manualRefreshBlockedUntil(), "menu refresh waits for the server cooldown")
-        XCTAssertGreaterThanOrEqual(until.timeIntervalSince(clock.now), QuotaConstants.minimumCooldown - 1)
+        XCTAssertGreaterThanOrEqual(until.timeIntervalSince(clock.now), 300 - 1, "first 429 without Retry-After waits 5 minutes")
         settle(coordinator, harness)
         lock.lock()
         XCTAssertEqual(notified.count, 1, "kept 429 data is never a real notification sample")
@@ -4678,7 +4678,7 @@ extension ProviderRefreshCoordinatorTests {
         lock.unlock()
 
         // The cooldown survives until its end, then a real sample is published again.
-        clock.advance(by: 300)
+        clock.advance(by: 120)
         coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: true, switched: false, userInitiated: true)
         settle(coordinator, harness)
         XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 2, "a manual refresh cannot bypass the 429 cooldown")

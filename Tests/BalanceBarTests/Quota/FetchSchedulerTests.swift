@@ -185,7 +185,9 @@ final class FetchSchedulerTests: XCTestCase {
         XCTAssertEqual(configuration.tokenRefillInterval, 300)
         XCTAssertEqual(configuration.automaticTokenCost, 1)
         XCTAssertEqual(configuration.manualTokenCost, 1)
-        XCTAssertEqual(configuration.failureBackoff, [30])
+        XCTAssertEqual(configuration.failureBackoff, [60])
+        XCTAssertEqual(configuration.realtimeCalibrationCap, 15 * 60)
+        XCTAssertEqual(configuration.rateLimitBackoff, [300, 600, 900])
     }
 
     func testSelectedAutomaticIntervalReplacesConfiguredMinimum() {
@@ -206,11 +208,102 @@ final class FetchSchedulerTests: XCTestCase {
         let scheduler = makeScheduler(configuration: .claudeV1)
         request(scheduler, .initial)
         complete(scheduler, .failure("network"))
-        clock.advance(29)
+        clock.advance(59)
         request(scheduler, .scheduled)
         XCTAssertEqual(lastSkip, .failureBackoff)
         clock.advance(1)
         request(scheduler, .scheduled)
+        XCTAssertEqual(transport.completions.count, 1)
+    }
+
+    func testClaudeRateLimitCooldownFollowsFiveTenFifteenSchedule() {
+        let scheduler = makeScheduler(configuration: .claudeV1)
+        let expected: [TimeInterval] = [300, 600, 900, 900, 900, 900]
+        for seconds in expected {
+            XCTAssertEqual(cooldownAfter429(scheduler, retryAfter: nil), seconds)
+        }
+        XCTAssertEqual(cooldownAfter429(scheduler, retryAfter: "30"), 300, "short Retry-After floors to 5 min")
+        XCTAssertEqual(cooldownAfter429(scheduler, retryAfter: "7200"), 7_200)
+    }
+
+    func testPlainFailureDoesNotShortenARateLimitCooldown() {
+        let scheduler = makeScheduler(configuration: .claudeV1)
+        request(scheduler, .initial)
+        complete(scheduler, .rateLimited(retryAfter: nil))
+        clock.advance(120)
+        request(scheduler, .scheduled)
+        XCTAssertEqual(lastSkip, .cooldown)
+        XCTAssertEqual(store.state?.consecutiveFailures, 0)
+        clock.advance(180)
+        request(scheduler, .manual)
+        complete(scheduler, .failure("network"))
+        XCTAssertEqual(store.state?.consecutiveRateLimitBackoffs, 1, "a plain failure leaves the 429 step alone")
+    }
+
+    func testContinuousLocalUpdatesStillGetAnOfficialReadEveryFifteenMinutes() {
+        let realtime = FakeRealtime()
+        let scheduler = makeScheduler(realtime: realtime, configuration: .claudeV1)
+        request(scheduler, .initial)
+        complete(scheduler, .success(Data()))
+        var dispatched = 1
+        // A Mod snapshot every minute, valid for 30 minutes: only the 15-minute floor may fire.
+        for minute in 1...30 {
+            clock.advance(60)
+            realtime.lastTrustedRealtimeObservationAt = clock.now
+            realtime.realtimeFreshUntil = clock.now.addingTimeInterval(1_800)
+            request(scheduler, .scheduled)
+            if !transport.completions.isEmpty {
+                dispatched += 1
+                XCTAssertTrue(minute == 15 || minute == 30, "unexpected request at minute \(minute)")
+                complete(scheduler, .success(Data()))
+            }
+        }
+        XCTAssertEqual(dispatched, 3)
+    }
+
+    func testDispatchLogNamesTheTrigger() {
+        let realtime = FakeRealtime()
+        let scheduler = makeScheduler(realtime: realtime, configuration: .claudeV1)
+        func lastTrigger() -> FetchDispatchTrigger? { logs.last(where: { $0.kind == .dispatched })?.trigger }
+        request(scheduler, .initial)
+        XCTAssertEqual(lastTrigger(), .firstRead)
+        complete(scheduler, .success(Data()))
+
+        // Local source valid for an hour; 15 minutes after the official read the floor applies.
+        clock.advance(15 * 60)
+        realtime.lastTrustedRealtimeObservationAt = clock.now
+        realtime.realtimeFreshUntil = clock.now.addingTimeInterval(3_600)
+        request(scheduler, .scheduled)
+        XCTAssertEqual(lastTrigger(), .calibrationFloor)
+        complete(scheduler, .success(Data()))
+
+        // Inside the 10 s lead before the local source expires, below the cap.
+        clock.advance(400)
+        realtime.realtimeFreshUntil = clock.now.addingTimeInterval(5)
+        request(scheduler, .scheduled)
+        XCTAssertEqual(lastTrigger(), .sourceExpiryPrefetch)
+        complete(scheduler, .success(Data()))
+
+        clock.advance(400)
+        realtime.realtimeFreshUntil = clock.now.addingTimeInterval(-1)
+        request(scheduler, .scheduled)
+        XCTAssertEqual(lastTrigger(), .localExpiredOrAbsent)
+        complete(scheduler, .success(Data()))
+
+        clock.advance(400)
+        request(scheduler, .manual)
+        XCTAssertEqual(lastTrigger(), .manualRefresh)
+    }
+
+    func testManualRefreshReachesTheOfficialSourceWhileLocalDataIsStillValid() {
+        let realtime = FakeRealtime()
+        let scheduler = makeScheduler(realtime: realtime, configuration: .claudeV1)
+        request(scheduler, .initial)
+        complete(scheduler, .success(Data()))
+        clock.advance(400)
+        realtime.lastTrustedRealtimeObservationAt = clock.now.addingTimeInterval(-400)
+        realtime.realtimeFreshUntil = clock.now.addingTimeInterval(1_000)
+        request(scheduler, .manual)
         XCTAssertEqual(transport.completions.count, 1)
     }
 
@@ -277,8 +370,8 @@ final class FetchSchedulerTests: XCTestCase {
         let scheduler = makeScheduler(configuration: .claudeV1)
         request(scheduler, .scheduled)
         complete(scheduler, .failure("network"))
-        XCTAssertEqual(scheduler.statusSnapshot().failureBackoffUntil, clock.now.addingTimeInterval(30))
-        clock.advance(31)
+        XCTAssertEqual(scheduler.statusSnapshot().failureBackoffUntil, clock.now.addingTimeInterval(60))
+        clock.advance(61)
         XCTAssertNil(scheduler.statusSnapshot().failureBackoffUntil, "the backoff has ended")
         XCTAssertNil(scheduler.statusSnapshot().manualTokensReadyAt, "remaining tokens still cover a manual read")
     }

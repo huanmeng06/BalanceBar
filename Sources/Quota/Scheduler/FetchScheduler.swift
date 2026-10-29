@@ -226,7 +226,9 @@ public final class FetchScheduler: FetchScheduling {
            !manualResultCannotConfirmPendingReset(lastSuccessAt: lastSuccessAt) {
             return log(.skipped, reasons: reasons, skip: .recentResult)
         }
-        guard let freePathChecker else { return spendAndDispatch(reasons, cost: configuration.manualTokenCost) }
+        guard let freePathChecker else {
+            return spendAndDispatch(reasons, cost: configuration.manualTokenCost, trigger: .manualRefresh)
+        }
         isBusy = true
         freePathChecker.checkFreePath(within: window) { [self] satisfied in
             queue.async {
@@ -238,7 +240,7 @@ public final class FetchScheduler: FetchScheduling {
                     return log(.skipped, reasons: reasons, skip: .freePathSatisfied)
                 }
                 refillTokens(now: clock.now)
-                spendAndDispatch(reasons, cost: configuration.manualTokenCost)
+                spendAndDispatch(reasons, cost: configuration.manualTokenCost, trigger: .manualRefresh)
             }
         }
     }
@@ -262,7 +264,19 @@ public final class FetchScheduler: FetchScheduling {
         }
         // A first read for a new or newly loaded account is user-visible, so it is charged like
         // a manual request instead of waiting for the routine budget.
-        spendAndDispatch(reasons, cost: firstRead ? configuration.manualTokenCost : configuration.automaticTokenCost)
+        spendAndDispatch(
+            reasons, cost: firstRead ? configuration.manualTokenCost : configuration.automaticTokenCost,
+            trigger: automaticTrigger(reasons, firstRead: firstRead, now: now))
+    }
+
+    /// Why an automatic request passed every gate, for diagnostics only.
+    private func automaticTrigger(
+        _ reasons: [FetchRequestReason], firstRead: Bool, now: Date
+    ) -> FetchDispatchTrigger {
+        if reasons.contains(.resetConfirmation) { return .resetConfirmation }
+        if firstRead { return .firstRead }
+        guard let freshUntil = realtimeFreshUntil(), now < freshUntil else { return .localExpiredOrAbsent }
+        return calibrationCapExceeded(now: now) ? .calibrationFloor : .sourceExpiryPrefetch
     }
 
     /// A success from before the pending reset deadline still describes the previous cycle,
@@ -302,7 +316,7 @@ public final class FetchScheduler: FetchScheduling {
         return now.timeIntervalSince(lastSuccessAt) >= cap
     }
 
-    private func spendAndDispatch(_ reasons: [FetchRequestReason], cost: Int) {
+    private func spendAndDispatch(_ reasons: [FetchRequestReason], cost: Int, trigger: FetchDispatchTrigger) {
         guard tokens >= cost else {
             return log(.skipped, reasons: reasons, skip: .insufficientTokens)
         }
@@ -313,7 +327,7 @@ public final class FetchScheduler: FetchScheduling {
         stateStore.save(persistent)
         let epoch = identity.accountEpoch
         let credentialVersion = identity.credentialVersion
-        log(.dispatched, reasons: reasons)
+        log(.dispatched, reasons: reasons, trigger: trigger)
         transport.fetchUsage { [self] result in
             queue.async {
                 complete(result, reasons: reasons, epoch: epoch, credentialVersion: credentialVersion)
@@ -390,7 +404,11 @@ public final class FetchScheduler: FetchScheduling {
             duration = max(seconds, configuration.minimumCooldown)
         } else {
             let step = min(persistent.consecutiveRateLimitBackoffs, 10)
-            duration = min(configuration.minimumCooldown * pow(2, Double(step)), configuration.maximumBackoffCooldown)
+            if let last = configuration.rateLimitBackoff.last {
+                duration = step < configuration.rateLimitBackoff.count ? configuration.rateLimitBackoff[step] : last
+            } else {
+                duration = min(configuration.minimumCooldown * pow(2, Double(step)), configuration.maximumBackoffCooldown)
+            }
             persistent.consecutiveRateLimitBackoffs += 1
         }
         persistent.cooldownUntil = now.addingTimeInterval(duration)
@@ -485,7 +503,8 @@ public final class FetchScheduler: FetchScheduling {
         _ kind: FetchSchedulerLogEvent.Kind,
         reasons: [FetchRequestReason],
         skip: FetchSkipReason? = nil,
-        outcome: String? = nil
+        outcome: String? = nil,
+        trigger: FetchDispatchTrigger? = nil
     ) {
         let now = clock.now
         if kind == .dispatched {
@@ -495,7 +514,8 @@ public final class FetchScheduler: FetchScheduling {
         }
         logSink(FetchSchedulerLogEvent(
             kind: kind, reasons: reasons, skipReason: skip, tokens: tokens,
-            cooldownRemaining: cooldownRemaining(now: now), outcome: outcome, timestamp: now))
+            cooldownRemaining: cooldownRemaining(now: now), outcome: outcome, timestamp: now,
+            trigger: trigger))
     }
 
     private static func label(_ result: UsageFetchResult) -> String {

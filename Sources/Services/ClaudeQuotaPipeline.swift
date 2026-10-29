@@ -775,6 +775,7 @@ final class ClaudeQuotaPipeline {
     private func schedulerEvent(_ event: FetchSchedulerLogEvent) {
         switch event.kind {
         case .dispatched:
+            logDispatch(event)
             queue.async { [self] in
                 lock.withLock { refreshing = true }
                 publish()
@@ -805,6 +806,13 @@ final class ClaudeQuotaPipeline {
         case .requested, .completed:
             break
         }
+    }
+
+    private func logDispatch(_ event: FetchSchedulerLogEvent) {
+        let reasons = event.reasons.map { String(describing: $0) }.joined(separator: ",")
+        diagnostics(
+            "claude fetch dispatched; trigger=\(event.trigger?.rawValue ?? "unknown"); reasons=\(reasons); tokens=\(event.tokens)",
+            event.reasons.contains(.manual) ? .info : .debug)
     }
 
     private func logSkip(_ event: FetchSchedulerLogEvent) {

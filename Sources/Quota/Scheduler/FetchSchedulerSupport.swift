@@ -189,6 +189,9 @@ public struct FetchSchedulerConfiguration: Equatable {
     public var minimumCooldown: TimeInterval = QuotaConstants.minimumCooldown
     /// Upper bound for the 429 doubling backoff (15 → 30 → 60 minutes).
     public var maximumBackoffCooldown: TimeInterval = 4 * QuotaConstants.minimumCooldown
+    /// Cooldown per consecutive 429 without a usable `Retry-After`; the last entry repeats.
+    /// Empty keeps the doubling backoff from `minimumCooldown` up to `maximumBackoffCooldown`.
+    public var rateLimitBackoff: [TimeInterval] = []
     public var tokenCapacity: Int = QuotaConstants.requestTokenBucketCapacity
     public var tokenRefillInterval: TimeInterval = QuotaConstants.requestTokenRefillInterval
     public var automaticTokenCost: Int = QuotaConstants.automaticRequestTokenCost
@@ -216,12 +219,14 @@ public struct FetchSchedulerConfiguration: Equatable {
         var value = FetchSchedulerConfiguration()
         value.automaticMinimumInterval = 300
         value.realtimeSourceFreshness = 120
-        value.realtimeCalibrationCap = 3_600
+        value.realtimeCalibrationCap = 15 * 60
         value.tokenRefillInterval = 300
         value.automaticTokenCost = 1
         value.manualTokenCost = 1
         value.manualRefreshWindow = 300
-        value.failureBackoff = [30]
+        value.failureBackoff = [60]
+        value.minimumCooldown = 5 * 60
+        value.rateLimitBackoff = [5 * 60, 10 * 60, 15 * 60]
         value.unauthorizedRecheckInterval = 300
         return value
     }
@@ -265,6 +270,19 @@ public enum FetchSkipReason: String, Equatable {
     case failureBackoff = "failure_backoff"
 }
 
+/// What made a request pass the scheduler's gates; logged with `dispatched` events.
+public enum FetchDispatchTrigger: String, Equatable {
+    case manualRefresh = "manual_refresh"
+    case firstRead = "first_read"
+    case resetConfirmation = "reset_confirmation"
+    /// Local source still valid, but the last official read is older than the calibration cap.
+    case calibrationFloor = "calibration_floor"
+    /// Local source is about to expire; the official read starts a little early.
+    case sourceExpiryPrefetch = "source_expiry_prefetch"
+    /// No valid local source: expired, absent or waiting for a reset.
+    case localExpiredOrAbsent = "local_expired_or_absent"
+}
+
 /// Structured scheduler log event for diagnostics (consumed by BB-19).
 public struct FetchSchedulerLogEvent: Equatable {
     public enum Kind: String, Equatable {
@@ -282,6 +300,8 @@ public struct FetchSchedulerLogEvent: Equatable {
     /// Short non-secret result label for `completed` events.
     public let outcome: String?
     public let timestamp: Date
+    /// Why a `dispatched` request was sent; `nil` for other events.
+    public var trigger: FetchDispatchTrigger? = nil
 }
 
 /// Result broadcast to every subscriber after a request completes for the current epoch.
