@@ -2163,7 +2163,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             } else {
                 XCTAssertEqual(
                     row.detailLabel.stringValue,
-                    tr(.keyDashboardAdvancedPageSourceValidityWarning, arguments: ["5", "10"]))
+                    tr(.keyDashboardAdvancedPageSourceValidityWarning, arguments: ["5", "5"]))
                 XCTAssertEqual(row.detailLabel.textColor, .systemOrange)
             }
         }
@@ -2178,7 +2178,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
     func testValidityWarningRecommendsOnlyMenuOptionsOrAdmitsThereIsNone() {
         let offered = Set(AppPreferences.claudeLocalValidityOptions.map { Int($0 / 60) })
         // (calibration minutes, recommended minutes; nil = no option covers the gap)
-        let cases: [(Int, Int?)] = [(5, 10), (6, 10), (8, 10), (10, nil), (12, nil), (15, nil)]
+        let cases: [(Int, Int?)] = [(5, 5), (6, 10), (8, 10), (10, 10), (12, nil), (15, nil)]
         for (minutes, recommended) in cases {
             let text = DashboardAdvancedPage.validityWarning(calibrationInterval: TimeInterval(minutes * 60))
             if let recommended {
@@ -2241,7 +2241,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let native = try XCTUnwrap(section.contentViews[1] as? SettingsRowView)
         XCTAssertEqual(
             native.detailLabel.stringValue,
-            tr(.keyDashboardAdvancedPageSourceValidityWarning, arguments: ["5", "10"]))
+            tr(.keyDashboardAdvancedPageSourceValidityWarning, arguments: ["5", "5"]))
     }
 
     func testSettingsSwitchFactoryKeepsTheStockNativeSwitch() {
