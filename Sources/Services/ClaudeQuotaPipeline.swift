@@ -12,26 +12,6 @@ enum ClaudeQuotaFailure: Equatable {
     case invalidResponse
 }
 
-/// Why a manual refresh would not reach the Usage API right now, for the refresh menu item.
-enum ClaudeManualRefreshNotice: Equatable {
-    /// The OAuth token was rejected (401); only a new credential from Claude Code lifts the pause.
-    case loginExpired
-    /// Waiting out a 429 until the given date.
-    case rateLimited(until: Date)
-    /// A read succeeded within the manual-refresh window.
-    case justRefreshed
-    case localFresh
-    case recentResult(until: Date)
-    /// A reset passed and is awaiting official confirmation; a manual refresh asks the
-    /// Usage API directly instead of being suppressed by the recent-result window.
-    case awaitingResetConfirmation
-    /// The request budget is exhausted; the next token arrives at the given date.
-    case outOfTokens(until: Date)
-    case inFlight
-    case networkUnavailable
-    case succeeded
-}
-
 /// Everything the refresh coordinator needs to publish Claude official quota.
 struct ClaudeQuotaState: Equatable {
     /// Merged display model owned by `QuotaMergeEngine`.
@@ -141,7 +121,6 @@ final class ClaudeQuotaPipeline {
     private let snapshotInbox: SnapshotInbox?
     private let confirmationTimer: SchedulerTimer
     fileprivate let now: () -> Date
-    private let manualRefreshWindow: TimeInterval
     private let diagnostics: (String, SwitchLog.Level) -> Void
     private let queue = DispatchQueue(label: "BalanceBar.ClaudeQuotaPipeline", qos: .utility)
     private let lock = NSLock()
@@ -261,7 +240,6 @@ final class ClaudeQuotaPipeline {
         }
     ) {
         self.client = client
-        manualRefreshWindow = schedulerConfiguration.manualRefreshWindow
         self.diagnostics = diagnostics
         self.identity = identity
         self.identityQueue = identityQueue
@@ -335,30 +313,10 @@ final class ClaudeQuotaPipeline {
         return until
     }
 
-    /// Why a manual refresh would be skipped right now, in the scheduler's own precedence
-    /// (401 pause, cooldown, in-flight, recent result, budget; a plain failure never blocks it). Reads the
-    /// scheduler's queue-protected snapshot so the menu never disagrees with the actual
-    /// decision (e.g. a success persisted before a restart still suppresses).
-    func manualRefreshNotice() -> ClaudeManualRefreshNotice? {
-        let status = scheduler.statusSnapshot()
-        if status.isUnauthorizedPaused { return .loginExpired }
-        if status.cooldownRemaining > 0 {
-            return .rateLimited(until: status.at.addingTimeInterval(status.cooldownRemaining))
-        }
-        if status.isBusy { return .inFlight }
-        let pending = earliestPendingReset()
-        if let lastSuccessAt = status.lastSuccessAt,
-           now().timeIntervalSince(lastSuccessAt) < manualRefreshWindow,
-           pending.map({ lastSuccessAt <= $0 }) != true {
-            return .recentResult(until: lastSuccessAt.addingTimeInterval(manualRefreshWindow))
-        }
-        if let readyAt = status.manualTokensReadyAt, readyAt > status.at { return .outOfTokens(until: readyAt) }
-        if pending != nil { return .awaitingResetConfirmation }
-        // A manual refresh is only skipped for local data inside the manual window (the scheduler's
-        // free-path rule), however long the user's validity keeps the source "live".
-        if let observedAt = realtimeTracker?.lastTrustedRealtimeObservationAt,
-           now().timeIntervalSince(observedAt) <= manualRefreshWindow { return .localFresh }
-        return nil
+    /// The OAuth token was rejected (401); only a new credential from Claude Code lifts the pause.
+    /// Reads the scheduler's queue-protected snapshot so the menu agrees with the actual decision.
+    func isLoginExpired() -> Bool {
+        scheduler.statusSnapshot().isUnauthorizedPaused
     }
 
     enum ModUnavailableReason: String {

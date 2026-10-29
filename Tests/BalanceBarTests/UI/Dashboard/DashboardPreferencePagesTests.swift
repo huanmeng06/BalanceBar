@@ -2163,7 +2163,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             } else {
                 XCTAssertEqual(
                     row.detailLabel.stringValue,
-                    tr(.keyDashboardAdvancedPageSourceValidityWarning, arguments: ["5", "6"]))
+                    tr(.keyDashboardAdvancedPageSourceValidityWarning, arguments: ["5", "10"]))
                 XCTAssertEqual(row.detailLabel.textColor, .systemOrange)
             }
         }
@@ -2173,6 +2173,23 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(changes.count, 1)
         XCTAssertEqual(changes.first?.0, AppPreferences.claudeModValidityKey)
         XCTAssertEqual(changes.first?.1, 60)
+    }
+
+    func testValidityWarningRecommendsOnlyMenuOptionsOrAdmitsThereIsNone() {
+        let offered = Set(AppPreferences.claudeLocalValidityOptions.map { Int($0 / 60) })
+        // (calibration minutes, recommended minutes; nil = no option covers the gap)
+        let cases: [(Int, Int?)] = [(5, 10), (6, 10), (8, 10), (10, nil), (12, nil), (15, nil)]
+        for (minutes, recommended) in cases {
+            let text = DashboardAdvancedPage.validityWarning(calibrationInterval: TimeInterval(minutes * 60))
+            if let recommended {
+                XCTAssertTrue(offered.contains(recommended))
+                XCTAssertEqual(text, tr(.keyDashboardAdvancedPageSourceValidityWarning,
+                                        arguments: ["\(minutes)", "\(recommended)"]), "\(minutes) min")
+            } else {
+                XCTAssertEqual(text, tr(.keyDashboardAdvancedPageSourceValidityNoOption,
+                                        arguments: ["\(minutes)"]), "\(minutes) min")
+            }
+        }
     }
 
     @MainActor
@@ -2224,7 +2241,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let native = try XCTUnwrap(section.contentViews[1] as? SettingsRowView)
         XCTAssertEqual(
             native.detailLabel.stringValue,
-            tr(.keyDashboardAdvancedPageSourceValidityWarning, arguments: ["5", "6"]))
+            tr(.keyDashboardAdvancedPageSourceValidityWarning, arguments: ["5", "10"]))
     }
 
     func testSettingsSwitchFactoryKeepsTheStockNativeSwitch() {

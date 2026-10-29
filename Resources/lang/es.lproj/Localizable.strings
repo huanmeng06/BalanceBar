@@ -143,7 +143,8 @@
 "dashboard.advanced.page.source_validity" = "Validez de cada fuente de datos de Claude";
 "dashboard.advanced.page.source_validity_oauth" = "Validez de la cuota oficial";
 "dashboard.advanced.page.source_validity_mod" = "Validez del push del Mod";
-"dashboard.advanced.page.source_validity_warning" = "La validez es corta: tras caducar, los datos nuevos pueden tardar hasta la siguiente calibración oficial (cada %1$@ min). Se recomiendan al menos %2$@ min.";
+"dashboard.advanced.page.source_validity_warning" = "La validez es corta: tras caducar, los datos nuevos pueden tardar hasta la siguiente calibración oficial (cada %1$@ min). Se recomienda elegir %2$@ min.";
+"dashboard.advanced.page.source_validity_no_option" = "La calibración oficial se ejecuta cada %1$@ min, así que cualquier opción de validez puede dejar un breve hueco. Acorta el intervalo de calibración oficial.";
 "dashboard.advanced.page.validity_minutes" = "%1$@ min";
 "dashboard.general.and.refresh.pages.update_channel" = "Canal de actualización";
 "dashboard.general.and.refresh.pages.update_channel_description" = "Elige si quieres buscar actualizaciones estables o beta";
@@ -599,11 +600,6 @@
 "quota.status.accessibility" = "Estado de la cuota: %1$@";
 "claude.refresh.login_expired" = "El inicio de sesión de Claude Code ha caducado. Ejecuta claude una vez en una terminal para restaurarlo; BalanceBar nunca renueva el inicio de sesión por sí mismo.";
 "status.item.controller.refresh_now_login_expired" = "Las credenciales caducaron; ejecuta de nuevo Claude Code CLI en la terminal";
-"status.item.controller.refresh_now_rate_limited" = "Límite de peticiones, disponible en %1$@";
-"status.item.controller.refresh_now_just_refreshed" = "Recién actualizado";
-"status.item.controller.refresh_now_recent_result" = "Recién actualizado · reintenta en %1$@ s";
-"status.item.controller.refresh_now_awaiting_confirmation" = "Esperando confirmación del restablecimiento; haz clic para confirmar ahora";
-"status.item.controller.refresh_now_out_of_tokens" = "Actualizas con demasiada frecuencia; reintenta en %1$@ s";
 "claude.quota.calibration" = "Calibración de la cuota oficial de Claude";
 "claude.source_tag.all_clients" = "Todos los clientes";
 "claude.source_tag.desktop" = "Prioridad escritorio";
