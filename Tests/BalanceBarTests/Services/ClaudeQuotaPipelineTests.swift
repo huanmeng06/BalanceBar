@@ -1434,8 +1434,15 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
 
         // Once detection confirms the Mod is back, the first snapshot produced afterwards
         // restores `实时 · Mod`.
+        clock.advance(by: 3) // start+323: re-enabled after that snapshot was produced
         pipeline.modBecameAvailable()
-        clock.advance(by: 10) // start+330
+        pipeline.waitUntilIdle()
+        // Rescanning the snapshot written while the Mod was off must not resume live status.
+        try placeModSnapshot(five: 27, seven: 44, observedAt: whileUnavailable)
+        quiet(pipeline)
+        XCTAssertFalse(try XCTUnwrap(pipeline.latestState).status.isNativeRealtime)
+        XCTAssertNil(pipeline.manualRefreshNotice())
+        clock.advance(by: 7) // start+330
         let fresh = Self.start.addingTimeInterval(325)
         try placeModSnapshot(five: 28, seven: 45, observedAt: fresh)
         let live = try XCTUnwrap(waitForState(pipeline) { $0.status.isNativeRealtime })

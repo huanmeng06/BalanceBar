@@ -1144,6 +1144,24 @@ extension ModSyncCoordinatorTests {
         XCTAssertEqual(available, 2)
     }
 
+    func testFirstDetectionFindingModDisabledDropsEarlierSnapshotEvidence() {
+        let (coordinator, _) = makeCoordinator(
+            locator: "/bin/claude",
+            results: [probeVersion, listResult(enabled: false), probeVersion, listResult()])
+        // The inbox replay reaches the coordinator before the first detection finishes.
+        coordinator.ingest(.init(kind: .processed(accepted: true), window: .fiveHour, observedAt: nil, receivedAt: Date()))
+        let disabled = expectation(description: "disabled")
+        coordinator.onStatusChange = { if $0 == .disabled { disabled.fulfill() } }
+        coordinator.startDetectionIfNeeded(force: true)
+        wait(for: [disabled], timeout: 5)
+
+        let enabled = expectation(description: "re-enabled without new data")
+        coordinator.onStatusChange = { _ in enabled.fulfill() }
+        coordinator.startDetectionIfNeeded(force: true)
+        wait(for: [enabled], timeout: 5)
+        XCTAssertEqual(coordinator.status, .waitingForData)
+    }
+
     func testMissingCLIDoesNotClearEvidenceOfInstalledMod() {
         let runner = ScriptedRunner([probeVersion, listResult(), probeVersion, listResult()])
         let locator = SwitchableLocator(path: "/bin/claude")

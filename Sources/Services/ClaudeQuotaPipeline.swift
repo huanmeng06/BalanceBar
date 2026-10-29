@@ -170,8 +170,10 @@ final class ClaudeQuotaPipeline {
     /// scheduler evidence. Cleared only by a Mod snapshot produced after this moment, so a
     /// reinstall never revives the old evidence. Guarded by `lock`.
     private var modSuspendedAt: Date?
-    /// Last detection verdict while suspended: only an installed and enabled Mod may resume.
-    private var modAvailable = true
+    /// When detection last confirmed the suspended Mod installed and enabled; nil while it is
+    /// not. Only snapshots produced after this moment may resume live status, so data written
+    /// while the Mod was off (and rescanned later) never does.
+    private var modAvailableSince: Date?
     /// Whether any window is awaiting official reset confirmation (pipeline queue).
     private var awaitingResetConfirmation = false
     /// Confirmation requests already repeated by the retry timer in the current pending period.
@@ -350,7 +352,7 @@ final class ClaudeQuotaPipeline {
     func modBecameUnavailable() {
         queue.async { [self] in
             let first = lock.withLock { () -> Bool in
-                modAvailable = false
+                modAvailableSince = nil
                 guard modSuspendedAt == nil else { return false }
                 modSuspendedAt = now()
                 return true
@@ -365,7 +367,9 @@ final class ClaudeQuotaPipeline {
     /// Detection confirmed the Mod installed and enabled. Does not restore live status by
     /// itself: a snapshot produced after the suspension is still required.
     func modBecameAvailable() {
-        queue.async { [self] in lock.withLock { modAvailable = true } }
+        queue.async { [self] in
+            lock.withLock { if modAvailableSince == nil { modAvailableSince = now() } }
+        }
     }
 
     /// Earliest reset deadline that passed and still awaits official confirmation.
@@ -664,7 +668,7 @@ final class ClaudeQuotaPipeline {
             let producedAt = observation.observedAt ?? observation.receivedAt
             let allowed = lock.withLock { () -> Bool in
                 guard let suspendedAt = modSuspendedAt else { return true }
-                guard modAvailable, producedAt > suspendedAt else { return false }
+                guard suspendedAt <= producedAt, let since = modAvailableSince, producedAt > since else { return false }
                 modSuspendedAt = nil
                 return true
             }
