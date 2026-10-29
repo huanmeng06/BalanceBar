@@ -1263,6 +1263,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         } else {
             regularPolicyApplied = NSApp.setActivationPolicy(.accessory)
         }
+        prepareStartupAggregationPresentation()
         statusItemController.start(
             snapshot: snapshot,
             refreshDate: refreshDate(for: snapshot),
@@ -1327,6 +1328,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             )
             self.refresh(reason: .configurationChanged)
         }
+    }
+
+    private func prepareStartupAggregationPresentation() {
+        guard activeClient == .codex,
+              let startup = providerRefreshCoordinator.prepareAggregationForStartup(
+                reader: aggregationRepository
+              ) else { return }
+        aggregationDisplays = startup.displays
+        quickSwitchSafetyByClient[.codex] = startup.quickSwitchSafety
+        aggregationQuickSwitchBlocked = startup.quickSwitchSafety.isBlocked
     }
 
     func applicationWillTerminate(_ notification: Notification) {
