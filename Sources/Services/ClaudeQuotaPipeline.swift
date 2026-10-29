@@ -168,6 +168,9 @@ final class ClaudeQuotaPipeline {
     /// scheduler evidence. Cleared only by a Mod snapshot produced after this moment, so a
     /// reinstall never revives the old evidence. Guarded by `lock`.
     private var modSuspendedAt: Date?
+    /// Production time of the newest Mod reading accepted as live evidence, including readings kept
+    /// as evidence only; it never changes a displayed value, only whether the label can name the Mod.
+    private var modEvidenceAt: Date?
     /// When detection last confirmed the suspended Mod installed and enabled; nil while it is
     /// not. Only snapshots produced after this moment may resume live status, so data written
     /// while the Mod was off (and rescanned later) never does.
@@ -382,6 +385,7 @@ final class ClaudeQuotaPipeline {
                 modResumeCandidates = modResumeCandidates.filter { covered[$0.key] == nil }
                 guard modSuspendedAt == nil else { return false }
                 modSuspendedAt = now()
+                modEvidenceAt = nil
                 return true
             }
             guard first else { return }
@@ -544,6 +548,7 @@ final class ClaudeQuotaPipeline {
             accountActiveSince = now()
             modResumeCandidates = [:]
             modCandidateFloor = nil
+            modEvidenceAt = nil
         }
         realtimeTracker?.reset(epoch: change.epoch)
         sourceTimeline.reset(accountKey: ClaudeSourceTimeline.accountKey(forStableID: change.identity?.stableID))
@@ -758,6 +763,10 @@ final class ClaudeQuotaPipeline {
             observedAt: observation.observedAt ?? observation.receivedAt,
             epoch: observation.epoch,
             source: Self.statusSource(forSourceID: observation.source) ?? .mod)
+        if observation.source == SnapshotInbox.modSourceID {
+            let producedAt = observation.observedAt ?? observation.receivedAt
+            lock.withLock { modEvidenceAt = max(modEvidenceAt ?? producedAt, producedAt) }
+        }
         if let source = Self.statusSource(forSourceID: observation.source) {
             sourceTimeline.recordReading(source: source, observedAt: observation.observedAt ?? observation.receivedAt)
         }
@@ -968,7 +977,7 @@ final class ClaudeQuotaPipeline {
             return reading.source == SnapshotInbox.modSourceID
         }
         let validity = sourceValidity()
-        let modSuspended = lock.withLock { modSuspendedAt != nil }
+        let (modSuspended, modEvidenceAt) = lock.withLock { (modSuspendedAt != nil, self.modEvidenceAt) }
         func isFresh(_ reading: QuotaMergedReading) -> Bool {
             guard let source = Self.statusSource(forSourceID: reading.source) else { return false }
             if source == .mod, modSuspended { return false }
@@ -979,6 +988,10 @@ final class ClaudeQuotaPipeline {
         // backwards inside the cycle is rejected), which must not hide that the other window is
         // being updated in real time.
         let newestStandard = standard.compactMap { $0 }.max { $0.effectiveTime < $1.effectiveTime }
+        // The Mod can be online and renewing while a newer official reading keeps the display
+        // (its lower value is tolerated as evidence only); the label should still say so.
+        let modOnline = !modSuspended && modEvidenceAt.map {
+            date.timeIntervalSince($0) <= validity.seconds(for: .mod) } == true
         let nativeDisplayed = isLocal(newestStandard) && isFresh(newestStandard!)
         // A failed official read marks the displayed values as outdated without discarding
         // them. It only concerns the Usage API, though: a local reading received after the
@@ -999,7 +1012,7 @@ final class ClaudeQuotaPipeline {
         let status = StatusSlotState.resolve(
             model: shown,
             context: StatusSlotContext(isRefreshing: refreshing,
-                source: Self.liveSource(of: standard, now: date, nativeDisplayed: nativeDisplayed, officialValidity: validity.oauth),
+                source: Self.liveSource(of: standard, now: date, nativeDisplayed: nativeDisplayed, modOnline: modOnline, officialValidity: validity.oauth),
                 // The slot's age is the reading's own time, not when BalanceBar happened to receive it
                 // (a Mod snapshot read at launch may have been written minutes earlier).
                 updatedAt: newestStandard?.effectiveTime ?? updatedAt,
@@ -1043,15 +1056,18 @@ final class ClaudeQuotaPipeline {
 
     /// Source label for the status slot: the newest standard-window reading decides. A local source
     /// is live while that reading is fresh (`nativeDisplayed`); an official read stays live for the
-    /// user's OAuth validity.
+    /// user's OAuth validity. When the newest reading is official but the Mod is online and
+    /// renewing (`modOnline`), the label names the Mod; values are untouched.
     static func liveSource(
-        of standard: [QuotaMergedReading?], now: Date, nativeDisplayed: Bool, officialValidity: TimeInterval
+        of standard: [QuotaMergedReading?], now: Date, nativeDisplayed: Bool, modOnline: Bool,
+        officialValidity: TimeInterval
     ) -> StatusSlotSource {
         guard let newest = standard.compactMap({ $0 }).max(by: { $0.effectiveTime < $1.effectiveTime }),
               let source = statusSource(forSourceID: newest.source) else { return .official }
         switch source {
         case .mod: return nativeDisplayed ? .realtime(source) : .official
         case .oauthAPI:
+            if modOnline { return .realtime(.mod) }
             return now.timeIntervalSince(newest.effectiveTime) <= officialValidity ? .realtime(.oauthAPI) : .official
         }
     }

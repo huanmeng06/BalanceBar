@@ -967,6 +967,31 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         XCTAssertTrue(diagnosticLines.all.contains { $0.contains("skip=realtimeSourceFresh") })
     }
 
+    func testModBelowDisplayWithinToleranceLabelsTheSlotAsModWithoutChangingValues() throws {
+        let pipeline = makePipeline(
+            configuration: claudeV1TestConfiguration, withTracker: true, withInbox: true)
+        pipeline.start()
+        pipeline.requestFetch(reason: .initial)
+        let official = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+        XCTAssertEqual(official.status.liveSource, .oauthAPI)
+
+        // Both Mod values sit one point below the official ones: evidence only, never displayed.
+        clock.advance(by: 5)
+        try placeModSnapshot(five: 22, seven: 40, observedAt: Self.start.addingTimeInterval(5))
+        let live = try XCTUnwrap(waitForState(pipeline) { $0.status.isNativeRealtime })
+        XCTAssertEqual(live.display.window(for: .fiveHour)?.usedPercentage, 23)
+        XCTAssertEqual(live.display.window(for: .sevenDay)?.usedPercentage, 41)
+
+        // Once the Mod stops renewing, the label follows the displayed (official) reading again.
+        clock.advance(by: 130)
+        pipeline.tick()
+        pipeline.waitUntilIdle()
+        let stale = try XCTUnwrap(pipeline.latestState)
+        XCTAssertNotEqual(stale.status.liveSource, .mod)
+        XCTAssertEqual(stale.display.window(for: .fiveHour)?.usedPercentage, 23)
+        XCTAssertEqual(stale.display.window(for: .sevenDay)?.usedPercentage, 41)
+    }
+
     func testRescannedOldModSnapshotDoesNotCreateFreshness() throws {
         let tracker = ClaudeRealtimeTracker(now: { [clock] in clock!.now })
         let pipeline = makePipeline(realtimeTracker: tracker, configuration: claudeV1TestConfiguration, withInbox: true)
