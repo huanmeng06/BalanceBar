@@ -142,7 +142,6 @@
 "dashboard.advanced.page.records_runtime_status_and_errors" = "Записывает состояние выполнения и ошибки";
 "dashboard.advanced.page.source_validity" = "Срок действия каждого источника данных Claude";
 "dashboard.advanced.page.source_validity_oauth" = "Срок действия официальной квоты";
-"dashboard.advanced.page.source_validity_native_sync" = "Срок действия нативной синхронизации";
 "dashboard.advanced.page.source_validity_mod" = "Срок действия данных Mod";
 "dashboard.advanced.page.source_validity_warning" = "Срок действия короткий: после истечения свежие данные могут появиться только при следующей официальной калибровке (каждые %1$@ мин). Рекомендуется не менее %2$@ мин.";
 "dashboard.advanced.page.validity_minutes" = "%1$@ мин";
@@ -586,7 +585,6 @@
 "quota.status.ago.hours" = "%1$@ ч";
 "quota.status.ago.days" = "%1$@ дн";
 "quota.status.source.oauth_api" = "OAuth API";
-"quota.status.source.native_sync" = "Нативно";
 "quota.status.source.mod" = "Mod";
 "quota.status.hover.refreshing" = "Чтение актуальной квоты";
 "quota.status.hover.error" = "Не удалось обновить. Показаны данные на %1$@";
@@ -606,11 +604,8 @@
 "status.item.controller.refresh_now_recent_result" = "Только что обновлено · повтор через %1$@ с";
 "status.item.controller.refresh_now_awaiting_confirmation" = "Ожидание подтверждения сброса; нажмите, чтобы подтвердить сейчас";
 "status.item.controller.refresh_now_out_of_tokens" = "Слишком частое обновление; повтор через %1$@ с";
-"claude.status_line.enabled" = "Нативная синхронизация Claude Code";
-"claude.status_line.description" = "Claude Code отправляет данные после каждого ответа; плагин не нужен";
-"claude.status_line.calibration" = "Сверка официальной квоты Claude";
+"claude.quota.calibration" = "Сверка официальной квоты Claude";
 "claude.source_tag.all_clients" = "Все клиенты";
-"claude.source_tag.terminal" = "Терминал CLI";
 "claude.source_tag.desktop" = "Сначала десктоп";
 "claude.timeline.title" = "Монитор источников данных";
 "claude.timeline.now" = "Сейчас";
@@ -620,7 +615,7 @@
 "claude.timeline.failure.unauthorized" = "Вход истёк";
 "claude.timeline.failure.server_error" = "Ошибка сервера";
 "claude.timeline.failure.missing_credentials" = "Вход не выполнен";
-"claude.timeline.tooltip.oauth_rule" = "Пока данные нативной синхронизации или Mod действительны, BalanceBar не обращается к официальному API; калибровка всё равно не реже раза в час.";
+"claude.timeline.tooltip.oauth_rule" = "Пока данные Mod действительны, BalanceBar не обращается к официальному API; калибровка всё равно не реже раза в час.";
 "claude.timeline.hover.time" = "Время";
 "claude.timeline.hover.duration" = "Длительность";
 "claude.timeline.hover.refreshes" = "Обновления";
@@ -634,14 +629,7 @@
 "claude.timeline.accessibility.count" = "%1$@: %2$@ раз";
 "claude.timeline.accessibility.failures" = "Сбоев: %1$@";
 "claude.refresh.every_minutes" = "Каждые %1$@ мин";
-"claude.status_line.calibration_detail" = "Периодически запрашивает официальный источник как запасной вариант; больший интервал помогает избежать ограничений";
-"claude.status_line.disable_confirm_title" = "Отключить нативную синхронизацию Claude Code?";
-"claude.status_line.disable_confirm_message" = "Лимит Claude будет обновляться только с фиксированным интервалом, а не сразу после каждого ответа.";
-"claude.status_line.disable_confirm_action" = "Отключить";
-"claude.status_line.disable_confirm_cancel" = "Отмена";
-"claude.status_line.disable_failed_title" = "Не удалось отключить нативную синхронизацию Claude Code";
-"claude.status_line.disable_failed_message" = "В statusLine Claude Code добавлены ваши собственные поля, и BalanceBar не может убрать свою команду, не потеряв их, поэтому синхронизация остаётся включённой. Отредактируйте statusLine в ~/.claude/settings.json вручную или удалите эти поля и повторите попытку.";
-"claude.status_line.disable_failed_ok" = "OK";
+"claude.quota.calibration_detail" = "Периодически запрашивает официальный источник как запасной вариант; больший интервал помогает избежать ограничений";
 
 // BalanceBar Mod realtime sync (Issue #597)
 "claude.mod_sync.title" = "BalanceBar Mod ускорение реального времени";
@@ -675,7 +663,7 @@
 "mod.uninstall.step1" = "Удалить Mod";
 "mod.uninstall.step2" = "Убрать источник";
 "mod.uninstall.done" = "Удалено ✓";
-"mod.uninstall.done_note" = "Квота теперь периодически запрашивается у официального источника. «Нативная синхронизация Claude Code» и другие плагины это не затрагивает.";
+"mod.uninstall.done_note" = "Квота теперь периодически запрашивается у официального источника. Другие плагины это не затрагивает.";
 "mod.failure.uninstall_command" = "Удаление не завершено. Выполните следующие команды в Терминале:";
 "mod.failure.copy_enable" = "Копировать команду включения";
 "mod.failure.inbox" = "Не удалось создать почтовый ящик снимков (недостаточно прав или другой владелец). Проверьте ~/Library/Application Support/BalanceBar/inbox и повторите попытку.";
@@ -711,7 +699,7 @@
 "mod.ui.refresh" = "Проверить снова";
 "mod.ui.retry" = "Повторить";
 "mod.ui.confirm_uninstall" = "Удалить BalanceBar Mod?";
-"mod.ui.confirm_uninstall_note" = "После удаления квота Claude будет периодически запрашиваться у официального источника, а не обновляться в реальном времени. «Нативная синхронизация Claude Code» и другие плагины это не затрагивает.";
+"mod.ui.confirm_uninstall_note" = "После удаления квота Claude будет периодически запрашиваться у официального источника, а не обновляться в реальном времени. Другие плагины это не затрагивает.";
 "mod.ui.confirm_uninstall_action" = "Удалить";
 "mod.ui.uninstall_reload_hint" = "В уже открытых сессиях можно выполнить команду ниже, чтобы удаление вступило в силу сразу.";
 "mod.ui.cancel" = "Отмена";

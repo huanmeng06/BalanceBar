@@ -509,7 +509,6 @@ final class AppPreferences {
     static let claudeOAuthValidityOptions: [TimeInterval] = [300, 600, 900, 1_800, 3_600]
     static let claudeLocalValidityOptions: [TimeInterval] = [60, 120, 300, 600]
     static let claudeOAuthValidityKey = "claudeOAuthValidity"
-    static let claudeStatusLineValidityKey = "claudeStatusLineValidity"
     static let claudeModValidityKey = "claudeModValidity"
 
     private func claudeValidity(_ key: String, options: [TimeInterval], fallback: TimeInterval) -> TimeInterval {
@@ -548,23 +547,15 @@ final class AppPreferences {
         }
         set { setClaudeValidity(newValue, key: Self.claudeOAuthValidityKey, options: Self.claudeOAuthValidityOptions, fallback: ClaudeSourceValidity.defaults.oauth) }
     }
-    var claudeStatusLineValidity: TimeInterval {
-        get { claudeValidity(Self.claudeStatusLineValidityKey, options: Self.claudeLocalValidityOptions, fallback: ClaudeSourceValidity.defaults.statusLine) }
-        set { setClaudeValidity(newValue, key: Self.claudeStatusLineValidityKey, options: Self.claudeLocalValidityOptions, fallback: ClaudeSourceValidity.defaults.statusLine) }
-    }
     var claudeModValidity: TimeInterval {
         get { claudeValidity(Self.claudeModValidityKey, options: Self.claudeLocalValidityOptions, fallback: ClaudeSourceValidity.defaults.mod) }
         set { setClaudeValidity(newValue, key: Self.claudeModValidityKey, options: Self.claudeLocalValidityOptions, fallback: ClaudeSourceValidity.defaults.mod) }
     }
     var claudeSourceValidity: ClaudeSourceValidity {
-        ClaudeSourceValidity(oauth: claudeOAuthValidity, statusLine: claudeStatusLineValidity, mod: claudeModValidity)
+        ClaudeSourceValidity(oauth: claudeOAuthValidity, mod: claudeModValidity)
     }
     /// Saved values below the shortest option (legacy 1 s / 2 s) read as 3 s, so scheduling matches the selector.
     var codexUsageRefreshInterval: TimeInterval { get { max(Self.refreshIntervalOptions[0], positiveDouble("codexUsageRefreshInterval", default: 3)) } set { defaults.set(newValue, forKey: "codexUsageRefreshInterval") } }
-    /// Enables the native Claude Code statusLine bridge.
-    /// On by default; `claudeStatusLineEnabledIsConfigured` tells a first launch apart from a saved choice.
-    var claudeStatusLineEnabledIsConfigured: Bool { defaults.object(forKey: "claudeStatusLineEnabled") != nil }
-    var claudeStatusLineEnabled: Bool { get { bool("claudeStatusLineEnabled", default: true) } set { defaults.set(newValue, forKey: "claudeStatusLineEnabled") } }
     var showQuickSwitchMenu: Bool { get { bool("showQuickSwitchMenu", default: true) } set { defaults.set(newValue, forKey: "showQuickSwitchMenu") } }
     var showOpenCCSwitchMenu: Bool { get { bool("showOpenCCSwitchMenu", default: true) } set { defaults.set(newValue, forKey: "showOpenCCSwitchMenu") } }
     var showOpenChatGPTMenu: Bool { get { bool("showOpenChatGPTMenu", default: true) } set { defaults.set(newValue, forKey: "showOpenChatGPTMenu") } }
@@ -1323,15 +1314,13 @@ enum RefreshPolicy {
 /// How long a reading from each Claude source stays valid, in seconds.
 struct ClaudeSourceValidity: Equatable {
     var oauth: TimeInterval
-    var statusLine: TimeInterval
     var mod: TimeInterval
 
-    static let defaults = ClaudeSourceValidity(oauth: 600, statusLine: 120, mod: 120)
+    static let defaults = ClaudeSourceValidity(oauth: 600, mod: 120)
 
     func seconds(for source: StatusSlotLiveSource) -> TimeInterval {
         switch source {
         case .oauthAPI: return oauth
-        case .statusLine: return statusLine
         case .mod: return mod
         }
     }

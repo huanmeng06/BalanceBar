@@ -537,14 +537,8 @@ final class DashboardGeneralPage {
             target: input.relay,
             action: #selector(DashboardPreferencePageRelay.manualRefresh(_:))
         )
-        let claudeStatusLineSwitch = DashboardSettingsComponents.makeSwitch(
-            identifier: "claudeStatusLineEnabled",
-            isOn: input.preferences.claudeStatusLineEnabled,
-            target: input.relay,
-            action: #selector(DashboardPreferencePageRelay.toggle(_:))
-        )
         // One "Refresh" heading over two cards: the shared Codex/API selectors, then the
-        // Claude rows (calibration, native sync and the Mod status).
+        // Claude rows (calibration and the Mod status).
         let refreshing = SettingsSectionView(
             title: tr(.keyDashboardGeneralAndRefreshPagesRefresh),
             contentViews: [
@@ -566,16 +560,10 @@ final class DashboardGeneralPage {
             title: "",
             contentViews: [
                 SettingsRowView(
-                    title: tr(.keyClaudeStatusLineCalibration),
-                    detail: tr(.keyClaudeStatusLineCalibrationDetail),
+                    title: tr(.keyClaudeQuotaCalibration),
+                    detail: tr(.keyClaudeQuotaCalibrationDetail),
                     titleAccessory: DashboardRefreshPage.agentIconStrip(["Claude"], tag: tr(.keyClaudeSourceTagAllClients)),
                     accessoryView: refreshControls(claudeCalibrationPopup)
-                ),
-                SettingsRowView(
-                    title: tr(.keyClaudeStatusLineEnabled),
-                    detail: tr(.keyClaudeStatusLineDescription),
-                    titleAccessory: DashboardRefreshPage.agentIconStrip(["Claude"], tag: tr(.keyClaudeSourceTagTerminal)),
-                    accessoryView: claudeStatusLineSwitch
                 ),
                 modRows.statusRow
             ]
@@ -1407,36 +1395,6 @@ final class AgentIconStripView: NSView {
                 drawable.draw(in: rect)
             }
             x += iconSize.width + Self.spacing
-        }
-    }
-}
-
-/// The switch was turned off but settings.json still runs the wrapper: put the switch back on and tell the user.
-enum ClaudeStatusLineDisableFailurePresenter {
-    static func present() {
-        func switches(in view: NSView) -> [NSSwitch] {
-            (view as? NSSwitch).map { [$0] } ?? view.subviews.flatMap(switches(in:))
-        }
-        for window in NSApp.windows {
-            guard let content = window.contentView else { continue }
-            for sync in switches(in: content) where sync.identifier?.rawValue == "claudeStatusLineEnabled" {
-                // Use AppKit's animator proxy so the restore uses the native
-                // switch animation instead of a state jump that can leave the
-                // macOS 26 hosted knob hidden.
-                sync.animator().state = .on
-            }
-        }
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = tr(.keyClaudeStatusLineDisableFailedTitle)
-        alert.informativeText = tr(.keyClaudeStatusLineDisableFailedMessage)
-        alert.addButton(withTitle: tr(.keyClaudeStatusLineDisableFailedOK))
-        // Let the native switch restore animation finish before taking over
-        // the run loop with the modal alert.
-        DispatchQueue.main.asyncAfter(
-            deadline: .now() + DashboardSettingsComponents.switchAnimationDuration
-        ) {
-            alert.runModal()
         }
     }
 }

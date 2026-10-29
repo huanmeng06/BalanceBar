@@ -328,7 +328,7 @@ final class QuotaMergeEngineTests: XCTestCase {
         XCTAssertEqual(model.window(for: .fiveHour)?.state, .inProgress)
     }
 
-    /// Real data: OAuth reports `…600.483` while statusLine reports `…600`. Rounding both
+    /// Real data: OAuth reports `…600.483` while the Mod reports `…600`. Rounding both
     /// would split fractions of .5 and above into different seconds.
     func testGradeBMatchesFractionalOfficialResetWithinOneSecond() {
         let engine = makeEngine()

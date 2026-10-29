@@ -491,13 +491,10 @@ enum DashboardSettingsSearchCatalog {
                 .keyDashboardGeneralAndRefreshPagesLaunchWithChatGPT,
                 .keyDashboardGeneralAndRefreshPagesStartup,
                 .keyDashboardGeneralAndRefreshPagesRefresh,
-                .keyClaudeStatusLineCalibration,
+                .keyClaudeQuotaCalibration,
                 .keyClaudeSourceTagAllClients,
-                .keyClaudeSourceTagTerminal,
                 .keyClaudeSourceTagDesktop,
-                .keyClaudeStatusLineCalibrationDetail,
-                .keyClaudeStatusLineEnabled,
-                .keyClaudeStatusLineDescription,
+                .keyClaudeQuotaCalibrationDetail,
                 .keyClaudeModSyncTitle,
                 .keyClaudeModSyncManage,
                 .modSyncStatusDetecting,
@@ -593,7 +590,6 @@ enum DashboardSettingsSearchCatalog {
             return [
                 .keyDashboardAdvancedPageSourceValidity,
                 .keyDashboardAdvancedPageSourceValidityOauth,
-                .keyDashboardAdvancedPageSourceValidityNativeSync,
                 .keyDashboardAdvancedPageSourceValidityMod,
                 .keyDashboardAdvancedPageDiagnostics,
                 .keyDashboardAdvancedPageDebugLog

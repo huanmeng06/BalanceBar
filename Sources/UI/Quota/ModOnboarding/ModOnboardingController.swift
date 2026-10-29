@@ -104,7 +104,7 @@ enum ModOnboardingText: String, CaseIterable {
         case .refresh: return "重新检测"
         case .retry: return "重试"
         case .confirmUninstall: return "卸载 BalanceBar Mod？"
-        case .confirmUninstallNote: return "卸载后，Claude 额度改为定时向官方查询，不再实时更新。「Claude Code 原生同步」和其他插件不受影响。"
+        case .confirmUninstallNote: return "卸载后，Claude 额度改为定时向官方查询，不再实时更新。其他插件不受影响。"
         case .confirmUninstallAction: return "卸载"
         case .uninstallReloadHint: return "已有会话可运行下面的命令，让卸载立即生效。"
         case .cancel: return "取消"
@@ -143,7 +143,7 @@ enum ModOnboardingText: String, CaseIterable {
         case .uninstallStep1: return "卸载 Mod"
         case .uninstallStep2: return "移除安装来源"
         case .uninstallDone: return "已卸载 ✓"
-        case .uninstallDoneNote: return "额度已改为定时向官方查询。「Claude Code 原生同步」和其他插件不受影响。"
+        case .uninstallDoneNote: return "额度已改为定时向官方查询。其他插件不受影响。"
         case .failureUninstall: return "卸载未完成。请在终端中运行下面的命令："
         case .copyEnableCommands: return "复制启用命令"
         case .failureInbox: return "快照收件箱无法创建（权限不足或所有者不符）。请检查 ~/Library/Application Support/BalanceBar/inbox 后重试。"
@@ -257,7 +257,7 @@ final class ModOnboardingController {
     }
 
     /// Uninstalls this plugin's user-scope registration and the marketplace entry the
-    /// install flow created. Nothing else is touched: no other plugin, no statusLine.
+    /// install flow created. Nothing else is touched: no other plugin.
     func startUninstall() {
         guard !uninstallInFlight, !installInFlight else { return }
         uninstallInFlight = true

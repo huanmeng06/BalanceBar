@@ -4,8 +4,6 @@ import AppKit
 enum StatusSlotLiveSource: Equatable {
     /// The official OAuth usage API, read recently.
     case oauthAPI
-    /// Claude Code's statusLine (native sync).
-    case statusLine
     /// The BalanceBar Mod's snapshots.
     case mod
 }
@@ -85,7 +83,6 @@ enum StatusSlotText: String, CaseIterable {
     case agoHours = "quota.status.ago.hours"
     case agoDays = "quota.status.ago.days"
     case sourceOAuthAPI = "quota.status.source.oauth_api"
-    case sourceStatusLine = "quota.status.source.native_sync"
     case sourceMod = "quota.status.source.mod"
     case resetPending = "quota.status.reset_pending"
     case resetPendingShort = "quota.status.reset_pending_short"
@@ -107,7 +104,6 @@ enum StatusSlotText: String, CaseIterable {
         case .agoHours: return "%@ 小时前"
         case .agoDays: return "%@ 天前"
         case .sourceOAuthAPI: return "OAuth API"
-        case .sourceStatusLine: return "原生同步"
         case .sourceMod: return "Mod"
         case .resetPending: return "预计已重置，等待确认"
         case .resetPendingShort: return "待确认"
@@ -161,7 +157,7 @@ enum StatusSlotAppearance {
 
 /// The card's top-right status indicator. Fixed width so the card title never shifts.
 final class StatusSlotView: NSView {
-    /// Fixed slot width, sized for the widest state ("● 实时 · 原生同步" in the longest language /
+    /// Fixed slot width, sized for the widest state ("● 实时 · OAuth API" in the longest language /
     /// "⚠︎ 88:88:88") at the same 12 pt as the plain refresh time. It is anchored at the right edge
     /// of the card's refresh-time column and extends leftwards; the card title shrinks to make room.
     static let fixedWidth: CGFloat = 156
@@ -256,8 +252,8 @@ final class StatusSlotView: NSView {
         case let .realtime(source, at):
             base = source == .oauthAPI ? String(format: localize(.hoverOfficial), time(at)) : localize(.hoverRealtime)
         case let .official(at, source):
-            // A stale Mod / statusLine reading is local data, not an official one.
-            let key: StatusSlotText = (source == .mod || source == .statusLine) ? .hoverLocal : .hoverOfficial
+            // A stale Mod reading is local data, not an official one.
+            let key: StatusSlotText = source == .mod ? .hoverLocal : .hoverOfficial
             base = String(format: localize(key), time(at))
         }
         var text = base
@@ -275,7 +271,6 @@ final class StatusSlotView: NSView {
     private func sourceName(_ source: StatusSlotLiveSource) -> String {
         switch source {
         case .oauthAPI: return localize(.sourceOAuthAPI)
-        case .statusLine: return localize(.sourceStatusLine)
         case .mod: return localize(.sourceMod)
         }
     }

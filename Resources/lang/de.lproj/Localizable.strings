@@ -142,7 +142,6 @@
 "dashboard.advanced.page.records_runtime_status_and_errors" = "Zeichnet Laufzeitstatus und Fehler auf";
 "dashboard.advanced.page.source_validity" = "Gültigkeit je Claude-Datenquelle";
 "dashboard.advanced.page.source_validity_oauth" = "Gültigkeit: Offizielles Kontingent";
-"dashboard.advanced.page.source_validity_native_sync" = "Gültigkeit: Native Synchronisierung";
 "dashboard.advanced.page.source_validity_mod" = "Gültigkeit: Mod-Push";
 "dashboard.advanced.page.source_validity_warning" = "Gültigkeit ist kurz: Nach Ablauf kann es bis zur nächsten offiziellen Kalibrierung (alle %1$@ Min.) dauern, bis neue Daten eintreffen. Empfohlen: mindestens %2$@ Min.";
 "dashboard.advanced.page.validity_minutes" = "%1$@ Min.";
@@ -586,7 +585,6 @@
 "quota.status.ago.hours" = "vor %1$@ Std.";
 "quota.status.ago.days" = "vor %1$@ T.";
 "quota.status.source.oauth_api" = "OAuth API";
-"quota.status.source.native_sync" = "Nativ";
 "quota.status.source.mod" = "Mod";
 "quota.status.hover.refreshing" = "Aktuelles Kontingent wird gelesen";
 "quota.status.hover.error" = "Aktualisierung fehlgeschlagen. Angezeigt werden die Daten von %1$@";
@@ -606,11 +604,8 @@
 "status.item.controller.refresh_now_recent_result" = "Gerade aktualisiert · Wiederholung in %1$@ s";
 "status.item.controller.refresh_now_awaiting_confirmation" = "Warte auf offizielle Bestätigung des Zurücksetzens; klicken, um jetzt zu bestätigen";
 "status.item.controller.refresh_now_out_of_tokens" = "Zu häufig aktualisiert; Wiederholung in %1$@ s möglich";
-"claude.status_line.enabled" = "Native Synchronisierung mit Claude Code";
-"claude.status_line.description" = "Wird nach jeder Antwort von Claude Code gesendet; kein Plugin nötig";
-"claude.status_line.calibration" = "Abgleich des offiziellen Claude-Kontingents";
+"claude.quota.calibration" = "Abgleich des offiziellen Claude-Kontingents";
 "claude.source_tag.all_clients" = "Alle Clients";
-"claude.source_tag.terminal" = "Terminal-CLI";
 "claude.source_tag.desktop" = "Desktop zuerst";
 "claude.timeline.title" = "Datenquellen-Monitor";
 "claude.timeline.now" = "Jetzt";
@@ -620,7 +615,7 @@
 "claude.timeline.failure.unauthorized" = "Anmeldung abgelaufen";
 "claude.timeline.failure.server_error" = "Serverfehler";
 "claude.timeline.failure.missing_credentials" = "Nicht angemeldet";
-"claude.timeline.tooltip.oauth_rule" = "Solange Nativ- oder Mod-Daten gültig sind, fragt BalanceBar die offizielle API nicht ab; kalibriert wird trotzdem mindestens stündlich.";
+"claude.timeline.tooltip.oauth_rule" = "Solange Mod-Daten gültig sind, fragt BalanceBar die offizielle API nicht ab; kalibriert wird trotzdem mindestens stündlich.";
 "claude.timeline.hover.time" = "Zeit";
 "claude.timeline.hover.duration" = "Dauer";
 "claude.timeline.hover.refreshes" = "Aktualisiert";
@@ -634,14 +629,7 @@
 "claude.timeline.accessibility.count" = "%1$@ %2$@-mal";
 "claude.timeline.accessibility.failures" = "%1$@ Fehlerphasen";
 "claude.refresh.every_minutes" = "Alle %1$@ Min.";
-"claude.status_line.calibration_detail" = "Fragt die offizielle Quelle zeitgesteuert als Rückfall ab; längere Intervalle vermeiden Rate-Limits";
-"claude.status_line.disable_confirm_title" = "Native Claude-Code-Synchronisierung ausschalten?";
-"claude.status_line.disable_confirm_message" = "Das Claude-Kontingent wird dann nur im festen Intervall aktualisiert und nicht direkt nach jeder Antwort.";
-"claude.status_line.disable_confirm_action" = "Ausschalten";
-"claude.status_line.disable_confirm_cancel" = "Abbrechen";
-"claude.status_line.disable_failed_title" = "Native Claude-Code-Synchronisierung konnte nicht ausgeschaltet werden";
-"claude.status_line.disable_failed_message" = "Du hast der statusLine von Claude Code eigene Felder hinzugefügt. BalanceBar kann seinen Befehl nicht entfernen, ohne sie zu verlieren, daher bleibt die Synchronisierung an. Bearbeite statusLine in ~/.claude/settings.json selbst oder entferne die Felder und versuche es erneut.";
-"claude.status_line.disable_failed_ok" = "OK";
+"claude.quota.calibration_detail" = "Fragt die offizielle Quelle zeitgesteuert als Rückfall ab; längere Intervalle vermeiden Rate-Limits";
 
 // BalanceBar Mod realtime sync (Issue #597)
 "claude.mod_sync.title" = "BalanceBar Mod Echtzeit-Boost";
@@ -675,7 +663,7 @@
 "mod.uninstall.step1" = "Mod deinstallieren";
 "mod.uninstall.step2" = "Quelle entfernen";
 "mod.uninstall.done" = "Deinstalliert ✓";
-"mod.uninstall.done_note" = "Das Kontingent wird jetzt zeitgesteuert bei der offiziellen Quelle abgefragt. „Native Synchronisierung mit Claude Code“ und andere Plugins bleiben unberührt.";
+"mod.uninstall.done_note" = "Das Kontingent wird jetzt zeitgesteuert bei der offiziellen Quelle abgefragt. Andere Plugins bleiben unberührt.";
 "mod.failure.uninstall_command" = "Die Deinstallation ist nicht abgeschlossen. Führe die folgenden Befehle im Terminal aus:";
 "mod.failure.copy_enable" = "Aktivierungsbefehl kopieren";
 "mod.failure.inbox" = "Der Snapshot-Eingang konnte nicht erstellt werden (unzureichende Berechtigungen oder falscher Besitzer). Prüfe ~/Library/Application Support/BalanceBar/inbox und versuche es erneut.";
@@ -711,7 +699,7 @@
 "mod.ui.refresh" = "Erneut prüfen";
 "mod.ui.retry" = "Wiederholen";
 "mod.ui.confirm_uninstall" = "BalanceBar Mod deinstallieren?";
-"mod.ui.confirm_uninstall_note" = "Nach der Deinstallation wird das Claude-Kontingent zeitgesteuert bei der offiziellen Quelle abgefragt, statt in Echtzeit aktualisiert zu werden. „Native Synchronisierung mit Claude Code“ und andere Plugins bleiben unberührt.";
+"mod.ui.confirm_uninstall_note" = "Nach der Deinstallation wird das Claude-Kontingent zeitgesteuert bei der offiziellen Quelle abgefragt, statt in Echtzeit aktualisiert zu werden. Andere Plugins bleiben unberührt.";
 "mod.ui.confirm_uninstall_action" = "Deinstallieren";
 "mod.ui.uninstall_reload_hint" = "Bestehende Sitzungen können den folgenden Befehl ausführen, damit die Deinstallation sofort wirksam wird.";
 "mod.ui.cancel" = "Abbrechen";

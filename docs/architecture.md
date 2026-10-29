@@ -203,10 +203,13 @@ requests, persisted account-scoped success state, and failure backoff. The
 Coordinator only declares whether Claude is being monitored; the scheduler owns
 the next one-shot timer and does not depend on the three-second UI refresh loop.
 
-When enabled, Claude Code's `statusLine` command can be wrapped by the bundled
-`balancebar-statusline` helper. The helper forwards the original command's
-stdin/stdout/stderr and sends a small, non-secret payload to the app's per-user
-Unix socket. `ClaudeStatusLineSource` validates session, epoch, reset-time and
-monotonicity rules before submitting grade-B observations to the existing merge
-engine. `ClaudeRealtimeTracker` extends scheduler suppression only after both
-standard windows were actually displayed.
+Claude quota has exactly two sources: the official OAuth usage API and the
+BalanceBar Mod. The Mod writes schema-v1 snapshots into a shared inbox directory;
+`SnapshotInbox` verifies the account and quota cycle fail-closed before the
+pipeline submits them to the merge engine as grade-B observations, and a Mod
+lifecycle check suspends them while the Mod is uninstalled or disabled.
+`ClaudeRealtimeTracker` extends scheduler suppression only after both standard
+windows were actually displayed from a Mod snapshot; when that evidence expires
+the scheduler falls back to the OAuth read. There is no third local source: the
+former Claude Code `statusLine` bridge (helper, socket, installer and settings
+switch) was removed in Issue #628.

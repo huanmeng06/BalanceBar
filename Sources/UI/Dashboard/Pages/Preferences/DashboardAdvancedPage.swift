@@ -67,7 +67,6 @@ final class DashboardAdvancedPage {
     /// Updates the local-source warning without rebuilding the cached Advanced page.
     func refreshSourceValidityWarnings(preferences: AppPreferences) {
         let values: [(String, TimeInterval)] = [
-            (AppPreferences.claudeStatusLineValidityKey, preferences.claudeStatusLineValidity),
             (AppPreferences.claudeModValidityKey, preferences.claudeModValidity),
         ]
         for (key, value) in values {
@@ -153,11 +152,10 @@ final class DashboardAdvancedPage {
         let validity = input.preferences.claudeSourceValidity
         let popups = [
             popup(AppPreferences.claudeOAuthValidityKey, input.preferences.claudeOAuthValidityChoices, validity.oauth),
-            popup(AppPreferences.claudeStatusLineValidityKey, AppPreferences.claudeLocalValidityOptions, validity.statusLine),
             popup(AppPreferences.claudeModValidityKey, AppPreferences.claudeLocalValidityOptions, validity.mod)
         ]
         oauthValidityPopup = popups[0]
-        // The three selectors share one right-aligned column of identical width.
+        // The two selectors share one right-aligned column of identical width.
         let width = ceil(max(108, popups.map { $0.fittingSize.width }.max() ?? 108))
         let controls = popups.map { popup -> NSStackView in
             popup.translatesAutoresizingMaskIntoConstraints = false
@@ -182,17 +180,12 @@ final class DashboardAdvancedPage {
                 titleAccessory: DashboardRefreshPage.agentIconStrip(["Claude"]),
                 accessoryView: controls[0]),
             SettingsRowView(
-                title: tr(.keyDashboardAdvancedPageSourceValidityNativeSync),
-                titleAccessory: DashboardRefreshPage.agentIconStrip(["Claude"]),
-                accessoryView: controls[1]),
-            SettingsRowView(
                 title: tr(.keyDashboardAdvancedPageSourceValidityMod),
                 titleAccessory: DashboardRefreshPage.agentIconStrip(["Claude"]),
-                accessoryView: controls[2]),
+                accessoryView: controls[1]),
         ]
         sourceValidityRows = [
-            AppPreferences.claudeStatusLineValidityKey: rows[1],
-            AppPreferences.claudeModValidityKey: rows[2],
+            AppPreferences.claudeModValidityKey: rows[1],
         ]
         refreshSourceValidityWarnings(preferences: input.preferences)
         return SettingsSectionView(

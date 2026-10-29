@@ -23,9 +23,8 @@ final class ClaudeSourceTimelineViewTests: XCTestCase {
 
     func testLanesFollowTheSketchOrderAndTheNowLineIsTheRightEdge() {
         let layout = layout()
-        XCTAssertEqual(ClaudeSourceTimelineLayout.lanes, [.mod, .statusLine, .oauthAPI])
-        XCTAssertLessThan(layout.laneRect(.mod).minY, layout.laneRect(.statusLine).minY)
-        XCTAssertLessThan(layout.laneRect(.statusLine).minY, layout.laneRect(.oauthAPI).minY)
+        XCTAssertEqual(ClaudeSourceTimelineLayout.lanes, [.mod, .oauthAPI])
+        XCTAssertLessThan(layout.laneRect(.mod).minY, layout.laneRect(.oauthAPI).minY)
         XCTAssertEqual(layout.nowX, 660)
         XCTAssertEqual(layout.x(for: now.addingTimeInterval(-3_600)), 60)
         XCTAssertEqual(layout.x(for: now.addingTimeInterval(-1_800)), 360)
@@ -65,7 +64,7 @@ final class ClaudeSourceTimelineViewTests: XCTestCase {
 
     func testAReadingThatJustArrivedStaysLeftOfTheNowLine() {
         let layout = layout(
-            readings: [reading(.statusLine, -1, 120)],
+            readings: [reading(.mod, -1, 120)],
             failures: [Run(start: now.addingTimeInterval(-1), end: nil, kind: .network)])
         let bar = try! XCTUnwrap(layout.bars.first)
         XCTAssertEqual(bar.rect.maxX, layout.nowX, accuracy: 0.01)
@@ -80,8 +79,6 @@ final class ClaudeSourceTimelineViewTests: XCTestCase {
         let layout = layout(readings: [
             reading(.mod, -1_300, -1_200),       // Mod expires at -1200 …
             reading(.oauthAPI, -1_200, -600),    // … exactly when the official read takes over
-            reading(.statusLine, -900, -700),    // 100 s from anything: no junction
-            reading(.statusLine, -60, 60),       // live: its "end" is only cut off by now
             reading(.oauthAPI, -60, 300),
         ])
         XCTAssertEqual(layout.junctions.count, 1)
@@ -224,9 +221,7 @@ final class ClaudeSourceTimelineViewTests: XCTestCase {
             timeline: .init(
                 readings: [-3_300, -2_700, -2_100].map { reading(.oauthAPI, $0, $0 + 600) }
                     + [reading(.oauthAPI, -1_100, -500), reading(.oauthAPI, -300, 300)]
-                    + stride(from: -1_900.0, to: -1_500, by: 20).map { reading(.statusLine, $0, $0 + 120) }
                     + stride(from: -1_800.0, to: -1_400, by: 15).map { reading(.mod, $0, $0 + 120) }
-                    + stride(from: -420.0, to: -60, by: 20).map { reading(.statusLine, $0, $0 + 120) }
                     + stride(from: -400.0, to: -5, by: 10).map { reading(.mod, $0, $0 + 120) },
                 failures: [Run(start: now.addingTimeInterval(-1_400), end: now.addingTimeInterval(-1_100), kind: .network)]),
             status: .realtime(.mod, at: now.addingTimeInterval(-5)))
@@ -371,7 +366,7 @@ final class ClaudeSourceTimelineViewTests: XCTestCase {
                 let layout = view.makeLayout()
                 XCTAssertGreaterThan(layout.plot.width, layout.plot.minX, "\(language) at \(width)pt leaves most of the width to the chart")
                 for source in ClaudeSourceTimelineLayout.lanes {
-                    let name = localize(source == .mod ? .sourceMod : source == .statusLine ? .sourceStatusLine : .sourceOAuthAPI)
+                    let name = localize(source == .mod ? .sourceMod : .sourceOAuthAPI)
                     let textWidth = (name as NSString).size(withAttributes: [.font: ClaudeSourceTimelineView.labelFont]).width
                     XCTAssertLessThanOrEqual(textWidth, layout.plot.minX, "\(language) lane name \(name) overlaps the bars")
                 }

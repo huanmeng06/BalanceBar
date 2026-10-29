@@ -97,12 +97,6 @@ private final class LockedLines {
     var all: [String] { lock.lock(); defer { lock.unlock() }; return values }
 }
 
-/// Controllable stand-in for Claude Code's per-process session registry.
-private final class StubSessionStarts: ClaudeSessionStartLookup {
-    var starts: [String: Date] = [:]
-    func startedAt(sessionID: String) -> Date? { starts[sessionID] }
-}
-
 final class ClaudeQuotaPipelineTests: XCTestCase {
     private var directory: URL!
     private var session: URLSession!
@@ -112,8 +106,6 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
     private var pipelines: [ClaudeQuotaPipeline] = []
     private var lastIdentity: ClaudeAccountIdentityProvider!
     private var lastInbox: SnapshotInbox?
-    private var lastStatusLineSessions: StubSessionStarts?
-    private var lastStatusLineSocketURL: URL?
     private let diagnosticLines = LockedLines()
 
     private static let start = Date(timeIntervalSince1970: 1_700_000_000) // 2023-11-14T22:13:20Z
@@ -159,11 +151,6 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         pipelines.removeAll()
         session.invalidateAndCancel()
         try? FileManager.default.removeItem(at: directory)
-        if let socket = lastStatusLineSocketURL {
-            try? FileManager.default.removeItem(at: socket.deletingLastPathComponent())
-        }
-        lastStatusLineSocketURL = nil
-        lastStatusLineSessions = nil
         super.tearDown()
     }
 
@@ -179,8 +166,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         realtimeTracker: ClaudeRealtimeTracker? = nil,
         configuration: FetchSchedulerConfiguration? = nil,
         confirmationTimer: SchedulerTimer = DispatchSchedulerTimer(),
-        statusLineEnabled: Bool = false,
-        withTestStatusLine: Bool = false,
+        withTracker: Bool = false,
         withInbox: Bool = false,
         sourceValidity: @escaping () -> ClaudeSourceValidity = { .defaults }
     ) -> ClaudeQuotaPipeline {
@@ -191,22 +177,9 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         lastIdentity = identity
         var resolved = configuration ?? FetchSchedulerConfiguration()
         resolved.coalescingWindow = 0.02
-        let tracker: ClaudeRealtimeTracker?
-        let statusLineSource: ClaudeStatusLineSource?
-        if withTestStatusLine {
-            tracker = realtimeTracker ?? ClaudeRealtimeTracker(now: { [clock] in clock!.now })
-            let sessions = StubSessionStarts()
-            lastStatusLineSessions = sessions
-            // The listener chmods its own directory, so give the socket a dedicated one.
-            lastStatusLineSocketURL = URL(fileURLWithPath: "/tmp/bb596-\(UUID().uuidString.prefix(6))/s.sock")
-            statusLineSource = ClaudeStatusLineSource(
-                accountProvider: identity, tracker: tracker!, socketURL: lastStatusLineSocketURL!,
-                sessionStarts: sessions, sessionStaleInterval: 7_200, endedSessionCheckInterval: 7_200,
-                now: { [clock] in clock!.now })
-        } else {
-            tracker = realtimeTracker
-            statusLineSource = nil
-        }
+        let tracker = withTracker
+            ? (realtimeTracker ?? ClaudeRealtimeTracker(now: { [clock] in clock!.now }))
+            : realtimeTracker
         let inbox = withInbox
             ? SnapshotInbox(
                 inboxDirectory: inboxDirectoryURL, identity: identity,
@@ -219,9 +192,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
             stateDirectory: directory.appendingPathComponent("state", isDirectory: true),
             schedulerClock: clock, confirmationTimer: confirmationTimer, schedulerConfiguration: resolved,
             realtimeTracker: tracker,
-            statusLineSource: statusLineSource,
             snapshotInbox: inbox,
-            statusLineEnabled: statusLineEnabled,
             sourceValidity: sourceValidity,
             now: { [clock] in clock!.now },
             diagnostics: { [diagnosticLines] message, _ in diagnosticLines.append(message) })
@@ -486,7 +457,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
 
     func testManualRefreshNoticeIgnoresLocalDataOlderThanTheManualWindowEvenIfStillValid() {
         let tracker = ClaudeRealtimeTracker(
-            validity: { ClaudeSourceValidity(oauth: 600, statusLine: 600, mod: 600) },
+            validity: { ClaudeSourceValidity(oauth: 600, mod: 600) },
             now: { [clock] in clock!.now })
         let pipeline = makePipeline(realtimeTracker: tracker)
         tracker.recordTrustedObservation(window: .fiveHour, observedAt: Self.start, epoch: .initial)
@@ -904,7 +875,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
 
     func testModSnapshotDisplaysAndSuppressesAutomaticReadsWhileFresh() throws {
         let pipeline = makePipeline(
-            configuration: claudeV1TestConfiguration, withTestStatusLine: true, withInbox: true)
+            configuration: claudeV1TestConfiguration, withTracker: true, withInbox: true)
         pipeline.start()
         pipeline.requestFetch(reason: .initial)
         _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
@@ -970,7 +941,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
 
     func testModReadingBelowTheOfficialValueWithinToleranceStillCountsAsLiveEvidence() throws {
         let pipeline = makePipeline(
-            configuration: claudeV1TestConfiguration, withTestStatusLine: true, withInbox: true)
+            configuration: claudeV1TestConfiguration, withTracker: true, withInbox: true)
         pipeline.start()
         pipeline.requestFetch(reason: .initial)
         _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
@@ -1161,40 +1132,6 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         _ = try XCTUnwrap(waitForState(pipeline) { $0.display.window(for: .fiveHour)?.usedPercentage == 27 })
     }
 
-    func testCrossSourceNativeRegressionIsRejectedInBothDirections() throws {
-        let pipeline = makePipeline(
-            configuration: claudeV1TestConfiguration, statusLineEnabled: true,
-            withTestStatusLine: true, withInbox: true)
-        lastStatusLineSessions?.starts["s1"] = Self.start.addingTimeInterval(1)
-        lastStatusLineSessions?.starts["s2"] = Self.start.addingTimeInterval(2)
-        pipeline.start()
-        pipeline.requestFetch(reason: .initial)
-        _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
-
-        // statusLine moves the display up; a lower Mod snapshot must not pull it back.
-        deliverStatusLine(session: "s1", five: 26, seven: 42, at: Self.start.addingTimeInterval(5))
-        _ = try XCTUnwrap(waitForState(pipeline) { $0.display.window(for: .fiveHour)?.usedPercentage == 26 })
-        try placeModSnapshot(five: 24, seven: 42, observedAt: Self.start.addingTimeInterval(10))
-        XCTAssertTrue(pollUntil {
-            self.diagnosticLines.all.contains { $0.contains("reason=usage_decreased_within_cycle") }
-        })
-        quiet(pipeline)
-        XCTAssertEqual(pipeline.latestState?.display.window(for: .fiveHour)?.usedPercentage, 26)
-
-        // The Mod takes over at the same value (a replay merges, the source flips), and a
-        // lower value from another statusLine session must not pull the display back either.
-        clock.advance(by: 10)
-        try placeModSnapshot(five: 26, seven: 42, observedAt: Self.start.addingTimeInterval(15))
-        _ = try XCTUnwrap(waitForState(pipeline) { $0.updatedAt == Self.start.addingTimeInterval(15) })
-        deliverStatusLine(session: "s2", five: 25, seven: 42, at: Self.start.addingTimeInterval(20))
-        XCTAssertTrue(pollUntil {
-            let lines = self.diagnosticLines.all
-            return lines.filter { $0.contains("reason=usage_decreased_within_cycle") }.count >= 2
-        })
-        quiet(pipeline)
-        XCTAssertEqual(pipeline.latestState?.display.window(for: .fiveHour)?.usedPercentage, 26)
-    }
-
     func testModSnapshotUnverifiableAgainstOfficialCycleFallsBackToOfficial() throws {
         let tracker = ClaudeRealtimeTracker(now: { [clock] in clock!.now })
         let pipeline = makePipeline(realtimeTracker: tracker, configuration: claudeV1TestConfiguration, withInbox: true)
@@ -1232,28 +1169,9 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         XCTAssertEqual(attributed.display.window(for: .fiveHour)?.usedPercentage, 24)
     }
 
-    func testStatusLinePartialWindowUpdateKeepsRealtime() throws {
+    func testFreshModSnapshotOverridesUnauthorizedErrorStatus() throws {
         let pipeline = makePipeline(
-            configuration: claudeV1TestConfiguration, statusLineEnabled: true,
-            withTestStatusLine: true, withInbox: true)
-        lastStatusLineSessions?.starts["s1"] = Self.start.addingTimeInterval(1)
-        pipeline.start()
-        pipeline.requestFetch(reason: .initial)
-        _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
-
-        // statusLine re-renders report both windows whenever any of them changed; a window
-        // whose integer percentage did not move is still part of that fresh report.
-        deliverStatusLine(session: "s1", five: 24, seven: 41, at: Self.start.addingTimeInterval(5))
-        let state = try XCTUnwrap(waitForState(pipeline) { $0.status.isNativeRealtime })
-        XCTAssertEqual(state.display.window(for: .fiveHour)?.usedPercentage, 24)
-        XCTAssertEqual(state.display.window(for: .sevenDay)?.usedPercentage, 41)
-    }
-
-    func testFreshStatusLineOverridesUnauthorizedErrorStatus() throws {
-        let pipeline = makePipeline(
-            configuration: claudeV1TestConfiguration, statusLineEnabled: true,
-            withTestStatusLine: true, withInbox: true)
-        lastStatusLineSessions?.starts["s1"] = Self.start.addingTimeInterval(1)
+            configuration: claudeV1TestConfiguration, withTracker: true, withInbox: true)
         pipeline.start()
         pipeline.requestFetch(reason: .initial)
         _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
@@ -1263,28 +1181,27 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         pipeline.requestFetch(reason: .manual)
         _ = try XCTUnwrap(waitForState(pipeline) { $0.failure == .unauthorized })
 
-        deliverStatusLine(session: "s1", five: 24, seven: 41, at: clock.now)
+        try placeModSnapshot(five: 24, seven: 41, observedAt: clock.now)
         let state = try XCTUnwrap(waitForState(pipeline) { $0.status.isNativeRealtime })
         XCTAssertEqual(state.failure, .unauthorized, "the official read is still paused; only the card status recovers")
 
         // Past the real-time freshness (the default 2 minutes) the reading is no longer valid
         // evidence, so the failure matters again and the slot shows how old the data is.
-        clock.advance(by: ClaudeSourceValidity.defaults.statusLine + 5)
+        clock.advance(by: ClaudeSourceValidity.defaults.mod + 5)
         pipeline.tick()
         pipeline.waitUntilIdle()
-        guard case .error(_, .statusLine?) = pipeline.latestState?.status else {
+        guard case .error(_, .mod?) = pipeline.latestState?.status else {
             return XCTFail("expected error once local data went stale, got \(String(describing: pipeline.latestState?.status))")
         }
     }
 
     func testLongerLocalValidityKeepsFailedReadsFromTurningTheCardRed() throws {
         var validity = ClaudeSourceValidity.defaults
-        validity.statusLine = 600
+        validity.mod = 600
         let tracker = ClaudeRealtimeTracker(validity: { validity }, now: { [clock] in clock!.now })
         let pipeline = makePipeline(
-            realtimeTracker: tracker, configuration: claudeV1TestConfiguration, statusLineEnabled: true,
-            withTestStatusLine: true, withInbox: true, sourceValidity: { validity })
-        lastStatusLineSessions?.starts["s1"] = Self.start.addingTimeInterval(1)
+            realtimeTracker: tracker, configuration: claudeV1TestConfiguration,
+            withInbox: true, sourceValidity: { validity })
         pipeline.start()
         pipeline.requestFetch(reason: .initial)
         _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
@@ -1292,7 +1209,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         clock.advance(by: 600)
         pipeline.requestFetch(reason: .manual)
         _ = try XCTUnwrap(waitForState(pipeline) { $0.failure == .unauthorized })
-        deliverStatusLine(session: "s1", five: 24, seven: 41, at: clock.now)
+        try placeModSnapshot(five: 24, seven: 41, observedAt: clock.now)
         _ = try XCTUnwrap(waitForState(pipeline) { $0.status.isNativeRealtime })
 
         clock.advance(by: 400) // well past the default 2 minutes, inside the chosen 10
@@ -1303,28 +1220,28 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
 
     func testSourceValidityChoiceDrivesTheStatusImmediately() throws {
         var validity = ClaudeSourceValidity.defaults
-        validity.statusLine = 300
+        validity.mod = 300
         let tracker = ClaudeRealtimeTracker(validity: { validity }, now: { [clock] in clock!.now })
         let pipeline = makePipeline(
-            realtimeTracker: tracker, configuration: claudeV1TestConfiguration, statusLineEnabled: true,
-            withTestStatusLine: true, withInbox: true, sourceValidity: { validity })
-        lastStatusLineSessions?.starts["s1"] = Self.start.addingTimeInterval(1)
+            realtimeTracker: tracker, configuration: claudeV1TestConfiguration,
+            withInbox: true, sourceValidity: { validity })
         pipeline.start()
         pipeline.requestFetch(reason: .initial)
         _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
         let at = Self.start.addingTimeInterval(5)
-        deliverStatusLine(session: "s1", five: 24, seven: 41, at: at)
+        clock.advance(by: 5)
+        try placeModSnapshot(five: 24, seven: 41, observedAt: at)
         _ = try XCTUnwrap(waitForState(pipeline) { $0.status.isNativeRealtime })
 
         clock.advance(by: 200) // 200 s old: stale by default, live under the chosen 5 minutes
         pipeline.tick()
         pipeline.waitUntilIdle()
-        XCTAssertEqual(pipeline.latestState?.status, .realtime(.statusLine, at: at))
+        XCTAssertEqual(pipeline.latestState?.status, .realtime(.mod, at: at))
 
-        validity.statusLine = 60
+        validity.mod = 60
         pipeline.sourceValidityChanged()
         pipeline.waitUntilIdle()
-        XCTAssertEqual(pipeline.latestState?.status, .official(at: at, source: .statusLine),
+        XCTAssertEqual(pipeline.latestState?.status, .official(at: at, source: .mod),
                        "shortening the validity takes effect without waiting for new data")
     }
 
@@ -1765,28 +1682,6 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         XCTAssertTrue(pipelineState { $0.status.isNativeRealtime }, "live again without a further snapshot")
     }
 
-    func testStatusLineReadingBecomesAgeAndSourceOnceItIsNoLongerLive() throws {
-        let pipeline = makePipeline(
-            configuration: claudeV1TestConfiguration, statusLineEnabled: true,
-            withTestStatusLine: true, withInbox: true)
-        lastStatusLineSessions?.starts["s1"] = Self.start.addingTimeInterval(1)
-        pipeline.start()
-        pipeline.requestFetch(reason: .initial)
-        _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
-
-        let at = Self.start.addingTimeInterval(5)
-        deliverStatusLine(session: "s1", five: 24, seven: 41, at: at)
-        let live = try XCTUnwrap(waitForState(pipeline) { $0.status.liveSource == .statusLine })
-        XCTAssertEqual(live.status, .realtime(.statusLine, at: at))
-
-        // Past the two-minute freshness the card keeps the values but says how old they are and who
-        // produced them, instead of a bare clock time.
-        clock.advance(by: 125)
-        pipeline.tick()
-        pipeline.waitUntilIdle()
-        XCTAssertEqual(pipeline.latestState?.status, .official(at: at, source: .statusLine))
-    }
-
     /// A Mod reading that moved backwards inside the cycle is rejected for that window only. The other
     /// window is still updated in real time, so the slot must not fall back to the stale/orange look.
     func testModReadingKeepsTheSlotLiveWhenOneWindowIsRejected() throws {
@@ -1818,8 +1713,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         try placeModSnapshot(five: 24, seven: 42, observedAt: Self.start.addingTimeInterval(5))
         _ = try XCTUnwrap(waitForState(pipeline) { $0.status.isNativeRealtime })
 
-        // One window changed, the other repeated its value: like statusLine's whole-payload
-        // semantics, the whole snapshot is fresh evidence, so both windows are re-recorded.
+        // One window changed, the other repeated its value: the whole snapshot is fresh evidence, so both windows are re-recorded.
         clock.advance(by: 10)
         try placeModSnapshot(five: 25, seven: 42, observedAt: Self.start.addingTimeInterval(15))
         _ = try XCTUnwrap(waitForState(pipeline) { $0.display.window(for: .fiveHour)?.usedPercentage == 25 })
@@ -1922,39 +1816,6 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         XCTAssertFalse(conflict.contains("@"), "the conflict line carries no account data")
     }
 
-    func testStatusLineAndModCoexistenceKeepsTheLatestTrustedValues() throws {
-        let pipeline = makePipeline(
-            configuration: claudeV1TestConfiguration, statusLineEnabled: true,
-            withTestStatusLine: true, withInbox: true)
-        lastStatusLineSessions?.starts["s1"] = Self.start.addingTimeInterval(1)
-        pipeline.start()
-        pipeline.requestFetch(reason: .initial)
-        _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
-
-        deliverStatusLine(session: "s1", five: 24, seven: 42, at: Self.start.addingTimeInterval(5))
-        let native = try XCTUnwrap(waitForState(pipeline) { $0.status.isNativeRealtime })
-        XCTAssertEqual(native.display.window(for: .fiveHour)?.usedPercentage, 24)
-        XCTAssertEqual(native.status.liveSource, .statusLine, "the slot names the source of the newest reading")
-
-        // A newer Mod snapshot takes over the display without summing with statusLine data.
-        try placeModSnapshot(five: 25, seven: 43, observedAt: Self.start.addingTimeInterval(10))
-        let mod = try XCTUnwrap(waitForState(pipeline) { $0.display.window(for: .fiveHour)?.usedPercentage == 25 })
-        XCTAssertEqual(mod.status.liveSource, .mod)
-        XCTAssertEqual(mod.display.window(for: .sevenDay)?.usedPercentage, 43)
-
-        // A later statusLine render wins again; only one source's values are ever shown.
-        deliverStatusLine(session: "s1", five: 27, seven: 42, at: Self.start.addingTimeInterval(20))
-        let latest = try XCTUnwrap(waitForState(pipeline) { $0.display.window(for: .fiveHour)?.usedPercentage == 27 })
-        XCTAssertEqual(latest.status.liveSource, .statusLine)
-
-        // An older Mod snapshot cannot regress the display.
-        try placeModSnapshot(five: 24, seven: 43, observedAt: Self.start.addingTimeInterval(8), as: "balancebar-mod-old.json")
-        XCTAssertTrue(pollUntil {
-            self.diagnosticLines.all.contains { $0.contains("reason=usage_decreased_within_cycle") }
-        })
-        XCTAssertEqual(pipeline.latestState?.display.window(for: .fiveHour)?.usedPercentage, 27)
-    }
-
     // MARK: Source timeline (Issue #619)
 
     func testSourceTimelineRecordsOfficialReadsAndFailureRuns() throws {
@@ -1985,15 +1846,16 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
     func testSourceTimelineRecordsOnlyAdoptedLocalReadingsAndFollowsValidityChanges() throws {
         var validity = ClaudeSourceValidity.defaults
         let pipeline = makePipeline(
-            configuration: claudeV1TestConfiguration, statusLineEnabled: true,
-            withTestStatusLine: true, withInbox: true, sourceValidity: { validity })
-        lastStatusLineSessions?.starts["s1"] = Self.start.addingTimeInterval(1)
+            configuration: claudeV1TestConfiguration, withTracker: true, withInbox: true,
+            sourceValidity: { validity })
         pipeline.start()
         pipeline.requestFetch(reason: .initial)
         _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
 
-        deliverStatusLine(session: "s1", five: 24, seven: 42, at: Self.start.addingTimeInterval(5))
+        clock.advance(by: 5)
+        try placeModSnapshot(five: 24, seven: 42, observedAt: Self.start.addingTimeInterval(5))
         _ = try XCTUnwrap(waitForState(pipeline) { $0.status.isNativeRealtime })
+        clock.advance(by: 5)
         try placeModSnapshot(five: 25, seven: 43, observedAt: Self.start.addingTimeInterval(10))
         _ = try XCTUnwrap(waitForState(pipeline) { $0.display.window(for: .fiveHour)?.usedPercentage == 25 })
         // An older Mod snapshot that would move both windows backwards is rejected and never drawn.
@@ -2004,7 +1866,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         pipeline.waitUntilIdle()
 
         let readings = pipeline.sourceTimeline.snapshot().readings
-        XCTAssertEqual(readings.map(\.source), [.oauthAPI, .statusLine, .mod], "one entry per adopted 5h/7d pair")
+        XCTAssertEqual(readings.map(\.source), [.oauthAPI, .mod, .mod], "one entry per adopted 5h/7d pair")
         XCTAssertEqual(readings.map(\.observedAt), [0, 5, 10].map { Self.start.addingTimeInterval($0) })
 
         // A longer Mod validity stretches the reading that is still valid now.
@@ -2039,56 +1901,12 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
             pipeline.sourceTimeline.snapshot().readings.map(\.observedAt), [Self.start.addingTimeInterval(180)],
             "only the new account's read remains")
     }
-
-    /// Sends one statusLine payload over the test socket and waits for the source to read it.
-    private func deliverStatusLine(
-        session: String = "s1", five: Double, seven: Double, at date: Date,
-        file: StaticString = #filePath, line: UInt = #line
-    ) {
-        clock.advance(by: date.timeIntervalSince(clock.now))
-        let object: [String: Any] = [
-            "schemaVersion": 1, "sessionID": session,
-            "fiveHour": ["usedPercentage": five, "resetsAt": Self.usageFiveReset.timeIntervalSince1970],
-            "sevenDay": ["usedPercentage": seven, "resetsAt": Self.usageSevenReset.timeIntervalSince1970],
-        ]
-        let data = try! JSONSerialization.data(withJSONObject: object)
-        guard let socketURL = lastStatusLineSocketURL else {
-            XCTFail("no test statusLine socket", file: file, line: line)
-            return
-        }
-        // The listener comes up asynchronously after start; retry the whole delivery briefly.
-        var delivered = false
-        for _ in 0..<20 {
-            if sendStatusLinePayload(socketURL, data) { delivered = true; break }
-            usleep(20_000)
-        }
-        XCTAssertTrue(delivered, "statusLine listener never accepted a connection", file: file, line: line)
-        Thread.sleep(forTimeInterval: 0.1)
-    }
-
-    private func sendStatusLinePayload(_ socketURL: URL, _ data: Data) -> Bool {
-        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
-        guard fd >= 0 else { return false }
-        defer { close(fd) }
-        var address = sockaddr_un()
-        address.sun_family = sa_family_t(AF_UNIX)
-        let bytes = Array(socketURL.path.utf8) + [0]
-        withUnsafeMutableBytes(of: &address.sun_path) { $0.copyBytes(from: bytes) }
-        let connected = withUnsafePointer(to: &address) {
-            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
-            }
-        }
-        guard connected == 0 else { return false }
-        _ = data.withUnsafeBytes { write(fd, $0.baseAddress, data.count) }
-        return true
-    }
 }
 
 private extension StatusSlotState {
-    /// Live from statusLine or the Mod (a fresh official read is also `.realtime(.oauthAPI)`).
+    /// Live from the Mod (a fresh official read is also `.realtime(.oauthAPI)`).
     var isNativeRealtime: Bool {
-        liveSource == .statusLine || liveSource == .mod
+        liveSource == .mod
     }
 
     var liveSource: StatusSlotLiveSource? {

@@ -142,7 +142,6 @@
 "dashboard.advanced.page.records_runtime_status_and_errors" = "Registra o estado de execução e os erros";
 "dashboard.advanced.page.source_validity" = "Validade de cada fonte de dados do Claude";
 "dashboard.advanced.page.source_validity_oauth" = "Validade da cota oficial";
-"dashboard.advanced.page.source_validity_native_sync" = "Validade da sincronização nativa";
 "dashboard.advanced.page.source_validity_mod" = "Validade do push do Mod";
 "dashboard.advanced.page.source_validity_warning" = "A validade é curta: após expirar, os dados novos podem só chegar na próxima calibração oficial (a cada %1$@ min). Recomenda-se no mínimo %2$@ min.";
 "dashboard.advanced.page.validity_minutes" = "%1$@ min";
@@ -586,7 +585,6 @@
 "quota.status.ago.hours" = "há %1$@ h";
 "quota.status.ago.days" = "há %1$@ d";
 "quota.status.source.oauth_api" = "OAuth API";
-"quota.status.source.native_sync" = "Nativo";
 "quota.status.source.mod" = "Mod";
 "quota.status.hover.refreshing" = "Lendo a cota mais recente";
 "quota.status.hover.error" = "Falha na atualização. Mostrando os dados das %1$@";
@@ -606,11 +604,8 @@
 "status.item.controller.refresh_now_recent_result" = "Acabou de atualizar · nova tentativa em %1$@ s";
 "status.item.controller.refresh_now_awaiting_confirmation" = "Aguardando confirmação da reinicialização; clique para confirmar agora";
 "status.item.controller.refresh_now_out_of_tokens" = "Atualizações frequentes demais; tente de novo em %1$@ s";
-"claude.status_line.enabled" = "Sincronização nativa do Claude Code";
-"claude.status_line.description" = "Enviado pelo Claude Code após cada resposta; não requer plugin";
-"claude.status_line.calibration" = "Calibração da cota oficial do Claude";
+"claude.quota.calibration" = "Calibração da cota oficial do Claude";
 "claude.source_tag.all_clients" = "Todos os clientes";
-"claude.source_tag.terminal" = "Terminal CLI";
 "claude.source_tag.desktop" = "Desktop primeiro";
 "claude.timeline.title" = "Monitor de fontes de dados";
 "claude.timeline.now" = "Agora";
@@ -620,7 +615,7 @@
 "claude.timeline.failure.unauthorized" = "Sessão expirada";
 "claude.timeline.failure.server_error" = "Erro do servidor";
 "claude.timeline.failure.missing_credentials" = "Sem sessão iniciada";
-"claude.timeline.tooltip.oauth_rule" = "Enquanto os dados nativos ou do Mod forem válidos, o BalanceBar não consulta a API oficial; ainda assim calibra pelo menos a cada hora.";
+"claude.timeline.tooltip.oauth_rule" = "Enquanto os dados do Mod forem válidos, o BalanceBar não consulta a API oficial; ainda assim calibra pelo menos a cada hora.";
 "claude.timeline.hover.time" = "Hora";
 "claude.timeline.hover.duration" = "Duração";
 "claude.timeline.hover.refreshes" = "Atualizações";
@@ -634,14 +629,7 @@
 "claude.timeline.accessibility.count" = "%1$@ %2$@ vezes";
 "claude.timeline.accessibility.failures" = "%1$@ períodos de falha";
 "claude.refresh.every_minutes" = "A cada %1$@ min";
-"claude.status_line.calibration_detail" = "Consulta a fonte oficial periodicamente como alternativa; intervalos maiores evitam limites de uso";
-"claude.status_line.disable_confirm_title" = "Desativar a sincronização nativa do Claude Code?";
-"claude.status_line.disable_confirm_message" = "A cota do Claude será atualizada apenas no intervalo fixo, e não logo após cada resposta.";
-"claude.status_line.disable_confirm_action" = "Desativar";
-"claude.status_line.disable_confirm_cancel" = "Cancelar";
-"claude.status_line.disable_failed_title" = "Não foi possível desativar a sincronização nativa do Claude Code";
-"claude.status_line.disable_failed_message" = "Você adicionou campos próprios à statusLine do Claude Code e o BalanceBar não consegue remover o próprio comando sem perdê-los, então a sincronização continua ativa. Edite statusLine em ~/.claude/settings.json ou remova esses campos e tente de novo.";
-"claude.status_line.disable_failed_ok" = "OK";
+"claude.quota.calibration_detail" = "Consulta a fonte oficial periodicamente como alternativa; intervalos maiores evitam limites de uso";
 
 // BalanceBar Mod realtime sync (Issue #597)
 "claude.mod_sync.title" = "BalanceBar Mod impulso em tempo real";
@@ -675,7 +663,7 @@
 "mod.uninstall.step1" = "Desinstalar Mod";
 "mod.uninstall.step2" = "Remover origem";
 "mod.uninstall.done" = "Desinstalado ✓";
-"mod.uninstall.done_note" = "A cota agora é consultada periodicamente na fonte oficial. “Sincronização nativa do Claude Code” e outros plugins não são afetados.";
+"mod.uninstall.done_note" = "A cota agora é consultada periodicamente na fonte oficial. Outros plugins não são afetados.";
 "mod.failure.uninstall_command" = "A desinstalação não foi concluída. Execute os seguintes comandos no Terminal:";
 "mod.failure.copy_enable" = "Copiar comando de ativação";
 "mod.failure.inbox" = "Não foi possível criar a caixa de entrada de instantâneos (permissões insuficientes ou proprietário incorreto). Verifique ~/Library/Application Support/BalanceBar/inbox e tente novamente.";
@@ -711,7 +699,7 @@
 "mod.ui.refresh" = "Verificar novamente";
 "mod.ui.retry" = "Tentar novamente";
 "mod.ui.confirm_uninstall" = "Desinstalar o BalanceBar Mod?";
-"mod.ui.confirm_uninstall_note" = "Após desinstalar, a cota do Claude passa a ser consultada periodicamente na fonte oficial, em vez de atualizar em tempo real. “Sincronização nativa do Claude Code” e outros plugins não são afetados.";
+"mod.ui.confirm_uninstall_note" = "Após desinstalar, a cota do Claude passa a ser consultada periodicamente na fonte oficial, em vez de atualizar em tempo real. Outros plugins não são afetados.";
 "mod.ui.confirm_uninstall_action" = "Desinstalar";
 "mod.ui.uninstall_reload_hint" = "As sessões existentes podem executar o comando abaixo para aplicar a desinstalação imediatamente.";
 "mod.ui.cancel" = "Cancelar";
