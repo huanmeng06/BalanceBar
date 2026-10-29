@@ -33,6 +33,8 @@ public enum SnapshotRejectionReason: Equatable {
     case accountEmailHashMismatch
     /// A Mod snapshot without `account.email_hash` cannot be attributed to anyone.
     case missingAccountEmailHash
+    /// The snapshot names an organization (`account.organization_hash`) other than the active one.
+    case organizationHashMismatch
     /// A window's reset time does not match the latest official reading, so the whole
     /// snapshot cannot be tied to this account's quota cycle.
     case cycleUnverified
@@ -60,8 +62,11 @@ public final class SnapshotInbox: QuotaSource {
     /// there is no baseline to check against. The check is snapshot atomic: a snapshot in
     /// which one window fails is never partially attributed. `updatedAt` is the snapshot's
     /// production time and `isComplete` tells whether it carries both standard windows,
-    /// each with a reset time.
-    public var cycleVerification: ((QuotaWindowKind, Date?, _ updatedAt: Date, _ isComplete: Bool) -> Bool?)?
+    /// each with a reset time. `organizationProven` is false when the active account has an
+    /// organization that the snapshot does not prove (an older Mod writes no organization hash).
+    public var cycleVerification: ((
+        QuotaWindowKind, Date?, _ updatedAt: Date, _ isComplete: Bool, _ organizationProven: Bool
+    ) -> Bool?)?
 
     /// Read-only rejection reporting for the settings entry: invoked on the inbox queue
     /// whenever a Mod snapshot is rejected before emission. Pure notification; the
@@ -329,6 +334,21 @@ public final class SnapshotInbox: QuotaSource {
             rejectionObserver?(.missingAccountEmailHash)
             return
         }
+        // Organization attribution: a mismatching organization hash is foreign data. A snapshot
+        // without one (older Mod) cannot prove the organization; the consumer decides whether
+        // an official baseline makes that acceptable.
+        var organizationProven = true
+        if let organization = account.organizationUUID {
+            if let provided = parsed.accountOrganizationHash?.lowercased(), !provided.isEmpty {
+                guard provided == Self.hash(organization) else {
+                    adapter.health = .degraded(reason: "rejected snapshot: organization hash does not match the active account")
+                    if isModSnapshot { rejectionObserver?(.organizationHashMismatch) }
+                    return
+                }
+            } else if isModSnapshot {
+                organizationProven = false
+            }
+        }
         let epoch = identity.accountEpoch
         let source = parsed.source.flatMap { $0 == "unknown" ? nil : $0 } ?? adapter.sourceID
         let received = now()
@@ -340,7 +360,7 @@ public final class SnapshotInbox: QuotaSource {
                 parsed.windows.contains { $0.kind == kind && $0.resetsAt != nil }
             }
             for window in parsed.windows
-            where verify(window.kind, window.resetsAt, parsed.updatedAt, isComplete) == false {
+            where verify(window.kind, window.resetsAt, parsed.updatedAt, isComplete, organizationProven) == false {
                 unverifiedSnapshotRejections += 1
                 adapter.health = .degraded(reason: "rejected snapshot: cycle_unverified_against_official")
                 if isModSnapshot { rejectionObserver?(.cycleUnverified) }
@@ -387,8 +407,11 @@ public final class SnapshotInbox: QuotaSource {
 
     /// The hash format Schema v1 producers write: `sha256:` plus the hex digest of the
     /// trimmed, lowercased email — the same rule the BalanceBar Mod applies.
-    static func emailHash(_ email: String) -> String {
-        let normalized = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    static func emailHash(_ email: String) -> String { hash(email) }
+
+    /// Same rule for the organization UUID: `sha256:` plus the hex digest of the trimmed, lowercased value.
+    static func hash(_ value: String) -> String {
+        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !normalized.isEmpty else { return "" }
         let digest = SHA256.hash(data: Data(normalized.utf8))
         return "sha256:" + digest.map { String(format: "%02x", $0) }.joined()

@@ -65,11 +65,12 @@ public enum ClaudeAccountConfigurationParser {
         }
         let email = normalized(account["emailAddress"]).map { $0.lowercased() }
         if let accountUUID = normalized(account["accountUuid"])?.lowercased() {
-            let organizationUUID = normalized(account["organizationUuid"])?.lowercased() ?? "-"
+            let organization = normalized(account["organizationUuid"])?.lowercased()
             return AccountIdentity(
-                stableID: "claude:\(accountUUID):\(organizationUUID)",
+                stableID: "claude:\(accountUUID):\(organization ?? "-")",
                 email: email,
-                idSource: .accountUUID
+                idSource: .accountUUID,
+                organizationUUID: organization
             )
         }
         guard let email else { throw AccountIdentityError.missingAccount }

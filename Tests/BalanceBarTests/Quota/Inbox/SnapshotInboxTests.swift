@@ -116,6 +116,80 @@ final class SnapshotInboxTests: XCTestCase {
         XCTAssertEqual(observations.map(\.source), ["balancebar-mod"])
     }
 
+    // MARK: Organization attribution (Issue #629)
+
+    private func placeModSnapshot(organizationHash: String?, as name: String = "mod.json") throws {
+        var account: [String: Any] = ["email_hash": SnapshotInbox.emailHash("user@example.com")]
+        if let organizationHash { account["organization_hash"] = organizationHash }
+        let object: [String: Any] = [
+            "updated_at": "2026-10-17T06:12:03Z", "source": "balancebar-mod", "account": account,
+            "five_hour": ["used_percentage": 10, "resets_at": "2026-10-17T09:00:00Z"],
+        ]
+        try JSONSerialization.data(withJSONObject: object).write(to: inbox.appendingPathComponent(name))
+    }
+
+    private func organizationIdentity(_ organization: String?) -> FakeIdentity {
+        let identity = FakeIdentity()
+        identity.accountIdentity = AccountIdentity(
+            stableID: "acct-1", email: "user@example.com", idSource: .accountUUID, organizationUUID: organization)
+        return identity
+    }
+
+    func testModSnapshotWithMatchingOrganizationHashIsEmittedAndProven() throws {
+        try placeModSnapshot(organizationHash: SnapshotInbox.hash("Org-1"))
+        let proven = Collector()
+        let source = SnapshotInbox(
+            inboxDirectory: inbox, identity: organizationIdentity("org-1"),
+            configuration: SnapshotInboxConfiguration(halfWriteRetryDelay: 0.05))
+        source.cycleVerification = { _, _, _, _, organizationProven in
+            XCTAssertTrue(organizationProven)
+            return nil
+        }
+        inboxes.append(source)
+        source.start { proven.add($0) }
+        source.queue.sync {}
+        Thread.sleep(forTimeInterval: 0.1)
+        XCTAssertEqual(proven.all.map(\.window), [.fiveHour])
+    }
+
+    func testModSnapshotWithForeignOrganizationHashIsRejected() throws {
+        try placeModSnapshot(organizationHash: SnapshotInbox.hash("other-org"))
+        let reasons = LockedReasons()
+        let collector = Collector()
+        let source = SnapshotInbox(
+            inboxDirectory: inbox, identity: organizationIdentity("org-1"),
+            configuration: SnapshotInboxConfiguration(halfWriteRetryDelay: 0.05))
+        source.rejectionObserver = { reasons.append($0) }
+        inboxes.append(source)
+        source.start { collector.add($0) }
+        XCTAssertTrue(waitUntil { !reasons.all.isEmpty })
+        XCTAssertEqual(reasons.all, [.organizationHashMismatch])
+        XCTAssertTrue(collector.all.isEmpty)
+    }
+
+    func testLegacyModSnapshotWithoutOrganizationHashReportsItAsUnprovenAndNoOrganizationSkipsTheCheck() throws {
+        try placeModSnapshot(organizationHash: nil)
+        for (organization, expectedProven) in [("org-1", false), (nil, true)] as [(String?, Bool)] {
+            let flags = LockedFlags()
+            let source = SnapshotInbox(
+                inboxDirectory: inbox, identity: organizationIdentity(organization),
+                configuration: SnapshotInboxConfiguration(halfWriteRetryDelay: 0.05))
+            source.cycleVerification = { _, _, _, _, proven in flags.append(proven); return nil }
+            inboxes.append(source)
+            source.start { _ in }
+            XCTAssertTrue(waitUntil { !flags.all.isEmpty })
+            source.stop()
+            XCTAssertEqual(flags.all, [expectedProven])
+        }
+    }
+
+    private final class LockedFlags {
+        private let lock = NSLock()
+        private var values: [Bool] = []
+        func append(_ value: Bool) { lock.lock(); values.append(value); lock.unlock() }
+        var all: [Bool] { lock.lock(); defer { lock.unlock() }; return values }
+    }
+
     func testModSnapshotWithForeignEmailHashIsRejected() throws {
         try placeSnapshot(
             source: "balancebar-mod",
@@ -385,7 +459,7 @@ final class SnapshotInboxTests: XCTestCase {
             inboxDirectory: inbox, identity: FakeIdentity(),
             configuration: SnapshotInboxConfiguration(halfWriteRetryDelay: 0.05))
         source.rejectionObserver = { reasons.append($0) }
-        source.cycleVerification = { _, _, _, _ in false }
+        source.cycleVerification = { _, _, _, _, _ in false }
         inboxes.append(source)
         source.start { _ in }
         try placeSnapshot(source: "balancebar-mod", emailHash: SnapshotInbox.emailHash("user@example.com"), as: "cycle.json")
@@ -498,7 +572,7 @@ final class SnapshotInboxTests: XCTestCase {
             inboxDirectory: inbox, identity: FakeIdentity(),
             configuration: SnapshotInboxConfiguration(halfWriteRetryDelay: 0.05))
         source.rejectionObserver = { reasons.append($0) }
-        source.cycleVerification = { _, _, _, _ in false }
+        source.cycleVerification = { _, _, _, _, _ in false }
         inboxes.append(source)
         source.start { _ in }
         // Wrong hash on a non-Mod producer: rejected, but not a Mod failure.

@@ -276,7 +276,7 @@ final class ModSyncCoordinator {
 
     private static func uiRejection(_ reason: SnapshotRejectionReason) -> ModSnapshotRejection {
         switch reason {
-        case .accountEmailHashMismatch, .missingAccountEmailHash: return .accountMismatch
+        case .accountEmailHashMismatch, .missingAccountEmailHash, .organizationHashMismatch: return .accountMismatch
         case .cycleUnverified: return .unverifiedCycle
         }
     }

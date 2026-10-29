@@ -21,6 +21,7 @@ public struct ParsedQuotaSnapshot: Equatable {
     public let updatedAt: Date
     public let source: String?
     public let accountEmailHash: String?
+    public let accountOrganizationHash: String?
     public let windows: [ParsedQuotaWindow]
     public let discarded: [String]
 }
@@ -81,11 +82,14 @@ public enum QuotaSnapshotParser {
         }
 
         let source = (root["source"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let emailHash = (root["account"] as? [String: Any])?["email_hash"] as? String
+        let account = root["account"] as? [String: Any]
+        let emailHash = account?["email_hash"] as? String
+        let organizationHash = account?["organization_hash"] as? String
         return ParsedQuotaSnapshot(
             updatedAt: updatedAt,
             source: source?.isEmpty == false ? source : nil,
             accountEmailHash: emailHash,
+            accountOrganizationHash: organizationHash,
             windows: windows,
             discarded: discarded
         )

@@ -60,6 +60,7 @@ final class ClaudeAccountIdentityProviderTests: XCTestCase {
     func testParsesAccountAndOrganizationUUIDs() throws {
         let identity = try ClaudeAccountConfigurationParser.identity(from: Data(account("ACC-1").utf8))
         XCTAssertEqual(identity.stableID, "claude:acc-1:org-1")
+        XCTAssertEqual(identity.organizationUUID, "org-1")
         XCTAssertEqual(identity.idSource, .accountUUID)
         XCTAssertEqual(identity.email, "a@example.com")
     }
