@@ -1121,7 +1121,8 @@ extension ModSyncCoordinatorTests {
                 probeVersion, listResult(enabled: false),
             ])
         var unavailable = 0
-        coordinator.onModUnavailable = { unavailable += 1 }
+        var reasons: [ClaudeQuotaPipeline.ModUnavailableReason] = []
+        coordinator.onModUnavailable = { unavailable += 1; reasons.append($0) }
         var available = 0
         coordinator.onModAvailable = { available += 1 }
         func detect(_ description: String, until reached: @escaping (ModSyncStatus) -> Bool) {
@@ -1142,6 +1143,7 @@ extension ModSyncCoordinatorTests {
         detect("disabled") { $0 == .disabled }
         XCTAssertEqual(unavailable, 2)
         XCTAssertEqual(available, 2)
+        XCTAssertEqual(reasons, [.uninstalled, .disabled])
     }
 
     func testFirstDetectionFindingModDisabledDropsEarlierSnapshotEvidence() {

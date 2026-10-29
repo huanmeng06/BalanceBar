@@ -346,10 +346,15 @@ final class ClaudeQuotaPipeline {
         return nil
     }
 
+    enum ModUnavailableReason: String {
+        case uninstalled, disabled
+        case inAppUninstall = "in_app_uninstall"
+    }
+
     /// The Mod was found uninstalled or disabled: it loses live eligibility at once and stops
     /// deferring official reads. Its last reading stays displayed with its own time.
     /// Idempotent; the first suspension moment is kept.
-    func modBecameUnavailable() {
+    func modBecameUnavailable(reason: ModUnavailableReason) {
         queue.async { [self] in
             let first = lock.withLock { () -> Bool in
                 modAvailableSince = nil
@@ -358,6 +363,7 @@ final class ClaudeQuotaPipeline {
                 return true
             }
             guard first else { return }
+            diagnostics("claude mod suspended; reason=\(reason.rawValue)", .info)
             realtimeTracker?.invalidate(source: .mod)
             scheduler.rearm()
             publish()
@@ -368,7 +374,14 @@ final class ClaudeQuotaPipeline {
     /// itself: a snapshot produced after the suspension is still required.
     func modBecameAvailable() {
         queue.async { [self] in
-            lock.withLock { if modAvailableSince == nil { modAvailableSince = now() } }
+            let confirmed = lock.withLock { () -> (first: Bool, suspended: Bool) in
+                guard modAvailableSince == nil else { return (false, modSuspendedAt != nil) }
+                modAvailableSince = now()
+                return (true, modSuspendedAt != nil)
+            }
+            if confirmed.first {
+                diagnostics("claude mod available confirmed; suspended=\(confirmed.suspended)", .info)
+            }
         }
     }
 
@@ -666,13 +679,26 @@ final class ClaudeQuotaPipeline {
     private func recordLocalEvidence(_ observation: QuotaObservation) -> Bool {
         if observation.source == SnapshotInbox.modSourceID {
             let producedAt = observation.observedAt ?? observation.receivedAt
-            let allowed = lock.withLock { () -> Bool in
-                guard let suspendedAt = modSuspendedAt else { return true }
-                guard suspendedAt <= producedAt, let since = modAvailableSince, producedAt > since else { return false }
+            enum Outcome { case notSuspended, rejected(String), resumed }
+            let outcome = lock.withLock { () -> Outcome in
+                guard let suspendedAt = modSuspendedAt else { return .notSuspended }
+                if suspendedAt > producedAt { return .rejected("snapshot_before_suspension") }
+                guard let since = modAvailableSince else { return .rejected("snapshot_while_mod_unavailable") }
+                if producedAt <= since { return .rejected("snapshot_before_available_confirmation") }
                 modSuspendedAt = nil
-                return true
+                return .resumed
             }
-            guard allowed else { return false }
+            switch outcome {
+            case .notSuspended:
+                break
+            case .rejected(let reason):
+                diagnostics(
+                    "claude mod snapshot not live evidence; reason=\(reason); window=\(observation.window.rawValue)",
+                    .debug)
+                return false
+            case .resumed:
+                diagnostics("claude mod live resumed; window=\(observation.window.rawValue)", .info)
+            }
         }
         realtimeTracker?.recordTrustedObservation(
             window: observation.window,

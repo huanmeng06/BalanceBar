@@ -1383,12 +1383,13 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
 
         // Uninstalled while the reading is still inside its validity: live eligibility ends at
         // once, the value and its production time stay, and the scheduler no longer defers.
-        pipeline.modBecameUnavailable()
+        pipeline.modBecameUnavailable(reason: .uninstalled)
         let stale = try XCTUnwrap(waitForState(pipeline) { !$0.status.isNativeRealtime })
         XCTAssertEqual(stale.status, .official(at: producedAt, source: .mod))
         XCTAssertEqual(stale.display.window(for: .fiveHour)?.usedPercentage, 25)
         XCTAssertNil(pipeline.manualRefreshNotice())
         XCTAssertNil(stale.failure, "an uninstall is not an OAuth failure")
+        XCTAssertTrue(diagnosticLines.all.contains { $0.contains("claude mod suspended; reason=uninstalled") })
         pipeline.requestFetch(reason: .scheduled)
         waitForRequests(2)
     }
@@ -1412,7 +1413,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         _ = try XCTUnwrap(waitForState(pipeline) { $0.status.isNativeRealtime })
 
         clock.advance(by: 15) // start+320
-        pipeline.modBecameUnavailable()
+        pipeline.modBecameUnavailable(reason: .uninstalled)
         _ = try XCTUnwrap(waitForState(pipeline) { !$0.status.isNativeRealtime })
 
         // A snapshot produced before the uninstall (old evidence) is displayed but is not live.
@@ -1428,6 +1429,9 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         _ = try XCTUnwrap(waitForState(pipeline) { $0.display.window(for: .fiveHour)?.usedPercentage == 27 })
         XCTAssertEqual(pipeline.latestState?.status, .official(at: whileUnavailable, source: .mod))
         XCTAssertNil(pipeline.manualRefreshNotice())
+        let lines = diagnosticLines.all
+        XCTAssertTrue(lines.contains { $0.contains("claude mod snapshot not live evidence; reason=snapshot_before_suspension") })
+        XCTAssertTrue(lines.contains { $0.contains("claude mod snapshot not live evidence; reason=snapshot_while_mod_unavailable") })
         // Neither late snapshot is reported to the settings entry as trusted evidence.
         let reported = events.snapshot().filter { $0.kind != .processed(accepted: false) }
         XCTAssertEqual(reported.count, 2, "only the pre-uninstall snapshot's two windows were accepted")
@@ -1442,11 +1446,16 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         quiet(pipeline)
         XCTAssertFalse(try XCTUnwrap(pipeline.latestState).status.isNativeRealtime)
         XCTAssertNil(pipeline.manualRefreshNotice())
+        XCTAssertTrue(diagnosticLines.all.contains { $0.contains("claude mod available confirmed; suspended=true") })
+        XCTAssertTrue(diagnosticLines.all.contains {
+            $0.contains("claude mod snapshot not live evidence; reason=snapshot_before_available_confirmation")
+        })
         clock.advance(by: 7) // start+330
         let fresh = Self.start.addingTimeInterval(325)
         try placeModSnapshot(five: 28, seven: 45, observedAt: fresh)
         let live = try XCTUnwrap(waitForState(pipeline) { $0.status.isNativeRealtime })
         XCTAssertEqual(live.status, .realtime(.mod, at: fresh))
+        XCTAssertTrue(diagnosticLines.all.contains { $0.contains("claude mod live resumed; window=") })
         pipeline.requestFetch(reason: .scheduled)
         quiet(pipeline)
         XCTAssertEqual(PipelineStubProtocol.requestCount, 1, "live Mod evidence defers the official read again")

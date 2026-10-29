@@ -39,7 +39,7 @@ final class ModSyncCoordinator {
     var onPresentationChange: (() -> Void)?
     /// The Mod was found uninstalled or disabled (a successful check, or an in-app uninstall):
     /// the pipeline must stop treating its readings as live. Fired on the main thread.
-    var onModUnavailable: (() -> Void)?
+    var onModUnavailable: ((ClaudeQuotaPipeline.ModUnavailableReason) -> Void)?
     /// A successful check found the Mod installed and enabled again.
     var onModAvailable: (() -> Void)?
     /// The "don't show this in the menu" preference changed; rebuild the status menu.
@@ -74,7 +74,7 @@ final class ModSyncCoordinator {
         }
         controller.onUninstallCompleted = { [weak self] result in
             if case .success = result {
-                self?.onModUnavailable?()
+                self?.onModUnavailable?(.inAppUninstall)
                 self?.resetSnapshotEvidence()
             }
             self?.startDetectionIfNeeded(force: true)
@@ -117,7 +117,7 @@ final class ModSyncCoordinator {
             let modUnavailable = environment.claudeFound && environment.installationCheck == .ok
                 && environment.installation?.isEnabled != true
             if modUnavailable {
-                self.onModUnavailable?()
+                self.onModUnavailable?(environment.installation == nil ? .uninstalled : .disabled)
             } else if environment.claudeFound, environment.installationCheck == .ok {
                 self.onModAvailable?()
             }
