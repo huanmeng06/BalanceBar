@@ -390,7 +390,11 @@ public final class FetchScheduler: FetchScheduling {
             duration = max(seconds, configuration.minimumCooldown)
         } else {
             let step = min(persistent.consecutiveRateLimitBackoffs, 10)
-            duration = min(configuration.minimumCooldown * pow(2, Double(step)), configuration.maximumBackoffCooldown)
+            if let last = configuration.rateLimitBackoff.last {
+                duration = step < configuration.rateLimitBackoff.count ? configuration.rateLimitBackoff[step] : last
+            } else {
+                duration = min(configuration.minimumCooldown * pow(2, Double(step)), configuration.maximumBackoffCooldown)
+            }
             persistent.consecutiveRateLimitBackoffs += 1
         }
         persistent.cooldownUntil = now.addingTimeInterval(duration)

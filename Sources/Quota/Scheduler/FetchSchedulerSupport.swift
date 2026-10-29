@@ -189,6 +189,9 @@ public struct FetchSchedulerConfiguration: Equatable {
     public var minimumCooldown: TimeInterval = QuotaConstants.minimumCooldown
     /// Upper bound for the 429 doubling backoff (15 → 30 → 60 minutes).
     public var maximumBackoffCooldown: TimeInterval = 4 * QuotaConstants.minimumCooldown
+    /// Cooldown per consecutive 429 without a usable `Retry-After`; the last entry repeats.
+    /// Empty keeps the doubling backoff from `minimumCooldown` up to `maximumBackoffCooldown`.
+    public var rateLimitBackoff: [TimeInterval] = []
     public var tokenCapacity: Int = QuotaConstants.requestTokenBucketCapacity
     public var tokenRefillInterval: TimeInterval = QuotaConstants.requestTokenRefillInterval
     public var automaticTokenCost: Int = QuotaConstants.automaticRequestTokenCost
@@ -216,12 +219,14 @@ public struct FetchSchedulerConfiguration: Equatable {
         var value = FetchSchedulerConfiguration()
         value.automaticMinimumInterval = 300
         value.realtimeSourceFreshness = 120
-        value.realtimeCalibrationCap = 3_600
+        value.realtimeCalibrationCap = 15 * 60
         value.tokenRefillInterval = 300
         value.automaticTokenCost = 1
         value.manualTokenCost = 1
         value.manualRefreshWindow = 300
-        value.failureBackoff = [30]
+        value.failureBackoff = [60]
+        value.minimumCooldown = 5 * 60
+        value.rateLimitBackoff = [5 * 60, 10 * 60, 15 * 60]
         value.unauthorizedRecheckInterval = 300
         return value
     }
