@@ -1110,6 +1110,35 @@ extension ModSyncCoordinatorTests {
         XCTAssertEqual(coordinator.status, .waitingForData)
     }
 
+    func testExternalUninstallAndDisableNotifyPipelineButUnknownCheckDoesNot() {
+        let emptyList = ModCommandResult(exitCode: 0, stdout: "[]", stderr: "")
+        let failedList = ModCommandResult(exitCode: 1, stdout: "", stderr: "boom")
+        let (coordinator, _) = makeCoordinator(
+            locator: "/bin/claude",
+            results: [
+                probeVersion, listResult(), probeVersion, failedList,
+                probeVersion, emptyList, probeVersion, listResult(),
+                probeVersion, listResult(enabled: false),
+            ])
+        var unavailable = 0
+        coordinator.onModUnavailable = { unavailable += 1 }
+        func detect(_ description: String, until reached: @escaping (ModSyncStatus) -> Bool) {
+            let done = expectation(description: description)
+            coordinator.onStatusChange = { if reached($0) { done.fulfill() } }
+            coordinator.startDetectionIfNeeded(force: true)
+            wait(for: [done], timeout: 5)
+        }
+        detect("installed") { $0 == .waitingForData }
+        detect("check failed") { $0 == .installationUnknown }
+        XCTAssertEqual(unavailable, 0, "a failed plugin-list check is not proof of removal")
+        detect("uninstalled") { if case .notInstalled = $0 { return true } else { return false } }
+        XCTAssertEqual(unavailable, 1)
+        detect("reinstalled") { $0 == .waitingForData }
+        XCTAssertEqual(unavailable, 1)
+        detect("disabled") { $0 == .disabled }
+        XCTAssertEqual(unavailable, 2)
+    }
+
     func testMissingCLIDoesNotClearEvidenceOfInstalledMod() {
         let runner = ScriptedRunner([probeVersion, listResult(), probeVersion, listResult()])
         let locator = SwitchableLocator(path: "/bin/claude")

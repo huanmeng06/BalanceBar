@@ -1370,6 +1370,61 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         waitForRequests(2)
     }
 
+    func testModUnavailableKeepsLastReadingButStopsLiveStatusAndLetsOfficialReadResume() throws {
+        let tracker = ClaudeRealtimeTracker(now: { [clock] in clock!.now })
+        let pipeline = makePipeline(realtimeTracker: tracker, configuration: claudeV1TestConfiguration, withInbox: true)
+        pipeline.start()
+        pipeline.requestFetch(reason: .initial)
+        _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+        clock.advance(by: 305)
+        let producedAt = Self.start.addingTimeInterval(310)
+        try placeModSnapshot(five: 25, seven: 42, observedAt: producedAt)
+        _ = try XCTUnwrap(waitForState(pipeline) { $0.status.isNativeRealtime })
+
+        // Uninstalled while the reading is still inside its validity: live eligibility ends at
+        // once, the value and its production time stay, and the scheduler no longer defers.
+        pipeline.modBecameUnavailable()
+        let stale = try XCTUnwrap(waitForState(pipeline) { !$0.status.isNativeRealtime })
+        XCTAssertEqual(stale.status, .official(at: producedAt, source: .mod))
+        XCTAssertEqual(stale.display.window(for: .fiveHour)?.usedPercentage, 25)
+        XCTAssertNil(pipeline.manualRefreshNotice())
+        XCTAssertNil(stale.failure, "an uninstall is not an OAuth failure")
+        pipeline.requestFetch(reason: .scheduled)
+        waitForRequests(2)
+    }
+
+    func testReinstalledModNeedsASnapshotProducedAfterTheUninstallToBeLiveAgain() throws {
+        let tracker = ClaudeRealtimeTracker(now: { [clock] in clock!.now })
+        let pipeline = makePipeline(realtimeTracker: tracker, configuration: claudeV1TestConfiguration, withInbox: true)
+        pipeline.start()
+        pipeline.requestFetch(reason: .initial)
+        _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+        clock.advance(by: 305)
+        try placeModSnapshot(five: 25, seven: 42, observedAt: Self.start.addingTimeInterval(310))
+        _ = try XCTUnwrap(waitForState(pipeline) { $0.status.isNativeRealtime })
+
+        clock.advance(by: 15) // start+320
+        pipeline.modBecameUnavailable()
+        _ = try XCTUnwrap(waitForState(pipeline) { !$0.status.isNativeRealtime })
+
+        // A snapshot produced before the uninstall (old evidence) is displayed but is not live.
+        let old = Self.start.addingTimeInterval(315)
+        try placeModSnapshot(five: 26, seven: 43, observedAt: old)
+        _ = try XCTUnwrap(waitForState(pipeline) { $0.display.window(for: .fiveHour)?.usedPercentage == 26 })
+        XCTAssertEqual(pipeline.latestState?.status, .official(at: old, source: .mod))
+        XCTAssertNil(pipeline.manualRefreshNotice())
+
+        // The first snapshot produced after the unavailability restores `实时 · Mod`.
+        clock.advance(by: 10) // start+330
+        let fresh = Self.start.addingTimeInterval(325)
+        try placeModSnapshot(five: 27, seven: 44, observedAt: fresh)
+        let live = try XCTUnwrap(waitForState(pipeline) { $0.status.isNativeRealtime })
+        XCTAssertEqual(live.status, .realtime(.mod, at: fresh))
+        pipeline.requestFetch(reason: .scheduled)
+        quiet(pipeline)
+        XCTAssertEqual(PipelineStubProtocol.requestCount, 1, "live Mod evidence defers the official read again")
+    }
+
     func testStatusLineReadingBecomesAgeAndSourceOnceItIsNoLongerLive() throws {
         let pipeline = makePipeline(
             configuration: claudeV1TestConfiguration, statusLineEnabled: true,

@@ -165,6 +165,11 @@ final class ClaudeQuotaPipeline {
     /// cannot be attributed to it without an official baseline.
     private var accountActiveSince: Date
     private var state: ClaudeQuotaState?
+    /// Set while the Mod is known to be uninstalled or disabled (its lifecycle, not its data
+    /// validity): its readings keep their value and time but are neither live nor fresh
+    /// scheduler evidence. Cleared only by a Mod snapshot produced after this moment, so a
+    /// reinstall never revives the old evidence. Guarded by `lock`.
+    private var modSuspendedAt: Date?
     /// Whether any window is awaiting official reset confirmation (pipeline queue).
     private var awaitingResetConfirmation = false
     /// Confirmation requests already repeated by the retry timer in the current pending period.
@@ -335,6 +340,23 @@ final class ClaudeQuotaPipeline {
         if let observedAt = realtimeTracker?.lastTrustedRealtimeObservationAt,
            now().timeIntervalSince(observedAt) <= manualRefreshWindow { return .localFresh }
         return nil
+    }
+
+    /// The Mod was found uninstalled or disabled: it loses live eligibility at once and stops
+    /// deferring official reads. Its last reading stays displayed with its own time.
+    /// Idempotent; the first suspension moment is kept.
+    func modBecameUnavailable() {
+        queue.async { [self] in
+            let first = lock.withLock { () -> Bool in
+                guard modSuspendedAt == nil else { return false }
+                modSuspendedAt = now()
+                return true
+            }
+            guard first else { return }
+            realtimeTracker?.invalidate(source: .mod)
+            scheduler.rearm()
+            publish()
+        }
     }
 
     /// Earliest reset deadline that passed and still awaits official confirmation.
@@ -624,6 +646,16 @@ final class ClaudeQuotaPipeline {
     /// Trusted real-time evidence from a local source: freshness for the scheduler and a block on
     /// the source timeline.
     private func recordLocalEvidence(_ observation: QuotaObservation) {
+        if observation.source == SnapshotInbox.modSourceID {
+            let producedAt = observation.observedAt ?? observation.receivedAt
+            let allowed = lock.withLock { () -> Bool in
+                guard let suspendedAt = modSuspendedAt else { return true }
+                guard producedAt > suspendedAt else { return false }
+                modSuspendedAt = nil
+                return true
+            }
+            guard allowed else { return }
+        }
         realtimeTracker?.recordTrustedObservation(
             window: observation.window,
             observedAt: observation.observedAt ?? observation.receivedAt,
@@ -842,8 +874,10 @@ final class ClaudeQuotaPipeline {
             return reading.source == ClaudeStatusLineSource.identifier || reading.source == SnapshotInbox.modSourceID
         }
         let validity = sourceValidity()
+        let modSuspended = lock.withLock { modSuspendedAt != nil }
         func isFresh(_ reading: QuotaMergedReading) -> Bool {
             guard let source = Self.statusSource(forSourceID: reading.source) else { return false }
+            if source == .mod, modSuspended { return false }
             return date.timeIntervalSince(reading.effectiveTime) <= validity.seconds(for: source)
         }
         // "Live" status: the newest displayed reading comes from a local source and is within that
