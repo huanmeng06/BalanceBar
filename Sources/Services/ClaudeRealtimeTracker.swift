@@ -83,6 +83,12 @@ final class ClaudeRealtimeTracker: RealtimeSourceFreshnessProviding, ManualRefre
         }
     }
 
+    /// Drops one source's trusted observations so it no longer counts as fresh. The other
+    /// source's observations (and the account epoch) are kept.
+    func invalidate(source: StatusSlotLiveSource) {
+        lock.withLock { lastTrusted = lastTrusted.filter { $0.value.source != source } }
+    }
+
     func checkFreePath(within window: TimeInterval, completion: @escaping (Bool) -> Void) {
         let satisfied = lock.withLock {
             let date = now()

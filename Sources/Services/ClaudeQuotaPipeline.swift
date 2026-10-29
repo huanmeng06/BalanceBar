@@ -165,6 +165,15 @@ final class ClaudeQuotaPipeline {
     /// cannot be attributed to it without an official baseline.
     private var accountActiveSince: Date
     private var state: ClaudeQuotaState?
+    /// Set while the Mod is known to be uninstalled or disabled (its lifecycle, not its data
+    /// validity): its readings keep their value and time but are neither live nor fresh
+    /// scheduler evidence. Cleared only by a Mod snapshot produced after this moment, so a
+    /// reinstall never revives the old evidence. Guarded by `lock`.
+    private var modSuspendedAt: Date?
+    /// When detection last confirmed the suspended Mod installed and enabled; nil while it is
+    /// not. Only snapshots produced after this moment may resume live status, so data written
+    /// while the Mod was off (and rescanned later) never does.
+    private var modAvailableSince: Date?
     /// Whether any window is awaiting official reset confirmation (pipeline queue).
     private var awaitingResetConfirmation = false
     /// Confirmation requests already repeated by the retry timer in the current pending period.
@@ -335,6 +344,32 @@ final class ClaudeQuotaPipeline {
         if let observedAt = realtimeTracker?.lastTrustedRealtimeObservationAt,
            now().timeIntervalSince(observedAt) <= manualRefreshWindow { return .localFresh }
         return nil
+    }
+
+    /// The Mod was found uninstalled or disabled: it loses live eligibility at once and stops
+    /// deferring official reads. Its last reading stays displayed with its own time.
+    /// Idempotent; the first suspension moment is kept.
+    func modBecameUnavailable() {
+        queue.async { [self] in
+            let first = lock.withLock { () -> Bool in
+                modAvailableSince = nil
+                guard modSuspendedAt == nil else { return false }
+                modSuspendedAt = now()
+                return true
+            }
+            guard first else { return }
+            realtimeTracker?.invalidate(source: .mod)
+            scheduler.rearm()
+            publish()
+        }
+    }
+
+    /// Detection confirmed the Mod installed and enabled. Does not restore live status by
+    /// itself: a snapshot produced after the suspension is still required.
+    func modBecameAvailable() {
+        queue.async { [self] in
+            lock.withLock { if modAvailableSince == nil { modAvailableSince = now() } }
+        }
     }
 
     /// Earliest reset deadline that passed and still awaits official confirmation.
@@ -582,9 +617,9 @@ final class ClaudeQuotaPipeline {
             diagnostics(
                 "claude native observation kept as evidence only; reason=usage_within_tolerance_below_display; source=\(observation.source); window=\(observation.window.rawValue)",
                 .debug)
-            recordLocalEvidence(observation)
+            let recorded = recordLocalEvidence(observation)
             publish()
-            return true
+            return recorded
         }
         let previous = engine.currentState.windows[observation.window.rawValue]?.displayed
         _ = engine.merge(observation)
@@ -597,9 +632,11 @@ final class ClaudeQuotaPipeline {
         diagnostics(
             "claude native observation; source=\(observation.source); window=\(observation.window.rawValue); accepted=\(accepted)",
             .debug)
-        if accepted { recordLocalEvidence(observation) }
+        // A displayed reading that may not count as current evidence (Mod suspended) is not
+        // reported as accepted either: the settings entry must not treat it as trusted.
+        let recorded = accepted ? recordLocalEvidence(observation) : false
         publish()
-        return accepted
+        return accepted && recorded
     }
 
     /// Writes a redacted error line when two different sources disagree about one cycle of a window
@@ -623,7 +660,20 @@ final class ClaudeQuotaPipeline {
 
     /// Trusted real-time evidence from a local source: freshness for the scheduler and a block on
     /// the source timeline.
-    private func recordLocalEvidence(_ observation: QuotaObservation) {
+    /// Returns false when the observation may not count as current evidence (the Mod is
+    /// suspended and has not been confirmed available again with a newer snapshot).
+    @discardableResult
+    private func recordLocalEvidence(_ observation: QuotaObservation) -> Bool {
+        if observation.source == SnapshotInbox.modSourceID {
+            let producedAt = observation.observedAt ?? observation.receivedAt
+            let allowed = lock.withLock { () -> Bool in
+                guard let suspendedAt = modSuspendedAt else { return true }
+                guard suspendedAt <= producedAt, let since = modAvailableSince, producedAt > since else { return false }
+                modSuspendedAt = nil
+                return true
+            }
+            guard allowed else { return false }
+        }
         realtimeTracker?.recordTrustedObservation(
             window: observation.window,
             observedAt: observation.observedAt ?? observation.receivedAt,
@@ -632,6 +682,7 @@ final class ClaudeQuotaPipeline {
         if let source = Self.statusSource(forSourceID: observation.source) {
             sourceTimeline.recordReading(source: source, observedAt: observation.observedAt ?? observation.receivedAt)
         }
+        return true
     }
 
     /// Sources disagree below a second; see `QuotaMergeEngine.sameResetInstant`.
@@ -842,8 +893,10 @@ final class ClaudeQuotaPipeline {
             return reading.source == ClaudeStatusLineSource.identifier || reading.source == SnapshotInbox.modSourceID
         }
         let validity = sourceValidity()
+        let modSuspended = lock.withLock { modSuspendedAt != nil }
         func isFresh(_ reading: QuotaMergedReading) -> Bool {
             guard let source = Self.statusSource(forSourceID: reading.source) else { return false }
+            if source == .mod, modSuspended { return false }
             return date.timeIntervalSince(reading.effectiveTime) <= validity.seconds(for: source)
         }
         // "Live" status: the newest displayed reading comes from a local source and is within that

@@ -37,6 +37,11 @@ final class ModSyncCoordinator {
     var onStatusChange: ((ModSyncStatus) -> Void)?
     /// Operation progress only; does not change sync facts or status notifications.
     var onPresentationChange: (() -> Void)?
+    /// The Mod was found uninstalled or disabled (a successful check, or an in-app uninstall):
+    /// the pipeline must stop treating its readings as live. Fired on the main thread.
+    var onModUnavailable: (() -> Void)?
+    /// A successful check found the Mod installed and enabled again.
+    var onModAvailable: (() -> Void)?
     /// The "don't show this in the menu" preference changed; rebuild the status menu.
     var onPromptChange: (() -> Void)?
 
@@ -68,7 +73,10 @@ final class ModSyncCoordinator {
             self?.startDetectionIfNeeded(force: true)
         }
         controller.onUninstallCompleted = { [weak self] result in
-            if case .success = result { self?.resetSnapshotEvidence() }
+            if case .success = result {
+                self?.onModUnavailable?()
+                self?.resetSnapshotEvidence()
+            }
             self?.startDetectionIfNeeded(force: true)
         }
     }
@@ -101,13 +109,19 @@ final class ModSyncCoordinator {
         detector.detect(claudeProcessRunning: processRunning) { [weak self] environment in
             guard let self else { return }
             self.detectionInFlight = false
-            let wasInstalled = self.environment?.installation != nil
             self.environment = environment
             // An uninstall done outside BalanceBar (CLI / plugin manager) must invalidate
             // the old plugin's evidence just like the in-app path; a missing CLI or a failed
-            // plugin-list check is not proof of removal.
-            if wasInstalled, environment.claudeFound, environment.installation == nil,
-               environment.installationCheck == .ok {
+            // plugin-list check is not proof of removal. Disabling ends live eligibility the
+            // same way: re-enabling must wait for a new snapshot.
+            let modUnavailable = environment.claudeFound && environment.installationCheck == .ok
+                && environment.installation?.isEnabled != true
+            if modUnavailable {
+                self.onModUnavailable?()
+            } else if environment.claudeFound, environment.installationCheck == .ok {
+                self.onModAvailable?()
+            }
+            if modUnavailable {
                 self.resetSnapshotEvidence()
             } else {
                 self.recomputeStatus()
