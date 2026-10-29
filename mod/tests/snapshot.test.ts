@@ -1,6 +1,6 @@
 import { expect, test } from "claude-code/testing"
 import { buildSnapshot, extractEmail, extractOrganization, hashEmail, inboxCandidates, snapshotFilename } from "../hooks/snapshot.js"
-import { createSessionBinding, recordMeasure, writeSnapshot } from "../hooks/register.js"
+import { bindSession, createSessionBinding, recordMeasure, writeSnapshot } from "../hooks/register.js"
 
 const NOW = "2026-10-19T00:00:00.000Z"
 const usage = {
@@ -128,26 +128,76 @@ test("without an organization the legacy email-only file name and account shape 
   expect(s.account).toEqual({ email_hash: "sha256:abc" })
 })
 
+function sessionContext(options: { startedAgo?: number; config: () => string; usageFails?: boolean }) {
+  const written: Record<string, string> = {}
+  const now = 1_000_000_000
+  const $ = {
+    env: { get: async (name: string) => ({ HOME: "/home/x", BALANCEBAR_MOD_INBOX: "/inbox" } as Record<string, string>)[name] },
+    clock: { now: async () => now },
+    session: {
+      usage: async () => {
+        if (options.usageFails) throw new Error("not ready")
+        return { ...usage, startedAt: now - (options.startedAgo ?? 1_000) }
+      },
+    },
+    fs: { exists: async () => true, read: async () => options.config(), write: async (path: string, data: string) => { written[path] = data } },
+  }
+  return { $, written }
+}
+
+const configFor = (org: string, email = "a@example.com") =>
+  JSON.stringify({ oauthAccount: { emailAddress: email, organizationUuid: org } })
+
 test("a session whose account or organization changed under it writes nothing", async () => {
-  let config = JSON.stringify({ oauthAccount: { emailAddress: "a@example.com", organizationUuid: "org-a" } })
-  const { $, written } = fakeContext({
-    fs: { exists: async () => true, read: async () => config, write: async (path: string, data: string) => { written[path] = data } },
-  })
+  let config = configFor("org-a")
+  const { $, written } = sessionContext({ config: () => config })
   const sessionA = createSessionBinding()
+  await bindSession($, sessionA)
   expect(await recordMeasure($, sessionA)).toBe(true)
 
   // The global config now names organization B, but session A keeps measuring organization A's usage.
   for (const key of Object.keys(written)) delete written[key]
-  config = JSON.stringify({ oauthAccount: { emailAddress: "a@example.com", organizationUuid: "org-b" } })
+  config = configFor("org-b")
   expect(await recordMeasure($, sessionA)).toBe(false)
   expect(Object.keys(written).length).toBe(0)
 
   // A session started after the switch is bound to B and writes B's own file.
   const sessionB = createSessionBinding()
+  await bindSession($, sessionB)
   expect(await recordMeasure($, sessionB)).toBe(true)
   expect(JSON.parse(Object.values(written)[0]).account.organization_hash).toBe(await hashEmail("org-b"))
 
   // A different email under the same session is refused the same way.
-  config = JSON.stringify({ oauthAccount: { emailAddress: "c@example.com", organizationUuid: "org-b" } })
+  config = configFor("org-b", "c@example.com")
   expect(await recordMeasure($, sessionB)).toBe(false)
+})
+
+test("a module reloaded into a running session cannot be proven and writes nothing", async () => {
+  // The session began 10 minutes ago under organization A; the config was switched to B since.
+  const { $, written } = sessionContext({ startedAgo: 600_000, config: () => configFor("org-b") })
+  const reloaded = createSessionBinding()
+  await bindSession($, reloaded)
+  expect(reloaded.status).toBe("untrusted")
+  expect(await recordMeasure($, reloaded)).toBe(false)
+  expect(Object.keys(written).length).toBe(0)
+})
+
+test("an unreadable account at start leaves the session untrusted even after the config appears", async () => {
+  let config = "{}"
+  const { $, written } = sessionContext({ config: () => config })
+  const binding = createSessionBinding()
+  await bindSession($, binding)
+  config = configFor("org-b")
+  expect(await recordMeasure($, binding)).toBe(false)
+  expect(Object.keys(written).length).toBe(0)
+})
+
+test("measuring before any session start, or with usage unavailable at start, writes nothing", async () => {
+  const unbound = sessionContext({ config: () => configFor("org-a") })
+  expect(await recordMeasure(unbound.$, createSessionBinding())).toBe(false)
+  const failing = sessionContext({ usageFails: true, config: () => configFor("org-a") })
+  const binding = createSessionBinding()
+  await bindSession(failing.$, binding)
+  expect(binding.status).toBe("untrusted")
+  expect(Object.keys(unbound.written).length + Object.keys(failing.written).length).toBe(0)
 })

@@ -61,25 +61,42 @@ export async function writeSnapshot($, snapshot, filename) {
   return false
 }
 
+/// A session started in the last 30 seconds is a real start; an older one means this module was
+/// (re)loaded into a session that was already running.
+const FRESH_START_MS = 30_000
+
 /// The account a session started under. The Mod API gives a session no identity of its own
-/// (`$.session.identity()` answers only managed installs), so the only identity source is the
+/// (`$.session.identity()` answers managed installs only), so the only identity source is the
 /// global ~/.claude.json, which an account or organization switch rewrites under sessions that
-/// are still running. A session therefore remembers what the file said when it first measured
-/// and writes nothing once the file disagrees: its usage can no longer be proven to belong to
-/// the account the file now names.
+/// are still running. A session therefore remembers what the file said at its real start and
+/// writes nothing once the file disagrees. Anything that cannot be proven to be a real start
+/// (a reload into a running session, a resumed session, an unreadable account, no start event)
+/// leaves the session untrusted: it writes nothing until it is restarted.
 export function createSessionBinding() {
-  return { bound: null }
+  return { status: "unbound", hashes: null }
+}
+
+export async function bindSession($, binding) {
+  try {
+    const usage = await $.session.usage()
+    const fresh = Number.isFinite(usage?.startedAt) && (await $.clock.now()) - usage.startedAt <= FRESH_START_MS
+    const hashes = await readAccountHashes($, await readHome($))
+    if (fresh && hashes.emailHash) {
+      binding.status = "bound"
+      binding.hashes = hashes
+    } else {
+      binding.status = "untrusted"
+    }
+  } catch {
+    binding.status = "untrusted"
+  }
 }
 
 function matchesBinding(binding, hashes) {
   if (!binding) return true
-  if (!binding.bound) {
-    // Only an identified account can be bound; an unidentified one is rejected downstream.
-    if (hashes.emailHash) binding.bound = hashes
-    return true
-  }
-  return binding.bound.emailHash === hashes.emailHash
-    && binding.bound.organizationHash === hashes.organizationHash
+  return binding.status === "bound"
+    && binding.hashes.emailHash === hashes.emailHash
+    && binding.hashes.organizationHash === hashes.organizationHash
 }
 
 /// Capability detection: a missing usage() throws and is treated as "write nothing".
@@ -101,9 +118,7 @@ export async function recordMeasure($, binding = null) {
 export function register(on) {
   const binding = createSessionBinding()
   on("session.start", async ($, event, next) => {
-    // Bind at session start, before any switch can happen under a running session.
-    const home = await readHome($)
-    matchesBinding(binding, await readAccountHashes($, home))
+    await bindSession($, binding)
     return next(event)
   })
   on("session.measure", async ($, event, next) => {
