@@ -1,6 +1,6 @@
 import { expect, test } from "claude-code/testing"
 import { buildSnapshot, extractEmail, extractOrganization, hashEmail, inboxCandidates, snapshotFilename } from "../hooks/snapshot.js"
-import { bindSession, createSessionBinding, recordMeasure, writeSnapshot } from "../hooks/register.js"
+import { bindSession, recordMeasure, writeSnapshot } from "../hooks/register.js"
 
 const NOW = "2026-10-19T00:00:00.000Z"
 const usage = {
@@ -128,12 +128,23 @@ test("without an organization the legacy email-only file name and account shape 
   expect(s.account).toEqual({ email_hash: "sha256:abc" })
 })
 
-function sessionContext(options: { startedAgo?: number; config: () => string; usageFails?: boolean }) {
+/// A fake session. `state` is shared by contexts built from it: it is what survives a module reload.
+function sessionContext(options: { startedAgo?: number; config: () => string; usageFails?: boolean; state?: Map<string, { value: unknown; version: number }> }) {
   const written: Record<string, string> = {}
+  const state = options.state ?? new Map()
   const now = 1_000_000_000
   const $ = {
     env: { get: async (name: string) => ({ HOME: "/home/x", BALANCEBAR_MOD_INBOX: "/inbox" } as Record<string, string>)[name] },
     clock: { now: async () => now },
+    state: {
+      get: async (ref: { key: string }) => state.get(ref.key) ?? { value: undefined, version: 0 },
+      set: async (ref: { key: string }, value: unknown, o?: { ifVersion?: number }) => {
+        const held = state.get(ref.key) ?? { value: undefined, version: 0 }
+        if (o?.ifVersion !== undefined && o.ifVersion !== held.version) return { isSet: false, version: held.version }
+        state.set(ref.key, { value, version: held.version + 1 })
+        return { isSet: true, version: held.version + 1 }
+      },
+    },
     session: {
       usage: async () => {
         if (options.usageFails) throw new Error("not ready")
@@ -142,7 +153,7 @@ function sessionContext(options: { startedAgo?: number; config: () => string; us
     },
     fs: { exists: async () => true, read: async () => options.config(), write: async (path: string, data: string) => { written[path] = data } },
   }
-  return { $, written }
+  return { $, written, state }
 }
 
 const configFor = (org: string, email = "a@example.com") =>
@@ -151,53 +162,60 @@ const configFor = (org: string, email = "a@example.com") =>
 test("a session whose account or organization changed under it writes nothing", async () => {
   let config = configFor("org-a")
   const { $, written } = sessionContext({ config: () => config })
-  const sessionA = createSessionBinding()
-  await bindSession($, sessionA)
-  expect(await recordMeasure($, sessionA)).toBe(true)
+  await bindSession($)
+  expect(await recordMeasure($, true)).toBe(true)
 
   // The global config now names organization B, but session A keeps measuring organization A's usage.
   for (const key of Object.keys(written)) delete written[key]
   config = configFor("org-b")
-  expect(await recordMeasure($, sessionA)).toBe(false)
+  expect(await recordMeasure($, true)).toBe(false)
   expect(Object.keys(written).length).toBe(0)
 
-  // A session started after the switch is bound to B and writes B's own file.
-  const sessionB = createSessionBinding()
-  await bindSession($, sessionB)
-  expect(await recordMeasure($, sessionB)).toBe(true)
-  expect(JSON.parse(Object.values(written)[0]).account.organization_hash).toBe(await hashEmail("org-b"))
+  // A session started after the switch (its own state) is bound to B and writes B's own file.
+  const sessionB = sessionContext({ config: () => config })
+  await bindSession(sessionB.$)
+  expect(await recordMeasure(sessionB.$, true)).toBe(true)
+  expect(JSON.parse(Object.values(sessionB.written)[0]).account.organization_hash).toBe(await hashEmail("org-b"))
 
   // A different email under the same session is refused the same way.
   config = configFor("org-b", "c@example.com")
-  expect(await recordMeasure($, sessionB)).toBe(false)
+  expect(await recordMeasure(sessionB.$, true)).toBe(false)
 })
 
-test("a module reloaded into a running session cannot be proven and writes nothing", async () => {
-  // The session began 10 minutes ago under organization A; the config was switched to B since.
-  const { $, written } = sessionContext({ startedAgo: 600_000, config: () => configFor("org-b") })
-  const reloaded = createSessionBinding()
-  await bindSession($, reloaded)
-  expect(reloaded.status).toBe("untrusted")
-  expect(await recordMeasure($, reloaded)).toBe(false)
+test("a reload of the module never rebinds, even within the first seconds of the session", async () => {
+  let config = configFor("org-a")
+  const first = sessionContext({ startedAgo: 8_000, config: () => config })
+  await bindSession(first.$)
+  config = configFor("org-b")
+  // The module is reloaded 12 s into the session: new module, same session state, `session.start` again.
+  const reloaded = sessionContext({ startedAgo: 12_000, config: () => config, state: first.state })
+  await bindSession(reloaded.$)
+  expect(await recordMeasure(reloaded.$, true)).toBe(false)
+  expect(Object.keys(reloaded.written).length).toBe(0)
+})
+
+test("a module first added to a running session cannot be proven and writes nothing", async () => {
+  const { $, written, state } = sessionContext({ startedAgo: 600_000, config: () => configFor("org-b") })
+  await bindSession($)
+  expect((state.get("session")!.value as { status: string }).status).toBe("untrusted")
+  expect(await recordMeasure($, true)).toBe(false)
   expect(Object.keys(written).length).toBe(0)
 })
 
 test("an unreadable account at start leaves the session untrusted even after the config appears", async () => {
   let config = "{}"
   const { $, written } = sessionContext({ config: () => config })
-  const binding = createSessionBinding()
-  await bindSession($, binding)
+  await bindSession($)
   config = configFor("org-b")
-  expect(await recordMeasure($, binding)).toBe(false)
+  expect(await recordMeasure($, true)).toBe(false)
   expect(Object.keys(written).length).toBe(0)
 })
 
 test("measuring before any session start, or with usage unavailable at start, writes nothing", async () => {
   const unbound = sessionContext({ config: () => configFor("org-a") })
-  expect(await recordMeasure(unbound.$, createSessionBinding())).toBe(false)
+  expect(await recordMeasure(unbound.$, true)).toBe(false)
   const failing = sessionContext({ usageFails: true, config: () => configFor("org-a") })
-  const binding = createSessionBinding()
-  await bindSession(failing.$, binding)
-  expect(binding.status).toBe("untrusted")
+  await bindSession(failing.$)
+  expect(await recordMeasure(failing.$, true)).toBe(false)
   expect(Object.keys(unbound.written).length + Object.keys(failing.written).length).toBe(0)
 })

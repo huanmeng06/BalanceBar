@@ -61,51 +61,53 @@ export async function writeSnapshot($, snapshot, filename) {
   return false
 }
 
-/// A session started in the last 30 seconds is a real start; an older one means this module was
-/// (re)loaded into a session that was already running.
+/// A first load into a session that started in the last 30 seconds is taken as the session's real
+/// start; an older session means this module was added to one that was already running.
 const FRESH_START_MS = 30_000
 
 /// The account a session started under. The Mod API gives a session no identity of its own
 /// (`$.session.identity()` answers managed installs only), so the only identity source is the
 /// global ~/.claude.json, which an account or organization switch rewrites under sessions that
-/// are still running. A session therefore remembers what the file said at its real start and
-/// writes nothing once the file disagrees. Anything that cannot be proven to be a real start
-/// (a reload into a running session, a resumed session, an unreadable account, no start event)
-/// leaves the session untrusted: it writes nothing until it is restarted.
-export function createSessionBinding() {
-  return { status: "unbound", hashes: null }
-}
-
-export async function bindSession($, binding) {
+/// are still running. A session therefore remembers what the file said when this module first
+/// loaded into it, in `$.state`: that survives a reload of the module, so a reload never binds
+/// again, whatever the session's age. It then writes nothing once the file disagrees. Anything
+/// that cannot be proven to be a real start (added to a running session, a resumed session,
+/// an unreadable account, no start event) leaves the session untrusted: it writes nothing
+/// until it is restarted.
+export async function bindSession($) {
   try {
-    const usage = await $.session.usage()
-    const fresh = Number.isFinite(usage?.startedAt) && (await $.clock.now()) - usage.startedAt <= FRESH_START_MS
-    const hashes = await readAccountHashes($, await readHome($))
-    if (fresh && hashes.emailHash) {
-      binding.status = "bound"
-      binding.hashes = hashes
-    } else {
-      binding.status = "untrusted"
+    const held = await $.state.get({ plugin: "balancebar-mod", key: "session" })
+    if (held.value) return
+    let session = { status: "untrusted", emailHash: null, organizationHash: null }
+    try {
+      const usage = await $.session.usage()
+      const fresh = Number.isFinite(usage?.startedAt) && (await $.clock.now()) - usage.startedAt <= FRESH_START_MS
+      const hashes = await readAccountHashes($, await readHome($))
+      if (fresh && hashes.emailHash) session = { status: "bound", ...hashes }
+    } catch {
+      // stays untrusted
     }
+    await $.state.set({ plugin: "balancebar-mod", key: "session" }, session, { ifVersion: held.version })
   } catch {
-    binding.status = "untrusted"
+    // no state: measures find no binding and write nothing
   }
 }
 
-function matchesBinding(binding, hashes) {
-  if (!binding) return true
-  return binding.status === "bound"
-    && binding.hashes.emailHash === hashes.emailHash
-    && binding.hashes.organizationHash === hashes.organizationHash
+async function matchesBinding($, hashes) {
+  const { value } = await $.state.get({ plugin: "balancebar-mod", key: "session" })
+  return value?.status === "bound"
+    && value.emailHash === hashes.emailHash
+    && value.organizationHash === hashes.organizationHash
 }
 
 /// Capability detection: a missing usage() throws and is treated as "write nothing".
-export async function recordMeasure($, binding = null) {
+/// `enforceBinding` is on in the real hook; the pure-mapping tests leave it off.
+export async function recordMeasure($, enforceBinding = false) {
   try {
     const usage = await $.session.usage()
     const home = await readHome($)
     const hashes = await readAccountHashes($, home)
-    if (!matchesBinding(binding, hashes)) return false
+    if (enforceBinding && !(await matchesBinding($, hashes))) return false
     const { emailHash, organizationHash } = hashes
     const snapshot = buildSnapshot({ now: new Date().toISOString(), usage, emailHash, organizationHash })
     if (!snapshot) return false
@@ -116,13 +118,12 @@ export async function recordMeasure($, binding = null) {
 }
 
 export function register(on) {
-  const binding = createSessionBinding()
   on("session.start", async ($, event, next) => {
-    await bindSession($, binding)
+    await bindSession($)
     return next(event)
   })
   on("session.measure", async ($, event, next) => {
-    await recordMeasure($, binding).catch((error) => errorText(error))
+    await recordMeasure($, true).catch((error) => errorText(error))
     return next(event)
   })
 }

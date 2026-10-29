@@ -6,5 +6,6 @@
   "author": {
     "name": "BalanceBar"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "types": "./types/index.d.ts"
 }
