@@ -930,11 +930,12 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         quiet(pipeline)
         XCTAssertEqual(PipelineStubProtocol.requestCount, 1)
 
-        // A same-value snapshot rewrite is a whole-snapshot replay: the inbox does not even
-        // emit it, so it can neither refresh the display nor extend freshness. Had it been
-        // emitted as evidence, the tracker would stay fresh until start+486 and both the
-        // notice and the scheduled read below would disagree.
-        try placeModSnapshot(five: 25, seven: 42, observedAt: Self.start.addingTimeInterval(372))
+        // A byte-identical snapshot rewrite (same production time) is a whole-snapshot replay:
+        // the inbox does not even emit it, so it can neither refresh the display nor extend
+        // freshness. (A same-value snapshot with a later production time is evidence; see
+        // the #634 tests.) Had it been emitted as evidence, the tracker would stay fresh
+        // until start+486 and both the notice and the scheduled read below would disagree.
+        try placeModSnapshot(five: 25, seven: 42, observedAt: Self.start.addingTimeInterval(310))
         let inbox = try XCTUnwrap(lastInbox)
         XCTAssertTrue(pollUntil { inbox.queue.sync { inbox.suppressedReplayCount } >= 1 })
         clock.advance(by: 65) // start+431; the changed snapshot's evidence expired at start+430
@@ -1032,7 +1033,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         // The previously adopted values arrive again: they are a replay of the adopted
         // baseline, not new evidence, and must not re-extend freshness. Had the rejected
         // snapshot become the baseline, this write would be emitted and adopted again.
-        try placeModSnapshot(five: 25, seven: 42, observedAt: Self.start.addingTimeInterval(315))
+        try placeModSnapshot(five: 25, seven: 42, observedAt: Self.start.addingTimeInterval(5))
         XCTAssertTrue(pollUntil { inbox.queue.sync { inbox.suppressedReplayCount } >= 1 })
         clock.advance(by: 75) // start+380; the adopted evidence expired at start+125
         XCTAssertNil(pipeline.manualRefreshNotice(), "a rejected snapshot must not enable a freshness extension")
@@ -1459,6 +1460,159 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         pipeline.requestFetch(reason: .scheduled)
         quiet(pipeline)
         XCTAssertEqual(PipelineStubProtocol.requestCount, 1, "live Mod evidence defers the official read again")
+    }
+
+    // MARK: Issue #634 (Gate F1–F3)
+
+    private final class RequestCounter {
+        private let lock = NSLock()
+        private var value = 0
+        func increment() { lock.lock(); value += 1; lock.unlock() }
+        var count: Int { lock.lock(); defer { lock.unlock() }; return value }
+    }
+
+    private func refreshedEvidenceLines() -> Int {
+        diagnosticLines.all.filter { $0.contains("claude native observation refreshed evidence") }.count
+    }
+
+    /// F1: an unchanged integer percentage must still keep the Mod live. The newer snapshot is not
+    /// merged again, but it renews the local evidence; a re-read of the same file adds nothing.
+    func testSameValueNewerModSnapshotRenewsLiveEvidenceButAFileRereadDoesNot() throws {
+        let tracker = ClaudeRealtimeTracker(now: { [clock] in clock!.now })
+        let pipeline = makePipeline(realtimeTracker: tracker, configuration: claudeV1TestConfiguration, withInbox: true)
+        pipeline.start()
+        pipeline.requestFetch(reason: .initial)
+        _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+        clock.advance(by: 305)
+        try placeModSnapshot(five: 25, seven: 42, observedAt: Self.start.addingTimeInterval(310))
+        _ = try XCTUnwrap(waitForState(pipeline) { $0.status.isNativeRealtime })
+        // Let directory catch-up rescans settle so the adopted baseline is in place.
+        Thread.sleep(forTimeInterval: 0.5)
+        quiet(pipeline)
+        XCTAssertEqual(refreshedEvidenceLines(), 0)
+
+        clock.advance(by: 100) // start+405: the first snapshot is 95 s old
+        let producedAt = Self.start.addingTimeInterval(400)
+        try placeModSnapshot(five: 25, seven: 42, observedAt: producedAt)
+        XCTAssertTrue(pollUntil { refreshedEvidenceLines() == 2 }, "one line per standard window")
+        quiet(pipeline)
+        XCTAssertEqual(tracker.lastTrustedRealtimeObservationAt, producedAt)
+        XCTAssertEqual(try XCTUnwrap(pipeline.latestState).display.window(for: .fiveHour)?.usedPercentage, 25)
+
+        // The identical file again (same production time) is a replay: no further evidence.
+        try placeModSnapshot(five: 25, seven: 42, observedAt: producedAt)
+        quiet(pipeline)
+        XCTAssertEqual(refreshedEvidenceLines(), 2)
+
+        // 155 s after the first snapshot only the renewed evidence keeps the slot live.
+        clock.advance(by: 60)
+        pipeline.tick()
+        pipeline.waitUntilIdle()
+        XCTAssertTrue(try XCTUnwrap(pipeline.latestState).status.isNativeRealtime)
+        pipeline.requestFetch(reason: .scheduled)
+        quiet(pipeline)
+        XCTAssertEqual(PipelineStubProtocol.requestCount, 1, "renewed Mod evidence still defers the official read")
+    }
+
+    /// F2: after an uninstall/reinstall the first snapshot produced after the confirmation resumes
+    /// live status even though its values equal the pre-uninstall snapshot.
+    func testReinstalledModResumesWithASameValueSnapshot() throws {
+        let tracker = ClaudeRealtimeTracker(now: { [clock] in clock!.now })
+        let pipeline = makePipeline(realtimeTracker: tracker, configuration: claudeV1TestConfiguration, withInbox: true)
+        pipeline.start()
+        pipeline.requestFetch(reason: .initial)
+        _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+        clock.advance(by: 305)
+        try placeModSnapshot(five: 25, seven: 42, observedAt: Self.start.addingTimeInterval(310))
+        _ = try XCTUnwrap(waitForState(pipeline) { $0.status.isNativeRealtime })
+        Thread.sleep(forTimeInterval: 0.5)
+        quiet(pipeline)
+
+        clock.advance(by: 15) // start+320
+        pipeline.modBecameUnavailable(reason: .uninstalled)
+        _ = try XCTUnwrap(waitForState(pipeline) { !$0.status.isNativeRealtime })
+        clock.advance(by: 3)
+        pipeline.modBecameAvailable()
+        pipeline.waitUntilIdle()
+        clock.advance(by: 7) // start+330
+        try placeModSnapshot(five: 25, seven: 42, observedAt: Self.start.addingTimeInterval(326))
+        _ = try XCTUnwrap(waitForState(pipeline) { $0.status.isNativeRealtime })
+        XCTAssertTrue(diagnosticLines.all.contains { $0.contains("claude mod live resumed; window=") })
+    }
+
+    /// F3: a snapshot produced after the suspension asks for one availability check; once the check
+    /// confirms the Mod, that same snapshot resumes live status (no card visibility, no next snapshot).
+    func testSnapshotAfterSuspensionTriggersDetectionAndResumesOnceConfirmed() throws {
+        let tracker = ClaudeRealtimeTracker(now: { [clock] in clock!.now })
+        let pipeline = makePipeline(realtimeTracker: tracker, configuration: claudeV1TestConfiguration, withInbox: true)
+        let requests = RequestCounter()
+        pipeline.modDetectionRequester = { requests.increment() }
+        pipeline.start()
+        pipeline.requestFetch(reason: .initial)
+        _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+        clock.advance(by: 305)
+        try placeModSnapshot(five: 25, seven: 42, observedAt: Self.start.addingTimeInterval(310))
+        _ = try XCTUnwrap(waitForState(pipeline) { $0.status.isNativeRealtime })
+        Thread.sleep(forTimeInterval: 0.5)
+        quiet(pipeline)
+
+        clock.advance(by: 15) // start+320
+        pipeline.modBecameUnavailable(reason: .disabled)
+        _ = try XCTUnwrap(waitForState(pipeline) { !$0.status.isNativeRealtime })
+        clock.advance(by: 10) // start+330
+        try placeModSnapshot(five: 25, seven: 42, observedAt: Self.start.addingTimeInterval(325))
+        XCTAssertTrue(pollUntil { requests.count == 1 }, "the snapshot asks for one detection")
+        quiet(pipeline)
+        XCTAssertFalse(try XCTUnwrap(pipeline.latestState).status.isNativeRealtime, "not live before the check confirms")
+
+        pipeline.modBecameAvailable()
+        _ = try XCTUnwrap(waitForState(pipeline) { $0.status.isNativeRealtime })
+        let lines = diagnosticLines.all
+        XCTAssertTrue(lines.contains { $0.contains("claude mod live resumed; window=five_hour; trigger=snapshot_detection") })
+        XCTAssertTrue(lines.contains { $0.contains("detection_requested=true") })
+        XCTAssertEqual(requests.count, 1)
+    }
+
+    /// F3 safety: neither a snapshot produced before the suspension nor one whose detection found
+    /// the Mod still unavailable may be revived by a later confirmation.
+    func testOldOrUnconfirmedSnapshotsNeverResumeLiveStatus() throws {
+        let tracker = ClaudeRealtimeTracker(now: { [clock] in clock!.now })
+        let pipeline = makePipeline(realtimeTracker: tracker, configuration: claudeV1TestConfiguration, withInbox: true)
+        let requests = RequestCounter()
+        pipeline.modDetectionRequester = { requests.increment() }
+        pipeline.start()
+        pipeline.requestFetch(reason: .initial)
+        _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+        clock.advance(by: 305)
+        try placeModSnapshot(five: 25, seven: 42, observedAt: Self.start.addingTimeInterval(310))
+        _ = try XCTUnwrap(waitForState(pipeline) { $0.status.isNativeRealtime })
+        Thread.sleep(forTimeInterval: 0.5)
+        quiet(pipeline)
+
+        clock.advance(by: 15) // start+320
+        pipeline.modBecameUnavailable(reason: .uninstalled)
+        _ = try XCTUnwrap(waitForState(pipeline) { !$0.status.isNativeRealtime })
+        // Produced before the suspension: no detection, no candidate.
+        try placeModSnapshot(five: 26, seven: 43, observedAt: Self.start.addingTimeInterval(315))
+        _ = try XCTUnwrap(waitForState(pipeline) { $0.display.window(for: .fiveHour)?.usedPercentage == 26 })
+        quiet(pipeline)
+        XCTAssertEqual(requests.count, 0)
+        pipeline.modBecameAvailable()
+        quiet(pipeline)
+        XCTAssertFalse(try XCTUnwrap(pipeline.latestState).status.isNativeRealtime)
+
+        // Produced after the suspension, but the check it triggered found the Mod still off.
+        pipeline.modBecameUnavailable(reason: .uninstalled)
+        pipeline.waitUntilIdle()
+        clock.advance(by: 10)
+        try placeModSnapshot(five: 27, seven: 44, observedAt: Self.start.addingTimeInterval(328))
+        XCTAssertTrue(pollUntil { requests.count == 1 })
+        pipeline.modBecameUnavailable(reason: .uninstalled)
+        pipeline.waitUntilIdle()
+        pipeline.modBecameAvailable()
+        quiet(pipeline)
+        XCTAssertFalse(try XCTUnwrap(pipeline.latestState).status.isNativeRealtime,
+                       "a snapshot from before an unavailable verdict never resumes")
     }
 
     func testStatusLineReadingBecomesAgeAndSourceOnceItIsNoLongerLive() throws {

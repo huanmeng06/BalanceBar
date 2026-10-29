@@ -174,6 +174,11 @@ final class ClaudeQuotaPipeline {
     /// not. Only snapshots produced after this moment may resume live status, so data written
     /// while the Mod was off (and rescanned later) never does.
     private var modAvailableSince: Date?
+    /// Newest Mod snapshot per window that was produced after the suspension but arrived before
+    /// detection confirmed the Mod available; the detection it triggered may resume live status
+    /// with it. Dropped whenever the Mod becomes unavailable again or the account changes.
+    private var modResumeCandidates: [QuotaWindowKind: QuotaObservation] = [:]
+    private var lastModDetectionRequestAt: Date?
     /// Whether any window is awaiting official reset confirmation (pipeline queue).
     private var awaitingResetConfirmation = false
     /// Confirmation requests already repeated by the retry timer in the current pending period.
@@ -218,6 +223,16 @@ final class ClaudeQuotaPipeline {
         set { lock.withLock { modSnapshotEventHandler = newValue } }
     }
     private var modSnapshotEventHandler: ((ModSnapshotEvent) -> Void)?
+
+    /// Asks the settings coordinator for one Mod availability check (forced, no polling). Fired
+    /// on the pipeline queue when a snapshot produced after the suspension arrives while the Mod
+    /// is not yet confirmed available, at most once per `modDetectionRequestThrottle`.
+    var modDetectionRequester: (() -> Void)? {
+        get { lock.withLock { modDetectionRequestHandler } }
+        set { lock.withLock { modDetectionRequestHandler = newValue } }
+    }
+    private var modDetectionRequestHandler: (() -> Void)?
+    static let modDetectionRequestThrottle: TimeInterval = 30
 
     /// - Parameters:
     ///   - calibrationIntervalCap: Upper bound for how long a fresh real-time source may suppress requests.
@@ -358,6 +373,7 @@ final class ClaudeQuotaPipeline {
         queue.async { [self] in
             let first = lock.withLock { () -> Bool in
                 modAvailableSince = nil
+                modResumeCandidates = [:]
                 guard modSuspendedAt == nil else { return false }
                 modSuspendedAt = now()
                 return true
@@ -374,14 +390,32 @@ final class ClaudeQuotaPipeline {
     /// itself: a snapshot produced after the suspension is still required.
     func modBecameAvailable() {
         queue.async { [self] in
-            let confirmed = lock.withLock { () -> (first: Bool, suspended: Bool) in
-                guard modAvailableSince == nil else { return (false, modSuspendedAt != nil) }
+            let confirmed = lock.withLock { () -> (first: Bool, suspended: Bool, resume: [QuotaObservation]) in
+                guard modAvailableSince == nil else { return (false, modSuspendedAt != nil, []) }
                 modAvailableSince = now()
-                return (true, modSuspendedAt != nil)
+                // The snapshot that triggered this detection was produced after the suspension
+                // and the detection now proves the Mod is installed and enabled: it resumes
+                // live status at once instead of waiting for the next snapshot. Candidates were
+                // collected only after the suspension, so data written earlier never qualifies.
+                let resume = modSuspendedAt == nil ? [] : Array(modResumeCandidates.values)
+                modResumeCandidates = [:]
+                if !resume.isEmpty { modSuspendedAt = nil }
+                return (true, modSuspendedAt != nil || !resume.isEmpty, resume)
             }
             if confirmed.first {
                 diagnostics("claude mod available confirmed; suspended=\(confirmed.suspended)", .info)
             }
+            guard !confirmed.resume.isEmpty else { return }
+            for observation in confirmed.resume {
+                diagnostics(
+                    "claude mod live resumed; window=\(observation.window.rawValue); trigger=snapshot_detection",
+                    .info)
+                recordTrustedLocalEvidence(observation)
+                modSnapshotEventSink?(ModSnapshotEvent(
+                    kind: .processed(accepted: true), window: observation.window,
+                    observedAt: observation.observedAt, receivedAt: observation.receivedAt))
+            }
+            publish()
         }
     }
 
@@ -520,7 +554,10 @@ final class ClaudeQuotaPipeline {
                 kind: .accountChanged, window: nil, observedAt: nil, receivedAt: now()))
         }
         engine.accountDidChange(epoch: change.epoch, accountID: change.identity?.stableID)
-        lock.withLock { accountActiveSince = now() }
+        lock.withLock {
+            accountActiveSince = now()
+            modResumeCandidates = [:]
+        }
         realtimeTracker?.reset(epoch: change.epoch)
         sourceTimeline.reset(accountKey: ClaudeSourceTimeline.accountKey(forStableID: change.identity?.stableID))
         statusLineSource?.accountDidChange(epoch: change.epoch)
@@ -639,6 +676,14 @@ final class ClaudeQuotaPipeline {
         let displayed = engine.currentState.windows[observation.window.rawValue]?.displayed
         let accepted = displayed?.source == observation.source
             && displayed?.receivedAt == observation.receivedAt
+        if accepted, let previous, previous.source == observation.source, previous.epoch == observation.epoch,
+           previous.usedPercentage == observation.usedPercentage,
+           Self.sameCycle(previous.resetsAt, observation.resetsAt) {
+            // Same value, later production time: only the reading's time advances.
+            diagnostics(
+                "claude native observation refreshed evidence; reason=same_value_newer; source=\(observation.source); window=\(observation.window.rawValue)",
+                .debug)
+        }
         if !accepted, let previous, (observation.observedAt ?? observation.receivedAt) < previous.effectiveTime {
             logSourceConflict(observation, displayed: previous, reason: "older_than_displayed")
         }
@@ -679,11 +724,19 @@ final class ClaudeQuotaPipeline {
     private func recordLocalEvidence(_ observation: QuotaObservation) -> Bool {
         if observation.source == SnapshotInbox.modSourceID {
             let producedAt = observation.observedAt ?? observation.receivedAt
-            enum Outcome { case notSuspended, rejected(String), resumed }
+            enum Outcome { case notSuspended, rejected(String), resumed, awaitingDetection(request: Bool) }
             let outcome = lock.withLock { () -> Outcome in
                 guard let suspendedAt = modSuspendedAt else { return .notSuspended }
                 if suspendedAt > producedAt { return .rejected("snapshot_before_suspension") }
-                guard let since = modAvailableSince else { return .rejected("snapshot_while_mod_unavailable") }
+                guard let since = modAvailableSince else {
+                    // Produced after the suspension: keep it for the detection it asks for.
+                    guard modDetectionRequestHandler != nil else { return .rejected("snapshot_while_mod_unavailable") }
+                    modResumeCandidates[observation.window] = observation
+                    let due = lastModDetectionRequestAt.map {
+                        now().timeIntervalSince($0) >= Self.modDetectionRequestThrottle } ?? true
+                    if due { lastModDetectionRequestAt = now() }
+                    return .awaitingDetection(request: due)
+                }
                 if producedAt <= since { return .rejected("snapshot_before_available_confirmation") }
                 modSuspendedAt = nil
                 return .resumed
@@ -698,8 +751,19 @@ final class ClaudeQuotaPipeline {
                 return false
             case .resumed:
                 diagnostics("claude mod live resumed; window=\(observation.window.rawValue)", .info)
+            case .awaitingDetection(let request):
+                diagnostics(
+                    "claude mod snapshot not live evidence; reason=snapshot_while_mod_unavailable; window=\(observation.window.rawValue); detection_requested=\(request)",
+                    .debug)
+                if request { modDetectionRequester?() }
+                return false
             }
         }
+        recordTrustedLocalEvidence(observation)
+        return true
+    }
+
+    private func recordTrustedLocalEvidence(_ observation: QuotaObservation) {
         realtimeTracker?.recordTrustedObservation(
             window: observation.window,
             observedAt: observation.observedAt ?? observation.receivedAt,
@@ -708,7 +772,6 @@ final class ClaudeQuotaPipeline {
         if let source = Self.statusSource(forSourceID: observation.source) {
             sourceTimeline.recordReading(source: source, observedAt: observation.observedAt ?? observation.receivedAt)
         }
-        return true
     }
 
     /// Sources disagree below a second; see `QuotaMergeEngine.sameResetInstant`.
