@@ -141,6 +141,9 @@ final class ClaudeQuotaPipeline {
     /// When the active account was first seen by this process; Mod snapshots produced earlier
     /// cannot be attributed to it without an official baseline.
     private var accountActiveSince: Date
+    /// Whether an official read has been merged for the active account since it became active in
+    /// this process (a restored merge state does not count). Guarded by `lock`.
+    private var officialReadSinceActivation = false
     private var state: ClaudeQuotaState?
     /// Set while the Mod is known to be uninstalled or disabled (its lifecycle, not its data
     /// validity): its readings keep their value and time but are neither live nor fresh
@@ -287,6 +290,11 @@ final class ClaudeQuotaPipeline {
         snapshotInbox?.diagnosticLog = { [diagnostics] message in diagnostics(message, .info) }
         snapshotInbox?.rejectionObserver = { [weak self] reason in
             guard let self, let sink = self.modSnapshotEventSink else { return }
+            // Until this launch has read the official quota for the account, a restored cache is
+            // all there is to verify a cycle against: a snapshot dropped then (typically a stale one
+            // found at launch) says nothing about the Mod, and a "rejected" status would linger
+            // until the next snapshot arrives.
+            if reason == .cycleUnverified, !self.lock.withLock({ self.officialReadSinceActivation }) { return }
             sink(ModSnapshotEvent(
                 kind: .rejected(reason: reason), window: nil, observedAt: nil,
                 receivedAt: self.now()))
@@ -509,6 +517,7 @@ final class ClaudeQuotaPipeline {
         engine.accountDidChange(epoch: change.epoch, accountID: change.identity?.stableID)
         lock.withLock {
             accountActiveSince = now()
+            officialReadSinceActivation = false
             modResumeCandidates = [:]
             modCandidateFloor = nil
             modEvidenceAt = nil
@@ -913,6 +922,7 @@ final class ClaudeQuotaPipeline {
                 logSourceConflict(observation, displayed: previous, reason: "official_corrected_local")
             }
         }
+        if !readings.isEmpty { lock.withLock { officialReadSinceActivation = true } }
         adapter?.update(engine.displayModel, accountScope: Self.accountScope(for: account))
         return nil
     }
