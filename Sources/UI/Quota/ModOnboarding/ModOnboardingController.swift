@@ -77,7 +77,7 @@ enum ModOnboardingText: String, CaseIterable {
 
     var defaultText: String {
         switch self {
-        case .pitchTitle: return "让 Claude 额度实时更新"
+        case .pitchTitle: return "BalanceBar Mod 实时增强"
         case .pitchSubtitle: return "BalanceBar Mod 是运行在 Claude Code 里的小插件，每轮回复后把官方额度告诉 BalanceBar。"
         case .laterButton: return "稍后"
         case .feature1Title: return "实时、官方数据"

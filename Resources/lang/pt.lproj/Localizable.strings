@@ -769,7 +769,7 @@
 "mod.ui.last_data_note" = "“Últimos dados confiáveis” é quando o BalanceBar aceitou dados de cota pela última vez; não muda enquanto a cota continuar igual.";
 
 // INT-2 Mod window presentation
-"mod.ui.int2.pitch_title" = "Atualize a cota do Claude em tempo real";
+"mod.ui.int2.pitch_title" = "BalanceBar Mod impulso em tempo real";
 "mod.ui.int2.pitch_subtitle" = "O BalanceBar Mod é um pequeno plugin que corre dentro do Claude Code e comunica ao BalanceBar a cota oficial após cada resposta.";
 "mod.ui.int2.later_button" = "Mais tarde";
 "mod.ui.int2.feature1_title" = "Dados oficiais em tempo real";

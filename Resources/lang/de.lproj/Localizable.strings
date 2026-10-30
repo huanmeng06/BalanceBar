@@ -769,7 +769,7 @@
 "mod.ui.last_data_note" = "„Letzte vertrauenswürdige Daten“ ist der Zeitpunkt, an dem BalanceBar zuletzt Kontingentdaten übernommen hat; er ändert sich nicht, solange das Kontingent gleich bleibt.";
 
 // INT-2 Mod window presentation
-"mod.ui.int2.pitch_title" = "Claude-Kontingent in Echtzeit aktualisieren";
+"mod.ui.int2.pitch_title" = "BalanceBar Mod Echtzeit-Boost";
 "mod.ui.int2.pitch_subtitle" = "BalanceBar Mod ist ein kleines Plugin in Claude Code, das BalanceBar nach jeder Antwort das offizielle Kontingent meldet.";
 "mod.ui.int2.later_button" = "Später";
 "mod.ui.int2.feature1_title" = "Echtzeit, offizielle Daten";
