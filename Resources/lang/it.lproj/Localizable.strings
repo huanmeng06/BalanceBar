@@ -769,7 +769,7 @@
 "mod.ui.last_data_note" = "«Ultimi dati attendibili» indica quando BalanceBar ha accettato per l’ultima volta dati di quota; non cambia finché la quota resta uguale.";
 
 // INT-2 Mod window presentation
-"mod.ui.int2.pitch_title" = "Aggiorna la quota di Claude in tempo reale";
+"mod.ui.int2.pitch_title" = "BalanceBar Mod potenziamento in tempo reale";
 "mod.ui.int2.pitch_subtitle" = "BalanceBar Mod è un piccolo plugin eseguito in Claude Code che comunica a BalanceBar la quota ufficiale dopo ogni risposta.";
 "mod.ui.int2.later_button" = "Più tardi";
 "mod.ui.int2.feature1_title" = "Dati ufficiali in tempo reale";

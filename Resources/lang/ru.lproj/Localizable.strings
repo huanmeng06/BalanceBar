@@ -769,7 +769,7 @@
 "mod.ui.last_data_note" = "«Последние достоверные данные» — время, когда BalanceBar в последний раз принял данные о квоте; оно не меняется, пока квота остаётся прежней.";
 
 // INT-2 Mod window presentation
-"mod.ui.int2.pitch_title" = "Квота Claude в реальном времени";
+"mod.ui.int2.pitch_title" = "BalanceBar Mod ускорение реального времени";
 "mod.ui.int2.pitch_subtitle" = "BalanceBar Mod — небольшой плагин внутри Claude Code: после каждого ответа он передаёт BalanceBar официальную квоту.";
 "mod.ui.int2.later_button" = "Позже";
 "mod.ui.int2.feature1_title" = "Актуальные официальные данные";

@@ -769,7 +769,7 @@
 "mod.ui.last_data_note" = "«Últimos datos fiables» es cuándo aceptó BalanceBar por última vez datos de cuota; no cambia mientras la cuota sea la misma.";
 
 // INT-2 Mod window presentation
-"mod.ui.int2.pitch_title" = "Actualiza la cuota de Claude en tiempo real";
+"mod.ui.int2.pitch_title" = "BalanceBar Mod impulso en tiempo real";
 "mod.ui.int2.pitch_subtitle" = "BalanceBar Mod es un pequeño plugin que se ejecuta en Claude Code y comunica a BalanceBar la cuota oficial tras cada respuesta.";
 "mod.ui.int2.later_button" = "Más tarde";
 "mod.ui.int2.feature1_title" = "Datos oficiales en vivo";

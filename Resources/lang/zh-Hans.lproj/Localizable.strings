@@ -769,7 +769,7 @@
 "mod.ui.last_data_note" = "「最近可信数据」是 BalanceBar 最后一次采用额度数据的时间；额度没变化时不会更新。";
 
 // INT-2 Mod window presentation
-"mod.ui.int2.pitch_title" = "让 Claude 额度实时更新";
+"mod.ui.int2.pitch_title" = "BalanceBar Mod 实时增强";
 "mod.ui.int2.pitch_subtitle" = "BalanceBar Mod 是运行在 Claude Code 里的小插件，每轮回复后把官方额度告诉 BalanceBar。";
 "mod.ui.int2.later_button" = "稍后";
 "mod.ui.int2.feature1_title" = "实时、官方数据";
