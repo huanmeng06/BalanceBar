@@ -628,6 +628,7 @@
 "claude.timeline.window.seven_day" = "7 j";
 "claude.timeline.hover.before_expiry" = "Prélecture · %1$@ avant l’expiration de Mod";
 "claude.timeline.window.not_included" = "Non inclus";
+"claude.timeline.value.remaining" = "%1$@ restant";
 "claude.timeline.value.displayed" = "Utilisée comme valeur affichée";
 "claude.timeline.value.evidence" = "Preuve de fraîcheur uniquement";
 "claude.timeline.estimate.label" = "Prochaine requête";

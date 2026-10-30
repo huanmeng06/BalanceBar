@@ -628,6 +628,7 @@
 "claude.timeline.window.seven_day" = "7 d";
 "claude.timeline.hover.before_expiry" = "Prefetch · %1$@ before Mod expires";
 "claude.timeline.window.not_included" = "Not included";
+"claude.timeline.value.remaining" = "%1$@ left";
 "claude.timeline.value.displayed" = "Used as displayed value";
 "claude.timeline.value.evidence" = "Freshness evidence only";
 "claude.timeline.estimate.label" = "Next request";

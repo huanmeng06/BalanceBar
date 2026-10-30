@@ -582,7 +582,7 @@ final class ClaudeSourceTimelineView: NSView {
         }
     }
 
-    /// The two windows' used percentages. Where a number came from is only said when it is the
+    /// The two windows' remaining percentages (the stored reading is the used share). Where a number came from is only said when it is the
     /// exception: a reading that the card did not adopt.
     private func valueRows(
         windows: [ClaudeSourceTimeline.Window: ClaudeSourceTimeline.WindowValue],
@@ -601,7 +601,9 @@ final class ClaudeSourceTimelineView: NSView {
             guard let value = windows[window] else {
                 return .init(label: label, value: tr(.keyClaudeTimelineWindowNotIncluded))
             }
-            var text = (formatter.string(from: NSNumber(value: value.usedPercentage)) ?? "\(value.usedPercentage)") + "%"
+            let remaining = min(100, max(0, 100 - value.usedPercentage))
+            var text = tr(.keyClaudeTimelineValueRemaining, arguments: [
+                (formatter.string(from: NSNumber(value: remaining)) ?? "\(remaining)") + "%"])
             if !allEvidence, evidenceOnly.contains(window) { text += " · " + tr(.keyClaudeTimelineValueEvidence) }
             return .init(label: label, value: text)
         }

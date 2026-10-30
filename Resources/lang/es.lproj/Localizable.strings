@@ -628,6 +628,7 @@
 "claude.timeline.window.seven_day" = "7 d";
 "claude.timeline.hover.before_expiry" = "Anticipación · %1$@ antes de que venza Mod";
 "claude.timeline.window.not_included" = "No incluido";
+"claude.timeline.value.remaining" = "%1$@ restante";
 "claude.timeline.value.displayed" = "Usado como valor mostrado";
 "claude.timeline.value.evidence" = "Solo evidencia de vigencia";
 "claude.timeline.estimate.label" = "Próxima solicitud";

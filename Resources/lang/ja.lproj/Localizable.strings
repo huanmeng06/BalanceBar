@@ -628,6 +628,7 @@
 "claude.timeline.window.seven_day" = "7 日";
 "claude.timeline.hover.before_expiry" = "先行取得 · Mod の期限 %1$@ 前";
 "claude.timeline.window.not_included" = "含まれません";
+"claude.timeline.value.remaining" = "残り %1$@";
 "claude.timeline.value.displayed" = "表示値として採用";
 "claude.timeline.value.evidence" = "鮮度の証拠のみ";
 "claude.timeline.estimate.label" = "次回の自動リクエスト";

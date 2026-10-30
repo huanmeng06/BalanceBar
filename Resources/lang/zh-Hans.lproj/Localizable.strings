@@ -628,6 +628,7 @@
 "claude.timeline.window.seven_day" = "7 日";
 "claude.timeline.hover.before_expiry" = "预取 · Mod 到期前 %1$@ 发起";
 "claude.timeline.window.not_included" = "未包含";
+"claude.timeline.value.remaining" = "剩余 %1$@";
 "claude.timeline.value.displayed" = "已采用为显示值";
 "claude.timeline.value.evidence" = "仅作新鲜度证据";
 "claude.timeline.estimate.label" = "下次自动请求";

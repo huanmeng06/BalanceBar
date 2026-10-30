@@ -276,12 +276,31 @@ final class ClaudeSourceTimelineViewTests: XCTestCase {
         }
     }
 
+    func testTooltipShowsRemainingPercentageNotUsed() throws {
+        var modReading = reading(.mod, -60, 60)
+        modReading.windows = [.fiveHour: .init(usedPercentage: 13, resetAt: nil)]
+        modReading.dispositions = [.fiveHour: .displayed]
+        let content = ClaudeSourceTimelineView.Content(
+            timeline: .init(readings: [modReading], failures: []),
+            status: .realtime(.mod, at: now.addingTimeInterval(-60)))
+        let view = ClaudeSourceTimelineView(provider: { content }, timeZone: utc, now: { self.now })
+        view.frame = NSRect(x: 0, y: 0, width: 660, height: ClaudeSourceTimelineLayout.height)
+        let layout = view.makeLayout()
+        let piece = try XCTUnwrap(layout.bars.first?.pieces.first)
+        let rows = view.hoverContent(for: .piece(piece)).rows
+        XCTAssertEqual(rows.first { $0.label == tr(.keyClaudeTimelineWindowFiveHour) }?.value,
+                       tr(.keyClaudeTimelineValueRemaining, arguments: ["87%"]))
+        XCTAssertEqual(rows.first { $0.label == tr(.keyClaudeTimelineWindowSevenDay) }?.value,
+                       tr(.keyClaudeTimelineWindowNotIncluded))
+    }
+
     func testEveryTooltipFormatRendersInEveryLanguage() {
         let formats: [(LocalizationKey, [String])] = [
             (.keyClaudeTimelineEstimateIn, ["5"]),
             (.keyClaudeTimelineEstimateCooldown, ["10:00"]),
             (.keyClaudeTimelineEstimateScheduled, ["10:00", "x"]),
             (.keyClaudeTimelineHoverBeforeExpiry, ["9"]),
+            (.keyClaudeTimelineValueRemaining, ["87%"]),
         ]
         for language in AppLanguage.allCases {
             for (key, arguments) in formats {

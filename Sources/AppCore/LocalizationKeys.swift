@@ -283,6 +283,7 @@
     case keyClaudeTimelineWindowFiveHour = "claude.timeline.window.five_hour"
     case keyClaudeTimelineWindowSevenDay = "claude.timeline.window.seven_day"
     case keyClaudeTimelineHoverBeforeExpiry = "claude.timeline.hover.before_expiry"
+    case keyClaudeTimelineValueRemaining = "claude.timeline.value.remaining"
     case keyClaudeTimelineWindowNotIncluded = "claude.timeline.window.not_included"
     case keyClaudeTimelineValueDisplayed = "claude.timeline.value.displayed"
     case keyClaudeTimelineValueEvidence = "claude.timeline.value.evidence"

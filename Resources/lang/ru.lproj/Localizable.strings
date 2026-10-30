@@ -628,6 +628,7 @@
 "claude.timeline.window.seven_day" = "7 дн.";
 "claude.timeline.hover.before_expiry" = "Предзагрузка · за %1$@ до истечения Mod";
 "claude.timeline.window.not_included" = "Не включено";
+"claude.timeline.value.remaining" = "осталось %1$@";
 "claude.timeline.value.displayed" = "Использовано как отображаемое значение";
 "claude.timeline.value.evidence" = "Только подтверждение актуальности";
 "claude.timeline.estimate.label" = "Следующий запрос";
