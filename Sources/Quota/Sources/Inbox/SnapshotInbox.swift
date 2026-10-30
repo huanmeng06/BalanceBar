@@ -10,15 +10,21 @@ public struct SnapshotInboxConfiguration: Equatable {
     /// Files in the inbox directory not modified for this long are removed.
     public var retention: TimeInterval
 
+    /// Minimum spacing between two diagnostic log lines for the same rejection reason; the
+    /// rejections in between are counted and reported with the next line.
+    public var rejectionLogInterval: TimeInterval
+
     public var io: QuotaIOConfiguration
 
     public init(
         halfWriteRetryDelay: TimeInterval = 0.1,
         retention: TimeInterval = 24 * 3_600,
+        rejectionLogInterval: TimeInterval = 300,
         io: QuotaIOConfiguration = .default
     ) {
         self.halfWriteRetryDelay = halfWriteRetryDelay
         self.retention = retention
+        self.rejectionLogInterval = rejectionLogInterval
         self.io = io
     }
 
@@ -73,6 +79,10 @@ public final class SnapshotInbox: QuotaSource {
     /// rejection decisions themselves are unchanged.
     public var rejectionObserver: ((SnapshotRejectionReason) -> Void)?
 
+    /// Diagnostic log sink for Mod snapshot rejections (inbox queue). Lines carry only the
+    /// reason enum and the window: never an email, hash, organization or quota value.
+    public var diagnosticLog: ((String) -> Void)?
+
     public let sourceID = "snapshot-inbox"
 
     private let inboxDirectory: URL
@@ -101,6 +111,8 @@ public final class SnapshotInbox: QuotaSource {
     /// Diagnostics counters (inbox-queue confined); tests read them through `queue.sync`.
     private(set) var suppressedReplayCount = 0
     private(set) var unverifiedSnapshotRejections = 0
+    /// Throttle state per rejection reason (inbox-queue confined).
+    private var rejectionLogState: [String: (lastLogged: Date, suppressed: Int)] = [:]
 
     private struct EmittedWindow: Equatable {
         let kind: QuotaWindowKind
@@ -308,9 +320,30 @@ public final class SnapshotInbox: QuotaSource {
         emit(parsed, adapter: adapter)
     }
 
+    /// Writes one throttled diagnostic line for a rejected Mod snapshot. The same reason is
+    /// logged at most once per `rejectionLogInterval`; the rejections skipped in between are
+    /// reported as `repeats` on the next line.
+    private func logRejection(reason: String, window: String = "all") {
+        guard let diagnosticLog else { return }
+        let current = now()
+        var suppressed = 0
+        if let state = rejectionLogState[reason] {
+            if current.timeIntervalSince(state.lastLogged) < configuration.rejectionLogInterval,
+               current >= state.lastLogged {
+                rejectionLogState[reason] = (state.lastLogged, state.suppressed + 1)
+                return
+            }
+            suppressed = state.suppressed
+        }
+        rejectionLogState[reason] = (current, 0)
+        let repeats = suppressed > 0 ? "; repeats=\(suppressed)" : ""
+        diagnosticLog("claude mod snapshot rejected; reason=\(reason); window=\(window)\(repeats)")
+    }
+
     private func emit(_ parsed: ParsedQuotaSnapshot, adapter: QuotaSourceAdapter) {
         guard let account = identity.accountIdentity else {
             adapter.health = .degraded(reason: "no active account")
+            if parsed.source == Self.modSourceID { logRejection(reason: "no_active_account") }
             return
         }
         // Only the BalanceBar Mod's rejections may change the Mod status entry. Other
@@ -324,13 +357,17 @@ public final class SnapshotInbox: QuotaSource {
             guard let expected = account.email.map(Self.emailHash), !expected.isEmpty,
                   provided == expected else {
                 adapter.health = .degraded(reason: "rejected snapshot: account email hash does not match the active account")
-                if isModSnapshot { rejectionObserver?(.accountEmailHashMismatch) }
+                if isModSnapshot {
+                    logRejection(reason: "account_email_hash_mismatch")
+                    rejectionObserver?(.accountEmailHashMismatch)
+                }
                 return
             }
         } else if parsed.source == Self.modSourceID {
             // The Mod hashes the account it runs under; a snapshot without the hash cannot
             // be attributed to anyone and falls back to the official reading.
             adapter.health = .degraded(reason: "rejected snapshot: missing account email hash")
+            logRejection(reason: "missing_account_email_hash")
             rejectionObserver?(.missingAccountEmailHash)
             return
         }
@@ -342,7 +379,10 @@ public final class SnapshotInbox: QuotaSource {
             if let provided = parsed.accountOrganizationHash?.lowercased(), !provided.isEmpty {
                 guard provided == Self.hash(organization) else {
                     adapter.health = .degraded(reason: "rejected snapshot: organization hash does not match the active account")
-                    if isModSnapshot { rejectionObserver?(.organizationHashMismatch) }
+                    if isModSnapshot {
+                        logRejection(reason: "organization_hash_mismatch")
+                        rejectionObserver?(.organizationHashMismatch)
+                    }
                     return
                 }
             } else if isModSnapshot {
@@ -363,7 +403,10 @@ public final class SnapshotInbox: QuotaSource {
             where verify(window.kind, window.resetsAt, parsed.updatedAt, isComplete, organizationProven) == false {
                 unverifiedSnapshotRejections += 1
                 adapter.health = .degraded(reason: "rejected snapshot: cycle_unverified_against_official")
-                if isModSnapshot { rejectionObserver?(.cycleUnverified) }
+                if isModSnapshot {
+                    logRejection(reason: "cycle_unverified_against_official", window: window.kind.rawValue)
+                    rejectionObserver?(.cycleUnverified)
+                }
                 return
             }
         }

@@ -583,4 +583,99 @@ final class SnapshotInboxTests: XCTestCase {
         source.stop()
         XCTAssertEqual(reasons.all, [], "non-Mod rejections must not change the Mod status entry")
     }
+
+    // MARK: Rejection diagnostics (Issue #646)
+
+    private final class LockedLines {
+        private let lock = NSLock()
+        private var values: [String] = []
+        func append(_ value: String) { lock.lock(); values.append(value); lock.unlock() }
+        var all: [String] { lock.lock(); defer { lock.unlock() }; return values }
+    }
+
+    private final class MutableClock {
+        private let lock = NSLock()
+        private var date = Date()
+        var now: Date { lock.lock(); defer { lock.unlock() }; return date }
+        func advance(_ seconds: TimeInterval) { lock.lock(); date.addTimeInterval(seconds); lock.unlock() }
+    }
+
+    /// Starts an inbox, then feeds `name` through `process` synchronously on the inbox queue.
+    private func makeLoggingInbox(
+        identity: FakeIdentity, clock: MutableClock, lines: LockedLines
+    ) -> SnapshotInbox {
+        let source = SnapshotInbox(
+            inboxDirectory: inbox, identity: identity,
+            configuration: SnapshotInboxConfiguration(halfWriteRetryDelay: 0.05, rejectionLogInterval: 300),
+            now: { clock.now })
+        source.diagnosticLog = { lines.append($0) }
+        inboxes.append(source)
+        source.start { _ in }
+        source.queue.sync {}
+        return source
+    }
+
+    private func feed(_ source: SnapshotInbox, _ name: String) {
+        let path = inbox.appendingPathComponent(name).resolvingSymlinksInPath().path
+        source.queue.sync { source.process(paths: [path]) }
+    }
+
+    func testRejectedModSnapshotLogsReasonAndWindowWithoutSensitiveValues() throws {
+        let lines = LockedLines()
+        let source = makeLoggingInbox(identity: organizationIdentity("org-1"), clock: MutableClock(), lines: lines)
+        source.cycleVerification = { _, _, _, _, proven in proven ? true : false }
+        try placeModSnapshot(organizationHash: nil, as: "cycle.json")
+        feed(source, "cycle.json")
+        XCTAssertEqual(lines.all.count, 1)
+        let line = try XCTUnwrap(lines.all.first)
+        XCTAssertTrue(line.hasPrefix("claude mod snapshot rejected; reason=cycle_unverified_against_official; window="))
+        XCTAssertFalse(line.contains("user@example.com"))
+        XCTAssertFalse(line.contains("sha256"))
+        XCTAssertFalse(line.contains("org-1"))
+        XCTAssertFalse(line.contains("10"))
+    }
+
+    func testEachRejectionReasonIsLogged() throws {
+        let lines = LockedLines()
+        let source = makeLoggingInbox(identity: organizationIdentity("org-1"), clock: MutableClock(), lines: lines)
+        try placeSnapshot(source: "balancebar-mod", emailHash: SnapshotInbox.emailHash("x@example.com"), as: "a.json")
+        try placeSnapshot(source: "balancebar-mod", emailHash: nil, as: "b.json")
+        try placeModSnapshot(organizationHash: SnapshotInbox.hash("other-org"), as: "c.json")
+        for name in ["a.json", "b.json", "c.json"] { feed(source, name) }
+        let reasons = lines.all.compactMap { $0.components(separatedBy: "reason=").last?.components(separatedBy: ";").first }
+        XCTAssertEqual(reasons, [
+            "account_email_hash_mismatch", "missing_account_email_hash", "organization_hash_mismatch",
+        ])
+
+        let noAccount = FakeIdentity()
+        noAccount.accountIdentity = nil
+        let lines2 = LockedLines()
+        let source2 = makeLoggingInbox(identity: noAccount, clock: MutableClock(), lines: lines2)
+        feed(source2, "a.json")
+        XCTAssertEqual(lines2.all.count, 1)
+        XCTAssertTrue(lines2.all[0].contains("reason=no_active_account"))
+    }
+
+    func testRepeatedRejectionIsThrottledAndReportsSuppressedCount() throws {
+        let lines = LockedLines()
+        let clock = MutableClock()
+        let source = makeLoggingInbox(identity: FakeIdentity(), clock: clock, lines: lines)
+        source.cycleVerification = { _, _, _, _, _ in false }
+        try placeSnapshot(source: "balancebar-mod", emailHash: SnapshotInbox.emailHash("user@example.com"), as: "r.json")
+        for _ in 0..<4 { feed(source, "r.json"); clock.advance(10) }
+        XCTAssertEqual(lines.all.count, 1)
+        XCTAssertFalse(lines.all[0].contains("repeats="))
+        clock.advance(300)
+        feed(source, "r.json")
+        XCTAssertEqual(lines.all.count, 2)
+        XCTAssertTrue(lines.all[1].hasSuffix("; repeats=3"), lines.all[1])
+    }
+
+    func testNonModRejectionsAreNotLogged() throws {
+        let lines = LockedLines()
+        let source = makeLoggingInbox(identity: FakeIdentity(), clock: MutableClock(), lines: lines)
+        try placeSnapshot(source: "unrelated-producer", emailHash: SnapshotInbox.emailHash("x@example.com"), as: "o.json")
+        feed(source, "o.json")
+        XCTAssertTrue(lines.all.isEmpty)
+    }
 }

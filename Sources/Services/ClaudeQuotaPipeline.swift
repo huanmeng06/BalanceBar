@@ -284,6 +284,7 @@ final class ClaudeQuotaPipeline {
         // Forward inbox-level rejections (account attribution, cycle verification) to the
         // settings entry; a forwarding-time timestamp is enough because the inbox does not
         // stamp rejections with an observation time.
+        snapshotInbox?.diagnosticLog = { [diagnostics] message in diagnostics(message, .info) }
         snapshotInbox?.rejectionObserver = { [weak self] reason in
             guard let self, let sink = self.modSnapshotEventSink else { return }
             sink(ModSnapshotEvent(
