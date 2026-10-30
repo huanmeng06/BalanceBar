@@ -582,6 +582,8 @@ final class ClaudeSourceTimelineView: NSView {
         }
     }
 
+    /// The two windows' used percentages. Where a number came from is only said when it is the
+    /// exception: a reading that the card did not adopt.
     private func valueRows(
         windows: [ClaudeSourceTimeline.Window: ClaudeSourceTimeline.WindowValue],
         dispositions: [ClaudeSourceTimeline.Window: ClaudeSourceTimeline.ReadingDisposition]
@@ -589,44 +591,23 @@ final class ClaudeSourceTimelineView: NSView {
         let formatter = NumberFormatter()
         formatter.locale = .autoupdatingCurrent
         formatter.numberStyle = .decimal
-        formatter.minimumFractionDigits = 1
+        formatter.minimumFractionDigits = 0
         formatter.maximumFractionDigits = 1
-        func adopted(_ window: ClaudeSourceTimeline.Window) -> Bool { dispositions[window] == .displayed }
         let present = ClaudeSourceTimeline.Window.allCases.filter { windows[$0] != nil }
-        // One line says where the numbers came from unless the two windows disagree.
-        let uniform = Set(present.map(adopted)).count <= 1
+        let evidenceOnly = present.filter { dispositions[$0] != .displayed }
+        let allEvidence = !present.isEmpty && evidenceOnly.count == present.count
         var rows: [ClaudeSourceTimelineTooltipContent.Row] = ClaudeSourceTimeline.Window.allCases.map { window in
             let label = tr(window == .fiveHour ? .keyClaudeTimelineWindowFiveHour : .keyClaudeTimelineWindowSevenDay)
             guard let value = windows[window] else {
                 return .init(label: label, value: tr(.keyClaudeTimelineWindowNotIncluded))
             }
             var text = (formatter.string(from: NSNumber(value: value.usedPercentage)) ?? "\(value.usedPercentage)") + "%"
-            if let resetAt = value.resetAt {
-                text += " · " + tr(.keyClaudeTimelineValueReset, arguments: [resetText(resetAt)])
-            }
-            if !uniform { text += " · " + sourceText(adopted: adopted(window)) }
+            if !allEvidence, evidenceOnly.contains(window) { text += " · " + tr(.keyClaudeTimelineValueEvidence) }
             return .init(label: label, value: text)
         }
-        if !rows.isEmpty { rows[0].gapBefore = true }
-        if uniform, let first = present.first {
-            rows.append(.init(label: "", value: sourceText(adopted: adopted(first))))
-        }
+        rows[0].gapBefore = true
+        if allEvidence { rows.append(.init(label: "", value: tr(.keyClaudeTimelineValueEvidence))) }
         return rows
-    }
-
-    private func sourceText(adopted: Bool) -> String {
-        tr(adopted ? .keyClaudeTimelineValueDisplayed : .keyClaudeTimelineValueEvidence)
-    }
-
-    /// Reset moments are minutes-precise, with the date added when it is not today.
-    private func resetText(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.timeZone = timeZone
-        formatter.locale = .autoupdatingCurrent
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = timeZone
-        formatter.setLocalizedDateFormatFromTemplate(calendar.isDate(date, inSameDayAs: now()) ? "HHmm" : "MdHHmm")
-        return formatter.string(from: date)
     }
 
     private func estimateRows(
@@ -636,20 +617,20 @@ final class ClaudeSourceTimelineView: NSView {
         func when(_ date: Date) -> String {
             tr(.keyClaudeTimelineEstimateScheduled, arguments: [time(date), relativeText(until: date, from: estimate.evaluatedAt)])
         }
-        func rows(_ value: String, caption: String? = nil) -> [ClaudeSourceTimelineTooltipContent.Row] {
-            [.init(label: label, value: value, gapBefore: true)] + (caption.map { [.init(label: "", value: $0)] } ?? [])
+        func rows(_ value: String, then detail: String? = nil) -> [ClaudeSourceTimelineTooltipContent.Row] {
+            [.init(label: label, value: detail.map { value + " · " + $0 } ?? value, gapBefore: true)]
         }
         switch estimate.state {
         case .signedOut, .unauthorizedPaused:
             if skippingAuthStates { return [] }
             return rows(tr(estimate.state == .signedOut ? .keyClaudeTimelineFailureMissingCredentials : .keyClaudeTimelineFailureUnauthorized))
         case .inFlight: return rows(localize(.hoverRefreshing))
-        case let .scheduled(at, trigger): return rows(when(at), caption: triggerText(trigger))
+        case let .scheduled(at, trigger): return rows(when(at), then: triggerText(trigger))
         case let .coolingDown(until): return rows(tr(.keyClaudeTimelineEstimateCooldown, arguments: [time(until)]))
         case let .delayed(reason, until, trigger):
             let reasonText = reason == .insufficientTokens
                 ? tr(.keyClaudeTimelineDelayInsufficientTokens) : tr(.keyClaudeTimelineDelayFailureBackoff)
-            return rows(when(until), caption: triggerText(trigger) + " · " + reasonText)
+            return rows(when(until), then: triggerText(trigger) + " · " + reasonText)
         }
     }
 
@@ -682,7 +663,7 @@ final class ClaudeSourceTimelineView: NSView {
             trigger = tr(.keyClaudeTimelineHoverBeforeExpiry, arguments: [
                 Self.durationText(max(0, expiry.timeIntervalSince(request.startedAt)))])
         }
-        return [.init(label: tr(.keyClaudeTimelineHoverTrigger), value: trigger + " · " + time(request.startedAt), gapBefore: true)]
+        return [.init(label: tr(.keyClaudeTimelineHoverTrigger), value: trigger, gapBefore: true)]
     }
 
     /// "45 秒" / "3 分钟" / "1 小时 5 分钟".
@@ -700,13 +681,7 @@ final class ClaudeSourceTimelineView: NSView {
         case let .piece(piece):
             let last = piece.readings[piece.readings.count - 1]
             let span = time(piece.start) + " – " + time(piece.end)
-                + " · " + Self.durationText(piece.end.timeIntervalSince(piece.start))
             var rows: [ClaudeSourceTimelineTooltipContent.Row] = [.init(label: tr(.keyClaudeTimelineHoverTime), value: span)]
-            if piece.readings.count > 1 {
-                rows.append(.init(
-                    label: tr(.keyClaudeTimelineHoverRefreshes),
-                    value: tr(.keyClaudeTimelineHoverRefreshCount, arguments: [String(piece.readings.count)])))
-            }
             rows.append(contentsOf: valueRows(windows: last.windows, dispositions: last.dispositions))
             if piece.source == .oauthAPI {
                 if let request = request(completedAt: last.observedAt) { rows.append(contentsOf: requestRows(request)) }

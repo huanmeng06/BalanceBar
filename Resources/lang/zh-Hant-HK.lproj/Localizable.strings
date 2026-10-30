@@ -617,8 +617,6 @@
 "claude.timeline.failure.missing_credentials" = "未登入";
 "claude.timeline.tooltip.oauth_rule" = "Mod 數據有效期內不向官方查詢；至少每小時向官方校準一次。";
 "claude.timeline.hover.time" = "時間";
-"claude.timeline.hover.refreshes" = "刷新";
-"claude.timeline.hover.refresh_count" = "%1$@ 次";
 "claude.timeline.duration.seconds" = "%1$@ 秒";
 "claude.timeline.duration.minutes" = "%1$@ 分鐘";
 "claude.timeline.duration.hours" = "%1$@ 小時 %2$@ 分鐘";
@@ -628,7 +626,6 @@
 "claude.timeline.hover.trigger" = "觸發類型";
 "claude.timeline.window.five_hour" = "5 小時";
 "claude.timeline.window.seven_day" = "7 日";
-"claude.timeline.value.reset" = "%1$@ 重置";
 "claude.timeline.hover.before_expiry" = "預取 · Mod 到期前 %1$@ 發起";
 "claude.timeline.window.not_included" = "未包含";
 "claude.timeline.value.displayed" = "已採用為顯示值";
@@ -640,8 +637,8 @@
 "claude.timeline.trigger.first_read" = "首次讀取";
 "claude.timeline.trigger.reset_confirmation" = "重置確認";
 "claude.timeline.trigger.calibration_floor" = "保底請求";
-"claude.timeline.trigger.source_expiry_prefetch" = "預取（來源即將到期）";
-"claude.timeline.trigger.local_expired_or_absent" = "本機來源到期或缺失";
+"claude.timeline.trigger.source_expiry_prefetch" = "預取";
+"claude.timeline.trigger.local_expired_or_absent" = "本機來源失效";
 "claude.timeline.delay.failure_backoff" = "失敗退避";
 "claude.timeline.delay.insufficient_tokens" = "等待權杖補充";
 "claude.timeline.estimate.in" = "約 %1$@後";

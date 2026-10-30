@@ -617,8 +617,6 @@
 "claude.timeline.failure.missing_credentials" = "Nicht angemeldet";
 "claude.timeline.tooltip.oauth_rule" = "Solange Mod-Daten gültig sind, fragt BalanceBar die offizielle API nicht ab; kalibriert wird trotzdem mindestens stündlich.";
 "claude.timeline.hover.time" = "Zeit";
-"claude.timeline.hover.refreshes" = "Aktualisiert";
-"claude.timeline.hover.refresh_count" = "%1$@×";
 "claude.timeline.duration.seconds" = "%1$@ s";
 "claude.timeline.duration.minutes" = "%1$@ Min.";
 "claude.timeline.duration.hours" = "%1$@ Std. %2$@ Min.";
@@ -628,7 +626,6 @@
 "claude.timeline.hover.trigger" = "Auslöser";
 "claude.timeline.window.five_hour" = "5 Std.";
 "claude.timeline.window.seven_day" = "7 Tage";
-"claude.timeline.value.reset" = "Reset %1$@";
 "claude.timeline.hover.before_expiry" = "Vorabruf · %1$@ vor Ablauf von Mod";
 "claude.timeline.window.not_included" = "Nicht enthalten";
 "claude.timeline.value.displayed" = "Als Anzeigewert übernommen";
@@ -636,12 +633,12 @@
 "claude.timeline.estimate.label" = "Nächste Anfrage";
 "claude.timeline.estimate.scheduled" = "%1$@ (%2$@)";
 "claude.timeline.estimate.cooldown" = "Abkühlphase bis %1$@";
-"claude.timeline.trigger.manual_refresh" = "Manuelle Aktualisierung";
+"claude.timeline.trigger.manual_refresh" = "Manuell";
 "claude.timeline.trigger.first_read" = "Erstes Lesen";
-"claude.timeline.trigger.reset_confirmation" = "Reset-Bestätigung";
-"claude.timeline.trigger.calibration_floor" = "Kalibrierungs-Fallback";
-"claude.timeline.trigger.source_expiry_prefetch" = "Vorabruf (Quelle läuft bald ab)";
-"claude.timeline.trigger.local_expired_or_absent" = "Lokale Quelle abgelaufen oder fehlt";
+"claude.timeline.trigger.reset_confirmation" = "Reset-Prüfung";
+"claude.timeline.trigger.calibration_floor" = "Fallback";
+"claude.timeline.trigger.source_expiry_prefetch" = "Vorabruf";
+"claude.timeline.trigger.local_expired_or_absent" = "Quelle abgelaufen";
 "claude.timeline.delay.failure_backoff" = "Fehler-Backoff";
 "claude.timeline.delay.insufficient_tokens" = "Warten auf Tokens";
 "claude.timeline.estimate.in" = "in ca. %1$@";

@@ -617,8 +617,6 @@
 "claude.timeline.failure.missing_credentials" = "로그인 안 됨";
 "claude.timeline.tooltip.oauth_rule" = "Mod 데이터가 유효한 동안에는 공식 API를 조회하지 않으며, 최소 1시간마다 공식 데이터로 보정합니다.";
 "claude.timeline.hover.time" = "시간";
-"claude.timeline.hover.refreshes" = "갱신";
-"claude.timeline.hover.refresh_count" = "%1$@회";
 "claude.timeline.duration.seconds" = "%1$@초";
 "claude.timeline.duration.minutes" = "%1$@분";
 "claude.timeline.duration.hours" = "%1$@시간 %2$@분";
@@ -628,7 +626,6 @@
 "claude.timeline.hover.trigger" = "요청 트리거";
 "claude.timeline.window.five_hour" = "5시간";
 "claude.timeline.window.seven_day" = "7일";
-"claude.timeline.value.reset" = "%1$@ 재설정";
 "claude.timeline.hover.before_expiry" = "사전 가져오기 · Mod 만료 %1$@ 전 시작";
 "claude.timeline.window.not_included" = "포함되지 않음";
 "claude.timeline.value.displayed" = "표시 값으로 채택됨";
@@ -640,8 +637,8 @@
 "claude.timeline.trigger.first_read" = "첫 읽기";
 "claude.timeline.trigger.reset_confirmation" = "재설정 확인";
 "claude.timeline.trigger.calibration_floor" = "보정 요청";
-"claude.timeline.trigger.source_expiry_prefetch" = "사전 가져오기(소스 만료 임박)";
-"claude.timeline.trigger.local_expired_or_absent" = "로컬 소스 만료 또는 없음";
+"claude.timeline.trigger.source_expiry_prefetch" = "사전 가져오기";
+"claude.timeline.trigger.local_expired_or_absent" = "소스 만료";
 "claude.timeline.delay.failure_backoff" = "실패 백오프";
 "claude.timeline.delay.insufficient_tokens" = "토큰 보충 대기";
 "claude.timeline.estimate.in" = "약 %1$@ 후";

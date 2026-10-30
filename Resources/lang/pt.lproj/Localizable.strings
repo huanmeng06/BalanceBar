@@ -617,8 +617,6 @@
 "claude.timeline.failure.missing_credentials" = "Sem sessão iniciada";
 "claude.timeline.tooltip.oauth_rule" = "Enquanto os dados do Mod forem válidos, o BalanceBar não consulta a API oficial; ainda assim calibra pelo menos a cada hora.";
 "claude.timeline.hover.time" = "Hora";
-"claude.timeline.hover.refreshes" = "Atualizações";
-"claude.timeline.hover.refresh_count" = "%1$@×";
 "claude.timeline.duration.seconds" = "%1$@ s";
 "claude.timeline.duration.minutes" = "%1$@ min";
 "claude.timeline.duration.hours" = "%1$@ h %2$@ min";
@@ -628,7 +626,6 @@
 "claude.timeline.hover.trigger" = "Acionamento";
 "claude.timeline.window.five_hour" = "5 h";
 "claude.timeline.window.seven_day" = "7 d";
-"claude.timeline.value.reset" = "Reinício %1$@";
 "claude.timeline.hover.before_expiry" = "Pré-busca · %1$@ antes do vencimento do Mod";
 "claude.timeline.window.not_included" = "Não incluído";
 "claude.timeline.value.displayed" = "Usado como valor exibido";
@@ -636,12 +633,12 @@
 "claude.timeline.estimate.label" = "Próxima solicitação";
 "claude.timeline.estimate.scheduled" = "%1$@ (%2$@)";
 "claude.timeline.estimate.cooldown" = "Aguardando até %1$@";
-"claude.timeline.trigger.manual_refresh" = "Atualização manual";
+"claude.timeline.trigger.manual_refresh" = "Manual";
 "claude.timeline.trigger.first_read" = "Primeira leitura";
-"claude.timeline.trigger.reset_confirmation" = "Confirmação de redefinição";
-"claude.timeline.trigger.calibration_floor" = "Consulta de reserva";
-"claude.timeline.trigger.source_expiry_prefetch" = "Pré-busca (fonte prestes a vencer)";
-"claude.timeline.trigger.local_expired_or_absent" = "Fonte local vencida ou ausente";
+"claude.timeline.trigger.reset_confirmation" = "Verif. de reinício";
+"claude.timeline.trigger.calibration_floor" = "Reserva";
+"claude.timeline.trigger.source_expiry_prefetch" = "Pré-busca";
+"claude.timeline.trigger.local_expired_or_absent" = "Fonte vencida";
 "claude.timeline.delay.failure_backoff" = "espera após falha";
 "claude.timeline.delay.insufficient_tokens" = "espera por tokens";
 "claude.timeline.estimate.in" = "em cerca de %1$@";

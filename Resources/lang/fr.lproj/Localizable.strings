@@ -617,8 +617,6 @@
 "claude.timeline.failure.missing_credentials" = "Non connecté";
 "claude.timeline.tooltip.oauth_rule" = "Tant que les données du Mod sont valides, BalanceBar n’interroge pas l’API officielle ; il recalibre au moins une fois par heure.";
 "claude.timeline.hover.time" = "Heure";
-"claude.timeline.hover.refreshes" = "Actualisations";
-"claude.timeline.hover.refresh_count" = "%1$@×";
 "claude.timeline.duration.seconds" = "%1$@ s";
 "claude.timeline.duration.minutes" = "%1$@ min";
 "claude.timeline.duration.hours" = "%1$@ h %2$@ min";
@@ -628,7 +626,6 @@
 "claude.timeline.hover.trigger" = "Déclencheur";
 "claude.timeline.window.five_hour" = "5 h";
 "claude.timeline.window.seven_day" = "7 j";
-"claude.timeline.value.reset" = "Réinit. %1$@";
 "claude.timeline.hover.before_expiry" = "Prélecture · %1$@ avant l’expiration de Mod";
 "claude.timeline.window.not_included" = "Non inclus";
 "claude.timeline.value.displayed" = "Utilisée comme valeur affichée";
@@ -636,12 +633,12 @@
 "claude.timeline.estimate.label" = "Prochaine requête";
 "claude.timeline.estimate.scheduled" = "%1$@ (%2$@)";
 "claude.timeline.estimate.cooldown" = "En pause jusqu’à %1$@";
-"claude.timeline.trigger.manual_refresh" = "Actualisation manuelle";
+"claude.timeline.trigger.manual_refresh" = "Manuel";
 "claude.timeline.trigger.first_read" = "Première lecture";
-"claude.timeline.trigger.reset_confirmation" = "Confirmation de réinitialisation";
-"claude.timeline.trigger.calibration_floor" = "Requête de secours";
-"claude.timeline.trigger.source_expiry_prefetch" = "Prélecture (source bientôt expirée)";
-"claude.timeline.trigger.local_expired_or_absent" = "Source locale expirée ou absente";
+"claude.timeline.trigger.reset_confirmation" = "Contrôle de reset";
+"claude.timeline.trigger.calibration_floor" = "Secours";
+"claude.timeline.trigger.source_expiry_prefetch" = "Prélecture";
+"claude.timeline.trigger.local_expired_or_absent" = "Source expirée";
 "claude.timeline.delay.failure_backoff" = "temporisation après échec";
 "claude.timeline.delay.insufficient_tokens" = "attente de jetons";
 "claude.timeline.estimate.in" = "dans environ %1$@";
