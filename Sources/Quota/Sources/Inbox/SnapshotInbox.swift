@@ -376,11 +376,6 @@ public final class SnapshotInbox: QuotaSource {
             rejectionObserver?(.missingAccountEmailHash)
             return
         }
-        if isModSnapshot {
-            let outdated = parsed.accountOrganizationHash?.isEmpty != false
-            if outdated { logRejection(reason: "mod_outdated_format", event: "outdated") }
-            outdatedModObserver?(outdated)
-        }
         // Organization attribution: a mismatching organization hash is foreign data. A snapshot
         // without one (older Mod) cannot prove the organization; the consumer decides whether
         // an official baseline makes that acceptable.
@@ -398,6 +393,13 @@ public final class SnapshotInbox: QuotaSource {
             } else if isModSnapshot {
                 organizationProven = false
             }
+        }
+        // A mismatching organization must not clear the stale-Mod warning.
+        // Legacy snapshots can still report their format before cycle verification.
+        if isModSnapshot {
+            let outdated = parsed.accountOrganizationHash?.isEmpty != false
+            if outdated { logRejection(reason: "mod_outdated_format", event: "outdated") }
+            outdatedModObserver?(outdated)
         }
         let epoch = identity.accountEpoch
         let source = parsed.source.flatMap { $0 == "unknown" ? nil : $0 } ?? adapter.sourceID
