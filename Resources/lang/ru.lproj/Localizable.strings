@@ -697,6 +697,10 @@
 "mod.sync.status.rejected_account" = "Снимок отклонён: учётная запись Claude не совпадает с текущей учётной записью BalanceBar";
 "mod.sync.status.rejected_cycle" = "Снимок отклонён: цикл не совпадает с официальными данными; используется официальный путь";
 "mod.sync.status.installation_unknown" = "Не удаётся подтвердить установку Mod (список плагинов недоступен)";
+"mod.sync.status.update_required" = "The Mod is outdated and needs an update. In a terminal run claude plugin marketplace update balancebar-mods and then claude plugin update balancebar-mod@balancebar-mods, then restart the Claude Code session";
+"mod.card.update.title" = "Update needed";
+"mod.card.update.reason" = "Third-party plugin marketplaces do not auto-update by default";
+"mod.card.update.action" = "Run claude plugin marketplace update balancebar-mods and claude plugin update balancebar-mod@balancebar-mods in a terminal, then restart the session";
 
 // Mod management window (Issue #604)
 "mod.ui.subtitle" = "Актуальные квоты Claude Code";

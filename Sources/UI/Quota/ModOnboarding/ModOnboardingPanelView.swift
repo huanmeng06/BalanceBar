@@ -50,7 +50,7 @@ enum ModPanelContent {
     /// only these expose the uninstall action.
     static func isInstalled(_ status: ModSyncStatus) -> Bool {
         switch status {
-        case .waitingForData, .active, .silent, .disabled, .snapshotRejected: return true
+        case .waitingForData, .active, .silent, .disabled, .snapshotRejected, .updateRequired: return true
         case .detecting, .claudeMissing, .claudeVersionTooOld, .inboxNotReady, .notInstalled,
              .installationUnknown: return false
         }
@@ -220,6 +220,9 @@ enum ModPanelContent {
                         .button(title: t(.copyEnableCommands), action: .copyEnable),
                         .text(t(.reloadHint)), .codeBlock(ModInstallPlan.reloadCommand, copyAction: .copyReload),
                         .text(t(.removeNote)), uninstall, refresh, close])
+            case .updateRequired:
+                return statusPage([.hero(symbol: "exclamationmark.triangle.fill", title: t(.manageTitle), subtitle: sync.statusText),
+                        uninstall, refresh, close])
             case let .snapshotRejected(event):
                 return statusPage([.hero(symbol: "exclamationmark.triangle.fill", title: t(.manageTitle), subtitle: sync.statusText),
                         .text(t(event.rejection == .accountMismatch ? .accountAdvice : .cycleAdvice))]

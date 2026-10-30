@@ -758,6 +758,10 @@
     case modSyncStatusRejectedAccount = "mod.sync.status.rejected_account"
     case modSyncStatusRejectedCycle = "mod.sync.status.rejected_cycle"
     case modSyncStatusInstallationUnknown = "mod.sync.status.installation_unknown"
+    case modSyncStatusUpdateRequired = "mod.sync.status.update_required"
+    case modCardUpdateTitle = "mod.card.update.title"
+    case modCardUpdateReason = "mod.card.update.reason"
+    case modCardUpdateAction = "mod.card.update.action"
 
     var rawKey: String { rawValue }
 }

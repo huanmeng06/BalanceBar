@@ -64,6 +64,10 @@ enum RealtimeBoostText: String, CaseIterable {
     case cardRowTitle = "mod.card.row_title"
     case cardRowDescription = "mod.card.row_description"
     case cardLearnMore = "mod.card.learn_more"
+    case statusUpdateRequired = "mod.sync.status.update_required"
+    case cardUpdateTitle = "mod.card.update.title"
+    case cardUpdateReason = "mod.card.update.reason"
+    case cardUpdateAction = "mod.card.update.action"
 
     var defaultText: String {
         switch self {
@@ -128,6 +132,10 @@ enum RealtimeBoostText: String, CaseIterable {
         case .statusDisabled: return "已安装但已停用，实时同步不会运行"
         case .statusRejectedAccount: return "快照被拒：Claude 登录账号与 BalanceBar 当前账号不一致"
         case .statusRejectedCycle: return "快照被拒：周期与官方数据不一致，已回退官方额度"
+        case .statusUpdateRequired: return "Mod 版本过旧，需要更新。请在终端依次运行 claude plugin marketplace update balancebar-mods 和 claude plugin update balancebar-mod@balancebar-mods，然后重启 Claude Code 会话"
+        case .cardUpdateTitle: return "需要更新"
+        case .cardUpdateReason: return "第三方插件市场默认不自动更新"
+        case .cardUpdateAction: return "终端运行 claude plugin marketplace update balancebar-mods 与 claude plugin update balancebar-mod@balancebar-mods，再重启会话"
         case .statusInstallationUnknown: return "无法确认 Mod 是否已安装（插件列表读取失败）"
         }
     }
@@ -198,6 +206,8 @@ struct RealtimeBoostPresentation: Equatable {
         case let .snapshotRejected(event):
             let text: RealtimeBoostText = event.rejection == .accountMismatch ? .statusRejectedAccount : .statusRejectedCycle
             return .init(statusText: localize(text), showsInstallAction: false, showsCopyAction: false)
+        case .updateRequired:
+            return .init(statusText: localize(.statusUpdateRequired), showsInstallAction: false, showsCopyAction: false)
         case .installationUnknown:
             // A failed probe is not "not installed": do not offer a reinstall.
             return .init(statusText: localize(.statusInstallationUnknown), showsInstallAction: false, showsCopyAction: false)
@@ -346,6 +356,9 @@ final class RealtimeBoostSettingsRows {
                 action = .cardRejectedCycleAction
             }
             base = .init(status: localize(.cardRejectedTitle), reason: localize(reason), action: localize(action))
+        case .updateRequired:
+            base = .init(status: localize(.cardUpdateTitle), reason: localize(.cardUpdateReason),
+                         action: localize(.cardUpdateAction))
         case .installationUnknown:
             base = .init(status: localize(.cardUnknownTitle), reason: localize(.cardUnknownReason),
                          action: localize(.cardUnknownAction))
