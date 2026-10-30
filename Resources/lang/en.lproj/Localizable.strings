@@ -630,7 +630,7 @@
 "claude.timeline.window.not_included" = "Not included";
 "claude.timeline.value.remaining" = "%1$@ left";
 "claude.timeline.value.displayed" = "Used as displayed value";
-"claude.timeline.value.evidence" = "Freshness evidence only";
+"claude.timeline.value.evidence" = "Not used on the card";
 "claude.timeline.estimate.label" = "Next request";
 "claude.timeline.estimate.scheduled" = "%1$@ (%2$@)";
 "claude.timeline.estimate.cooldown" = "Cooling down until %1$@";

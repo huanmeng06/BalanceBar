@@ -630,7 +630,7 @@
 "claude.timeline.window.not_included" = "Nicht enthalten";
 "claude.timeline.value.remaining" = "%1$@ übrig";
 "claude.timeline.value.displayed" = "Als Anzeigewert übernommen";
-"claude.timeline.value.evidence" = "Nur Frischenachweis";
+"claude.timeline.value.evidence" = "Nicht auf der Karte verwendet";
 "claude.timeline.estimate.label" = "Nächste Anfrage";
 "claude.timeline.estimate.scheduled" = "%1$@ (%2$@)";
 "claude.timeline.estimate.cooldown" = "Abkühlphase bis %1$@";

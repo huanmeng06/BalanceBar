@@ -630,7 +630,7 @@
 "claude.timeline.window.not_included" = "포함되지 않음";
 "claude.timeline.value.remaining" = "%1$@ 남음";
 "claude.timeline.value.displayed" = "표시 값으로 채택됨";
-"claude.timeline.value.evidence" = "신선도 근거만";
+"claude.timeline.value.evidence" = "카드에 미반영";
 "claude.timeline.estimate.label" = "다음 자동 요청";
 "claude.timeline.estimate.scheduled" = "%1$@ (%2$@)";
 "claude.timeline.estimate.cooldown" = "%1$@까지 대기 중";

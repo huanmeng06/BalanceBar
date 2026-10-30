@@ -630,7 +630,7 @@
 "claude.timeline.window.not_included" = "含まれません";
 "claude.timeline.value.remaining" = "残り %1$@";
 "claude.timeline.value.displayed" = "表示値として採用";
-"claude.timeline.value.evidence" = "鮮度の証拠のみ";
+"claude.timeline.value.evidence" = "カードには未採用";
 "claude.timeline.estimate.label" = "次回の自動リクエスト";
 "claude.timeline.estimate.scheduled" = "%1$@ (%2$@)";
 "claude.timeline.estimate.cooldown" = "%1$@ までクールダウン";
