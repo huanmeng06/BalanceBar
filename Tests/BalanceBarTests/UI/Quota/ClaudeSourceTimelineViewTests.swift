@@ -276,6 +276,23 @@ final class ClaudeSourceTimelineViewTests: XCTestCase {
         }
     }
 
+    func testOnlyAFailureThatIsStillRunningCarriesTheNextRequestEstimate() throws {
+        let estimate = FetchAutomaticRequestEstimate(
+            state: .scheduled(at: now.addingTimeInterval(240), trigger: .sourceExpiryPrefetch), evaluatedAt: now)
+        func hover(end: Date?) throws -> [String] {
+            let content = ClaudeSourceTimelineView.Content(
+                timeline: .init(readings: [], failures: [Run(start: now.addingTimeInterval(-600), end: end, kind: .network)],
+                                estimate: estimate),
+                status: nil)
+            let view = ClaudeSourceTimelineView(provider: { content }, timeZone: utc, now: { self.now })
+            view.frame = NSRect(x: 0, y: 0, width: 660, height: ClaudeSourceTimelineLayout.height)
+            let band = try XCTUnwrap(view.makeLayout().bands.first)
+            return view.hoverContent(for: .band(band)).rows.map(\.label)
+        }
+        XCTAssertFalse(try hover(end: now.addingTimeInterval(-300)).contains(tr(.keyClaudeTimelineEstimateLabel)))
+        XCTAssertTrue(try hover(end: nil).contains(tr(.keyClaudeTimelineEstimateLabel)))
+    }
+
     func testTooltipShowsRemainingPercentageNotUsed() throws {
         var modReading = reading(.mod, -60, 60)
         modReading.windows = [.fiveHour: .init(usedPercentage: 13, resetAt: nil)]

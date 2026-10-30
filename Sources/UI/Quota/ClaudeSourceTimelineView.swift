@@ -640,15 +640,17 @@ final class ClaudeSourceTimelineView: NSView {
         tr(.keyClaudeTimelineEstimateIn, arguments: [Self.durationText(until.timeIntervalSince(from))])
     }
 
+    /// A failure that began after a reading and has not ended yet is the current state, so the next
+    /// request is explained there, not on the older reading.
+    private func failureStillRunning(after date: Date) -> Bool {
+        content.timeline.failures.contains { $0.end == nil && $0.start > date }
+    }
+
     private func isLatestOAuthReading(_ reading: ClaudeSourceTimeline.Reading) -> Bool {
         guard let latest = content.timeline.readings.filter({ $0.source == .oauthAPI }).max(by: { $0.observedAt < $1.observedAt }) else {
             return false
         }
         return latest.observedAt == reading.observedAt
-    }
-
-    private func isLatestFailure(_ run: ClaudeSourceTimeline.FailureRun) -> Bool {
-        content.timeline.failures.max(by: { $0.start < $1.start })?.start == run.start
     }
 
     /// The official request whose answer produced a reading or failure (both are stamped at delivery).
@@ -687,7 +689,7 @@ final class ClaudeSourceTimelineView: NSView {
             rows.append(contentsOf: valueRows(windows: last.windows, dispositions: last.dispositions))
             if piece.source == .oauthAPI {
                 if let request = request(completedAt: last.observedAt) { rows.append(contentsOf: requestRows(request)) }
-                if isLatestOAuthReading(last), let estimate = content.timeline.estimate {
+                if isLatestOAuthReading(last), !failureStillRunning(after: last.observedAt), let estimate = content.timeline.estimate {
                     rows.append(contentsOf: estimateRows(estimate))
                 }
             }
@@ -698,8 +700,9 @@ final class ClaudeSourceTimelineView: NSView {
                 + " · " + Self.durationText(end.timeIntervalSince(band.run.start))
             var rows: [ClaudeSourceTimelineTooltipContent.Row] = [.init(label: tr(.keyClaudeTimelineHoverTime), value: span)]
             if let request = request(completedAt: band.run.start) { rows.append(contentsOf: requestRows(request)) }
-            // A paused sign-in is already the heading; only a real wait is worth a line.
-            if isLatestFailure(band.run), let estimate = content.timeline.estimate {
+            // The estimate is about what happens next, so only a failure that is still going carries it;
+            // a paused sign-in is already the heading, only a real wait is worth a line.
+            if band.run.end == nil, let estimate = content.timeline.estimate {
                 rows.append(contentsOf: estimateRows(estimate, skippingAuthStates: true))
             }
             return ClaudeSourceTimelineTooltipContent(
