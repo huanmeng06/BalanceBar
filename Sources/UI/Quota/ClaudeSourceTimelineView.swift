@@ -582,8 +582,9 @@ final class ClaudeSourceTimelineView: NSView {
         }
     }
 
-    /// The two windows' remaining percentages (the stored reading is the used share). Where a number came from is only said when it is the
-    /// exception: a reading that the card did not adopt.
+    /// The two windows' remaining percentages (the stored reading is the used share). A reading the
+    /// card did not adopt says so on its own row, never in a shared caption that could be misread
+    /// as belonging to the row above.
     private func valueRows(
         windows: [ClaudeSourceTimeline.Window: ClaudeSourceTimeline.WindowValue],
         dispositions: [ClaudeSourceTimeline.Window: ClaudeSourceTimeline.ReadingDisposition]
@@ -595,7 +596,6 @@ final class ClaudeSourceTimelineView: NSView {
         formatter.maximumFractionDigits = 1
         let present = ClaudeSourceTimeline.Window.allCases.filter { windows[$0] != nil }
         let evidenceOnly = present.filter { dispositions[$0] != .displayed }
-        let allEvidence = !present.isEmpty && evidenceOnly.count == present.count
         var rows: [ClaudeSourceTimelineTooltipContent.Row] = ClaudeSourceTimeline.Window.allCases.map { window in
             let label = tr(window == .fiveHour ? .keyClaudeTimelineWindowFiveHour : .keyClaudeTimelineWindowSevenDay)
             guard let value = windows[window] else {
@@ -604,14 +604,10 @@ final class ClaudeSourceTimelineView: NSView {
             let remaining = min(100, max(0, 100 - value.usedPercentage))
             var text = tr(.keyClaudeTimelineValueRemaining, arguments: [
                 (formatter.string(from: NSNumber(value: remaining)) ?? "\(remaining)") + "%"])
-            if !allEvidence, evidenceOnly.contains(window) { text += " · " + notAdoptedText(dispositions[window]) }
+            if evidenceOnly.contains(window) { text += " · " + notAdoptedText(dispositions[window]) }
             return .init(label: label, value: text)
         }
         rows[0].gapBefore = true
-        if allEvidence, let first = present.first {
-            let reasons = Set(present.map { notAdoptedText(dispositions[$0]) })
-            rows.append(.init(label: "", value: reasons.count == 1 ? notAdoptedText(dispositions[first]) : tr(.keyClaudeTimelineValueEvidence)))
-        }
         return rows
     }
 
