@@ -636,7 +636,7 @@
 "claude.timeline.trigger.reset_confirmation" = "重置确认";
 "claude.timeline.trigger.calibration_floor" = "定时校准";
 "claude.timeline.trigger.source_expiry_prefetch" = "Mod 过期前预取";
-"claude.timeline.trigger.local_expired_or_absent" = "后台轮询（Mod 无新读数）";
+"claude.timeline.trigger.local_expired_or_absent" = "无 Mod 读数，官方保底轮询";
 "claude.timeline.delay.failure_backoff" = "失败退避";
 "claude.timeline.delay.insufficient_tokens" = "等待令牌补充";
 "claude.timeline.estimate.in" = "约 %1$@后";

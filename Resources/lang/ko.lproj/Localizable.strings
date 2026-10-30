@@ -636,7 +636,7 @@
 "claude.timeline.trigger.reset_confirmation" = "재설정 확인";
 "claude.timeline.trigger.calibration_floor" = "정기 보정";
 "claude.timeline.trigger.source_expiry_prefetch" = "Mod 만료 전 사전 가져오기";
-"claude.timeline.trigger.local_expired_or_absent" = "백그라운드 폴링 (새 Mod 값 없음)";
+"claude.timeline.trigger.local_expired_or_absent" = "Mod 값 없음, 공식 대체 폴링";
 "claude.timeline.delay.failure_backoff" = "실패 백오프";
 "claude.timeline.delay.insufficient_tokens" = "토큰 보충 대기";
 "claude.timeline.estimate.in" = "약 %1$@ 후";

@@ -636,7 +636,7 @@
 "claude.timeline.trigger.reset_confirmation" = "Verif. de reinicio";
 "claude.timeline.trigger.calibration_floor" = "Calibración programada";
 "claude.timeline.trigger.source_expiry_prefetch" = "Anticipación antes de que venza Mod";
-"claude.timeline.trigger.local_expired_or_absent" = "Sondeo en segundo plano (sin nueva lectura Mod)";
+"claude.timeline.trigger.local_expired_or_absent" = "Sin lectura Mod, sondeo oficial de respaldo";
 "claude.timeline.delay.failure_backoff" = "espera tras fallo";
 "claude.timeline.delay.insufficient_tokens" = "espera de tokens";
 "claude.timeline.estimate.in" = "en unos %1$@";
