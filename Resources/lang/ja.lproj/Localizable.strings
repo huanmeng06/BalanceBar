@@ -769,7 +769,7 @@
 "mod.ui.last_data_note" = "「最後に信頼されたデータ」は、BalanceBar が使用枠データを最後に採用した時刻です。使用枠が変わらない間は更新されません。";
 
 // INT-2 Mod window presentation
-"mod.ui.int2.pitch_title" = "Claude の残量をリアルタイムで更新";
+"mod.ui.int2.pitch_title" = "BalanceBar Mod リアルタイム強化";
 "mod.ui.int2.pitch_subtitle" = "BalanceBar Mod は Claude Code 内で動く小さなプラグインで、返信のたびに公式の残量を BalanceBar に伝えます。";
 "mod.ui.int2.later_button" = "あとで";
 "mod.ui.int2.feature1_title" = "リアルタイムの公式データ";

@@ -769,7 +769,7 @@
 "mod.ui.last_data_note" = "“Last trusted data” is when BalanceBar last accepted quota data; it does not change while the quota stays the same.";
 
 // INT-2 Mod window presentation
-"mod.ui.int2.pitch_title" = "Make Claude quota update in real time";
+"mod.ui.int2.pitch_title" = "BalanceBar Mod realtime boost";
 "mod.ui.int2.pitch_subtitle" = "BalanceBar Mod is a small plugin that runs inside Claude Code and reports your official quota to BalanceBar after every reply.";
 "mod.ui.int2.later_button" = "Later";
 "mod.ui.int2.feature1_title" = "Live, official data";
