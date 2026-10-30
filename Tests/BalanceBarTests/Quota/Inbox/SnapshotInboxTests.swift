@@ -125,11 +125,13 @@ final class SnapshotInboxTests: XCTestCase {
 
     // MARK: Organization attribution (Issue #629)
 
-    private func placeModSnapshot(organizationHash: String?, as name: String = "mod.json") throws {
+    private func placeModSnapshot(
+        organizationHash: String?, as name: String = "mod.json", updatedAt: String = "2026-10-17T06:12:03Z"
+    ) throws {
         var account: [String: Any] = ["email_hash": SnapshotInbox.emailHash("user@example.com")]
         if let organizationHash { account["organization_hash"] = organizationHash }
         let object: [String: Any] = [
-            "updated_at": "2026-10-17T06:12:03Z", "source": "balancebar-mod", "account": account,
+            "updated_at": updatedAt, "source": "balancebar-mod", "account": account,
             "five_hour": ["used_percentage": 10, "resets_at": "2026-10-17T09:00:00Z"],
         ]
         try JSONSerialization.data(withJSONObject: object).write(to: inbox.appendingPathComponent(name))
@@ -464,14 +466,14 @@ final class SnapshotInboxTests: XCTestCase {
         let flags = LockedFlags()
         let logs = LockedLines()
         let source = SnapshotInbox(
-            inboxDirectory: inbox, identity: FakeIdentity(),
+            inboxDirectory: inbox, identity: organizationIdentity("org-1"),
             configuration: SnapshotInboxConfiguration(halfWriteRetryDelay: 0.05))
         source.outdatedModObserver = { flags.append($0) }
         source.diagnosticLog = { logs.append($0) }
         inboxes.append(source)
         source.start { _ in }
         try placeModSnapshot(organizationHash: nil, as: "a.json")
-        try placeModSnapshot(organizationHash: nil, as: "b.json")
+        try placeModSnapshot(organizationHash: nil, as: "b.json", updatedAt: "2026-10-17T06:12:04Z")
         XCTAssertTrue(waitUntil { flags.all.count >= 2 })
         source.stop()
         XCTAssertTrue(flags.all.allSatisfy { $0 })
@@ -482,7 +484,7 @@ final class SnapshotInboxTests: XCTestCase {
         let flags = LockedFlags()
         let logs = LockedLines()
         let source = SnapshotInbox(
-            inboxDirectory: inbox, identity: FakeIdentity(),
+            inboxDirectory: inbox, identity: organizationIdentity("org-1"),
             configuration: SnapshotInboxConfiguration(halfWriteRetryDelay: 0.05))
         source.outdatedModObserver = { flags.append($0) }
         source.diagnosticLog = { logs.append($0) }
@@ -517,7 +519,7 @@ final class SnapshotInboxTests: XCTestCase {
     func testNonModSnapshotWithoutOrganizationIsNotReportedOutdated() throws {
         let flags = LockedFlags()
         let source = SnapshotInbox(
-            inboxDirectory: inbox, identity: FakeIdentity(),
+            inboxDirectory: inbox, identity: organizationIdentity("org-1"),
             configuration: SnapshotInboxConfiguration(halfWriteRetryDelay: 0.05))
         source.outdatedModObserver = { flags.append($0) }
         inboxes.append(source)
@@ -528,7 +530,39 @@ final class SnapshotInboxTests: XCTestCase {
         XCTAssertTrue(flags.all.isEmpty)
     }
 
-    func testUnverifiedCycleIsReportedByTheRejectionObserver() throws {
+        func testModWithoutOrganizationAccountIsNotReportedOutdated() throws {
+        let flags = LockedFlags()
+        let source = SnapshotInbox(
+            inboxDirectory: inbox, identity: FakeIdentity(),
+            configuration: SnapshotInboxConfiguration(halfWriteRetryDelay: 0.05))
+        source.outdatedModObserver = { flags.append($0) }
+        inboxes.append(source)
+        source.start { _ in }
+        try placeModSnapshot(organizationHash: nil)
+        Thread.sleep(forTimeInterval: 0.5)
+        source.stop()
+        XCTAssertTrue(flags.all.isEmpty, "Mod 1.1.0 omits the hash for accounts without an organization")
+    }
+
+    func testStaleOldFormatFileDoesNotOverrideNewerNewFormatFile() throws {
+        let flags = LockedFlags()
+        let source = SnapshotInbox(
+            inboxDirectory: inbox, identity: organizationIdentity("org-1"),
+            configuration: SnapshotInboxConfiguration(halfWriteRetryDelay: 0.05))
+        source.outdatedModObserver = { flags.append($0) }
+        inboxes.append(source)
+        // "-" sorts before ".", so the upgraded file is read first and the stale 1.0.0 file last.
+        try placeModSnapshot(organizationHash: SnapshotInbox.hash("org-1"), as: "balancebar-mod-aaaa-bbbb.json",
+                             updatedAt: "2026-10-17T06:12:30Z")
+        try placeModSnapshot(organizationHash: nil, as: "balancebar-mod-aaaa.json", updatedAt: "2026-10-17T06:00:00Z")
+        source.start { _ in }
+        XCTAssertTrue(waitUntil { !flags.all.isEmpty })
+        Thread.sleep(forTimeInterval: 0.5)
+        source.stop()
+        XCTAssertEqual(flags.all, [false], "the older 1.0.0 file must not reinstate the warning")
+    }
+
+func testUnverifiedCycleIsReportedByTheRejectionObserver() throws {
         let reasons = LockedReasons()
         let source = SnapshotInbox(
             inboxDirectory: inbox, identity: FakeIdentity(),

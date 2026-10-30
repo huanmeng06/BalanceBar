@@ -117,6 +117,8 @@ public final class SnapshotInbox: QuotaSource {
     private(set) var suppressedReplayCount = 0
     private(set) var unverifiedSnapshotRejections = 0
     /// Throttle state per rejection reason (inbox-queue confined).
+    /// Format verdict of the newest Mod snapshot per account and epoch (inbox queue, in memory).
+    private var modFormatVerdicts: [String: (updatedAt: Date, outdated: Bool)] = [:]
     private var rejectionLogState: [String: (lastLogged: Date, suppressed: Int)] = [:]
 
     private struct EmittedWindow: Equatable {
@@ -396,10 +398,23 @@ public final class SnapshotInbox: QuotaSource {
         }
         // A mismatching organization must not clear the stale-Mod warning.
         // Legacy snapshots can still report their format before cycle verification.
-        if isModSnapshot {
+        if isModSnapshot, account.organizationUUID != nil {
+            // Mod 1.1.0 omits the organization hash only when the account has no organization,
+            // so the missing hash proves an old Mod only for an account that does have one.
             let outdated = parsed.accountOrganizationHash?.isEmpty != false
-            if outdated { logRejection(reason: "mod_outdated_format", event: "outdated") }
-            outdatedModObserver?(outdated)
+            // Files from before and after an upgrade coexist and are read in path order: only a
+            // snapshot at least as new as the last judged one may change the format verdict, and
+            // at the same instant the current format wins.
+            let formatKey = "\(account.stableID)/\(identity.accountEpoch.rawValue)"
+            let previous = modFormatVerdicts[formatKey]
+            let supersedes = previous.map {
+                parsed.updatedAt > $0.updatedAt || (parsed.updatedAt == $0.updatedAt && !outdated && $0.outdated)
+            } ?? true
+            if supersedes {
+                modFormatVerdicts[formatKey] = (parsed.updatedAt, outdated)
+                if outdated { logRejection(reason: "mod_outdated_format", event: "outdated") }
+                outdatedModObserver?(outdated)
+            }
         }
         let epoch = identity.accountEpoch
         let source = parsed.source.flatMap { $0 == "unknown" ? nil : $0 } ?? adapter.sourceID
