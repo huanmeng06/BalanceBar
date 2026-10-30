@@ -769,7 +769,7 @@
 "mod.ui.last_data_note" = "“최근 신뢰된 데이터”는 BalanceBar가 사용량 데이터를 마지막으로 채택한 시각이며, 사용량이 그대로이면 바뀌지 않습니다.";
 
 // INT-2 Mod window presentation
-"mod.ui.int2.pitch_title" = "Claude 할당량을 실시간으로 업데이트";
+"mod.ui.int2.pitch_title" = "BalanceBar Mod 실시간 부스트";
 "mod.ui.int2.pitch_subtitle" = "BalanceBar Mod는 Claude Code 안에서 동작하는 작은 플러그인으로, 답변이 끝날 때마다 공식 할당량을 BalanceBar에 알려 줍니다.";
 "mod.ui.int2.later_button" = "나중에";
 "mod.ui.int2.feature1_title" = "실시간 공식 데이터";
