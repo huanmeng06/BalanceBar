@@ -381,7 +381,7 @@ final class DashboardGeneralPage {
     private var realtimeBoostRows: RealtimeBoostSettingsRows?
 
     private weak var timeZoneComboBox: DashboardTimeZoneComboBox?
-    private weak var systemTimeZoneSwitch: NSSwitch?
+    private weak var systemTimeZoneCheckbox: NSButton?
 
     private var updateSubtitleLabel: NSTextField?
     private var updateButton: NSButton?
@@ -658,14 +658,19 @@ final class DashboardGeneralPage {
         self.launchWithChatGPTControls = launchWithChatGPTControls
 
         let timeZoneComboBox = DashboardTimeZoneComboBox(preferences: input.preferences, relay: input.relay)
-        let systemTimeZoneSwitch = DashboardSettingsComponents.makeSwitch(
-            identifier: AppPreferences.displayTimeZoneKey + ".system",
-            isOn: input.preferences.displayTimeZoneSelection == .system,
+        let systemTimeZoneCheckbox = NSButton(
+            checkboxWithTitle: tr(.keyTimeZoneSystem),
             target: input.relay,
             action: #selector(DashboardPreferencePageRelay.followSystemTimeZone(_:))
         )
+        systemTimeZoneCheckbox.identifier = NSUserInterfaceItemIdentifier(AppPreferences.displayTimeZoneKey + ".system")
+        systemTimeZoneCheckbox.state = input.preferences.displayTimeZoneSelection == .system ? .on : .off
+        let timeZoneControls = NSStackView(views: [systemTimeZoneCheckbox, timeZoneComboBox])
+        timeZoneControls.orientation = .horizontal
+        timeZoneControls.alignment = .centerY
+        timeZoneControls.spacing = 12
         self.timeZoneComboBox = timeZoneComboBox
-        self.systemTimeZoneSwitch = systemTimeZoneSwitch
+        self.systemTimeZoneCheckbox = systemTimeZoneCheckbox
         let app = SettingsSectionView(
             title: tr(.keyDashboardGeneralAndRefreshPagesApplication),
             contentViews: [
@@ -675,13 +680,9 @@ final class DashboardGeneralPage {
                     accessoryView: languagePopup
                 ),
                 SettingsRowView(
-                    title: tr(.keyTimeZoneSystem),
-                    accessoryView: systemTimeZoneSwitch
-                ),
-                SettingsRowView(
                     title: tr(.keyTimeZoneTitle),
                     detail: tr(.keyTimeZoneDescription),
-                    accessoryView: timeZoneComboBox
+                    accessoryView: timeZoneControls
                 )
             ]
         )
@@ -702,7 +703,7 @@ final class DashboardGeneralPage {
     }
 
     func refreshDisplayTimeZone(_ selection: AppTimeZoneSelection) {
-        systemTimeZoneSwitch?.state = selection == .system ? .on : .off
+        systemTimeZoneCheckbox?.state = selection == .system ? .on : .off
         timeZoneComboBox?.apply(selection)
     }
 
