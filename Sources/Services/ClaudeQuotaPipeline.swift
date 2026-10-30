@@ -308,6 +308,10 @@ final class ClaudeQuotaPipeline {
     /// Most recent published state, or `nil` before the engine is ready.
     var latestState: ClaudeQuotaState? { lock.withLock { state } }
 
+    func refreshSourceTimelineEstimate() {
+        sourceTimeline.updateEstimate(scheduler.automaticRequestEstimate())
+    }
+
     /// End of the 429 wait, when a manual refresh could only be skipped.
     func manualRefreshBlockedUntil() -> Date? {
         guard let until = stateStore.snapshot.cooldownUntil, until > now() else { return nil }
@@ -379,7 +383,7 @@ final class ClaudeQuotaPipeline {
                 diagnostics(
                     "claude mod live resumed; window=\(observation.window.rawValue); trigger=snapshot_detection",
                     .info)
-                recordTrustedLocalEvidence(observation)
+                recordTrustedLocalEvidence(observation, disposition: .displayed)
                 modSnapshotEventSink?(ModSnapshotEvent(
                     kind: .processed(accepted: true), window: observation.window,
                     observedAt: observation.observedAt, receivedAt: observation.receivedAt))
@@ -617,7 +621,7 @@ final class ClaudeQuotaPipeline {
             diagnostics(
                 "claude native observation kept as evidence only; reason=usage_within_tolerance_below_display; source=\(observation.source); window=\(observation.window.rawValue)",
                 .debug)
-            let recorded = recordLocalEvidence(observation)
+            let recorded = recordLocalEvidence(observation, disposition: .freshnessEvidenceWithinTolerance)
             publish()
             return recorded
         }
@@ -642,7 +646,7 @@ final class ClaudeQuotaPipeline {
             .debug)
         // A displayed reading that may not count as current evidence (Mod suspended) is not
         // reported as accepted either: the settings entry must not treat it as trusted.
-        let recorded = accepted ? recordLocalEvidence(observation) : false
+        let recorded = accepted ? recordLocalEvidence(observation, disposition: .displayed) : false
         publish()
         return accepted && recorded
     }
@@ -671,7 +675,10 @@ final class ClaudeQuotaPipeline {
     /// Returns false when the observation may not count as current evidence (the Mod is
     /// suspended and has not been confirmed available again with a newer snapshot).
     @discardableResult
-    private func recordLocalEvidence(_ observation: QuotaObservation) -> Bool {
+    private func recordLocalEvidence(
+        _ observation: QuotaObservation,
+        disposition: ClaudeSourceTimeline.ReadingDisposition
+    ) -> Bool {
         if observation.source == SnapshotInbox.modSourceID {
             let producedAt = observation.observedAt ?? observation.receivedAt
             enum Outcome { case notSuspended, rejected(String), resumed, awaitingDetection(request: Bool) }
@@ -712,11 +719,14 @@ final class ClaudeQuotaPipeline {
                 return false
             }
         }
-        recordTrustedLocalEvidence(observation)
+        recordTrustedLocalEvidence(observation, disposition: disposition)
         return true
     }
 
-    private func recordTrustedLocalEvidence(_ observation: QuotaObservation) {
+    private func recordTrustedLocalEvidence(
+        _ observation: QuotaObservation,
+        disposition: ClaudeSourceTimeline.ReadingDisposition
+    ) {
         realtimeTracker?.recordTrustedObservation(
             window: observation.window,
             observedAt: observation.observedAt ?? observation.receivedAt,
@@ -727,7 +737,18 @@ final class ClaudeQuotaPipeline {
             lock.withLock { modEvidenceAt = max(modEvidenceAt ?? producedAt, producedAt) }
         }
         if let source = Self.statusSource(forSourceID: observation.source) {
-            sourceTimeline.recordReading(source: source, observedAt: observation.observedAt ?? observation.receivedAt)
+            let window: ClaudeSourceTimeline.Window?
+            switch observation.window {
+            case .fiveHour: window = .fiveHour
+            case .sevenDay: window = .sevenDay
+            case .other: window = nil
+            }
+            if let window {
+                sourceTimeline.recordReading(
+                    source: source, observedAt: observation.observedAt ?? observation.receivedAt,
+                    values: [window: .init(usedPercentage: observation.usedPercentage, resetAt: observation.resetsAt)],
+                    dispositions: [window: disposition])
+            }
         }
     }
 
@@ -769,11 +790,65 @@ final class ClaudeQuotaPipeline {
         }
         if let newFailure {
             diagnostics("claude official fetch failed; kind=\(Self.failureKind(newFailure))", .info)
-            sourceTimeline.recordFailure(ClaudeSourceTimeline.FailureKind(newFailure), at: delivery.receivedAt)
+            let kind = ClaudeSourceTimeline.FailureKind(newFailure)
+            sourceTimeline.recordFailure(kind, at: delivery.receivedAt)
+            sourceTimeline.recordRequestCompleted(
+                trigger: delivery.trigger, startedAt: delivery.dispatchedAt, completedAt: delivery.receivedAt,
+                outcome: .failure(kind))
         } else if adoptedOfficialRead {
-            sourceTimeline.recordOfficialSuccess(at: delivery.receivedAt)
+            let values = Self.timelineValues(from: delivery.result, at: delivery.receivedAt)
+            let dispositions = Self.timelineDispositions(for: values, engine: engine, at: delivery.receivedAt)
+            sourceTimeline.recordOfficialSuccess(at: delivery.receivedAt, values: values, dispositions: dispositions)
+            sourceTimeline.recordRequestCompleted(
+                trigger: delivery.trigger, startedAt: delivery.dispatchedAt, completedAt: delivery.receivedAt,
+                outcome: .success, values: values, dispositions: dispositions)
+        } else {
+            sourceTimeline.recordRequestCompleted(
+                trigger: delivery.trigger, startedAt: delivery.dispatchedAt, completedAt: delivery.receivedAt,
+                outcome: .success)
         }
         publish()
+    }
+
+    private static func timelineValues(
+        from result: UsageFetchResult, at date: Date
+    ) -> [ClaudeSourceTimeline.Window: ClaudeSourceTimeline.WindowValue] {
+        guard case let .success(data) = result,
+              let readings = try? OfficialQuotaResponseParser.claudeReadings(data: data, now: date) else { return [:] }
+        return Dictionary(uniqueKeysWithValues: readings.compactMap { reading in
+            let window: ClaudeSourceTimeline.Window
+            switch reading.quotaKind {
+            case .fiveHour: window = .fiveHour
+            case .sevenDay: window = .sevenDay
+            case .other: return nil
+            }
+            return (window, .init(usedPercentage: reading.usedPercentage, resetAt: reading.resetsAt))
+        })
+    }
+
+    private static func timelineDispositions(
+        for values: [ClaudeSourceTimeline.Window: ClaudeSourceTimeline.WindowValue],
+        engine: QuotaMergeEngine?, at date: Date
+    ) -> [ClaudeSourceTimeline.Window: ClaudeSourceTimeline.ReadingDisposition] {
+        Dictionary(uniqueKeysWithValues: values.compactMap { window, _ in
+            let key = window == .fiveHour ? QuotaWindowKind.fiveHour.rawValue : QuotaWindowKind.sevenDay.rawValue
+            guard let displayed = engine?.currentState.windows[key]?.displayed else { return nil }
+            let disposition: ClaudeSourceTimeline.ReadingDisposition
+            if displayed.source == Self.sourceID && displayed.receivedAt == date {
+                disposition = .displayed
+            } else {
+                let evidenceValue = values[window]?.usedPercentage ?? displayed.usedPercentage
+                if displayed.trust == .a,
+                   displayed.usedPercentage - evidenceValue <= QuotaConstants.gradeBTolerancePercentagePoints {
+                    disposition = .freshnessEvidenceWithinTolerance
+                } else if evidenceValue < displayed.usedPercentage {
+                    disposition = .freshnessEvidenceBelowDisplay
+                } else {
+                    disposition = .freshnessEvidence
+                }
+            }
+            return (window, disposition)
+        })
     }
 
     /// Records the failure and keeps `failureSince` at the start of the run. Caller holds `lock`.
@@ -870,6 +945,11 @@ final class ClaudeQuotaPipeline {
         switch event.kind {
         case .dispatched:
             logDispatch(event)
+            if let trigger = event.trigger {
+                sourceTimeline.recordRequestDispatched(
+                    trigger: trigger, at: event.timestamp,
+                    sourceExpiryAt: realtimeTracker?.realtimeFreshUntil)
+            }
             queue.async { [self] in
                 lock.withLock { refreshing = true }
                 publish()

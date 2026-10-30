@@ -68,36 +68,53 @@ final class ClaudeSourceTimelineViewTests: XCTestCase {
             failures: [Run(start: now.addingTimeInterval(-1), end: nil, kind: .network)])
         let bar = try! XCTUnwrap(layout.bars.first)
         XCTAssertEqual(bar.rect.maxX, layout.nowX, accuracy: 0.01)
-        XCTAssertEqual(bar.rect.width, ClaudeSourceTimelineLayout.minimumMarkWidth, accuracy: 0.01)
+        XCTAssertEqual(bar.rect.minX, layout.x(for: now.addingTimeInterval(-1)), accuracy: 0.01)
+        XCTAssertLessThan(bar.rect.width, ClaudeSourceTimelineLayout.minimumMarkWidth)
         let band = try! XCTUnwrap(layout.bands.first)
         XCTAssertLessThanOrEqual(band.rect.maxX, layout.nowX + 0.01)
         let early = self.layout(readings: [reading(.mod, -3_600, -3_600 + 0.1)]).bars
         XCTAssertGreaterThanOrEqual(early.first?.rect.minX ?? 0, 60, "a mark at the left edge stays inside the chart too")
     }
 
-    func testAHandOverBetweenLanesGetsASameMomentJunction() {
+    func testDifferentTimesStayDistinctAndNoJunctionIsCreated() {
         let layout = layout(readings: [
-            reading(.mod, -1_300, -1_200),       // Mod expires at -1200 …
-            reading(.oauthAPI, -1_200, -600),    // … exactly when the official read takes over
-            reading(.oauthAPI, -60, 300),
+            reading(.mod, -1_300, -1_200),
+            reading(.oauthAPI, -1_199, -600),
         ])
-        XCTAssertEqual(layout.junctions.count, 1)
-        let junction = try! XCTUnwrap(layout.junctions.first)
-        XCTAssertEqual(junction.x, 460.75, accuracy: 0.01, "on the outline of the block that starts")
-        XCTAssertEqual(junction.minY, layout.laneRect(.mod).midY + ClaudeSourceTimelineLayout.barHeight / 2, accuracy: 0.01,
-                       "leaves the upper block's bottom edge")
-        XCTAssertEqual(junction.maxY, layout.laneRect(.oauthAPI).midY - ClaudeSourceTimelineLayout.barHeight / 2, accuracy: 0.01,
-                       "lands on the lower block's top edge")
+        let first = layout.x(for: now.addingTimeInterval(-1_200))
+        let second = layout.x(for: now.addingTimeInterval(-1_199))
+        XCTAssertNotEqual(first, second)
+        let oauthBar = try! XCTUnwrap(layout.bars.first { $0.source == .oauthAPI })
+        XCTAssertEqual(oauthBar.rect.minX, second, accuracy: 0.01)
     }
 
-    func testFrequentReadingsMergeWithoutCrowdedDividers() {
+    func testOfficialReadingHoverShowsItsRequestsDispatchDetails() throws {
+        let request = ClaudeSourceTimeline.Request(
+            trigger: .sourceExpiryPrefetch,
+            startedAt: now.addingTimeInterval(-9),
+            completedAt: now.addingTimeInterval(-4),
+            outcome: .success,
+            sourceExpiryAt: now)
+        let content = ClaudeSourceTimelineView.Content(
+            timeline: .init(readings: [reading(.mod, -120, 170), reading(.oauthAPI, -4, 600)], failures: [], requests: [request]),
+            status: .realtime(.mod, at: now.addingTimeInterval(-120)))
+        let view = ClaudeSourceTimelineView(provider: { content }, timeZone: utc, now: { self.now })
+        view.frame = NSRect(x: 0, y: 0, width: 660, height: ClaudeSourceTimelineLayout.height)
+        let layout = view.makeLayout()
+        let piece = try XCTUnwrap(layout.bars.first { $0.source == .oauthAPI }?.pieces.first)
+        let tooltip = view.hoverContent(for: .piece(piece)).plainText
+        XCTAssertFalse(tooltip.contains("source_expiry_prefetch"), "trigger must be localized, not a raw identifier")
+        XCTAssertTrue(tooltip.contains(ClaudeSourceTimelineView.durationText(9)), tooltip)
+    }
+
+    func testFrequentReadingsPreserveEveryDistinctDivider() {
         let readings = stride(from: -600.0, to: -300, by: 5).map { reading(.mod, $0, $0 + 120) }
         let bars = layout(readings: readings).bars
         XCTAssertEqual(bars.count, 1)
         XCTAssertEqual(bars[0].readings.count, readings.count)
         let gaps = zip(bars[0].dividers.dropFirst(), bars[0].dividers).map { $0 - $1 }
-        XCTAssertTrue(gaps.allSatisfy { $0 >= ClaudeSourceTimelineLayout.minimumDividerSpacing - 0.001 })
-        XCTAssertLessThan(bars[0].dividers.count, readings.count - 1)
+        XCTAssertTrue(gaps.allSatisfy { $0 > 0 })
+        XCTAssertEqual(bars[0].dividers.count, readings.count - 1)
     }
 
     func testFailureBoxesStayInTheOAuthLaneMatchTheBarsAndAnOpenRunReachesNow() {
@@ -151,18 +168,16 @@ final class ClaudeSourceTimelineViewTests: XCTestCase {
         let modBar = try! XCTUnwrap(layout.bars.first { $0.source == .mod })
         let reading = view.hoverContent(for: try! XCTUnwrap(layout.hoverTarget(at: CGPoint(x: modBar.rect.midX, y: modBar.rect.midY))))
         XCTAssertEqual(reading.title, "Mod")
-        XCTAssertEqual(reading.rows, [
-            .init(label: tr(.keyClaudeTimelineHoverTime), value: "07:59:00 – " + tr(.keyClaudeTimelineNow)),
-            .init(label: tr(.keyClaudeTimelineHoverDuration), value: ClaudeSourceTimelineView.durationText(60)),
-            .init(label: tr(.keyClaudeTimelineHoverRefreshes), value: tr(.keyClaudeTimelineHoverRefreshCount, arguments: ["1"])),
-            .init(label: tr(.keyClaudeTimelineHoverValidUntil), value: "08:01:00"),
-        ], "type heading, then range so far, duration, refreshes and each refresh's validity")
+        XCTAssertEqual(reading.rows.first,
+            .init(label: tr(.keyClaudeTimelineHoverTime),
+                  value: "07:59:00 – 08:01:00"),
+            "type heading, then just the validity range")
         let band = try! XCTUnwrap(layout.bands.first)
         let failure = view.hoverContent(for: .band(band))
         XCTAssertEqual(failure.title, "OAuth API · " + tr(.keyClaudeTimelineFailureNetwork))
         XCTAssertEqual(failure.rows, [
-            .init(label: tr(.keyClaudeTimelineHoverTime), value: "07:35:00 – 07:43:20"),
-            .init(label: tr(.keyClaudeTimelineHoverDuration), value: ClaudeSourceTimelineView.durationText(500)),
+            .init(label: tr(.keyClaudeTimelineHoverTime),
+                  value: "07:35:00 – 07:43:20 · " + ClaudeSourceTimelineView.durationText(500)),
         ])
         XCTAssertEqual(view.hoverText(at: NSPoint(x: band.rect.midX, y: band.rect.midY)), failure.plainText)
         XCTAssertEqual(
@@ -261,14 +276,64 @@ final class ClaudeSourceTimelineViewTests: XCTestCase {
         }
     }
 
+    func testOnlyAFailureThatIsStillRunningCarriesTheNextRequestEstimate() throws {
+        let estimate = FetchAutomaticRequestEstimate(
+            state: .scheduled(at: now.addingTimeInterval(240), trigger: .sourceExpiryPrefetch), evaluatedAt: now)
+        func hover(end: Date?) throws -> [String] {
+            let content = ClaudeSourceTimelineView.Content(
+                timeline: .init(readings: [], failures: [Run(start: now.addingTimeInterval(-600), end: end, kind: .network)],
+                                estimate: estimate),
+                status: nil)
+            let view = ClaudeSourceTimelineView(provider: { content }, timeZone: utc, now: { self.now })
+            view.frame = NSRect(x: 0, y: 0, width: 660, height: ClaudeSourceTimelineLayout.height)
+            let band = try XCTUnwrap(view.makeLayout().bands.first)
+            return view.hoverContent(for: .band(band)).rows.map(\.label)
+        }
+        XCTAssertFalse(try hover(end: now.addingTimeInterval(-300)).contains(tr(.keyClaudeTimelineEstimateLabel)))
+        XCTAssertTrue(try hover(end: nil).contains(tr(.keyClaudeTimelineEstimateLabel)))
+    }
+
+    func testTooltipShowsRemainingPercentageNotUsed() throws {
+        var modReading = reading(.mod, -60, 60)
+        modReading.windows = [.fiveHour: .init(usedPercentage: 13, resetAt: nil)]
+        modReading.dispositions = [.fiveHour: .displayed]
+        let content = ClaudeSourceTimelineView.Content(
+            timeline: .init(readings: [modReading], failures: []),
+            status: .realtime(.mod, at: now.addingTimeInterval(-60)))
+        let view = ClaudeSourceTimelineView(provider: { content }, timeZone: utc, now: { self.now })
+        view.frame = NSRect(x: 0, y: 0, width: 660, height: ClaudeSourceTimelineLayout.height)
+        let layout = view.makeLayout()
+        let piece = try XCTUnwrap(layout.bars.first?.pieces.first)
+        let rows = view.hoverContent(for: .piece(piece)).rows
+        XCTAssertEqual(rows.first { $0.label == tr(.keyClaudeTimelineWindowFiveHour) }?.value,
+                       tr(.keyClaudeTimelineValueRemaining, arguments: ["87%"]))
+        XCTAssertEqual(rows.first { $0.label == tr(.keyClaudeTimelineWindowSevenDay) }?.value,
+                       tr(.keyClaudeTimelineWindowNotIncluded))
+    }
+
+    func testEveryTooltipFormatRendersInEveryLanguage() {
+        let formats: [(LocalizationKey, [String])] = [
+            (.keyClaudeTimelineEstimateIn, ["5"]),
+            (.keyClaudeTimelineEstimateCooldown, ["10:00"]),
+            (.keyClaudeTimelineEstimateScheduled, ["10:00", "x"]),
+            (.keyClaudeTimelineHoverBeforeExpiry, ["9"]),
+            (.keyClaudeTimelineValueRemaining, ["87%"]),
+        ]
+        for language in AppLanguage.allCases {
+            for (key, arguments) in formats {
+                let text = tr(key, arguments: arguments, language: language)
+                XCTAssertFalse(text.contains("⟦"), "\(language): \(key.rawKey) did not render: \(text)")
+            }
+        }
+    }
+
     func testBlockTooltipFitsItsContentInEveryLanguage() throws {
         for language in AppLanguage.allCases {
             let rows: [ClaudeSourceTimelineTooltipContent.Row] = [
-                .init(label: tr(.keyClaudeTimelineHoverTime, language: language), value: "15:04:53 – 15:09:53"),
-                .init(label: tr(.keyClaudeTimelineHoverDuration, language: language), value: "5"),
-                .init(label: tr(.keyClaudeTimelineHoverRefreshes, language: language),
-                      value: tr(.keyClaudeTimelineHoverRefreshCount, arguments: ["12"], language: language)),
-                .init(label: tr(.keyClaudeTimelineHoverValidity, language: language), value: "5"),
+                .init(label: tr(.keyClaudeTimelineHoverTime, language: language), value: "15:04:53 – 15:09:53 · 5"),
+                .init(label: tr(.keyClaudeTimelineWindowFiveHour, language: language),
+                      value: "6%"),
+                .init(label: "", value: tr(.keyClaudeTimelineValueEvidence, language: language)),
             ]
             let controller = ClaudeSourceTimelineTooltipViewController(
                 content: .init(title: "OAuth API · " + tr(.keyClaudeTimelineFailureNetwork, language: language), color: .systemBlue, rows: rows))
@@ -290,10 +355,13 @@ final class ClaudeSourceTimelineViewTests: XCTestCase {
 
     func testOffscreenRendersTheBlockTooltip() throws {
         let content = ClaudeSourceTimelineTooltipContent(title: "Mod", color: .systemOrange, rows: [
-            .init(label: tr(.keyClaudeTimelineHoverTime), value: "15:04:53 – 15:09:53"),
-            .init(label: tr(.keyClaudeTimelineHoverDuration), value: ClaudeSourceTimelineView.durationText(300)),
-            .init(label: tr(.keyClaudeTimelineHoverRefreshes), value: tr(.keyClaudeTimelineHoverRefreshCount, arguments: ["1"])),
-            .init(label: tr(.keyClaudeTimelineHoverValidity), value: ClaudeSourceTimelineView.durationText(300)),
+            .init(label: tr(.keyClaudeTimelineHoverTime),
+                  value: "15:04:53 – 15:09:53 · " + ClaudeSourceTimelineView.durationText(300)),
+            .init(label: tr(.keyClaudeTimelineWindowFiveHour),
+                  value: "6%"),
+            .init(label: tr(.keyClaudeTimelineWindowSevenDay),
+                  value: "58%"),
+            .init(label: "", value: tr(.keyClaudeTimelineValueEvidence)),
         ])
         let directory = ProcessInfo.processInfo.environment["BB_TIMELINE_RENDER_DIR"].map { URL(fileURLWithPath: $0) }
         for appearanceName in [NSAppearance.Name.aqua, .darkAqua] {
@@ -329,12 +397,12 @@ final class ClaudeSourceTimelineViewTests: XCTestCase {
             let layout = view.makeLayout()
             let bar = layout.bars.first { $0.source == .mod }
             return bar.flatMap { layout.hoverTarget(at: CGPoint(x: $0.rect.midX, y: $0.rect.midY)) }
-                .map { view.hoverContent(for: $0) }?.rows.last?.value
+                .map { view.hoverContent(for: $0) }?.rows.first(where: { $0.label == tr(.keyClaudeTimelineHoverTime) })?.value
         }
-        XCTAssertEqual(validUntil(), "08:01:00")
+        XCTAssertTrue(validUntil()?.contains("08:01:00") == true, validUntil() ?? "nil")
 
         view.updateTimeZone(TimeZone(secondsFromGMT: 9 * 3600)!)
-        XCTAssertEqual(validUntil(), "17:01:00")
+        XCTAssertTrue(validUntil()?.contains("17:01:00") == true, validUntil() ?? "nil")
         XCTAssertNotEqual(view.statusSlot.hoverText, slotBefore)
     }
 

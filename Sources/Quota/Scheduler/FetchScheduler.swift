@@ -30,6 +30,8 @@ public final class FetchScheduler: FetchScheduling {
     private var lastSuccess: (at: Date, epoch: AccountEpoch)?
     private var consecutiveFailures = 0
     private var lastFailureAt: Date?
+    private var lastDispatchAt: Date?
+    private var lastDispatchTrigger: FetchDispatchTrigger?
     private var demandEnabled = false
     private var timerGeneration = 0
     /// Non-routine reasons that arrived while a request was in flight; replayed once it ends
@@ -150,6 +152,37 @@ public final class FetchScheduler: FetchScheduling {
                 isUnauthorizedPaused: persistent.isUnauthorizedPaused,
                 isBusy: isBusy,
                 at: now)
+        }
+    }
+
+    /// Evaluates the next automatic request using the same eligibility gates as the timer.
+    public func automaticRequestEstimate() -> FetchAutomaticRequestEstimate {
+        queue.sync {
+            let now = clock.now
+            refillTokens(now: now)
+            let state: FetchAutomaticRequestEstimate.State
+            if identity.accountIdentity == nil {
+                state = .signedOut
+            } else if isBusy {
+                state = .inFlight
+            } else if persistent.isUnauthorizedPaused,
+                      identity.credentialVersion == persistent.unauthorizedCredentialVersion {
+                state = .unauthorizedPaused
+            } else {
+                let at = nextAutomaticEligibleAt(now: now)
+                let trigger = automaticTrigger([], firstRead: currentEpochLastSuccessAt == nil, now: at)
+                if let until = persistent.cooldownUntil, until > now {
+                    state = .coolingDown(until: max(until, at))
+                } else if let lastServerAttemptAt, consecutiveFailures > 0,
+                          lastServerAttemptAt.addingTimeInterval(failureBackoffInterval) > now {
+                    state = .delayed(reason: .failureBackoff, until: at, trigger: trigger)
+                } else if tokens < configuration.automaticTokenCost, at > now {
+                    state = .delayed(reason: .insufficientTokens, until: at, trigger: trigger)
+                } else {
+                    state = .scheduled(at: at, trigger: trigger)
+                }
+            }
+            return FetchAutomaticRequestEstimate(state: state, evaluatedAt: now)
         }
     }
 
@@ -323,6 +356,8 @@ public final class FetchScheduler: FetchScheduling {
         tokens -= cost
         isBusy = true
         lastServerAttemptAt = clock.now
+        lastDispatchAt = lastServerAttemptAt
+        lastDispatchTrigger = trigger
         persistent.lastServerAttemptAt = lastServerAttemptAt
         stateStore.save(persistent)
         let epoch = identity.accountEpoch
@@ -383,7 +418,9 @@ public final class FetchScheduler: FetchScheduling {
             stateStore.save(persistent)
         }
         log(.completed, reasons: reasons, outcome: Self.label(result))
-        let delivery = FetchSchedulerDelivery(result: result, reasons: reasons, epoch: epoch, receivedAt: now)
+        let delivery = FetchSchedulerDelivery(
+            result: result, reasons: reasons, epoch: epoch, receivedAt: now,
+            dispatchedAt: lastDispatchAt ?? now, trigger: lastDispatchTrigger ?? .localExpiredOrAbsent)
         resultHandlers.forEach { $0(delivery) }
     }
 

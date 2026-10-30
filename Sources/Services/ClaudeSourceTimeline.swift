@@ -3,10 +3,9 @@ import Foundation
 
 /// Short history of Claude quota source activity for the Advanced settings timeline.
 ///
-/// A pure observer: it records what the pipeline already decided (an adopted reading, an official
-/// failure) and never feeds back into merging or scheduling. Only times, sources and failure
-/// categories are kept (no quota values). With a `fileURL` the history survives a relaunch, but
-/// only for the same account: the file carries a hash of the account's stable ID.
+/// A pure observer: it records source readings and fetch activity but never feeds back into
+/// merging or scheduling. Persisted values are limited to 5h/7d percentages and reset times.
+/// History survives a relaunch only for the same account; the file stores a hash, not its ID.
 final class ClaudeSourceTimeline {
     /// Coarse, non-secret category of a failed official read.
     enum FailureKind: Equatable {
@@ -27,11 +26,47 @@ final class ClaudeSourceTimeline {
         }
     }
 
+    enum Window: String, Equatable, CaseIterable {
+        case fiveHour
+        case sevenDay
+    }
+
+    struct WindowValue: Equatable {
+        var usedPercentage: Double
+        var resetAt: Date?
+    }
+
+    enum ReadingDisposition: String, Equatable {
+        case displayed
+        case freshnessEvidenceWithinTolerance
+        case freshnessEvidenceBelowDisplay
+        case freshnessEvidence
+    }
+
     /// One adopted reading and how long it counted as valid.
     struct Reading: Equatable {
         var source: StatusSlotLiveSource
         var observedAt: Date
         var expiresAt: Date
+        var windows: [Window: WindowValue] = [:]
+        var windowObservedAt: [Window: Date] = [:]
+        var dispositions: [Window: ReadingDisposition] = [:]
+    }
+
+    enum RequestOutcome: Equatable {
+        case success
+        case failure(FailureKind)
+        case interrupted
+    }
+
+    struct Request: Equatable {
+        var trigger: FetchDispatchTrigger
+        var startedAt: Date
+        var completedAt: Date?
+        var outcome: RequestOutcome?
+        var sourceExpiryAt: Date?
+        var windows: [Window: WindowValue] = [:]
+        var dispositions: [Window: ReadingDisposition] = [:]
     }
 
     /// An unbroken run of failed official reads; `end` is nil while it is still failing.
@@ -44,8 +79,10 @@ final class ClaudeSourceTimeline {
     struct Snapshot: Equatable {
         var readings: [Reading]
         var failures: [FailureRun]
+        var requests: [Request] = []
+        var estimate: FetchAutomaticRequestEstimate?
 
-        static let empty = Snapshot(readings: [], failures: [])
+        static let empty = Snapshot(readings: [], failures: [], requests: [], estimate: nil)
     }
 
     /// Slightly longer than the 60-minute chart so a bar entering from the left edge is complete.
@@ -63,6 +100,8 @@ final class ClaudeSourceTimeline {
     private let lock = NSLock()
     private var readings: [Reading] = []
     private var failures: [FailureRun] = []
+    private var requests: [Request] = []
+    private var estimate: FetchAutomaticRequestEstimate?
     /// Hashed stable ID of the account this history belongs to; nil until the account is known.
     private var accountKey: String?
     private var saveScheduled = false
@@ -98,19 +137,91 @@ final class ClaudeSourceTimeline {
     /// Records an adopted reading. Its validity is the source's setting at this moment; a later
     /// setting change only reaches readings still valid then (`validityChanged`).
     func recordReading(source: StatusSlotLiveSource, observedAt: Date) {
+        recordReading(source: source, observedAt: observedAt, values: [:], dispositions: [:])
+    }
+
+    func recordReading(
+        source: StatusSlotLiveSource,
+        observedAt: Date,
+        values: [Window: WindowValue],
+        dispositions: [Window: ReadingDisposition]
+    ) {
         let changed = lock.withLock { () -> Bool in
-            guard !readings.contains(where: {
+            if let index = readings.lastIndex(where: {
                 $0.source == source && abs($0.observedAt.timeIntervalSince(observedAt)) < Self.pairTolerance
-            }) else { return false }
-            let reading = Reading(
-                source: source, observedAt: observedAt,
-                expiresAt: observedAt.addingTimeInterval(validity().seconds(for: source)))
-            let index = readings.lastIndex(where: { $0.observedAt <= observedAt }).map { $0 + 1 } ?? 0
-            readings.insert(reading, at: index)
+            }) {
+                let prior = readings[index]
+                readings[index].windows.merge(values) { _, new in new }
+                readings[index].windowObservedAt.merge(
+                    Dictionary(uniqueKeysWithValues: values.keys.map { ($0, observedAt) })) { _, new in new }
+                readings[index].dispositions.merge(dispositions) { _, new in new }
+                let perWindowExpiry = readings[index].windows.keys.map { window in
+                    readings[index].windowObservedAt[window, default: observedAt]
+                        .addingTimeInterval(validity().seconds(for: source))
+                }.min()
+                readings[index].expiresAt = perWindowExpiry
+                    ?? min(prior.expiresAt, observedAt.addingTimeInterval(validity().seconds(for: source)))
+                guard readings[index] != prior else { return false }
+            } else {
+                let reading = Reading(
+                    source: source, observedAt: observedAt,
+                    expiresAt: observedAt.addingTimeInterval(validity().seconds(for: source)),
+                    windows: values,
+                    windowObservedAt: Dictionary(uniqueKeysWithValues: values.keys.map { ($0, observedAt) }),
+                    dispositions: dispositions)
+                let index = readings.lastIndex(where: { $0.observedAt <= observedAt }).map { $0 + 1 } ?? 0
+                readings.insert(reading, at: index)
+            }
             pruneLocked(at: now())
             return true
         }
         if changed { notify() }
+    }
+
+    func recordRequestDispatched(trigger: FetchDispatchTrigger, at date: Date, sourceExpiryAt: Date?) {
+        lock.withLock {
+            requests.append(Request(
+                trigger: trigger, startedAt: date, completedAt: nil, outcome: nil,
+                sourceExpiryAt: sourceExpiryAt))
+            pruneLocked(at: now())
+        }
+        notify()
+    }
+
+    func recordRequestCompleted(
+        trigger: FetchDispatchTrigger,
+        startedAt: Date,
+        completedAt: Date,
+        outcome: RequestOutcome,
+        values: [Window: WindowValue] = [:],
+        dispositions: [Window: ReadingDisposition] = [:]
+    ) {
+        let changed = lock.withLock { () -> Bool in
+            guard let index = requests.lastIndex(where: {
+                // The scheduler stamps its dispatch log and its delivery from separate clock reads, so
+                // the two start times differ by microseconds in production.
+                $0.trigger == trigger && $0.completedAt == nil
+                    && abs($0.startedAt.timeIntervalSince(startedAt)) < 1
+            }) else { return false }
+            requests[index].completedAt = completedAt
+            requests[index].outcome = outcome
+            requests[index].windows = values
+            requests[index].dispositions = dispositions
+            pruneLocked(at: now())
+            return true
+        }
+        if changed { notify() }
+    }
+
+    func updateEstimate(_ estimate: FetchAutomaticRequestEstimate) {
+        // `evaluatedAt` moves on every call, so only a different state is a change worth repainting;
+        // otherwise reading the content for a repaint would schedule the next repaint forever.
+        let changed = lock.withLock { () -> Bool in
+            let stateChanged = self.estimate?.state != estimate.state
+            self.estimate = estimate
+            return stateChanged
+        }
+        if changed { onChange?() }
     }
 
     /// Opens a failure run. The same category continues the run in progress; a different one
@@ -129,14 +240,18 @@ final class ClaudeSourceTimeline {
     }
 
     /// An official read was adopted: the failure run in progress (if any) ends here.
-    func recordOfficialSuccess(at date: Date) {
+    func recordOfficialSuccess(
+        at date: Date,
+        values: [Window: WindowValue] = [:],
+        dispositions: [Window: ReadingDisposition] = [:]
+    ) {
         let closed = lock.withLock { () -> Bool in
             guard let last = failures.indices.last, failures[last].end == nil else { return false }
             failures[last].end = max(date, failures[last].start)
             return true
         }
         if closed { notify() }
-        recordReading(source: .oauthAPI, observedAt: date)
+        recordReading(source: .oauthAPI, observedAt: date, values: values, dispositions: dispositions)
     }
 
     /// Applies a validity setting change the way the status slot does: readings that already
@@ -149,7 +264,11 @@ final class ClaudeSourceTimeline {
             var changed = false
             for index in readings.indices where readings[index].expiresAt > date {
                 let reading = readings[index]
-                let expiresAt = max(reading.observedAt.addingTimeInterval(current.seconds(for: reading.source)), date)
+                let sourceExpiry = reading.windows.keys.map { window in
+                    reading.windowObservedAt[window, default: reading.observedAt]
+                        .addingTimeInterval(current.seconds(for: reading.source))
+                }.min() ?? reading.observedAt.addingTimeInterval(current.seconds(for: reading.source))
+                let expiresAt = max(sourceExpiry, date)
                 if expiresAt != reading.expiresAt {
                     readings[index].expiresAt = expiresAt
                     changed = true
@@ -166,9 +285,11 @@ final class ClaudeSourceTimeline {
         let changed = lock.withLock { () -> Bool in
             let keyChanged = self.accountKey != accountKey
             self.accountKey = accountKey
-            guard !readings.isEmpty || !failures.isEmpty || keyChanged else { return false }
+            guard !readings.isEmpty || !failures.isEmpty || !requests.isEmpty || estimate != nil || keyChanged else { return false }
             readings.removeAll()
             failures.removeAll()
+            requests.removeAll()
+            estimate = nil
             return true
         }
         if changed { notify() }
@@ -195,8 +316,16 @@ final class ClaudeSourceTimeline {
                 restoredFailures[index].end = max(savedAt, restoredFailures[index].start)
             }
             failures = (restoredFailures + failures).sorted { $0.start < $1.start }
+            let restoredRequests = saved.requests.compactMap(\.request).map { request -> Request in
+                guard request.completedAt == nil else { return request }
+                var interrupted = request
+                interrupted.completedAt = max(savedAt, request.startedAt)
+                interrupted.outcome = .interrupted
+                return interrupted
+            }
+            requests = (restoredRequests + requests).sorted { $0.startedAt < $1.startedAt }
             pruneLocked(at: now())
-            return !restoredReadings.isEmpty || !restoredFailures.isEmpty
+            return !restoredReadings.isEmpty || !restoredFailures.isEmpty || !restoredRequests.isEmpty
         }
         if changed { notify() }
     }
@@ -214,7 +343,7 @@ final class ClaudeSourceTimeline {
     func snapshot() -> Snapshot {
         lock.withLock {
             pruneLocked(at: now())
-            return Snapshot(readings: readings, failures: failures)
+            return Snapshot(readings: readings, failures: failures, requests: requests, estimate: estimate)
         }
     }
 
@@ -225,6 +354,7 @@ final class ClaudeSourceTimeline {
             readings.removeFirst(readings.count - Self.maximumReadings)
         }
         failures.removeAll { ($0.end ?? .distantFuture) < cutoff }
+        requests.removeAll { ($0.completedAt ?? .distantFuture) < cutoff }
     }
 
     private func notify() {
@@ -252,7 +382,8 @@ final class ClaudeSourceTimeline {
             return StoredHistory(
                 accountKey: accountKey, savedAt: now().timeIntervalSince1970,
                 readings: readings.map(StoredHistory.StoredReading.init),
-                failures: failures.map(StoredHistory.StoredRun.init))
+                failures: failures.map(StoredHistory.StoredRun.init),
+                requests: requests.map(StoredHistory.StoredRequest.init))
         }
         guard let history, let data = try? JSONEncoder().encode(history) else { return }
         try? FileManager.default.createDirectory(
@@ -263,12 +394,15 @@ final class ClaudeSourceTimeline {
 
 /// On-disk form of the history: plain times, source names and failure categories only.
 private struct StoredHistory: Codable {
-    static let currentVersion = 1
+    static let currentVersion = 2
 
     struct StoredReading: Codable {
         var source: String
         var observedAt: TimeInterval
         var expiresAt: TimeInterval
+        var windows: [String: StoredWindowValue]
+        var windowObservedAt: [String: TimeInterval]
+        var dispositions: [String: String]
 
         private static let sources: [(String, StatusSlotLiveSource)] = [
             ("oauth", .oauthAPI), ("mod", .mod),
@@ -278,13 +412,43 @@ private struct StoredHistory: Codable {
             source = Self.sources.first { $0.1 == reading.source }?.0 ?? "oauth"
             observedAt = reading.observedAt.timeIntervalSince1970
             expiresAt = reading.expiresAt.timeIntervalSince1970
+            windows = Dictionary(uniqueKeysWithValues: reading.windows.map { ($0.key.rawValue, StoredWindowValue($0.value)) })
+            windowObservedAt = Dictionary(uniqueKeysWithValues: reading.windowObservedAt.map { ($0.key.rawValue, $0.value.timeIntervalSince1970) })
+            dispositions = Dictionary(uniqueKeysWithValues: reading.dispositions.map { ($0.key.rawValue, $0.value.rawValue) })
         }
 
         var reading: ClaudeSourceTimeline.Reading? {
             guard let source = Self.sources.first(where: { $0.0 == self.source })?.1 else { return nil }
             return .init(
                 source: source, observedAt: Date(timeIntervalSince1970: observedAt),
-                expiresAt: Date(timeIntervalSince1970: expiresAt))
+                expiresAt: Date(timeIntervalSince1970: expiresAt),
+                windows: Dictionary(uniqueKeysWithValues: windows.compactMap { key, value in
+                    guard let window = ClaudeSourceTimeline.Window(rawValue: key) else { return nil }
+                    return (window, value.value)
+                }),
+                windowObservedAt: Dictionary(uniqueKeysWithValues: windowObservedAt.compactMap { key, value in
+                    guard let window = ClaudeSourceTimeline.Window(rawValue: key) else { return nil }
+                    return (window, Date(timeIntervalSince1970: value))
+                }),
+                dispositions: Dictionary(uniqueKeysWithValues: dispositions.compactMap { key, value in
+                    guard let window = ClaudeSourceTimeline.Window(rawValue: key),
+                          let disposition = ClaudeSourceTimeline.ReadingDisposition(rawValue: value) else { return nil }
+                    return (window, disposition)
+                }))
+        }
+    }
+
+    struct StoredWindowValue: Codable {
+        var usedPercentage: Double
+        var resetAt: TimeInterval?
+
+        init(_ value: ClaudeSourceTimeline.WindowValue) {
+            usedPercentage = value.usedPercentage
+            resetAt = value.resetAt?.timeIntervalSince1970
+        }
+
+        var value: ClaudeSourceTimeline.WindowValue {
+            .init(usedPercentage: usedPercentage, resetAt: resetAt.map(Date.init(timeIntervalSince1970:)))
         }
     }
 
@@ -312,9 +476,70 @@ private struct StoredHistory: Codable {
         }
     }
 
+    struct StoredRequest: Codable {
+        var trigger: String
+        var startedAt: TimeInterval
+        var completedAt: TimeInterval?
+        var outcome: String?
+        var sourceExpiryAt: TimeInterval?
+        var windows: [String: StoredWindowValue]
+        var dispositions: [String: String]
+
+        init(_ request: ClaudeSourceTimeline.Request) {
+            trigger = request.trigger.rawValue
+            startedAt = request.startedAt.timeIntervalSince1970
+            completedAt = request.completedAt?.timeIntervalSince1970
+            sourceExpiryAt = request.sourceExpiryAt?.timeIntervalSince1970
+            switch request.outcome {
+            case .success?: outcome = "success"
+            case let .failure(kind)?: outcome = "failure:" + StoredRun(.init(start: request.startedAt, end: nil, kind: kind)).kind
+            case .interrupted?: outcome = "interrupted"
+            case nil: outcome = nil
+            }
+            windows = Dictionary(uniqueKeysWithValues: request.windows.map { ($0.key.rawValue, StoredWindowValue($0.value)) })
+            dispositions = Dictionary(uniqueKeysWithValues: request.dispositions.map { ($0.key.rawValue, $0.value.rawValue) })
+        }
+
+        var request: ClaudeSourceTimeline.Request? {
+            guard let trigger = FetchDispatchTrigger(rawValue: trigger) else { return nil }
+            let decodedOutcome: ClaudeSourceTimeline.RequestOutcome?
+            if outcome == "success" { decodedOutcome = .success }
+            else if outcome == "interrupted" { decodedOutcome = .interrupted }
+            else if let outcome, outcome.hasPrefix("failure:"),
+                    let kind = Self.failureKind(String(outcome.dropFirst("failure:".count))) {
+                decodedOutcome = .failure(kind)
+            } else { decodedOutcome = nil }
+            return .init(
+                trigger: trigger, startedAt: Date(timeIntervalSince1970: startedAt),
+                completedAt: completedAt.map(Date.init(timeIntervalSince1970:)), outcome: decodedOutcome,
+                sourceExpiryAt: sourceExpiryAt.map(Date.init(timeIntervalSince1970:)),
+                windows: Dictionary(uniqueKeysWithValues: windows.compactMap { key, value in
+                    guard let window = ClaudeSourceTimeline.Window(rawValue: key) else { return nil }
+                    return (window, value.value)
+                }),
+                dispositions: Dictionary(uniqueKeysWithValues: dispositions.compactMap { key, value in
+                    guard let window = ClaudeSourceTimeline.Window(rawValue: key),
+                          let disposition = ClaudeSourceTimeline.ReadingDisposition(rawValue: value) else { return nil }
+                    return (window, disposition)
+                }))
+        }
+
+        private static func failureKind(_ raw: String) -> ClaudeSourceTimeline.FailureKind? {
+            switch raw {
+            case "network": return .network
+            case "rateLimited": return .rateLimited
+            case "unauthorized": return .unauthorized
+            case "serverError": return .serverError
+            case "missingCredentials": return .missingCredentials
+            default: return nil
+            }
+        }
+    }
+
     var version = currentVersion
     var accountKey: String?
     var savedAt: TimeInterval
     var readings: [StoredReading]
     var failures: [StoredRun]
+    var requests: [StoredRequest]
 }
