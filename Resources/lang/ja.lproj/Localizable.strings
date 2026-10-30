@@ -639,7 +639,7 @@
 "claude.timeline.trigger.first_read" = "初回取得";
 "claude.timeline.trigger.reset_confirmation" = "リセット確認";
 "claude.timeline.trigger.calibration_floor" = "定期校正";
-"claude.timeline.trigger.source_expiry_prefetch" = "Mod 期限間近・先行取得";
+"claude.timeline.trigger.source_expiry_prefetch" = "Mod 期限前の先行取得";
 "claude.timeline.trigger.local_expired_or_absent" = "Mod の有効な値なし";
 "claude.timeline.delay.failure_backoff" = "失敗バックオフ";
 "claude.timeline.delay.insufficient_tokens" = "トークン補充待ち";

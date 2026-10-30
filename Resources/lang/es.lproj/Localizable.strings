@@ -626,7 +626,7 @@
 "claude.timeline.hover.trigger" = "Este disparador";
 "claude.timeline.window.five_hour" = "5 h";
 "claude.timeline.window.seven_day" = "7 d";
-"claude.timeline.hover.before_expiry" = "Solicitud %1$@ antes de que venza Mod";
+"claude.timeline.hover.before_expiry" = "Anticipación %1$@ antes de que venza Mod";
 "claude.timeline.window.not_included" = "No incluido";
 "claude.timeline.value.remaining" = "%1$@ restante";
 "claude.timeline.value.evidence_within_tolerance" = "La tarjeta muestra el valor oficial";
@@ -639,7 +639,7 @@
 "claude.timeline.trigger.first_read" = "Primera lectura";
 "claude.timeline.trigger.reset_confirmation" = "Verif. de reinicio";
 "claude.timeline.trigger.calibration_floor" = "Calibración programada";
-"claude.timeline.trigger.source_expiry_prefetch" = "Mod por vencer, solicitud anticipada";
+"claude.timeline.trigger.source_expiry_prefetch" = "Anticipación antes de que venza Mod";
 "claude.timeline.trigger.local_expired_or_absent" = "Sin lectura Mod válida";
 "claude.timeline.delay.failure_backoff" = "espera tras fallo";
 "claude.timeline.delay.insufficient_tokens" = "espera de tokens";

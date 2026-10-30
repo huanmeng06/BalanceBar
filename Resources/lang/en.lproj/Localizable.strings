@@ -626,7 +626,7 @@
 "claude.timeline.hover.trigger" = "This trigger";
 "claude.timeline.window.five_hour" = "5 h";
 "claude.timeline.window.seven_day" = "7 d";
-"claude.timeline.hover.before_expiry" = "Early request, %1$@ before Mod expires";
+"claude.timeline.hover.before_expiry" = "Prefetch %1$@ before Mod expires";
 "claude.timeline.window.not_included" = "Not included";
 "claude.timeline.value.remaining" = "%1$@ left";
 "claude.timeline.value.evidence_within_tolerance" = "Card shows the official reading";
@@ -639,7 +639,7 @@
 "claude.timeline.trigger.first_read" = "First read";
 "claude.timeline.trigger.reset_confirmation" = "Reset check";
 "claude.timeline.trigger.calibration_floor" = "Scheduled calibration";
-"claude.timeline.trigger.source_expiry_prefetch" = "Mod expiring, early request";
+"claude.timeline.trigger.source_expiry_prefetch" = "Prefetch before Mod expires";
 "claude.timeline.trigger.local_expired_or_absent" = "No valid Mod reading";
 "claude.timeline.delay.failure_backoff" = "failure backoff";
 "claude.timeline.delay.insufficient_tokens" = "waiting for tokens";

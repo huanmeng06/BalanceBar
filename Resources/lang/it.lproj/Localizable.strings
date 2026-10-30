@@ -626,7 +626,7 @@
 "claude.timeline.hover.trigger" = "Questo trigger";
 "claude.timeline.window.five_hour" = "5 h";
 "claude.timeline.window.seven_day" = "7 g";
-"claude.timeline.hover.before_expiry" = "Richiesta %1$@ prima della scadenza di Mod";
+"claude.timeline.hover.before_expiry" = "Prelettura %1$@ prima della scadenza di Mod";
 "claude.timeline.window.not_included" = "Non incluso";
 "claude.timeline.value.remaining" = "%1$@ rimanente";
 "claude.timeline.value.evidence_within_tolerance" = "La scheda mostra il valore ufficiale";
@@ -639,7 +639,7 @@
 "claude.timeline.trigger.first_read" = "Prima lettura";
 "claude.timeline.trigger.reset_confirmation" = "Verifica reset";
 "claude.timeline.trigger.calibration_floor" = "Calibrazione programmata";
-"claude.timeline.trigger.source_expiry_prefetch" = "Mod in scadenza, richiesta anticipata";
+"claude.timeline.trigger.source_expiry_prefetch" = "Prelettura prima della scadenza di Mod";
 "claude.timeline.trigger.local_expired_or_absent" = "Nessuna lettura Mod valida";
 "claude.timeline.delay.failure_backoff" = "attesa dopo errore";
 "claude.timeline.delay.insufficient_tokens" = "attesa di token";

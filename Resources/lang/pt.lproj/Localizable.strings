@@ -626,7 +626,7 @@
 "claude.timeline.hover.trigger" = "Este gatilho";
 "claude.timeline.window.five_hour" = "5 h";
 "claude.timeline.window.seven_day" = "7 d";
-"claude.timeline.hover.before_expiry" = "Pedido %1$@ antes do vencimento do Mod";
+"claude.timeline.hover.before_expiry" = "Pré-busca %1$@ antes do vencimento do Mod";
 "claude.timeline.window.not_included" = "Não incluído";
 "claude.timeline.value.remaining" = "%1$@ restante";
 "claude.timeline.value.evidence_within_tolerance" = "O cartão mostra o valor oficial";
@@ -639,7 +639,7 @@
 "claude.timeline.trigger.first_read" = "Primeira leitura";
 "claude.timeline.trigger.reset_confirmation" = "Verif. de reinício";
 "claude.timeline.trigger.calibration_floor" = "Calibração agendada";
-"claude.timeline.trigger.source_expiry_prefetch" = "Mod prestes a vencer, pedido antecipado";
+"claude.timeline.trigger.source_expiry_prefetch" = "Pré-busca antes do vencimento do Mod";
 "claude.timeline.trigger.local_expired_or_absent" = "Sem leitura Mod válida";
 "claude.timeline.delay.failure_backoff" = "espera após falha";
 "claude.timeline.delay.insufficient_tokens" = "espera por tokens";
