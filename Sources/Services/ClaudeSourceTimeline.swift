@@ -198,7 +198,10 @@ final class ClaudeSourceTimeline {
     ) {
         let changed = lock.withLock { () -> Bool in
             guard let index = requests.lastIndex(where: {
-                $0.trigger == trigger && $0.startedAt == startedAt && $0.completedAt == nil
+                // The scheduler stamps its dispatch log and its delivery from separate clock reads, so
+                // the two start times differ by microseconds in production.
+                $0.trigger == trigger && $0.completedAt == nil
+                    && abs($0.startedAt.timeIntervalSince(startedAt)) < 1
             }) else { return false }
             requests[index].completedAt = completedAt
             requests[index].outcome = outcome

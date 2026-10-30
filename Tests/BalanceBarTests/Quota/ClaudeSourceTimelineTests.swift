@@ -58,6 +58,16 @@ final class ClaudeSourceTimelineTests: XCTestCase {
         ])
     }
 
+    func testCompletionMatchesARequestWhoseStartDiffersByMicroseconds() {
+        let timeline = makeTimeline(now: { self.start.addingTimeInterval(20) })
+        let logged = start.addingTimeInterval(1)
+        timeline.recordRequestDispatched(trigger: .manualRefresh, at: logged, sourceExpiryAt: nil)
+        timeline.recordRequestCompleted(
+            trigger: .manualRefresh, startedAt: logged.addingTimeInterval(-0.0004),
+            completedAt: start.addingTimeInterval(3), outcome: .failure(.unauthorized))
+        XCTAssertEqual(timeline.snapshot().requests.first?.outcome, .failure(.unauthorized))
+    }
+
     func testReadingsStaySortedWhenAnOlderSnapshotArrivesLate() {
         let timeline = makeTimeline(now: { self.start.addingTimeInterval(60) })
         timeline.recordReading(source: .mod, observedAt: start.addingTimeInterval(30))
