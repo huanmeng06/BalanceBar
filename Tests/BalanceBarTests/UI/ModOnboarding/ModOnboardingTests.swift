@@ -1965,6 +1965,51 @@ final class RealtimeBoostAdvancedCardTests: XCTestCase {
         XCTAssertEqual(controller.state, .intro(dismissChecked: false))
     }
 
+    /// Offscreen render of the "update required" card and panel for review; `BB_MOD_UPDATE_RENDER_DIR` picks the output folder.
+    func testRenderUpdateRequiredForReview() throws {
+        let previous = AppLanguage.selected
+        let originalAppearance = NSApp.appearance
+        defer { AppLanguage.selected = previous; NSApp.appearance = originalAppearance }
+        AppLanguage.selected = .simplifiedChinese
+        let directory = URL(fileURLWithPath: ProcessInfo.processInfo.environment["BB_MOD_UPDATE_RENDER_DIR"] ?? "/tmp/bb-mod-update-render")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+            NSApp.appearance = NSAppearance(named: appearance)
+            let tag = appearance == .aqua ? "light" : "dark"
+            func write(_ view: NSView, width: CGFloat, name: String) throws {
+                let host = AdvancedCardRenderHost(frame: NSRect(x: 0, y: 0, width: width, height: 1000))
+                host.appearance = try XCTUnwrap(NSAppearance(named: appearance))
+                view.translatesAutoresizingMaskIntoConstraints = false
+                host.addSubview(view)
+                NSLayoutConstraint.activate([
+                    view.leadingAnchor.constraint(equalTo: host.leadingAnchor, constant: 24),
+                    view.trailingAnchor.constraint(equalTo: host.trailingAnchor, constant: -24),
+                    view.topAnchor.constraint(equalTo: host.topAnchor, constant: 24)])
+                host.layoutSubtreeIfNeeded()
+                host.setFrameSize(NSSize(width: width, height: view.fittingSize.height + 48))
+                host.layoutSubtreeIfNeeded()
+                let image = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+                host.effectiveAppearance.performAsCurrentDrawingAppearance { host.cacheDisplay(in: host.bounds, to: image) }
+                let png = try XCTUnwrap(image.representation(using: .png, properties: [:]))
+                try png.write(to: directory.appendingPathComponent("\(name)-\(tag).png"))
+            }
+            let card = RealtimeBoostSettingsRows(status: .updateRequired, operation: .intro(dismissChecked: false),
+                onInstall: { _ in }, onShowDescription: { _ in })
+            try write(SettingsSectionView(title: tr(.keyDashboardGeneralAndRefreshPagesRefresh), contentViews: [card.statusRow]),
+                      width: 520, name: "card")
+            let controller = ModOnboardingController(preference: MemoryPreference(), copyToPasteboard: { _ in })
+            let panel = ModOnboardingPanelView(controller: controller, localize: modOnboardingLocalize,
+                syncProvider: { ModPanelSyncContext(status: .updateRequired,
+                    statusText: RealtimeBoostPresentation.make(status: .updateRequired, localize: realtimeBoostLocalize).statusText) })
+            func buttons(_ view: NSView) -> [NSButton] {
+                view.subviews.flatMap { ($0 as? NSButton).map { [$0] } ?? [] + buttons($0) }
+            }
+            // An installed Mod opens on the pitch page; "查看当前状态" leads to the status page.
+            buttons(panel).first { $0.title == tr(.modUIViewStatus) }?.performClick(nil)
+            try write(panel, width: 480, name: "panel")
+        }
+    }
+
     func testAdvancedCardsTextStaysInsideBoundsForRepresentativeLanguages() throws {
         let previous = AppLanguage.selected
         let originalAppearance = NSApp.appearance
@@ -1975,6 +2020,7 @@ final class RealtimeBoostAdvancedCardTests: XCTestCase {
             ("waiting", .waitingForData, .succeeded),
             ("active", .active(lastAcceptedAt: Date(timeIntervalSince1970: 1_792_872_000)), .intro(dismissChecked: false)),
             ("silent", .silent, .intro(dismissChecked: false)),
+            ("update-required", .updateRequired, .intro(dismissChecked: false)),
             ("failed", .inboxNotReady, .failed(.inboxNotReady)),
             ("uninstalling", .waitingForData, .uninstalling(current: .removeMarketplace))]
         for language in TestMatrix.representativeLanguages {
