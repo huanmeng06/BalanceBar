@@ -615,7 +615,7 @@
 "claude.timeline.failure.unauthorized" = "ログイン期限切れ";
 "claude.timeline.failure.server_error" = "サーバーエラー";
 "claude.timeline.failure.missing_credentials" = "未ログイン";
-"claude.timeline.tooltip.oauth_rule" = "Mod のデータが有効な間は公式 API に問い合わせません。少なくとも 1 時間ごとに公式で校正します。";
+"claude.timeline.tooltip.oauth_rule" = "Mod のデータが有効な間は公式 API に問い合わせず、校正間隔（既定 15 分）ごとにのみ校正します。";
 "claude.timeline.hover.time" = "時間";
 "claude.timeline.duration.seconds" = "%1$@ 秒";
 "claude.timeline.duration.minutes" = "%1$@ 分";
@@ -626,10 +626,9 @@
 "claude.timeline.hover.trigger" = "トリガー";
 "claude.timeline.window.five_hour" = "5 時間";
 "claude.timeline.window.seven_day" = "7 日";
-"claude.timeline.hover.before_expiry" = "先行取得 · Mod の期限 %1$@ 前";
+"claude.timeline.hover.before_expiry" = "Mod 期限の %1$@ 前に先行取得";
 "claude.timeline.window.not_included" = "含まれません";
 "claude.timeline.value.remaining" = "残り %1$@";
-"claude.timeline.value.displayed" = "表示値として採用";
 "claude.timeline.value.evidence_within_tolerance" = "カードは公式の値を表示";
 "claude.timeline.value.evidence_below_display" = "カードはより高い値を表示";
 "claude.timeline.value.evidence" = "カードには未採用";
@@ -639,9 +638,9 @@
 "claude.timeline.trigger.manual_refresh" = "手動更新";
 "claude.timeline.trigger.first_read" = "初回取得";
 "claude.timeline.trigger.reset_confirmation" = "リセット確認";
-"claude.timeline.trigger.calibration_floor" = "フォールバック";
-"claude.timeline.trigger.source_expiry_prefetch" = "先行取得";
-"claude.timeline.trigger.local_expired_or_absent" = "ソース失効";
+"claude.timeline.trigger.calibration_floor" = "定期校正";
+"claude.timeline.trigger.source_expiry_prefetch" = "Mod 期限間近・先行取得";
+"claude.timeline.trigger.local_expired_or_absent" = "Mod の有効な値なし";
 "claude.timeline.delay.failure_backoff" = "失敗バックオフ";
 "claude.timeline.delay.insufficient_tokens" = "トークン補充待ち";
 "claude.timeline.estimate.in" = "約 %1$@後";

@@ -333,7 +333,7 @@ final class ClaudeSourceTimelineViewTests: XCTestCase {
                 .init(label: tr(.keyClaudeTimelineHoverTime, language: language), value: "15:04:53 – 15:09:53 · 5"),
                 .init(label: tr(.keyClaudeTimelineWindowFiveHour, language: language),
                       value: "6%"),
-                .init(label: "", value: tr(.keyClaudeTimelineValueDisplayed, language: language)),
+                .init(label: "", value: tr(.keyClaudeTimelineValueEvidence, language: language)),
             ]
             let controller = ClaudeSourceTimelineTooltipViewController(
                 content: .init(title: "OAuth API · " + tr(.keyClaudeTimelineFailureNetwork, language: language), color: .systemBlue, rows: rows))
@@ -361,7 +361,7 @@ final class ClaudeSourceTimelineViewTests: XCTestCase {
                   value: "6%"),
             .init(label: tr(.keyClaudeTimelineWindowSevenDay),
                   value: "58%"),
-            .init(label: "", value: tr(.keyClaudeTimelineValueDisplayed)),
+            .init(label: "", value: tr(.keyClaudeTimelineValueEvidence)),
         ])
         let directory = ProcessInfo.processInfo.environment["BB_TIMELINE_RENDER_DIR"].map { URL(fileURLWithPath: $0) }
         for appearanceName in [NSAppearance.Name.aqua, .darkAqua] {

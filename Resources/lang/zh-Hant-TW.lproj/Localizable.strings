@@ -615,7 +615,7 @@
 "claude.timeline.failure.unauthorized" = "登入失效";
 "claude.timeline.failure.server_error" = "服務異常";
 "claude.timeline.failure.missing_credentials" = "未登入";
-"claude.timeline.tooltip.oauth_rule" = "Mod 資料有效期內不向官方查詢；至少每小時向官方校準一次。";
+"claude.timeline.tooltip.oauth_rule" = "Mod 資料有效期內不向官方查詢；僅按校準間隔（預設 15 分鐘）定期校準。";
 "claude.timeline.hover.time" = "時間";
 "claude.timeline.duration.seconds" = "%1$@ 秒";
 "claude.timeline.duration.minutes" = "%1$@ 分鐘";
@@ -626,10 +626,9 @@
 "claude.timeline.hover.trigger" = "觸發類型";
 "claude.timeline.window.five_hour" = "5 小時";
 "claude.timeline.window.seven_day" = "7 日";
-"claude.timeline.hover.before_expiry" = "預取 · Mod 到期前 %1$@ 發起";
+"claude.timeline.hover.before_expiry" = "Mod 到期前 %1$@ 提前請求";
 "claude.timeline.window.not_included" = "未包含";
 "claude.timeline.value.remaining" = "剩餘 %1$@";
-"claude.timeline.value.displayed" = "已採用為顯示值";
 "claude.timeline.value.evidence_within_tolerance" = "卡片顯示官方讀數";
 "claude.timeline.value.evidence_below_display" = "卡片顯示更高的數值";
 "claude.timeline.value.evidence" = "卡片未採用此數值";
@@ -639,9 +638,9 @@
 "claude.timeline.trigger.manual_refresh" = "手動重新載入";
 "claude.timeline.trigger.first_read" = "首次讀取";
 "claude.timeline.trigger.reset_confirmation" = "重置確認";
-"claude.timeline.trigger.calibration_floor" = "保底請求";
-"claude.timeline.trigger.source_expiry_prefetch" = "預取";
-"claude.timeline.trigger.local_expired_or_absent" = "本機來源失效";
+"claude.timeline.trigger.calibration_floor" = "定時校準";
+"claude.timeline.trigger.source_expiry_prefetch" = "Mod 快到期，提前請求";
+"claude.timeline.trigger.local_expired_or_absent" = "Mod 無有效讀數";
 "claude.timeline.delay.failure_backoff" = "失敗退避";
 "claude.timeline.delay.insufficient_tokens" = "等待權杖補充";
 "claude.timeline.estimate.in" = "約 %1$@後";

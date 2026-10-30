@@ -615,7 +615,7 @@
 "claude.timeline.failure.unauthorized" = "로그인 만료";
 "claude.timeline.failure.server_error" = "서버 오류";
 "claude.timeline.failure.missing_credentials" = "로그인 안 됨";
-"claude.timeline.tooltip.oauth_rule" = "Mod 데이터가 유효한 동안에는 공식 API를 조회하지 않으며, 최소 1시간마다 공식 데이터로 보정합니다.";
+"claude.timeline.tooltip.oauth_rule" = "Mod 데이터가 유효한 동안에는 공식 API를 조회하지 않고 보정 간격(기본 15분)마다만 보정합니다.";
 "claude.timeline.hover.time" = "시간";
 "claude.timeline.duration.seconds" = "%1$@초";
 "claude.timeline.duration.minutes" = "%1$@분";
@@ -626,10 +626,9 @@
 "claude.timeline.hover.trigger" = "요청 트리거";
 "claude.timeline.window.five_hour" = "5시간";
 "claude.timeline.window.seven_day" = "7일";
-"claude.timeline.hover.before_expiry" = "사전 가져오기 · Mod 만료 %1$@ 전 시작";
+"claude.timeline.hover.before_expiry" = "Mod 만료 %1$@ 전 사전 요청";
 "claude.timeline.window.not_included" = "포함되지 않음";
 "claude.timeline.value.remaining" = "%1$@ 남음";
-"claude.timeline.value.displayed" = "표시 값으로 채택됨";
 "claude.timeline.value.evidence_within_tolerance" = "카드에 공식 값 표시";
 "claude.timeline.value.evidence_below_display" = "카드에 더 높은 값 표시";
 "claude.timeline.value.evidence" = "카드에 미반영";
@@ -639,9 +638,9 @@
 "claude.timeline.trigger.manual_refresh" = "수동 새로고침";
 "claude.timeline.trigger.first_read" = "첫 읽기";
 "claude.timeline.trigger.reset_confirmation" = "재설정 확인";
-"claude.timeline.trigger.calibration_floor" = "보정 요청";
-"claude.timeline.trigger.source_expiry_prefetch" = "사전 가져오기";
-"claude.timeline.trigger.local_expired_or_absent" = "소스 만료";
+"claude.timeline.trigger.calibration_floor" = "정기 보정";
+"claude.timeline.trigger.source_expiry_prefetch" = "Mod 만료 임박, 사전 요청";
+"claude.timeline.trigger.local_expired_or_absent" = "유효한 Mod 값 없음";
 "claude.timeline.delay.failure_backoff" = "실패 백오프";
 "claude.timeline.delay.insufficient_tokens" = "토큰 보충 대기";
 "claude.timeline.estimate.in" = "약 %1$@ 후";

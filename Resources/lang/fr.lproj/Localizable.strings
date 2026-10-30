@@ -615,7 +615,7 @@
 "claude.timeline.failure.unauthorized" = "Connexion expirée";
 "claude.timeline.failure.server_error" = "Erreur serveur";
 "claude.timeline.failure.missing_credentials" = "Non connecté";
-"claude.timeline.tooltip.oauth_rule" = "Tant que les données du Mod sont valides, BalanceBar n’interroge pas l’API officielle ; il recalibre au moins une fois par heure.";
+"claude.timeline.tooltip.oauth_rule" = "Tant que les données Mod sont valides, BalanceBar n’interroge pas l’API officielle ; il ne calibre qu’à l’intervalle de calibrage (15 min par défaut).";
 "claude.timeline.hover.time" = "Heure";
 "claude.timeline.duration.seconds" = "%1$@ s";
 "claude.timeline.duration.minutes" = "%1$@ min";
@@ -626,10 +626,9 @@
 "claude.timeline.hover.trigger" = "Déclencheur";
 "claude.timeline.window.five_hour" = "5 h";
 "claude.timeline.window.seven_day" = "7 j";
-"claude.timeline.hover.before_expiry" = "Prélecture · %1$@ avant l’expiration de Mod";
+"claude.timeline.hover.before_expiry" = "Requête %1$@ avant l’expiration de Mod";
 "claude.timeline.window.not_included" = "Non inclus";
 "claude.timeline.value.remaining" = "%1$@ restant";
-"claude.timeline.value.displayed" = "Utilisée comme valeur affichée";
 "claude.timeline.value.evidence_within_tolerance" = "La carte affiche la valeur officielle";
 "claude.timeline.value.evidence_below_display" = "La carte affiche une valeur plus élevée";
 "claude.timeline.value.evidence" = "Non utilisé sur la carte";
@@ -639,9 +638,9 @@
 "claude.timeline.trigger.manual_refresh" = "Manuel";
 "claude.timeline.trigger.first_read" = "Première lecture";
 "claude.timeline.trigger.reset_confirmation" = "Contrôle de reset";
-"claude.timeline.trigger.calibration_floor" = "Secours";
-"claude.timeline.trigger.source_expiry_prefetch" = "Prélecture";
-"claude.timeline.trigger.local_expired_or_absent" = "Source expirée";
+"claude.timeline.trigger.calibration_floor" = "Calibrage planifié";
+"claude.timeline.trigger.source_expiry_prefetch" = "Mod bientôt expiré, requête anticipée";
+"claude.timeline.trigger.local_expired_or_absent" = "Aucune valeur Mod valide";
 "claude.timeline.delay.failure_backoff" = "temporisation après échec";
 "claude.timeline.delay.insufficient_tokens" = "attente de jetons";
 "claude.timeline.estimate.in" = "dans environ %1$@";

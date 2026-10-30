@@ -615,7 +615,7 @@
 "claude.timeline.failure.unauthorized" = "Accesso scaduto";
 "claude.timeline.failure.server_error" = "Errore del server";
 "claude.timeline.failure.missing_credentials" = "Accesso non effettuato";
-"claude.timeline.tooltip.oauth_rule" = "Finché i dati della Mod sono validi, BalanceBar non interroga l’API ufficiale; calibra comunque almeno ogni ora.";
+"claude.timeline.tooltip.oauth_rule" = "Finché i dati di Mod sono validi, BalanceBar non interroga l’API ufficiale; calibra solo all’intervallo di calibrazione (15 min predefiniti).";
 "claude.timeline.hover.time" = "Ora";
 "claude.timeline.duration.seconds" = "%1$@ s";
 "claude.timeline.duration.minutes" = "%1$@ min";
@@ -626,10 +626,9 @@
 "claude.timeline.hover.trigger" = "Attivazione";
 "claude.timeline.window.five_hour" = "5 h";
 "claude.timeline.window.seven_day" = "7 g";
-"claude.timeline.hover.before_expiry" = "Prelettura · %1$@ prima della scadenza di Mod";
+"claude.timeline.hover.before_expiry" = "Richiesta %1$@ prima della scadenza di Mod";
 "claude.timeline.window.not_included" = "Non incluso";
 "claude.timeline.value.remaining" = "%1$@ rimanente";
-"claude.timeline.value.displayed" = "Usato come valore visualizzato";
 "claude.timeline.value.evidence_within_tolerance" = "La scheda mostra il valore ufficiale";
 "claude.timeline.value.evidence_below_display" = "La scheda mostra un valore più alto";
 "claude.timeline.value.evidence" = "Non usato sulla scheda";
@@ -639,9 +638,9 @@
 "claude.timeline.trigger.manual_refresh" = "Manuale";
 "claude.timeline.trigger.first_read" = "Prima lettura";
 "claude.timeline.trigger.reset_confirmation" = "Verifica reset";
-"claude.timeline.trigger.calibration_floor" = "Riserva";
-"claude.timeline.trigger.source_expiry_prefetch" = "Prelettura";
-"claude.timeline.trigger.local_expired_or_absent" = "Fonte scaduta";
+"claude.timeline.trigger.calibration_floor" = "Calibrazione programmata";
+"claude.timeline.trigger.source_expiry_prefetch" = "Mod in scadenza, richiesta anticipata";
+"claude.timeline.trigger.local_expired_or_absent" = "Nessuna lettura Mod valida";
 "claude.timeline.delay.failure_backoff" = "attesa dopo errore";
 "claude.timeline.delay.insufficient_tokens" = "attesa di token";
 "claude.timeline.estimate.in" = "tra circa %1$@";

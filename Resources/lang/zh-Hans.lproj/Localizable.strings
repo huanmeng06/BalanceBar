@@ -615,7 +615,7 @@
 "claude.timeline.failure.unauthorized" = "登录失效";
 "claude.timeline.failure.server_error" = "服务异常";
 "claude.timeline.failure.missing_credentials" = "未登录";
-"claude.timeline.tooltip.oauth_rule" = "Mod 数据有效期内不向官方查询；至少每小时向官方校准一次。";
+"claude.timeline.tooltip.oauth_rule" = "Mod 数据有效期内不向官方查询；仅按校准间隔（默认 15 分钟）定期校准。";
 "claude.timeline.hover.time" = "时间";
 "claude.timeline.duration.seconds" = "%1$@ 秒";
 "claude.timeline.duration.minutes" = "%1$@ 分钟";
@@ -626,10 +626,9 @@
 "claude.timeline.hover.trigger" = "触发类型";
 "claude.timeline.window.five_hour" = "5 小时";
 "claude.timeline.window.seven_day" = "7 日";
-"claude.timeline.hover.before_expiry" = "预取 · Mod 到期前 %1$@ 发起";
+"claude.timeline.hover.before_expiry" = "Mod 到期前 %1$@ 提前请求";
 "claude.timeline.window.not_included" = "未包含";
 "claude.timeline.value.remaining" = "剩余 %1$@";
-"claude.timeline.value.displayed" = "已采用为显示值";
 "claude.timeline.value.evidence_within_tolerance" = "卡片显示官方读数";
 "claude.timeline.value.evidence_below_display" = "卡片显示更高的数值";
 "claude.timeline.value.evidence" = "卡片未采用此数值";
@@ -639,9 +638,9 @@
 "claude.timeline.trigger.manual_refresh" = "手动刷新";
 "claude.timeline.trigger.first_read" = "首次读取";
 "claude.timeline.trigger.reset_confirmation" = "重置确认";
-"claude.timeline.trigger.calibration_floor" = "保底请求";
-"claude.timeline.trigger.source_expiry_prefetch" = "预取";
-"claude.timeline.trigger.local_expired_or_absent" = "本地来源失效";
+"claude.timeline.trigger.calibration_floor" = "定时校准";
+"claude.timeline.trigger.source_expiry_prefetch" = "Mod 快过期，提前请求";
+"claude.timeline.trigger.local_expired_or_absent" = "Mod 无有效读数";
 "claude.timeline.delay.failure_backoff" = "失败退避";
 "claude.timeline.delay.insufficient_tokens" = "等待令牌补充";
 "claude.timeline.estimate.in" = "约 %1$@后";
