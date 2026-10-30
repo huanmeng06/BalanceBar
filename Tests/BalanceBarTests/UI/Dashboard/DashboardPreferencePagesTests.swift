@@ -10287,7 +10287,7 @@ extension DashboardPreferencePagesTests {
         let general = DashboardGeneralPage()
         let page = general.make(.init(preferences: preferences, relay: relay, updateState: .latest(current: try XCTUnwrap(AppSemanticVersion("1.6.4")))))
         let combo = try XCTUnwrap(descendants(of: page).compactMap { $0 as? DashboardTimeZoneComboBox }.first)
-        let toggle = try XCTUnwrap(descendants(of: page).compactMap { $0 as? NSSwitch }.first { $0.identifier?.rawValue == AppPreferences.displayTimeZoneKey + ".system" })
+        let toggle = try XCTUnwrap(descendants(of: page).compactMap { $0 as? NSButton }.first { $0.identifier?.rawValue == AppPreferences.displayTimeZoneKey + ".system" })
         XCTAssertFalse(combo.isEnabled)
         XCTAssertFalse(combo.completes)
         XCTAssertEqual(toggle.state, .on)
@@ -10327,8 +10327,7 @@ extension DashboardPreferencePagesTests {
         let section = try XCTUnwrap(descendants(of: page).compactMap { $0 as? SettingsSectionView }.first { $0.headingLabel.stringValue == tr(.keyDashboardGeneralAndRefreshPagesApplication) })
         let rows = section.contentViews.compactMap { $0 as? SettingsRowView }
         XCTAssertEqual(rows[0].titleLabel.stringValue, tr(.keyDashboardGeneralAndRefreshPagesLanguage))
-        XCTAssertEqual(rows[1].titleLabel.stringValue, tr(.keyTimeZoneSystem))
-        XCTAssertEqual(rows[2].titleLabel.stringValue, tr(.keyTimeZoneTitle))
+        XCTAssertEqual(rows[1].titleLabel.stringValue, tr(.keyTimeZoneTitle))
     }
 
     func testPauseTodayUsesDisplayZoneAndKeepsAbsoluteDeadlineOnZoneChange() throws {
