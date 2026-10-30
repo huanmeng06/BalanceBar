@@ -817,6 +817,47 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         XCTAssertTrue(events.snapshot().isEmpty)
     }
 
+    func testStaleModSnapshotAfterRestartWithRestoredOfficialStateIsNotReportedUntilTheOfficialReadLands() throws {
+        final class EventBox {
+            private let lock = NSLock()
+            private var values: [ClaudeQuotaPipeline.ModSnapshotEvent] = []
+            func append(_ value: ClaudeQuotaPipeline.ModSnapshotEvent) { lock.lock(); values.append(value); lock.unlock() }
+            func snapshot() -> [ClaudeQuotaPipeline.ModSnapshotEvent] { lock.lock(); defer { lock.unlock() }; return values }
+        }
+        // First run: an official read is merged and persisted.
+        let first = makePipeline(configuration: claudeV1TestConfiguration)
+        first.start()
+        first.requestFetch(reason: .initial)
+        _ = try XCTUnwrap(waitForState(first) { !$0.windows.isEmpty })
+        quiet(first)
+
+        // Restart with the same account: the persisted official state comes back, but this launch
+        // has not read the official quota yet.
+        let events = EventBox()
+        let second = makePipeline(configuration: claudeV1TestConfiguration, withInbox: true)
+        second.modSnapshotEventSink = { events.append($0) }
+        second.start()
+        try placeModSnapshot(
+            five: 90, seven: 95, observedAt: Self.start.addingTimeInterval(1),
+            fiveReset: Self.start.addingTimeInterval(100_000), sevenReset: Self.start.addingTimeInterval(200_000))
+        let inbox = try XCTUnwrap(lastInbox)
+        XCTAssertTrue(pollUntil { inbox.queue.sync { inbox.unverifiedSnapshotRejections } >= 1 })
+        quiet(second)
+        XCTAssertTrue(events.snapshot().isEmpty, "the restored cache is not an official read of this launch")
+
+        // Once the official read lands, a snapshot on another cycle is a real conflict again.
+        let requestsBefore = PipelineStubProtocol.requestCount
+        clock.advance(by: 600)
+        second.requestFetch(reason: .manual)
+        XCTAssertTrue(pollUntil { PipelineStubProtocol.requestCount > requestsBefore })
+        quiet(second)
+        try placeModSnapshot(
+            five: 91, seven: 96, observedAt: Self.start.addingTimeInterval(2),
+            fiveReset: Self.start.addingTimeInterval(100_000), sevenReset: Self.start.addingTimeInterval(200_000),
+            as: "after-official-read.json")
+        XCTAssertTrue(pollUntil { events.snapshot().contains { $0.kind == .rejected(reason: .cycleUnverified) } })
+    }
+
     func testModSnapshotDisplaysAndSuppressesAutomaticReadsWhileFresh() throws {
         let pipeline = makePipeline(
             configuration: claudeV1TestConfiguration, withTracker: true, withInbox: true)
