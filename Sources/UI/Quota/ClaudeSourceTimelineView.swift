@@ -43,12 +43,6 @@ struct ClaudeSourceTimelineLayout {
         var rect: CGRect
     }
 
-    struct RequestMark: Equatable {
-        var request: ClaudeSourceTimeline.Request
-        var rect: CGRect
-        var hitRect: CGRect
-    }
-
     struct Tick: Equatable {
         var date: Date
         var x: CGFloat
@@ -59,7 +53,6 @@ struct ClaudeSourceTimelineLayout {
     private(set) var bars: [Bar] = []
     private(set) var bands: [Band] = []
     private(set) var ticks: [Tick] = []
-    private(set) var requests: [RequestMark] = []
 
     var start: Date { now.addingTimeInterval(-Self.span) }
     var nowX: CGFloat { plot.maxX }
@@ -77,7 +70,6 @@ struct ClaudeSourceTimelineLayout {
         bars = Self.lanes.flatMap { makeBars(for: $0, readings: snapshot.readings) }
         bands = snapshot.failures.compactMap(makeBand)
         ticks = makeTicks(timeZone: timeZone)
-        requests = snapshot.requests.compactMap(makeRequestMark)
     }
 
     func x(for date: Date) -> CGFloat {
@@ -149,20 +141,17 @@ struct ClaudeSourceTimelineLayout {
     enum HoverTarget: Equatable {
         case piece(Piece)
         case band(Band)
-        case request(RequestMark)
 
         var rect: CGRect {
             switch self {
             case let .piece(piece): return piece.rect
             case let .band(band): return band.rect
-            case let .request(mark): return mark.hitRect
             }
         }
     }
 
     func hoverTarget(at point: CGPoint) -> HoverTarget? {
         let slop: CGFloat = 3
-        if let request = requests.last(where: { $0.hitRect.contains(point) }) { return .request(request) }
         if let band = bands.last(where: { $0.rect.insetBy(dx: -1, dy: -slop).contains(point) }) {
             return .band(band)
         }
@@ -189,19 +178,6 @@ struct ClaudeSourceTimelineLayout {
         let width = max(Self.minimumMarkWidth, exact.width)
         return CGRect(x: exact.minX, y: lane.midY - Self.barHeight / 2,
                       width: min(width, plot.maxX - exact.minX), height: Self.barHeight)
-    }
-
-    private func makeRequestMark(_ request: ClaudeSourceTimeline.Request) -> RequestMark? {
-        let end = request.completedAt ?? now
-        guard end >= start, request.startedAt <= now else { return nil }
-        let x1 = x(for: max(request.startedAt, start))
-        let x2 = x(for: min(end, now))
-        let lane = laneRect(.oauthAPI)
-        let exactWidth = max(0, x2 - x1)
-        let rect = CGRect(x: x1, y: lane.midY - 2,
-                          width: min(max(Self.minimumMarkWidth, exactWidth), plot.maxX - x1), height: 4)
-        let hitRect = CGRect(x: x1 - 3, y: lane.minY, width: max(6, exactWidth + 3), height: lane.height)
-        return RequestMark(request: request, rect: rect, hitRect: hitRect)
     }
 
     /// Quarter-hour marks in the display time zone, so they read as 10:15, 10:30, …
@@ -511,7 +487,6 @@ final class ClaudeSourceTimelineView: NSView {
             let valid = bar.rect.maxX >= layout.nowX - 0.5
             drawBar(bar, live: valid && (content.status == nil || bar.source == active))
         }
-        for request in layout.requests { drawRequest(request) }
 
         // The "now" line in the accent color, capped with a dot.
         NSColor.controlAccentColor.setFill()
@@ -528,20 +503,6 @@ final class ClaudeSourceTimelineView: NSView {
                 at: NSPoint(x: layout.plot.midX - size.width / 2, y: layout.plot.midY - size.height / 2),
                 withAttributes: attributes)
         }
-    }
-
-    private func drawRequest(_ mark: ClaudeSourceTimelineLayout.RequestMark) {
-        let color: NSColor
-        switch mark.request.outcome {
-        case .failure: color = .systemRed
-        case .success: color = .systemBlue
-        case .interrupted, nil: color = .secondaryLabelColor
-        }
-        let path = NSBezierPath(roundedRect: mark.rect, xRadius: mark.rect.height / 2, yRadius: mark.rect.height / 2)
-        color.withAlphaComponent(0.95).setFill()
-        path.fill()
-        NSColor.white.withAlphaComponent(0.85).setFill()
-        NSBezierPath(ovalIn: NSRect(x: mark.rect.minX, y: mark.rect.midY - 2, width: 3, height: 4)).fill()
     }
 
     /// The source the status slot says is in use, if any.
@@ -621,14 +582,6 @@ final class ClaudeSourceTimelineView: NSView {
         }
     }
 
-    private func requestOutcomeText(_ outcome: ClaudeSourceTimeline.RequestOutcome) -> String {
-        switch outcome {
-        case .success: return tr(.keyClaudeTimelineRequestSuccess)
-        case .interrupted: return tr(.keyClaudeTimelineRequestInterrupted)
-        case let .failure(kind): return Self.failureText(kind)
-        }
-    }
-
     private func valueRows(
         windows: [ClaudeSourceTimeline.Window: ClaudeSourceTimeline.WindowValue],
         dispositions: [ClaudeSourceTimeline.Window: ClaudeSourceTimeline.ReadingDisposition]
@@ -688,8 +641,28 @@ final class ClaudeSourceTimelineView: NSView {
         return latest.observedAt == reading.observedAt
     }
 
-    private func isLatestOAuthRequest(_ request: ClaudeSourceTimeline.Request) -> Bool {
-        content.timeline.requests.max(by: { $0.startedAt < $1.startedAt }) == request
+    private func isLatestFailure(_ run: ClaudeSourceTimeline.FailureRun) -> Bool {
+        content.timeline.failures.max(by: { $0.start < $1.start })?.start == run.start
+    }
+
+    /// The official request whose answer produced a reading or failure (both are stamped at delivery).
+    private func request(completedAt date: Date) -> ClaudeSourceTimeline.Request? {
+        content.timeline.requests.last { request in
+            request.completedAt.map { abs($0.timeIntervalSince(date)) < 1 } ?? false
+        }
+    }
+
+    /// When the request started and what triggered it; prefetches also say how early they began.
+    private func requestRows(_ request: ClaudeSourceTimeline.Request) -> [ClaudeSourceTimelineTooltipContent.Row] {
+        var trigger = triggerText(request.trigger)
+        if request.trigger == .sourceExpiryPrefetch, let expiry = request.sourceExpiryAt {
+            trigger = tr(.keyClaudeTimelineHoverBeforeExpiry, arguments: [
+                Self.durationText(max(0, expiry.timeIntervalSince(request.startedAt))), time(expiry)])
+        }
+        return [
+            .init(label: tr(.keyClaudeTimelineHoverRequestStarted), value: time(request.startedAt)),
+            .init(label: tr(.keyClaudeTimelineHoverTrigger), value: trigger),
+        ]
     }
 
     /// "45 秒" / "3 分钟" / "1 小时 5 分钟".
@@ -722,8 +695,11 @@ final class ClaudeSourceTimelineView: NSView {
                             value: Self.durationText(first.expiresAt.timeIntervalSince(first.observedAt))),
             ]
             rows.append(contentsOf: valueRows(windows: last.windows, dispositions: last.dispositions))
-            if piece.source == .oauthAPI, isLatestOAuthReading(last), let estimate = content.timeline.estimate {
-                rows.append(contentsOf: estimateRows(estimate))
+            if piece.source == .oauthAPI {
+                if let request = request(completedAt: last.observedAt) { rows.append(contentsOf: requestRows(request)) }
+                if isLatestOAuthReading(last), let estimate = content.timeline.estimate {
+                    rows.append(contentsOf: estimateRows(estimate))
+                }
             }
             return ClaudeSourceTimelineTooltipContent(title: laneName(piece.source), color: Self.color(for: piece.source), rows: rows)
         case let .band(band):
@@ -734,32 +710,8 @@ final class ClaudeSourceTimelineView: NSView {
                           value: time(band.run.start) + " – " + (band.run.end.map(time) ?? tr(.keyClaudeTimelineNow))),
                     .init(label: tr(.keyClaudeTimelineHoverDuration),
                           value: Self.durationText(end.timeIntervalSince(band.run.start))),
-                ])
-        case let .request(mark):
-            let request = mark.request
-            let end = request.completedAt.map(time) ?? tr(.keyClaudeTimelineNow)
-            var rows: [ClaudeSourceTimelineTooltipContent.Row] = [
-                .init(label: tr(.keyClaudeTimelineHoverTime), value: time(request.startedAt) + " – " + end),
-                .init(label: tr(.keyClaudeTimelineHoverTrigger), value: triggerText(request.trigger)),
-            ]
-            if request.trigger == .sourceExpiryPrefetch, let expiry = request.sourceExpiryAt {
-                let lead = max(0, expiry.timeIntervalSince(request.startedAt))
-                rows[1].value = tr(.keyClaudeTimelineHoverBeforeExpiry, arguments: [
-                    Self.durationText(lead), time(expiry)
-                ])
-            }
-            if let outcome = request.outcome {
-                rows.append(.init(label: tr(.keyClaudeTimelineHoverResult), value: requestOutcomeText(outcome)))
-            }
-            if let estimate = content.timeline.estimate, isLatestOAuthRequest(request) {
-                rows.append(contentsOf: estimateRows(estimate))
-            }
-            if case .success? = request.outcome {
-                rows.append(contentsOf: valueRows(windows: request.windows, dispositions: request.dispositions))
-            }
-            return ClaudeSourceTimelineTooltipContent(
-                title: laneName(.oauthAPI) + " · " + triggerText(request.trigger),
-                color: .systemBlue, rows: rows)
+                ] + (request(completedAt: band.run.start).map(requestRows) ?? [])
+                    + (isLatestFailure(band.run) ? content.timeline.estimate.map(estimateRows) ?? [] : []))
         }
     }
 
@@ -833,7 +785,6 @@ final class ClaudeSourceTimelineView: NSView {
         case (nil, nil): return true
         case let (.piece(a)?, .piece(b)?): return a.source == b.source && a.readings.first == b.readings.first
         case let (.band(a)?, .band(b)?): return a.run.start == b.run.start
-        case let (.request(a)?, .request(b)?): return a.request == b.request
         default: return false
         }
     }
@@ -898,10 +849,6 @@ final class ClaudeSourceTimelineView: NSView {
             liftStripes.isHidden = false
             color = .systemRed
             tintAlpha = 0.18
-        case .request:
-            liftStripes.isHidden = true
-            color = .systemBlue
-            tintAlpha = 0.2
         }
         // The lifted block is opaque: it floats over the blurred chart rather than showing it through.
         effectiveAppearance.performAsCurrentDrawingAppearance {

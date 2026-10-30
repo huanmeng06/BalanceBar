@@ -88,7 +88,7 @@ final class ClaudeSourceTimelineViewTests: XCTestCase {
         XCTAssertEqual(oauthBar.rect.minX, second, accuracy: 0.01)
     }
 
-    func testRequestMarkKeepsExactStartAndHoverShowsDispatchDetails() throws {
+    func testOfficialReadingHoverShowsItsRequestsDispatchDetails() throws {
         let request = ClaudeSourceTimeline.Request(
             trigger: .sourceExpiryPrefetch,
             startedAt: now.addingTimeInterval(-9),
@@ -96,18 +96,13 @@ final class ClaudeSourceTimelineViewTests: XCTestCase {
             outcome: .success,
             sourceExpiryAt: now)
         let content = ClaudeSourceTimelineView.Content(
-            timeline: .init(readings: [reading(.mod, -120, 170)], failures: [], requests: [request]),
+            timeline: .init(readings: [reading(.mod, -120, 170), reading(.oauthAPI, -4, 600)], failures: [], requests: [request]),
             status: .realtime(.mod, at: now.addingTimeInterval(-120)))
         let view = ClaudeSourceTimelineView(provider: { content }, timeZone: utc, now: { self.now })
         view.frame = NSRect(x: 0, y: 0, width: 660, height: ClaudeSourceTimelineLayout.height)
         let layout = view.makeLayout()
-        let mark = try XCTUnwrap(layout.requests.first)
-        XCTAssertEqual(mark.rect.minX, layout.x(for: request.startedAt), accuracy: 0.01)
-        XCTAssertGreaterThan(mark.rect.width, mark.hitRect.width / 10)
-        guard case let .request(hit)? = layout.hoverTarget(at: CGPoint(x: mark.rect.midX, y: mark.hitRect.midY)) else {
-            return XCTFail("the request interval must be hoverable")
-        }
-        let tooltip = view.hoverContent(for: .request(hit)).plainText
+        let piece = try XCTUnwrap(layout.bars.first { $0.source == .oauthAPI }?.pieces.first)
+        let tooltip = view.hoverContent(for: .piece(piece)).plainText
         XCTAssertFalse(tooltip.contains("source_expiry_prefetch"), "trigger must be localized, not a raw identifier")
         XCTAssertTrue(tooltip.contains(ClaudeSourceTimelineView.durationText(9)), tooltip)
     }

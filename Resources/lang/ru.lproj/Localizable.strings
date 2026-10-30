@@ -629,10 +629,8 @@
 "claude.timeline.accessibility.count" = "%1$@: %2$@ раз";
 "claude.timeline.accessibility.failures" = "Сбоев: %1$@";
 "claude.timeline.hover.trigger" = "Причина запроса";
+"claude.timeline.hover.request_started" = "Запрос отправлен";
 "claude.timeline.hover.before_expiry" = "Предзагрузка · за %1$@ до истечения Mod (истекает %2$@)";
-"claude.timeline.hover.result" = "Результат";
-"claude.timeline.request.success" = "Успешно";
-"claude.timeline.request.interrupted" = "Прервано";
 "claude.timeline.window.not_included" = "Не включено";
 "claude.timeline.value.displayed" = "Использовано как отображаемое значение";
 "claude.timeline.value.evidence_within_tolerance" = "Только подтверждение актуальности (в пределах допуска отображаемого значения)";

@@ -629,10 +629,8 @@
 "claude.timeline.accessibility.count" = "%1$@ %2$@ vezes";
 "claude.timeline.accessibility.failures" = "%1$@ períodos de falha";
 "claude.timeline.hover.trigger" = "Acionamento";
+"claude.timeline.hover.request_started" = "Solicitação enviada";
 "claude.timeline.hover.before_expiry" = "Pré-busca · %1$@ antes do vencimento do Mod (vence %2$@)";
-"claude.timeline.hover.result" = "Resultado";
-"claude.timeline.request.success" = "Concluída";
-"claude.timeline.request.interrupted" = "Interrompida";
 "claude.timeline.window.not_included" = "Não incluído";
 "claude.timeline.value.displayed" = "Usado como valor exibido";
 "claude.timeline.value.evidence_within_tolerance" = "Somente evidência de atualização (dentro da tolerância do valor exibido)";

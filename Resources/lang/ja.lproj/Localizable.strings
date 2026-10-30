@@ -629,10 +629,8 @@
 "claude.timeline.accessibility.count" = "%1$@ %2$@ 回";
 "claude.timeline.accessibility.failures" = "失敗 %1$@ 件";
 "claude.timeline.hover.trigger" = "トリガー";
+"claude.timeline.hover.request_started" = "リクエスト送信";
 "claude.timeline.hover.before_expiry" = "先行取得 · Mod の期限 %1$@ 前（期限 %2$@）";
-"claude.timeline.hover.result" = "結果";
-"claude.timeline.request.success" = "成功";
-"claude.timeline.request.interrupted" = "中断";
 "claude.timeline.window.not_included" = "含まれません";
 "claude.timeline.value.displayed" = "表示値として採用";
 "claude.timeline.value.evidence_within_tolerance" = "鮮度の証拠のみ（表示値との差は許容範囲内）";

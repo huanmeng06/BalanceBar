@@ -629,10 +629,8 @@
 "claude.timeline.accessibility.count" = "%1$@ %2$@ 次";
 "claude.timeline.accessibility.failures" = "失败 %1$@ 段";
 "claude.timeline.hover.trigger" = "触发类型";
+"claude.timeline.hover.request_started" = "发起时间";
 "claude.timeline.hover.before_expiry" = "预取 · Mod 到期前 %1$@ 发起（预计 %2$@ 到期）";
-"claude.timeline.hover.result" = "结果";
-"claude.timeline.request.success" = "成功";
-"claude.timeline.request.interrupted" = "中断";
 "claude.timeline.window.not_included" = "未包含";
 "claude.timeline.value.displayed" = "已采用为显示值";
 "claude.timeline.value.evidence_within_tolerance" = "仅作新鲜度证据（与显示值相差在容差内）";

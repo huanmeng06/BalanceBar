@@ -629,10 +629,8 @@
 "claude.timeline.accessibility.count" = "%1$@ %2$@회";
 "claude.timeline.accessibility.failures" = "실패 %1$@건";
 "claude.timeline.hover.trigger" = "요청 트리거";
+"claude.timeline.hover.request_started" = "요청 시작";
 "claude.timeline.hover.before_expiry" = "사전 가져오기 · Mod 만료 %1$@ 전 시작 (만료 %2$@)";
-"claude.timeline.hover.result" = "결과";
-"claude.timeline.request.success" = "성공";
-"claude.timeline.request.interrupted" = "중단됨";
 "claude.timeline.window.not_included" = "포함되지 않음";
 "claude.timeline.value.displayed" = "표시 값으로 채택됨";
 "claude.timeline.value.evidence_within_tolerance" = "신선도 근거만 (표시 값과 허용 오차 이내)";

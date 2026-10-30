@@ -629,10 +629,8 @@
 "claude.timeline.accessibility.count" = "%1$@ %2$@ 次";
 "claude.timeline.accessibility.failures" = "失敗 %1$@ 段";
 "claude.timeline.hover.trigger" = "觸發類型";
+"claude.timeline.hover.request_started" = "發起時間";
 "claude.timeline.hover.before_expiry" = "預取 · Mod 到期前 %1$@ 發起（預計 %2$@ 到期）";
-"claude.timeline.hover.result" = "結果";
-"claude.timeline.request.success" = "成功";
-"claude.timeline.request.interrupted" = "中斷";
 "claude.timeline.window.not_included" = "未包含";
 "claude.timeline.value.displayed" = "已採用為顯示值";
 "claude.timeline.value.evidence_within_tolerance" = "僅作新鮮度證據（與顯示值相差在容差內）";
