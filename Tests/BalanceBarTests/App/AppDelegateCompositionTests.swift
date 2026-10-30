@@ -2611,6 +2611,21 @@ final class AppDelegateCompositionTests: XCTestCase {
         XCTAssertFalse(launchPath.contains("refreshQuickSwitchSummaries(force: true, for: .claude)"))
     }
 
+    func testStartupAggregationIsPreparedBeforeTheStatusItemStarts() throws {
+        let source = try balanceBarSource()
+        let launchStart = try XCTUnwrap(source.range(of: "func applicationDidFinishLaunching"))
+        let launchEnd = try XCTUnwrap(
+            source.range(
+                of: "func applicationWillTerminate",
+                range: launchStart.upperBound..<source.endIndex
+            )
+        )
+        let launchPath = String(source[launchStart.lowerBound..<launchEnd.lowerBound])
+        let prepare = try XCTUnwrap(launchPath.range(of: "prepareStartupAggregationPresentation()"))
+        let start = try XCTUnwrap(launchPath.range(of: "statusItemController.start("))
+        XCTAssertLessThan(prepare.lowerBound, start.lowerBound)
+    }
+
     private func balanceBarSource(file: StaticString = #filePath) throws -> String {
         let repositoryRoot = try TestRepositoryRoot.locate(from: String(describing: file))
         return try String(contentsOf: repositoryRoot
