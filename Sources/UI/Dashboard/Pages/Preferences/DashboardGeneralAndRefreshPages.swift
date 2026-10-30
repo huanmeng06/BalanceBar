@@ -682,15 +682,18 @@ final class DashboardGeneralPage {
                     title: tr(.keyTimeZoneTitle),
                     detail: tr(.keyTimeZoneDescription),
                     accessoryView: timeZoneComboBox
-                ),
-                updateChannelRow,
-                updateRow
+                )
             ]
         )
+        let appUpdate = SettingsSectionView(
+            title: "",
+            contentViews: [updateChannelRow, updateRow]
+        )
         let content = DashboardSettingsComponents.makeSettingsPageContent(
-            [system, refreshing, refreshingClaude, refreshNow, startup, app])
+            [system, refreshing, refreshingClaude, refreshNow, startup, app, appUpdate])
         // The two refresh cards belong to one heading, so they sit closer than separate sections.
         (content as? NSStackView)?.setCustomSpacing(12, after: refreshing)
+        (content as? NSStackView)?.setCustomSpacing(12, after: app)
         return content
     }
 
