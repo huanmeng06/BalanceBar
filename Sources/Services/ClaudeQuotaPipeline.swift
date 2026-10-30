@@ -579,7 +579,18 @@ final class ClaudeQuotaPipeline {
         guard let engine else { return nil }
         let state = engine.currentState.windows[window.rawValue]
         let baseline = state?.latestGradeA.flatMap { $0.epoch == identity.accountEpoch ? $0 : nil }
-        if baseline == nil, !organizationProven || updatedAt < lock.withLock({ accountActiveSince }) { return false }
+        let activeSince = lock.withLock { accountActiveSince }
+        if baseline == nil, !organizationProven || updatedAt < activeSince {
+            // A reset confirmed by a Mod reading drops the old cycle's official baseline, but that
+            // cycle was already chained to the account's earlier one when it was confirmed. Later
+            // snapshots of the very same cycle therefore need no organization proof.
+            guard updatedAt >= activeSince, state?.pendingResetOf == nil,
+                  let displayed = state?.displayed, displayed.trust != .a,
+                  displayed.epoch == identity.accountEpoch,
+                  let displayedReset = displayed.resetsAt, let reset = resetsAt,
+                  QuotaMergeEngine.sameResetInstant(reset, displayedReset) else { return false }
+            return nil
+        }
         if state?.pendingResetOf != nil { return isComplete }
         guard let gradeA = baseline else { return nil }
         // An unstarted window reads 0% without a reset time; the first use starts a cycle whose
