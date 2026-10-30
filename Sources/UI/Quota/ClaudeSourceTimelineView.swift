@@ -225,7 +225,7 @@ final class ClaudeSourceTimelineView: NSView {
         static let exitDebounce: TimeInterval = 0.08
         static let springStiffness: CGFloat = 320
         static let springDamping: CGFloat = 19
-        /// Pressed (mouse down) scale, below rest: the block and its tooltip sink, then spring back.
+        /// Pressed (mouse down) scale, below rest: the block sinks, then springs back.
         static let pressScale: CGFloat = 0.95
     }
 
@@ -782,7 +782,7 @@ final class ClaudeSourceTimelineView: NSView {
         setPressed(false)
     }
 
-    /// Mouse down sinks the lifted block and its tooltip below rest; mouse up springs both back.
+    /// Mouse down sinks the lifted block below rest; mouse up springs it back.
     private func setPressed(_ pressed: Bool) {
         guard isPressed != pressed else { return }
         isPressed = pressed
@@ -792,21 +792,6 @@ final class ClaudeSourceTimelineView: NSView {
         animatePress(layer: liftLayer, to: CATransform3DMakeScale(scale.x, scale.y, 1))
         let shadow = pressed ? 0 : Hover.liftShadowOpacity
         liftLayer.shadowOpacity = shadow
-        // The whole bubble (frame view, arrow included) sinks toward the arrow tip, not just its text.
-        if popover?.isShown == true, let content = popover?.contentViewController?.view,
-           let frameView = content.window?.contentView?.superview {
-            frameView.wantsLayer = true
-            let size = frameView.bounds
-            let inContent = frameView.convert(content.bounds, from: content)
-            // The arrow sits on the side with more room between content and frame edge.
-            let arrowAtBottom = inContent.minY > size.maxY - inContent.maxY
-            let anchor = CGPoint(x: size.midX, y: arrowAtBottom ? size.minY : size.maxY)
-            let s = pressed ? Hover.pressScale : 1
-            var t = CATransform3DMakeTranslation(anchor.x, anchor.y, 0)
-            t = CATransform3DScale(t, s, s, 1)
-            t = CATransform3DTranslate(t, -anchor.x, -anchor.y, 0)
-            if let layer = frameView.layer { animatePress(layer: layer, to: t) }
-        }
     }
 
     private func animatePress(layer: CALayer, to target: CATransform3D) {
