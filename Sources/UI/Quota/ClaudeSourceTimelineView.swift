@@ -792,14 +792,20 @@ final class ClaudeSourceTimelineView: NSView {
         animatePress(layer: liftLayer, to: CATransform3DMakeScale(scale.x, scale.y, 1))
         let shadow = pressed ? 0 : Hover.liftShadowOpacity
         liftLayer.shadowOpacity = shadow
-        if let view = popover?.contentViewController?.view, popover?.isShown == true {
-            let center = CGPoint(x: view.bounds.midX, y: view.bounds.midY)
+        // The whole bubble (frame view, arrow included) sinks toward the arrow tip, not just its text.
+        if popover?.isShown == true, let content = popover?.contentViewController?.view,
+           let frameView = content.window?.contentView?.superview {
+            frameView.wantsLayer = true
+            let size = frameView.bounds
+            let inContent = frameView.convert(content.bounds, from: content)
+            // The arrow sits on the side with more room between content and frame edge.
+            let arrowAtBottom = inContent.minY > size.maxY - inContent.maxY
+            let anchor = CGPoint(x: size.midX, y: arrowAtBottom ? size.minY : size.maxY)
             let s = pressed ? Hover.pressScale : 1
-            var t = CATransform3DMakeTranslation(center.x, center.y, 0)
+            var t = CATransform3DMakeTranslation(anchor.x, anchor.y, 0)
             t = CATransform3DScale(t, s, s, 1)
-            t = CATransform3DTranslate(t, -center.x, -center.y, 0)
-            view.wantsLayer = true
-            if let layer = view.layer { animatePress(layer: layer, to: t) }
+            t = CATransform3DTranslate(t, -anchor.x, -anchor.y, 0)
+            if let layer = frameView.layer { animatePress(layer: layer, to: t) }
         }
     }
 
