@@ -693,6 +693,27 @@ extension CCSwitchRepositoryTests {
         )
     }
 
+    func testVisibleAppsParsesCCSwitchSettingsAndDefaultsToEmpty() {
+        let settings = #"{"visibleApps":{"claude":true,"codex":false,"grokbuild":true,"junk":"x"}}"#
+        XCTAssertEqual(
+            CCSwitchRepository.visibleApps(from: Data(settings.utf8)),
+            ["claude": true, "codex": false, "grokbuild": true]
+        )
+        XCTAssertEqual(CCSwitchRepository.visibleApps(from: nil), [:])
+        XCTAssertEqual(CCSwitchRepository.visibleApps(from: Data("{}".utf8)), [:])
+    }
+
+    func testConnectionSummariesMarkAppsHiddenByCCSwitchVisibleApps() {
+        let state = #"{"version":1,"apps":{"codex":{"mode":"direct"},"claude":{"mode":"direct"},"grokbuild":{"mode":"direct"}}}"#
+        let settings = #"{"visibleApps":{"claude":true,"codex":false}}"#
+        let result = repository.connectionSummaries(readState: { url in
+            Data((url.lastPathComponent == "settings.json" ? settings : state).utf8)
+        })
+        XCTAssertFalse(result.codex.isVisible)
+        XCTAssertTrue(result.claude.isVisible)
+        XCTAssertTrue(result.grok.isVisible, "a missing key keeps the line")
+    }
+
     func testConnectionSummariesDegradeToUnknownWhenAQueryFailsMidRead() throws {
         // setUp leaves a readable codex "direct" state; an exclusive lock on
         // another connection makes the reader's sqlite3_step return BUSY after

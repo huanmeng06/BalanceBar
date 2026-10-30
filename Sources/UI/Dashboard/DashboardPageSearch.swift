@@ -696,7 +696,7 @@ enum DashboardSettingsFormattedCopy {
             CCSwitchAgentLine(markResource: "CodexIcon", appName: AssistantClient.codex.displayName, summary: summaries.codex),
             CCSwitchAgentLine(markResource: "Claude", appName: AssistantClient.claude.displayName, summary: summaries.claude),
             CCSwitchAgentLine(markResource: "GrokIdle", appName: AssistantClient.grok.displayName, summary: summaries.grok)
-        ]
+        ].filter { $0.summary.isVisible }
     }
 
     /// Provider names beside the mode, capped at two plus a localized
