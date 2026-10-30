@@ -774,4 +774,55 @@ final class FetchSchedulerTests: XCTestCase {
         request(scheduler, .scheduled)
         XCTAssertEqual(lastSkip, .failureBackoff)
     }
+
+    func testAutomaticEstimateUsesCalibrationFloorAndPrefetchTrigger() {
+        let realtime = FakeRealtime()
+        let scheduler = makeScheduler(realtime: realtime, cap: 900, configuration: .claudeV1)
+        request(scheduler, .initial)
+        complete(scheduler, .success(Data()))
+
+        realtime.realtimeFreshUntil = clock.now.addingTimeInterval(3_600)
+        guard case let .scheduled(calibrationAt, calibrationTrigger) = scheduler.automaticRequestEstimate().state else {
+            return XCTFail("expected a scheduled calibration read")
+        }
+        XCTAssertEqual(calibrationAt, clock.now.addingTimeInterval(900))
+        XCTAssertEqual(calibrationTrigger, .calibrationFloor)
+
+        realtime.realtimeFreshUntil = clock.now.addingTimeInterval(600)
+        guard case let .scheduled(prefetchAt, prefetchTrigger) = scheduler.automaticRequestEstimate().state else {
+            return XCTFail("expected a scheduled local-source prefetch")
+        }
+        XCTAssertEqual(prefetchAt, realtime.realtimeFreshUntil!.addingTimeInterval(-FetchSchedulerConfiguration.claudeV1.sourceExpiryPrefetchLead))
+        XCTAssertEqual(prefetchTrigger, .sourceExpiryPrefetch)
+    }
+
+    func testAutomaticEstimateReportsUnauthorizedAndCooldownStates() {
+        store.state = FetchSchedulerPersistentState(
+            unauthorizedCredentialVersion: identity.credentialVersion, isUnauthorizedPaused: true)
+        var scheduler = makeScheduler(configuration: .claudeV1)
+        XCTAssertEqual(scheduler.automaticRequestEstimate().state, .unauthorizedPaused)
+
+        store.state = FetchSchedulerPersistentState(cooldownUntil: clock.now.addingTimeInterval(600))
+        scheduler = makeScheduler(configuration: .claudeV1)
+        XCTAssertEqual(scheduler.automaticRequestEstimate().state, .coolingDown(until: clock.now.addingTimeInterval(600)))
+    }
+
+    func testAutomaticEstimateReportsTokenRefillDelay() {
+        var configuration = FetchSchedulerConfiguration.claudeV1
+        configuration.tokenCapacity = 2
+        configuration.tokenRefillInterval = 10_000
+        configuration.automaticMinimumInterval = 300
+        let scheduler = makeScheduler(configuration: configuration)
+        request(scheduler, .initial)
+        complete(scheduler, .success(Data()))
+        clock.advance(300)
+        request(scheduler, .scheduled)
+        complete(scheduler, .success(Data()))
+
+        guard case let .delayed(reason, until, _) = scheduler.automaticRequestEstimate().state else {
+            return XCTFail("empty automatic token bucket must be reported as delayed")
+        }
+        XCTAssertEqual(reason, .insufficientTokens)
+        XCTAssertGreaterThan(until, clock.now)
+    }
 }
