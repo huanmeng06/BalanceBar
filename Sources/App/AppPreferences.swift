@@ -491,10 +491,6 @@ final class AppPreferences {
     /// Claude official-quota calibration choices in seconds (5-15 min); the source never goes below 5 min.
     static let claudeCalibrationIntervals: [TimeInterval] = [300, 360, 480, 600, 720, 900]
     static let claudeCalibrationIntervalKey = "claudeCalibrationInterval"
-    /// Lead and scheduling slack reserved for the official prefetch that bridges a local source
-    /// expiry. A local validity below this threshold may leave a short stale-data handoff window.
-    static let claudeValidityPrefetchLead: TimeInterval = 10
-    static let claudeValiditySchedulingSlack: TimeInterval = 5
     var claudeCalibrationInterval: TimeInterval {
         get {
             let value = defaults.double(forKey: Self.claudeCalibrationIntervalKey)
@@ -526,12 +522,10 @@ final class AppPreferences {
         Self.claudeOAuthValidityOptions.filter { $0 >= claudeCalibrationInterval }
     }
 
-    /// Local sources should outlive the official calibration interval by enough time to start the
-    /// prefetch before expiry and absorb normal timer/request scheduling delay.
+    /// A local source should stay valid at least as long as the official calibration interval,
+    /// otherwise its data can expire before the next official read.
     var claudeLocalValidityWarningThreshold: TimeInterval {
         claudeCalibrationInterval
-            + Self.claudeValidityPrefetchLead
-            + Self.claudeValiditySchedulingSlack
     }
 
     func claudeLocalValidityMayGap(_ validity: TimeInterval) -> Bool {

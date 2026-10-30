@@ -1031,9 +1031,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                     guard let self, self.activeClient == .claude, self.currentProviderIsOfficialCache else { return nil }
                     return self.claudeQuota.manualRefreshBlockedUntil()
                 },
-                manualRefreshNotice: { [weak self] in
-                    guard let self, self.activeClient == .claude, self.currentProviderIsOfficialCache else { return nil }
-                    return self.claudeQuota.manualRefreshNotice()
+                isClaudeLoginExpired: { [weak self] in
+                    guard let self, self.activeClient == .claude, self.currentProviderIsOfficialCache else { return false }
+                    return self.claudeQuota.isLoginExpired()
                 },
                 showModOnboarding: { [weak self] in
                     self?.showModOnboardingFromMenu()

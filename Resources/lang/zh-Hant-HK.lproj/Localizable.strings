@@ -143,7 +143,8 @@
 "dashboard.advanced.page.source_validity" = "不同 Claude 資料來源的有效期";
 "dashboard.advanced.page.source_validity_oauth" = "官方額度有效期";
 "dashboard.advanced.page.source_validity_mod" = "Mod 推送有效期";
-"dashboard.advanced.page.source_validity_warning" = "有效期偏短：資料過期後，可能要等到下次官方校準（每 %1$@ 分鐘一次）才有新資料。建議設為至少 %2$@ 分鐘。";
+"dashboard.advanced.page.source_validity_warning" = "有效期偏短：資料過期後，可能要等到下次官方校準（每 %1$@ 分鐘一次）才有新資料。建議選 %2$@ 分鐘。";
+"dashboard.advanced.page.source_validity_no_option" = "目前官方校準間隔為 %1$@ 分鐘，所有有效期選項都可能出現短暫空檔，可以把官方校準間隔調短。";
 "dashboard.advanced.page.validity_minutes" = "%1$@ 分鐘";
 "dashboard.general.and.refresh.pages.update_channel" = "更新頻道";
 "dashboard.general.and.refresh.pages.update_channel_description" = "選擇要檢查的正式版或 Beta 測試版更新";
@@ -599,11 +600,6 @@
 "quota.status.accessibility" = "額度狀態：%1$@";
 "claude.refresh.login_expired" = "Claude Code 登入已過期。在終端機執行一次 claude 即可恢復；BalanceBar 不會自行續期登入。";
 "status.item.controller.refresh_now_login_expired" = "登入憑證過期，請重新在終端機中執行 Claude Code CLI";
-"status.item.controller.refresh_now_rate_limited" = "被限流，%1$@後可用";
-"status.item.controller.refresh_now_just_refreshed" = "剛剛已刷新";
-"status.item.controller.refresh_now_recent_result" = "剛剛已刷新 · %1$@ 秒後可再試";
-"status.item.controller.refresh_now_awaiting_confirmation" = "等待官方確認重置，點擊立即向官方確認";
-"status.item.controller.refresh_now_out_of_tokens" = "刷新過於頻繁，%1$@ 秒後可重試";
 "claude.quota.calibration" = "Claude 官方額度校準";
 "claude.source_tag.all_clients" = "全端通用";
 "claude.source_tag.desktop" = "桌面版優先";
