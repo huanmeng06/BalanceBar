@@ -495,6 +495,25 @@ final class SnapshotInboxTests: XCTestCase {
         XCTAssertTrue(logs.all.isEmpty)
     }
 
+    func testForeignOrganizationSnapshotCannotClearOutdatedWarning() throws {
+        let flags = LockedFlags()
+        let reasons = LockedReasons()
+        let source = SnapshotInbox(
+            inboxDirectory: inbox, identity: organizationIdentity("org-1"),
+            configuration: SnapshotInboxConfiguration(halfWriteRetryDelay: 0.05))
+        source.outdatedModObserver = { flags.append($0) }
+        source.rejectionObserver = { reasons.append($0) }
+        inboxes.append(source)
+        source.start { _ in }
+
+        try placeModSnapshot(organizationHash: nil, as: "a-old.json")
+        XCTAssertTrue(waitUntil { flags.all.contains(true) })
+        try placeModSnapshot(organizationHash: SnapshotInbox.hash("foreign-org"), as: "b-foreign.json")
+        XCTAssertTrue(waitUntil { reasons.all.contains(.organizationHashMismatch) })
+        source.stop()
+        XCTAssertFalse(flags.all.contains(false), "a foreign organization's new-format snapshot must not clear the update warning")
+    }
+
     func testNonModSnapshotWithoutOrganizationIsNotReportedOutdated() throws {
         let flags = LockedFlags()
         let source = SnapshotInbox(
