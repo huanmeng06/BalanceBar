@@ -623,7 +623,7 @@
 "claude.timeline.accessibility" = "Sources de données Claude (60 dernières minutes) : %1$@";
 "claude.timeline.accessibility.count" = "%1$@ %2$@ fois";
 "claude.timeline.accessibility.failures" = "%1$@ périodes d’échec";
-"claude.timeline.hover.trigger" = "Déclencheur";
+"claude.timeline.hover.trigger" = "Ce déclencheur";
 "claude.timeline.window.five_hour" = "5 h";
 "claude.timeline.window.seven_day" = "7 j";
 "claude.timeline.hover.before_expiry" = "Requête %1$@ avant l’expiration de Mod";
@@ -632,7 +632,7 @@
 "claude.timeline.value.evidence_within_tolerance" = "La carte affiche la valeur officielle";
 "claude.timeline.value.evidence_below_display" = "La carte affiche une valeur plus élevée";
 "claude.timeline.value.evidence" = "Non utilisé sur la carte";
-"claude.timeline.estimate.label" = "Prochaine requête";
+"claude.timeline.estimate.label" = "Prochain déclencheur";
 "claude.timeline.estimate.scheduled" = "%1$@ (%2$@)";
 "claude.timeline.estimate.cooldown" = "En pause jusqu’à %1$@";
 "claude.timeline.trigger.manual_refresh" = "Manuel";

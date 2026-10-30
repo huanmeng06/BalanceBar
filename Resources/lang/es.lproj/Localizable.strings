@@ -623,7 +623,7 @@
 "claude.timeline.accessibility" = "Fuentes de datos de Claude (últimos 60 minutos): %1$@";
 "claude.timeline.accessibility.count" = "%1$@ %2$@ veces";
 "claude.timeline.accessibility.failures" = "%1$@ periodos de error";
-"claude.timeline.hover.trigger" = "Tipo de activación";
+"claude.timeline.hover.trigger" = "Este disparador";
 "claude.timeline.window.five_hour" = "5 h";
 "claude.timeline.window.seven_day" = "7 d";
 "claude.timeline.hover.before_expiry" = "Solicitud %1$@ antes de que venza Mod";
@@ -632,7 +632,7 @@
 "claude.timeline.value.evidence_within_tolerance" = "La tarjeta muestra el valor oficial";
 "claude.timeline.value.evidence_below_display" = "La tarjeta muestra un valor mayor";
 "claude.timeline.value.evidence" = "No usado en la tarjeta";
-"claude.timeline.estimate.label" = "Próxima solicitud";
+"claude.timeline.estimate.label" = "Próximo disparador";
 "claude.timeline.estimate.scheduled" = "%1$@ (%2$@)";
 "claude.timeline.estimate.cooldown" = "En espera hasta %1$@";
 "claude.timeline.trigger.manual_refresh" = "Manual";

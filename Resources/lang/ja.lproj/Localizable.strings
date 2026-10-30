@@ -623,7 +623,7 @@
 "claude.timeline.accessibility" = "Claude データソース（直近 60 分）：%1$@";
 "claude.timeline.accessibility.count" = "%1$@ %2$@ 回";
 "claude.timeline.accessibility.failures" = "失敗 %1$@ 件";
-"claude.timeline.hover.trigger" = "トリガー";
+"claude.timeline.hover.trigger" = "今回の契機";
 "claude.timeline.window.five_hour" = "5 時間";
 "claude.timeline.window.seven_day" = "7 日";
 "claude.timeline.hover.before_expiry" = "Mod 期限の %1$@ 前に先行取得";
@@ -632,7 +632,7 @@
 "claude.timeline.value.evidence_within_tolerance" = "カードは公式の値を表示";
 "claude.timeline.value.evidence_below_display" = "カードはより高い値を表示";
 "claude.timeline.value.evidence" = "カードには未採用";
-"claude.timeline.estimate.label" = "次回の自動リクエスト";
+"claude.timeline.estimate.label" = "次回の契機";
 "claude.timeline.estimate.scheduled" = "%1$@ (%2$@)";
 "claude.timeline.estimate.cooldown" = "%1$@ までクールダウン";
 "claude.timeline.trigger.manual_refresh" = "手動更新";

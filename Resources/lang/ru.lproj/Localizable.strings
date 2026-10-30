@@ -623,7 +623,7 @@
 "claude.timeline.accessibility" = "Источники данных Claude (последние 60 минут): %1$@";
 "claude.timeline.accessibility.count" = "%1$@: %2$@ раз";
 "claude.timeline.accessibility.failures" = "Сбоев: %1$@";
-"claude.timeline.hover.trigger" = "Причина запроса";
+"claude.timeline.hover.trigger" = "Этот запуск";
 "claude.timeline.window.five_hour" = "5 ч";
 "claude.timeline.window.seven_day" = "7 дн.";
 "claude.timeline.hover.before_expiry" = "Запрос за %1$@ до истечения Mod";
@@ -632,7 +632,7 @@
 "claude.timeline.value.evidence_within_tolerance" = "Карточка показывает официальное значение";
 "claude.timeline.value.evidence_below_display" = "Карточка показывает большее значение";
 "claude.timeline.value.evidence" = "Не используется на карточке";
-"claude.timeline.estimate.label" = "Следующий запрос";
+"claude.timeline.estimate.label" = "Следующий запуск";
 "claude.timeline.estimate.scheduled" = "%1$@ (%2$@)";
 "claude.timeline.estimate.cooldown" = "Ожидание до %1$@";
 "claude.timeline.trigger.manual_refresh" = "Вручную";

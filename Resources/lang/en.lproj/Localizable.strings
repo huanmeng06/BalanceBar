@@ -623,7 +623,7 @@
 "claude.timeline.accessibility" = "Claude data sources (last 60 minutes): %1$@";
 "claude.timeline.accessibility.count" = "%1$@ %2$@ times";
 "claude.timeline.accessibility.failures" = "%1$@ failure periods";
-"claude.timeline.hover.trigger" = "Trigger";
+"claude.timeline.hover.trigger" = "This trigger";
 "claude.timeline.window.five_hour" = "5 h";
 "claude.timeline.window.seven_day" = "7 d";
 "claude.timeline.hover.before_expiry" = "Early request, %1$@ before Mod expires";
@@ -632,7 +632,7 @@
 "claude.timeline.value.evidence_within_tolerance" = "Card shows the official reading";
 "claude.timeline.value.evidence_below_display" = "Card shows a higher value";
 "claude.timeline.value.evidence" = "Not used on the card";
-"claude.timeline.estimate.label" = "Next request";
+"claude.timeline.estimate.label" = "Next trigger";
 "claude.timeline.estimate.scheduled" = "%1$@ (%2$@)";
 "claude.timeline.estimate.cooldown" = "Cooling down until %1$@";
 "claude.timeline.trigger.manual_refresh" = "Manual";

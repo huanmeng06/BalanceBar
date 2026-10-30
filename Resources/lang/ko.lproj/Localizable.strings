@@ -623,7 +623,7 @@
 "claude.timeline.accessibility" = "Claude 데이터 소스(최근 60분): %1$@";
 "claude.timeline.accessibility.count" = "%1$@ %2$@회";
 "claude.timeline.accessibility.failures" = "실패 %1$@건";
-"claude.timeline.hover.trigger" = "요청 트리거";
+"claude.timeline.hover.trigger" = "이번 트리거";
 "claude.timeline.window.five_hour" = "5시간";
 "claude.timeline.window.seven_day" = "7일";
 "claude.timeline.hover.before_expiry" = "Mod 만료 %1$@ 전 사전 요청";
@@ -632,7 +632,7 @@
 "claude.timeline.value.evidence_within_tolerance" = "카드에 공식 값 표시";
 "claude.timeline.value.evidence_below_display" = "카드에 더 높은 값 표시";
 "claude.timeline.value.evidence" = "카드에 미반영";
-"claude.timeline.estimate.label" = "다음 자동 요청";
+"claude.timeline.estimate.label" = "다음 트리거";
 "claude.timeline.estimate.scheduled" = "%1$@ (%2$@)";
 "claude.timeline.estimate.cooldown" = "%1$@까지 대기 중";
 "claude.timeline.trigger.manual_refresh" = "수동 새로고침";

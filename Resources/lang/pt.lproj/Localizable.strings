@@ -623,7 +623,7 @@
 "claude.timeline.accessibility" = "Fontes de dados do Claude (últimos 60 minutos): %1$@";
 "claude.timeline.accessibility.count" = "%1$@ %2$@ vezes";
 "claude.timeline.accessibility.failures" = "%1$@ períodos de falha";
-"claude.timeline.hover.trigger" = "Acionamento";
+"claude.timeline.hover.trigger" = "Este gatilho";
 "claude.timeline.window.five_hour" = "5 h";
 "claude.timeline.window.seven_day" = "7 d";
 "claude.timeline.hover.before_expiry" = "Pedido %1$@ antes do vencimento do Mod";
@@ -632,7 +632,7 @@
 "claude.timeline.value.evidence_within_tolerance" = "O cartão mostra o valor oficial";
 "claude.timeline.value.evidence_below_display" = "O cartão mostra um valor maior";
 "claude.timeline.value.evidence" = "Não usado no cartão";
-"claude.timeline.estimate.label" = "Próxima solicitação";
+"claude.timeline.estimate.label" = "Próximo gatilho";
 "claude.timeline.estimate.scheduled" = "%1$@ (%2$@)";
 "claude.timeline.estimate.cooldown" = "Aguardando até %1$@";
 "claude.timeline.trigger.manual_refresh" = "Manual";

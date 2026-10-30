@@ -623,7 +623,7 @@
 "claude.timeline.accessibility" = "Fonti dati Claude (ultimi 60 minuti): %1$@";
 "claude.timeline.accessibility.count" = "%1$@ %2$@ volte";
 "claude.timeline.accessibility.failures" = "%1$@ periodi di errore";
-"claude.timeline.hover.trigger" = "Attivazione";
+"claude.timeline.hover.trigger" = "Questo trigger";
 "claude.timeline.window.five_hour" = "5 h";
 "claude.timeline.window.seven_day" = "7 g";
 "claude.timeline.hover.before_expiry" = "Richiesta %1$@ prima della scadenza di Mod";
@@ -632,7 +632,7 @@
 "claude.timeline.value.evidence_within_tolerance" = "La scheda mostra il valore ufficiale";
 "claude.timeline.value.evidence_below_display" = "La scheda mostra un valore più alto";
 "claude.timeline.value.evidence" = "Non usato sulla scheda";
-"claude.timeline.estimate.label" = "Prossima richiesta";
+"claude.timeline.estimate.label" = "Prossimo trigger";
 "claude.timeline.estimate.scheduled" = "%1$@ (%2$@)";
 "claude.timeline.estimate.cooldown" = "In attesa fino a %1$@";
 "claude.timeline.trigger.manual_refresh" = "Manuale";

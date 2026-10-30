@@ -623,7 +623,7 @@
 "claude.timeline.accessibility" = "Claude 数据来源（最近 60 分钟）：%1$@";
 "claude.timeline.accessibility.count" = "%1$@ %2$@ 次";
 "claude.timeline.accessibility.failures" = "失败 %1$@ 段";
-"claude.timeline.hover.trigger" = "触发类型";
+"claude.timeline.hover.trigger" = "本次触发";
 "claude.timeline.window.five_hour" = "5 小时";
 "claude.timeline.window.seven_day" = "7 日";
 "claude.timeline.hover.before_expiry" = "Mod 到期前 %1$@ 提前请求";
@@ -632,7 +632,7 @@
 "claude.timeline.value.evidence_within_tolerance" = "卡片显示官方读数";
 "claude.timeline.value.evidence_below_display" = "卡片显示更高的数值";
 "claude.timeline.value.evidence" = "卡片未采用此数值";
-"claude.timeline.estimate.label" = "下次自动请求";
+"claude.timeline.estimate.label" = "下次触发";
 "claude.timeline.estimate.scheduled" = "%1$@ (%2$@)";
 "claude.timeline.estimate.cooldown" = "冷却中，最早 %1$@";
 "claude.timeline.trigger.manual_refresh" = "手动刷新";
