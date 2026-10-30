@@ -6130,22 +6130,46 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func applyManualRefreshContent(to item: NSMenuItem) {
-        item.title = tr(.keyStatusItemControllerRefreshNow)
+        let title = tr(.keyStatusItemControllerRefreshNow)
         let subtitle = manualRefreshMenuSubtitle()
-        if #available(macOS 14.4, *) {
+        item.title = title
+        let font = NSFont.menuFont(ofSize: NSFont.smallSystemFontSize)
+        // Menu rows never wrap, so a long subtitle is broken manually to fit the menu width.
+        // Leave room for the menu's side padding and the ⌘R column.
+        let maxWidth = max(160, (item.menu?.size.width ?? 300) - 80)
+        let lines = subtitle.map { Self.wrapMenuSubtitle($0, font: font, maxWidth: maxWidth) } ?? []
+        let needsManualLayout = lines.count > 1
+        if #available(macOS 14.4, *), !needsManualLayout {
             item.attributedTitle = nil
             item.subtitle = subtitle
-        } else if let subtitle {
+        } else if subtitle != nil {
+            if #available(macOS 14.4, *) { item.subtitle = nil }
             let text = NSMutableAttributedString(
-                string: item.title, attributes: [.font: NSFont.menuFont(ofSize: 0)])
-            text.append(NSAttributedString(string: "\n" + subtitle, attributes: [
-                .font: NSFont.menuFont(ofSize: NSFont.smallSystemFontSize),
+                string: title, attributes: [.font: NSFont.menuFont(ofSize: 0)])
+            text.append(NSAttributedString(string: "\n" + lines.joined(separator: "\n"), attributes: [
+                .font: font,
                 .foregroundColor: NSColor.secondaryLabelColor
             ]))
             item.attributedTitle = text
         } else {
             item.attributedTitle = nil
         }
+    }
+
+    /// Wraps at word boundaries (Latin words stay whole; CJK breaks at line-break opportunities).
+    static func wrapMenuSubtitle(_ text: String, font: NSFont, maxWidth: CGFloat) -> [String] {
+        let attributed = NSAttributedString(string: text, attributes: [.font: font])
+        let typesetter = CTTypesetterCreateWithAttributedString(attributed)
+        let ns = text as NSString
+        var lines: [String] = []
+        var start = 0
+        while start < ns.length {
+            let count = max(1, CTTypesetterSuggestLineBreak(typesetter, start, Double(maxWidth)))
+            lines.append(ns.substring(with: NSRange(location: start, length: count))
+                .trimmingCharacters(in: .whitespaces))
+            start += count
+        }
+        return lines
     }
 
     @objc private func manualRefresh() {

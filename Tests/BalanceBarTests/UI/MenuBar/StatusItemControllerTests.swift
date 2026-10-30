@@ -3485,9 +3485,16 @@ extension StatusItemControllerTests {
         let actionTitle = tr(.keyStatusItemControllerRefreshNow)
         func assertRefresh(subtitle: String?, _ message: String, line: UInt = #line) {
             XCTAssertEqual(refresh.title.components(separatedBy: "\n").first, actionTitle, "the action title never carries the status", line: line)
-            if #available(macOS 14.4, *) {
-                XCTAssertEqual(refresh.subtitle, subtitle, message, line: line)
+            // A long subtitle is wrapped by hand into the attributed title; a short one uses the native subtitle.
+            var shown: String?
+            if #available(macOS 14.4, *), let native = refresh.subtitle { shown = native }
+            if shown == nil, let attributed = refresh.attributedTitle?.string {
+                let rest = attributed.components(separatedBy: "\n").dropFirst()
+                shown = rest.isEmpty ? nil : rest.joined()
             }
+            // Wrapping trims the space at a break, so compare without whitespace.
+            func squashed(_ text: String?) -> String? { text?.filter { !$0.isWhitespace } }
+            XCTAssertEqual(squashed(shown), squashed(subtitle), message, line: line)
         }
 
         assertRefresh(subtitle: nil, "a healthy login shows no subtitle")
