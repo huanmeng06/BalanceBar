@@ -636,7 +636,7 @@
 "claude.timeline.trigger.reset_confirmation" = "Проверка сброса";
 "claude.timeline.trigger.calibration_floor" = "Плановая калибровка";
 "claude.timeline.trigger.source_expiry_prefetch" = "Предзагрузка до истечения Mod";
-"claude.timeline.trigger.local_expired_or_absent" = "Нет действующего значения Mod";
+"claude.timeline.trigger.local_expired_or_absent" = "Фоновый опрос (нет нового значения Mod)";
 "claude.timeline.delay.failure_backoff" = "пауза после сбоя";
 "claude.timeline.delay.insufficient_tokens" = "ожидание токенов";
 "claude.timeline.estimate.in" = "примерно через %1$@";

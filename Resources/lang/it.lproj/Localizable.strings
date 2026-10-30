@@ -636,7 +636,7 @@
 "claude.timeline.trigger.reset_confirmation" = "Verifica reset";
 "claude.timeline.trigger.calibration_floor" = "Calibrazione programmata";
 "claude.timeline.trigger.source_expiry_prefetch" = "Prelettura prima della scadenza di Mod";
-"claude.timeline.trigger.local_expired_or_absent" = "Nessuna lettura Mod valida";
+"claude.timeline.trigger.local_expired_or_absent" = "Polling in background (nessuna nuova lettura Mod)";
 "claude.timeline.delay.failure_backoff" = "attesa dopo errore";
 "claude.timeline.delay.insufficient_tokens" = "attesa di token";
 "claude.timeline.estimate.in" = "tra circa %1$@";
