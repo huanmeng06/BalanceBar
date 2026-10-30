@@ -56,6 +56,9 @@ enum CCSwitchConnectionMode: Equatable, Sendable {
 struct CCSwitchConnectionSummary: Equatable, Sendable {
     let mode: CCSwitchConnectionMode
     let providerNames: [String]
+    /// CC Switch's own per-app "show" switch (`visibleApps` in settings.json).
+    /// Defaults to visible when that file or key cannot be read.
+    var isVisible: Bool = true
 
     static let unknown = CCSwitchConnectionSummary(mode: .unknown, providerNames: [])
 }
@@ -264,6 +267,7 @@ final class CCSwitchRepository {
         return active ? .active : .inactive
     }
 
+    var settingsURL: URL { homeDirectoryURL.appendingPathComponent(".cc-switch/settings.json") }
     var deviceStateURL: URL { homeDirectoryURL.appendingPathComponent(".cc-switch/live-state.json") }
 
     /// One app's view of CC Switch's live-state.json, shared by quick-switch
@@ -314,7 +318,37 @@ final class CCSwitchRepository {
     /// all three apps' modes, then one database read for the current provider
     /// names and aggregation stack members. A database that cannot be opened
     /// leaves the names empty without failing the modes.
-    func connectionSummaries(stateURL: URL? = nil, readState: (URL) throws -> Data = { try Data(contentsOf: $0) }) -> CCSwitchConnectionSummaries {
+    func connectionSummaries(
+        stateURL: URL? = nil,
+        settingsURL: URL? = nil,
+        readState: (URL) throws -> Data = { try Data(contentsOf: $0) }
+    ) -> CCSwitchConnectionSummaries {
+        let summaries = connectionSummariesIgnoringVisibility(stateURL: stateURL, readState: readState)
+        let visible = Self.visibleApps(from: try? readState(settingsURL ?? self.settingsURL))
+        func apply(_ summary: CCSwitchConnectionSummary, _ key: String) -> CCSwitchConnectionSummary {
+            var copy = summary
+            copy.isVisible = visible[key] ?? true
+            return copy
+        }
+        return CCSwitchConnectionSummaries(
+            codex: apply(summaries.codex, "codex"),
+            claude: apply(summaries.claude, "claude"),
+            grok: apply(summaries.grok, "grokbuild")
+        )
+    }
+
+    /// `visibleApps` from CC Switch's settings.json; empty when unreadable.
+    static func visibleApps(from data: Data?) -> [String: Bool] {
+        guard let data,
+              let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let apps = root["visibleApps"] as? [String: Any] else { return [:] }
+        return apps.compactMapValues { $0 as? Bool }
+    }
+
+    private func connectionSummariesIgnoringVisibility(
+        stateURL: URL?,
+        readState: (URL) throws -> Data
+    ) -> CCSwitchConnectionSummaries {
         let data = try? readState(stateURL ?? deviceStateURL)
         let codexState = Self.parseDeviceAppState(data, appType: "codex")
         var codex = CCSwitchConnectionSummary(mode: Self.connectionMode(appType: "codex", stateData: data), providerNames: [])
