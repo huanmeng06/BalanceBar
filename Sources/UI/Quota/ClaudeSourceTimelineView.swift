@@ -225,6 +225,8 @@ final class ClaudeSourceTimelineView: NSView {
         static let exitDebounce: TimeInterval = 0.08
         static let springStiffness: CGFloat = 320
         static let springDamping: CGFloat = 19
+        /// Pressed (mouse down) scale, below rest: the block sinks, then springs back.
+        static let pressScale: CGFloat = 0.95
     }
 
     static let refreshInterval: TimeInterval = 5
@@ -263,6 +265,7 @@ final class ClaudeSourceTimelineView: NSView {
     private var tooltipWork: DispatchWorkItem?
     private var exitWork: DispatchWorkItem?
     private var hoverGeneration = 0
+    private var isPressed = false
     private var blurGeneration = 0
 
     var isRefreshTimerRunningForTesting: Bool { refreshTimer != nil }
@@ -769,6 +772,45 @@ final class ClaudeSourceTimelineView: NSView {
         DispatchQueue.main.asyncAfter(deadline: .now() + Hover.exitDebounce, execute: work)
     }
 
+    override func mouseDown(with event: NSEvent) {
+        guard hovered != nil else { return super.mouseDown(with: event) }
+        setPressed(true)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        guard isPressed else { return super.mouseUp(with: event) }
+        setPressed(false)
+    }
+
+    /// Mouse down sinks the lifted block below rest; mouse up springs it back.
+    private func setPressed(_ pressed: Bool) {
+        guard isPressed != pressed else { return }
+        isPressed = pressed
+        guard hovered != nil, !liftLayer.isHidden else { return }
+        let lifted = Self.liftScale(for: liftLayer.bounds.size)
+        let scale = pressed ? (x: Hover.pressScale, y: Hover.pressScale) : lifted
+        animatePress(layer: liftLayer, to: CATransform3DMakeScale(scale.x, scale.y, 1))
+        let shadow = pressed ? 0 : Hover.liftShadowOpacity
+        liftLayer.shadowOpacity = shadow
+    }
+
+    private func animatePress(layer: CALayer, to target: CATransform3D) {
+        let from = layer.presentation()?.transform ?? layer.transform
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer.transform = target
+        if !reduceMotion {
+            let spring = CASpringAnimation(keyPath: "transform")
+            spring.fromValue = NSValue(caTransform3D: from)
+            spring.toValue = NSValue(caTransform3D: target)
+            spring.stiffness = Hover.springStiffness
+            spring.damping = Hover.springDamping
+            spring.duration = spring.settlingDuration
+            layer.add(spring, forKey: "press")
+        }
+        CATransaction.commit()
+    }
+
     /// Lifts the block under `point` (or shows the OAuth rule over the lane name); test seam too.
     func updateHover(at point: NSPoint) {
         exitWork?.cancel()
@@ -811,6 +853,7 @@ final class ClaudeSourceTimelineView: NSView {
         let wasHovering = hovered != nil
         hovered = target
         hoverGeneration += 1
+        isPressed = false
         if let target {
             styleLift(for: target)
             placeLift(on: target.rect)
@@ -1034,6 +1077,8 @@ final class ClaudeSourceTimelineView: NSView {
         popover.contentViewController = controller
         popover.contentSize = controller.view.frame.size
         popover.animates = !reduceMotion
+        // A click on the block must not dismiss the tooltip; hover end closes it.
+        popover.behavior = .applicationDefined
         // The view is flipped, so .minY is the top edge: the tooltip opens above the block.
         popover.show(relativeTo: rect, of: self, preferredEdge: .minY)
         self.popover = popover
