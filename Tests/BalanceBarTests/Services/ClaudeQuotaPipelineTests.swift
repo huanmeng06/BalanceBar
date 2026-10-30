@@ -796,6 +796,27 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         XCTAssertNil(events.snapshot()[2].window)
     }
 
+    func testStaleModSnapshotBeforeTheFirstOfficialReadIsNotReportedAsRejected() throws {
+        final class EventBox {
+            private let lock = NSLock()
+            private var values: [ClaudeQuotaPipeline.ModSnapshotEvent] = []
+            func append(_ value: ClaudeQuotaPipeline.ModSnapshotEvent) { lock.lock(); values.append(value); lock.unlock() }
+            func snapshot() -> [ClaudeQuotaPipeline.ModSnapshotEvent] { lock.lock(); defer { lock.unlock() }; return values }
+        }
+        let events = EventBox()
+        let pipeline = makePipeline(configuration: claudeV1TestConfiguration, withInbox: true)
+        pipeline.modSnapshotEventSink = { events.append($0) }
+        pipeline.start()
+
+        // Found at launch, written before this account became active, with no official reading to
+        // check it against yet: dropped, but it must not leave a "rejected" status behind.
+        try placeModSnapshot(five: 25, seven: 42, observedAt: Self.start.addingTimeInterval(-3600))
+        let inbox = try XCTUnwrap(lastInbox)
+        XCTAssertTrue(pollUntil { inbox.queue.sync { inbox.unverifiedSnapshotRejections } >= 1 })
+        quiet(pipeline)
+        XCTAssertTrue(events.snapshot().isEmpty)
+    }
+
     func testModSnapshotDisplaysAndSuppressesAutomaticReadsWhileFresh() throws {
         let pipeline = makePipeline(
             configuration: claudeV1TestConfiguration, withTracker: true, withInbox: true)
@@ -884,6 +905,9 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         XCTAssertTrue(pollUntil { inbox.queue.sync { inbox.unverifiedSnapshotRejections } >= 2 })
         quiet(pipeline)
         XCTAssertEqual(pipeline.latestState?.display.window(for: .fiveHour)?.usedPercentage, 0)
+        // One file write can reach the watcher more than once, so a rejected snapshot may be counted
+        // twice; what matters below is that the valid snapshot adds no rejection of its own.
+        let rejectionsBeforeAttributed = inbox.queue.sync { inbox.unverifiedSnapshotRejections }
 
         // The first use of the unstarted window is attributed before the official read catches up.
         try placeModSnapshot(
@@ -891,7 +915,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
             fiveReset: Self.start.addingTimeInterval(5 * 3600))
         let attributed = try XCTUnwrap(waitForState(pipeline) { $0.display.window(for: .fiveHour)?.usedPercentage == 2 })
         XCTAssertTrue(attributed.status.isNativeRealtime)
-        XCTAssertEqual(inbox.queue.sync { inbox.unverifiedSnapshotRejections }, 2)
+        XCTAssertEqual(inbox.queue.sync { inbox.unverifiedSnapshotRejections }, rejectionsBeforeAttributed)
 
         // A later snapshot on an earlier cycle must not replace the cycle the Mod already holds.
         try placeModSnapshot(

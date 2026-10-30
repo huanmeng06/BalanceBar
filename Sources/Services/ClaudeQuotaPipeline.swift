@@ -287,6 +287,10 @@ final class ClaudeQuotaPipeline {
         snapshotInbox?.diagnosticLog = { [diagnostics] message in diagnostics(message, .info) }
         snapshotInbox?.rejectionObserver = { [weak self] reason in
             guard let self, let sink = self.modSnapshotEventSink else { return }
+            // Before the first official read of this account there is nothing to verify a cycle
+            // against: a snapshot dropped then (typically a stale one found at launch) says nothing
+            // about the Mod, and a "rejected" status would linger until the next snapshot arrives.
+            if reason == .cycleUnverified, !self.hasOfficialBaseline { return }
             sink(ModSnapshotEvent(
                 kind: .rejected(reason: reason), window: nil, observedAt: nil,
                 receivedAt: self.now()))
@@ -554,6 +558,12 @@ final class ClaudeQuotaPipeline {
                 observedAt: observation.observedAt, receivedAt: observation.receivedAt))
         }
         return accepted
+    }
+
+    /// Whether an official reading of the current account is held, for either standard window.
+    private var hasOfficialBaseline: Bool {
+        guard let engine else { return false }
+        return engine.currentState.windows.values.contains { $0.latestGradeA?.epoch == identity.accountEpoch }
     }
 
     /// Ingest-time cycle verification handed to the snapshot inbox. The snapshot only
