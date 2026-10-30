@@ -470,6 +470,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             modPanelState: { [weak self] in self?.modSyncCoordinator.controller.state },
             claudeSourceTimeline: { [weak self] in
                 guard let self else { return .empty }
+                self.claudeQuota.refreshSourceTimelineEstimate()
                 return ClaudeSourceTimelineView.Content(
                     timeline: self.claudeQuota.sourceTimeline.snapshot(),
                     status: self.claudeQuota.latestState?.status)

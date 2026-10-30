@@ -283,6 +283,21 @@ public enum FetchDispatchTrigger: String, Equatable {
     case localExpiredOrAbsent = "local_expired_or_absent"
 }
 
+/// Read-only estimate from the same gates used by the automatic scheduler.
+public struct FetchAutomaticRequestEstimate: Equatable {
+    public enum State: Equatable {
+        case signedOut
+        case unauthorizedPaused
+        case inFlight
+        case scheduled(at: Date, trigger: FetchDispatchTrigger)
+        case coolingDown(until: Date)
+        case delayed(reason: FetchSkipReason, until: Date, trigger: FetchDispatchTrigger)
+    }
+
+    public let state: State
+    public let evaluatedAt: Date
+}
+
 /// Structured scheduler log event for diagnostics (consumed by BB-19).
 public struct FetchSchedulerLogEvent: Equatable {
     public enum Kind: String, Equatable {
@@ -310,4 +325,6 @@ public struct FetchSchedulerDelivery: Equatable {
     public let reasons: [FetchRequestReason]
     public let epoch: AccountEpoch
     public let receivedAt: Date
+    public let dispatchedAt: Date
+    public let trigger: FetchDispatchTrigger
 }

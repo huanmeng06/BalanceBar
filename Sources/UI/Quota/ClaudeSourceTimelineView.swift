@@ -12,7 +12,6 @@ struct ClaudeSourceTimelineLayout {
     static let axisGap: CGFloat = 5
     static let axisLabelHeight: CGFloat = 15
     static let labelGap: CGFloat = 12
-    static let minimumDividerSpacing: CGFloat = 5
     static let minimumMarkWidth: CGFloat = 4
     /// Top to bottom, as in the design sketch (Issue #619).
     static let lanes: [StatusSlotLiveSource] = [.mod, .oauthAPI]
@@ -44,28 +43,23 @@ struct ClaudeSourceTimelineLayout {
         var rect: CGRect
     }
 
+    struct RequestMark: Equatable {
+        var request: ClaudeSourceTimeline.Request
+        var rect: CGRect
+        var hitRect: CGRect
+    }
+
     struct Tick: Equatable {
         var date: Date
         var x: CGFloat
     }
-
-    /// One mark ending where a mark in another lane starts: a dashed line ties them together as
-    /// the same moment (e.g. local data expiring and the official read taking over).
-    struct Junction: Equatable {
-        var x: CGFloat
-        var minY: CGFloat
-        var maxY: CGFloat
-    }
-
-    /// Edges this close (about 18 s on a 600 pt chart) count as the same moment.
-    static let junctionTolerance: CGFloat = 3
 
     let now: Date
     let plot: CGRect
     private(set) var bars: [Bar] = []
     private(set) var bands: [Band] = []
     private(set) var ticks: [Tick] = []
-    private(set) var junctions: [Junction] = []
+    private(set) var requests: [RequestMark] = []
 
     var start: Date { now.addingTimeInterval(-Self.span) }
     var nowX: CGFloat { plot.maxX }
@@ -83,7 +77,7 @@ struct ClaudeSourceTimelineLayout {
         bars = Self.lanes.flatMap { makeBars(for: $0, readings: snapshot.readings) }
         bands = snapshot.failures.compactMap(makeBand)
         ticks = makeTicks(timeZone: timeZone)
-        junctions = makeJunctions()
+        requests = snapshot.requests.compactMap(makeRequestMark)
     }
 
     func x(for date: Date) -> CGFloat {
@@ -101,12 +95,10 @@ struct ClaudeSourceTimelineLayout {
         return CGRect(x: plot.minX, y: plot.minY + index * Self.laneHeight, width: plot.width, height: Self.laneHeight)
     }
 
-    /// A mark shorter than the minimum width grows leftwards, so a reading that just arrived never
-    /// pokes past the "now" line.
     private func barRect(_ source: StatusSlotLiveSource, from minX: CGFloat, to maxX: CGFloat) -> CGRect {
         let lane = laneRect(source)
-        let width = max(Self.minimumMarkWidth, maxX - minX)
-        let left = max(plot.minX, min(minX, plot.maxX - width))
+        let left = max(plot.minX, minX)
+        let width = max(0, maxX - left)
         return CGRect(
             x: left, y: lane.midY - Self.barHeight / 2,
             width: min(width, plot.maxX - left), height: Self.barHeight)
@@ -117,20 +109,14 @@ struct ClaudeSourceTimelineLayout {
         // Readings grouped by block, parallel to `bars`: a divider starts a new block.
         var groups: [[[ClaudeSourceTimeline.Reading]]] = []
         var ends: [Date] = []
-        var lastMarkX: CGFloat = 0
         for reading in readings where reading.source == source {
             let from = max(reading.observedAt, start)
             let to = min(reading.expiresAt, now)
             guard to > from else { continue }
             let minX = x(for: from), maxX = x(for: to)
-            if var current = bars.last, minX <= current.rect.maxX + 0.5 {
-                if minX - lastMarkX >= Self.minimumDividerSpacing {
-                    current.dividers.append(minX)
-                    groups[groups.count - 1].append([reading])
-                    lastMarkX = minX
-                } else {
-                    groups[groups.count - 1][groups[groups.count - 1].count - 1].append(reading)
-                }
+            if var current = bars.last, minX <= current.rect.maxX {
+                current.dividers.append(minX)
+                groups[groups.count - 1].append([reading])
                 current.rect = barRect(source, from: current.rect.minX, to: max(current.rect.maxX, maxX))
                 current.readings.append(reading)
                 bars[bars.count - 1] = current
@@ -139,7 +125,6 @@ struct ClaudeSourceTimelineLayout {
                 bars.append(Bar(source: source, rect: barRect(source, from: minX, to: maxX), readings: [reading], dividers: []))
                 groups.append([[reading]])
                 ends.append(reading.expiresAt)
-                lastMarkX = minX
             }
         }
         for index in bars.indices {
@@ -160,21 +145,24 @@ struct ClaudeSourceTimelineLayout {
         return bars
     }
 
-    /// The block (or failure box) under a point, for hovering.
+    /// A reading block, failed interval or request interval under the pointer.
     enum HoverTarget: Equatable {
         case piece(Piece)
         case band(Band)
+        case request(RequestMark)
 
         var rect: CGRect {
             switch self {
             case let .piece(piece): return piece.rect
             case let .band(band): return band.rect
+            case let .request(mark): return mark.hitRect
             }
         }
     }
 
     func hoverTarget(at point: CGPoint) -> HoverTarget? {
         let slop: CGFloat = 3
+        if let request = requests.last(where: { $0.hitRect.contains(point) }) { return .request(request) }
         if let band = bands.last(where: { $0.rect.insetBy(dx: -1, dy: -slop).contains(point) }) {
             return .band(band)
         }
@@ -192,27 +180,28 @@ struct ClaudeSourceTimelineLayout {
         guard to >= from, from < now else { return nil }
         // Same size as a bar so the failure reads as one more box in the OAuth row.
         let minX = x(for: from)
-        return Band(run: run, rect: barRect(.oauthAPI, from: minX, to: x(for: to)))
+        let exact = barRect(.oauthAPI, from: minX, to: x(for: to))
+        return Band(run: run, rect: visibleRect(exact, lane: .oauthAPI))
     }
 
-    /// Pairs a real end (not cut off by "now") with a real start (not cut off by the left edge) in
-    /// another lane. Failure boxes take part as marks of the OAuth lane.
-    private func makeJunctions() -> [Junction] {
-        let marks: [(lane: StatusSlotLiveSource, rect: CGRect)] =
-            bars.map { ($0.source, $0.rect) } + bands.map { (.oauthAPI, $0.rect) }
-        var junctions: [Junction] = []
-        for end in marks where end.rect.maxX < nowX - 0.5 {
-            for start in marks where start.lane != end.lane && start.rect.minX > plot.minX + 0.5
-                && abs(start.rect.minX - end.rect.maxX) <= Self.junctionTolerance {
-                // Only across the gap between the two marks, on the edge of the one that starts, so
-                // the line leaves one outline and lands on the other instead of piercing both.
-                let upper = end.rect.minY < start.rect.minY ? end.rect : start.rect
-                let lower = end.rect.minY < start.rect.minY ? start.rect : end.rect
-                let junction = Junction(x: start.rect.minX + 0.75, minY: upper.maxY, maxY: lower.minY)
-                if !junctions.contains(junction) { junctions.append(junction) }
-            }
-        }
-        return junctions
+    private func visibleRect(_ exact: CGRect, lane source: StatusSlotLiveSource) -> CGRect {
+        let lane = laneRect(source)
+        let width = max(Self.minimumMarkWidth, exact.width)
+        return CGRect(x: exact.minX, y: lane.midY - Self.barHeight / 2,
+                      width: min(width, plot.maxX - exact.minX), height: Self.barHeight)
+    }
+
+    private func makeRequestMark(_ request: ClaudeSourceTimeline.Request) -> RequestMark? {
+        let end = request.completedAt ?? now
+        guard end >= start, request.startedAt <= now else { return nil }
+        let x1 = x(for: max(request.startedAt, start))
+        let x2 = x(for: min(end, now))
+        let lane = laneRect(.oauthAPI)
+        let exactWidth = max(0, x2 - x1)
+        let rect = CGRect(x: x1, y: lane.midY - 2,
+                          width: min(max(Self.minimumMarkWidth, exactWidth), plot.maxX - x1), height: 4)
+        let hitRect = CGRect(x: x1 - 3, y: lane.minY, width: max(6, exactWidth + 3), height: lane.height)
+        return RequestMark(request: request, rect: rect, hitRect: hitRect)
     }
 
     /// Quarter-hour marks in the display time zone, so they read as 10:15, 10:30, …
@@ -506,13 +495,6 @@ final class ClaudeSourceTimelineView: NSView {
         let startEndX = layout.plot.minX + startText.size(withAttributes: axis).width
         startText.draw(at: NSPoint(x: layout.plot.minX, y: axisY), withAttributes: axis)
         for tick in layout.ticks {
-            let guide = NSBezierPath()
-            guide.move(to: NSPoint(x: tick.x, y: layout.plot.minY))
-            guide.line(to: NSPoint(x: tick.x, y: layout.baselineY))
-            guide.lineWidth = 1
-            guide.setLineDash([2, 3], count: 2, phase: 0)
-            NSColor.separatorColor.setStroke()
-            guide.stroke()
             let text = formatter.string(from: tick.date) as NSString
             let width = text.size(withAttributes: axis).width
             let minX = tick.x - width / 2
@@ -521,17 +503,6 @@ final class ClaudeSourceTimelineView: NSView {
         }
         nowText.draw(at: NSPoint(x: nowLabelX, y: axisY), withAttributes: nowAttributes)
 
-        // Same-moment junctions sit under the marks, so they show only in the gap between lanes.
-        for junction in layout.junctions {
-            let line = NSBezierPath()
-            line.move(to: NSPoint(x: junction.x, y: junction.minY))
-            line.line(to: NSPoint(x: junction.x, y: junction.maxY))
-            line.lineWidth = 1.5
-            line.lineCapStyle = .round
-            line.setLineDash([0.1, 4], count: 2, phase: 0)
-            NSColor.secondaryLabelColor.withAlphaComponent(0.55).setStroke()
-            line.stroke()
-        }
         for band in layout.bands { drawBand(band) }
         // Only the bar of the source the card is using right now gets the stronger fill; other
         // sources that are still valid stay light. Before a status is known, every valid bar counts.
@@ -540,13 +511,14 @@ final class ClaudeSourceTimelineView: NSView {
             let valid = bar.rect.maxX >= layout.nowX - 0.5
             drawBar(bar, live: valid && (content.status == nil || bar.source == active))
         }
+        for request in layout.requests { drawRequest(request) }
 
         // The "now" line in the accent color, capped with a dot.
         NSColor.controlAccentColor.setFill()
         NSRect(x: layout.nowX - 0.75, y: layout.plot.minY - 2, width: 1.5, height: layout.baselineY - layout.plot.minY + 2).fill()
         NSBezierPath(ovalIn: NSRect(x: layout.nowX - 3, y: layout.plot.minY - 6, width: 6, height: 6)).fill()
 
-        if content.timeline.readings.isEmpty, content.timeline.failures.isEmpty {
+        if content.timeline.readings.isEmpty, content.timeline.failures.isEmpty, content.timeline.requests.isEmpty {
             let empty = tr(.keyClaudeTimelineEmpty) as NSString
             let attributes: [NSAttributedString.Key: Any] = [
                 .font: NSFont.systemFont(ofSize: 12), .foregroundColor: NSColor.secondaryLabelColor,
@@ -556,6 +528,20 @@ final class ClaudeSourceTimelineView: NSView {
                 at: NSPoint(x: layout.plot.midX - size.width / 2, y: layout.plot.midY - size.height / 2),
                 withAttributes: attributes)
         }
+    }
+
+    private func drawRequest(_ mark: ClaudeSourceTimelineLayout.RequestMark) {
+        let color: NSColor
+        switch mark.request.outcome {
+        case .failure: color = .systemRed
+        case .success: color = .systemBlue
+        case .interrupted, nil: color = .secondaryLabelColor
+        }
+        let path = NSBezierPath(roundedRect: mark.rect, xRadius: mark.rect.height / 2, yRadius: mark.rect.height / 2)
+        color.withAlphaComponent(0.95).setFill()
+        path.fill()
+        NSColor.white.withAlphaComponent(0.85).setFill()
+        NSBezierPath(ovalIn: NSRect(x: mark.rect.minX, y: mark.rect.midY - 2, width: 3, height: 4)).fill()
     }
 
     /// The source the status slot says is in use, if any.
@@ -624,6 +610,88 @@ final class ClaudeSourceTimelineView: NSView {
 
     private func time(_ date: Date) -> String { StatusSlotAppearance.timeText(date, timeZone: timeZone) }
 
+    private func triggerText(_ trigger: FetchDispatchTrigger) -> String {
+        switch trigger {
+        case .manualRefresh: return tr(.keyClaudeTimelineTriggerManualRefresh)
+        case .firstRead: return tr(.keyClaudeTimelineTriggerFirstRead)
+        case .resetConfirmation: return tr(.keyClaudeTimelineTriggerResetConfirmation)
+        case .calibrationFloor: return tr(.keyClaudeTimelineTriggerCalibrationFloor)
+        case .sourceExpiryPrefetch: return tr(.keyClaudeTimelineTriggerSourceExpiryPrefetch)
+        case .localExpiredOrAbsent: return tr(.keyClaudeTimelineTriggerLocalExpiredOrAbsent)
+        }
+    }
+
+    private func requestOutcomeText(_ outcome: ClaudeSourceTimeline.RequestOutcome) -> String {
+        switch outcome {
+        case .success: return tr(.keyClaudeTimelineRequestSuccess)
+        case .interrupted: return tr(.keyClaudeTimelineRequestInterrupted)
+        case let .failure(kind): return Self.failureText(kind)
+        }
+    }
+
+    private func valueRows(
+        windows: [ClaudeSourceTimeline.Window: ClaudeSourceTimeline.WindowValue],
+        dispositions: [ClaudeSourceTimeline.Window: ClaudeSourceTimeline.ReadingDisposition]
+    ) -> [ClaudeSourceTimelineTooltipContent.Row] {
+        ClaudeSourceTimeline.Window.allCases.map { window in
+            let label = window == .fiveHour ? "5h" : "7d"
+            guard let value = windows[window] else {
+                return .init(label: label, value: tr(.keyClaudeTimelineWindowNotIncluded))
+            }
+            let formatter = NumberFormatter()
+            formatter.locale = .autoupdatingCurrent
+            formatter.numberStyle = .decimal
+            formatter.minimumFractionDigits = 1
+            formatter.maximumFractionDigits = 1
+            let formatted = (formatter.string(from: NSNumber(value: value.usedPercentage)) ?? "\(value.usedPercentage)") + "%"
+            let reset = value.resetAt.map(time) ?? "—"
+            let disposition: String
+            switch dispositions[window] {
+            case .displayed: disposition = tr(.keyClaudeTimelineValueDisplayed)
+            case .freshnessEvidenceWithinTolerance: disposition = tr(.keyClaudeTimelineValueEvidenceWithinTolerance)
+            case .freshnessEvidenceBelowDisplay: disposition = tr(.keyClaudeTimelineValueEvidenceBelowDisplay)
+            case .freshnessEvidence, nil: disposition = tr(.keyClaudeTimelineValueEvidence)
+            }
+            return .init(label: label, value: "\(formatted) · \(reset) · \(disposition)")
+        }
+    }
+
+    private func estimateRows(_ estimate: FetchAutomaticRequestEstimate) -> [ClaudeSourceTimelineTooltipContent.Row] {
+        let value: String
+        switch estimate.state {
+        case .signedOut: value = tr(.keyClaudeTimelineFailureMissingCredentials)
+        case .unauthorizedPaused: value = tr(.keyClaudeTimelineFailureUnauthorized)
+        case .inFlight: value = localize(.hoverRefreshing)
+        case let .scheduled(at, trigger):
+            value = tr(.keyClaudeTimelineEstimateScheduled, arguments: [
+                time(at), triggerText(trigger), relativeText(until: at, from: estimate.evaluatedAt)])
+        case let .coolingDown(until):
+            value = tr(.keyClaudeTimelineEstimateCooldown, arguments: [time(until)])
+        case let .delayed(reason, until, trigger):
+            let reasonText = reason == .insufficientTokens
+                ? tr(.keyClaudeTimelineDelayInsufficientTokens) : tr(.keyClaudeTimelineDelayFailureBackoff)
+            value = tr(.keyClaudeTimelineEstimateDelayed, arguments: [
+                time(until), triggerText(trigger), reasonText,
+                relativeText(until: until, from: estimate.evaluatedAt)])
+        }
+        return [.init(label: tr(.keyClaudeTimelineEstimateLabel), value: value)]
+    }
+
+    private func relativeText(until: Date, from: Date) -> String {
+        tr(.keyClaudeTimelineEstimateIn, arguments: [Self.durationText(until.timeIntervalSince(from))])
+    }
+
+    private func isLatestOAuthReading(_ reading: ClaudeSourceTimeline.Reading) -> Bool {
+        guard let latest = content.timeline.readings.filter({ $0.source == .oauthAPI }).max(by: { $0.observedAt < $1.observedAt }) else {
+            return false
+        }
+        return latest.observedAt == reading.observedAt
+    }
+
+    private func isLatestOAuthRequest(_ request: ClaudeSourceTimeline.Request) -> Bool {
+        content.timeline.requests.max(by: { $0.startedAt < $1.startedAt }) == request
+    }
+
     /// "45 秒" / "3 分钟" / "1 小时 5 分钟".
     static func durationText(_ interval: TimeInterval) -> String {
         let seconds = max(0, Int(interval.rounded()))
@@ -638,8 +706,9 @@ final class ClaudeSourceTimelineView: NSView {
         switch target {
         case let .piece(piece):
             let first = piece.readings[0]
+            let last = piece.readings[piece.readings.count - 1]
             let ongoing = piece.end >= now()
-            return ClaudeSourceTimelineTooltipContent(title: laneName(piece.source), color: Self.color(for: piece.source), rows: [
+            var rows: [ClaudeSourceTimelineTooltipContent.Row] = [
                 .init(label: tr(.keyClaudeTimelineHoverTime),
                       value: time(piece.start) + " – " + (ongoing ? tr(.keyClaudeTimelineNow) : time(piece.end))),
                 .init(label: tr(.keyClaudeTimelineHoverDuration),
@@ -651,7 +720,12 @@ final class ClaudeSourceTimelineView: NSView {
                     ? .init(label: tr(.keyClaudeTimelineHoverValidUntil), value: time(piece.end))
                     : .init(label: tr(.keyClaudeTimelineHoverValidity),
                             value: Self.durationText(first.expiresAt.timeIntervalSince(first.observedAt))),
-            ])
+            ]
+            rows.append(contentsOf: valueRows(windows: last.windows, dispositions: last.dispositions))
+            if piece.source == .oauthAPI, isLatestOAuthReading(last), let estimate = content.timeline.estimate {
+                rows.append(contentsOf: estimateRows(estimate))
+            }
+            return ClaudeSourceTimelineTooltipContent(title: laneName(piece.source), color: Self.color(for: piece.source), rows: rows)
         case let .band(band):
             let end = band.run.end ?? now()
             return ClaudeSourceTimelineTooltipContent(
@@ -661,6 +735,31 @@ final class ClaudeSourceTimelineView: NSView {
                     .init(label: tr(.keyClaudeTimelineHoverDuration),
                           value: Self.durationText(end.timeIntervalSince(band.run.start))),
                 ])
+        case let .request(mark):
+            let request = mark.request
+            let end = request.completedAt.map(time) ?? tr(.keyClaudeTimelineNow)
+            var rows: [ClaudeSourceTimelineTooltipContent.Row] = [
+                .init(label: tr(.keyClaudeTimelineHoverTime), value: time(request.startedAt) + " – " + end),
+                .init(label: tr(.keyClaudeTimelineHoverTrigger), value: triggerText(request.trigger)),
+            ]
+            if request.trigger == .sourceExpiryPrefetch, let expiry = request.sourceExpiryAt {
+                let lead = max(0, expiry.timeIntervalSince(request.startedAt))
+                rows[1].value = tr(.keyClaudeTimelineHoverBeforeExpiry, arguments: [
+                    Self.durationText(lead), time(expiry)
+                ])
+            }
+            if let outcome = request.outcome {
+                rows.append(.init(label: tr(.keyClaudeTimelineHoverResult), value: requestOutcomeText(outcome)))
+            }
+            if let estimate = content.timeline.estimate, isLatestOAuthRequest(request) {
+                rows.append(contentsOf: estimateRows(estimate))
+            }
+            if case .success? = request.outcome {
+                rows.append(contentsOf: valueRows(windows: request.windows, dispositions: request.dispositions))
+            }
+            return ClaudeSourceTimelineTooltipContent(
+                title: laneName(.oauthAPI) + " · " + triggerText(request.trigger),
+                color: .systemBlue, rows: rows)
         }
     }
 
@@ -734,6 +833,7 @@ final class ClaudeSourceTimelineView: NSView {
         case (nil, nil): return true
         case let (.piece(a)?, .piece(b)?): return a.source == b.source && a.readings.first == b.readings.first
         case let (.band(a)?, .band(b)?): return a.run.start == b.run.start
+        case let (.request(a)?, .request(b)?): return a.request == b.request
         default: return false
         }
     }
@@ -798,6 +898,10 @@ final class ClaudeSourceTimelineView: NSView {
             liftStripes.isHidden = false
             color = .systemRed
             tintAlpha = 0.18
+        case .request:
+            liftStripes.isHidden = true
+            color = .systemBlue
+            tintAlpha = 0.2
         }
         // The lifted block is opaque: it floats over the blurred chart rather than showing it through.
         effectiveAppearance.performAsCurrentDrawingAppearance {
@@ -1016,7 +1120,21 @@ final class ClaudeSourceTimelineView: NSView {
                 laneName(source), String(content.timeline.readings.filter { $0.source == source }.count)])
         }
         let failures = tr(.keyClaudeTimelineAccessibilityFailures, arguments: [String(content.timeline.failures.count)])
-        return tr(.keyClaudeTimelineAccessibility, arguments: [(counts + [failures]).joined(separator: ", ")])
+        let requests = tr(.keyClaudeTimelineAccessibilityCount, arguments: [
+            laneName(.oauthAPI) + " requests", String(content.timeline.requests.count)
+        ])
+        let latestRequest = content.timeline.requests.max(by: { $0.startedAt < $1.startedAt }).map { request in
+            var summary = tr(.keyClaudeTimelineHoverTrigger) + ": " + triggerText(request.trigger)
+                + ", " + tr(.keyClaudeTimelineHoverTime) + " " + time(request.startedAt)
+            if let end = request.completedAt { summary += " – " + time(end) }
+            if request.trigger == .sourceExpiryPrefetch, let expiry = request.sourceExpiryAt {
+                summary += ", " + tr(.keyClaudeTimelineHoverBeforeExpiry, arguments: [
+                    Self.durationText(max(0, expiry.timeIntervalSince(request.startedAt))), time(expiry)
+                ])
+            }
+            return summary
+        }
+        return tr(.keyClaudeTimelineAccessibility, arguments: [(counts + [failures, requests] + [latestRequest].compactMap { $0 }).joined(separator: ", ")])
     }
 
     // MARK: Refresh timer

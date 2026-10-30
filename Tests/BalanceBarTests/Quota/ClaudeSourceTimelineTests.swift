@@ -23,6 +23,41 @@ final class ClaudeSourceTimelineTests: XCTestCase {
         XCTAssertEqual(changes, 2, "the duplicate 7d half of a pair is not a change")
     }
 
+    func testPairedWindowValuesAndDisplayDispositionStayWithTheReading() {
+        let timeline = makeTimeline(now: { self.start })
+        timeline.recordReading(
+            source: .mod, observedAt: start,
+            values: [.fiveHour: .init(usedPercentage: 41, resetAt: start.addingTimeInterval(900))],
+            dispositions: [.fiveHour: .freshnessEvidenceWithinTolerance])
+        timeline.recordReading(
+            source: .mod, observedAt: start.addingTimeInterval(0.4),
+            values: [.sevenDay: .init(usedPercentage: 67, resetAt: start.addingTimeInterval(86_400))],
+            dispositions: [.sevenDay: .displayed])
+
+        let reading = try! XCTUnwrap(timeline.snapshot().readings.first)
+        XCTAssertEqual(reading.windows[.fiveHour]?.usedPercentage, 41)
+        XCTAssertEqual(reading.windows[.fiveHour]?.resetAt, start.addingTimeInterval(900))
+        XCTAssertEqual(reading.windows[.sevenDay]?.usedPercentage, 67)
+        XCTAssertEqual(reading.dispositions, [
+            .fiveHour: .freshnessEvidenceWithinTolerance,
+            .sevenDay: .displayed,
+        ])
+    }
+
+    func testRequestsKeepDispatchCompletionTriggerAndOutcome() {
+        let timeline = makeTimeline(now: { self.start.addingTimeInterval(20) })
+        let started = start.addingTimeInterval(1)
+        let completed = start.addingTimeInterval(5)
+        timeline.recordRequestDispatched(trigger: .sourceExpiryPrefetch, at: started, sourceExpiryAt: start.addingTimeInterval(10))
+        timeline.recordRequestCompleted(
+            trigger: .sourceExpiryPrefetch, startedAt: started, completedAt: completed,
+            outcome: .failure(.rateLimited))
+        XCTAssertEqual(timeline.snapshot().requests, [
+            .init(trigger: .sourceExpiryPrefetch, startedAt: started, completedAt: completed,
+                  outcome: .failure(.rateLimited), sourceExpiryAt: start.addingTimeInterval(10))
+        ])
+    }
+
     func testReadingsStaySortedWhenAnOlderSnapshotArrivesLate() {
         let timeline = makeTimeline(now: { self.start.addingTimeInterval(60) })
         timeline.recordReading(source: .mod, observedAt: start.addingTimeInterval(30))
@@ -115,6 +150,38 @@ final class ClaudeSourceTimelineTests: XCTestCase {
             ClaudeSourceTimeline.FailureRun(start: start.addingTimeInterval(30), end: start.addingTimeInterval(60), kind: .network)
         ], "a run still open at quit ends at the last save, not at the relaunch")
         XCTAssertEqual(changes, 1)
+    }
+
+    func testRequestValuesRoundTripAndLegacyHistoryIsIgnored() throws {
+        let file = try temporaryFile()
+        let key = ClaudeSourceTimeline.accountKey(forStableID: "account-a|org")!
+        let timeline = ClaudeSourceTimeline(now: { self.start }, fileURL: file, saveDelay: 60)
+        timeline.restore(accountKey: key)
+        timeline.recordReading(
+            source: .oauthAPI, observedAt: start,
+            values: [.fiveHour: .init(usedPercentage: 24.5, resetAt: start.addingTimeInterval(1_800))],
+            dispositions: [.fiveHour: .displayed])
+        timeline.recordRequestDispatched(trigger: .calibrationFloor, at: start, sourceExpiryAt: nil)
+        timeline.recordRequestCompleted(
+            trigger: .calibrationFloor, startedAt: start, completedAt: start.addingTimeInterval(3),
+            outcome: .success,
+            values: [.fiveHour: .init(usedPercentage: 24.5, resetAt: start.addingTimeInterval(1_800))],
+            dispositions: [.fiveHour: .displayed])
+        timeline.flushPendingSave()
+
+        let stored = try String(contentsOf: file, encoding: .utf8)
+        XCTAssertTrue(stored.contains("24.5"))
+        XCTAssertFalse(stored.contains("account-a"))
+        let restored = ClaudeSourceTimeline(now: { self.start }, fileURL: file, saveDelay: 60)
+        restored.restore(accountKey: key)
+        XCTAssertEqual(restored.snapshot().readings.first?.windows[.fiveHour]?.usedPercentage, 24.5)
+        XCTAssertEqual(restored.snapshot().requests.first?.trigger, .calibrationFloor)
+        XCTAssertEqual(restored.snapshot().requests.first?.outcome, .success)
+
+        try Data(#"{"version":1,"accountKey":"\#(key)","savedAt":1800000000,"readings":[],"failures":[]}"#.utf8).write(to: file)
+        let legacy = ClaudeSourceTimeline(now: { self.start }, fileURL: file, saveDelay: 60)
+        legacy.restore(accountKey: key)
+        XCTAssertEqual(legacy.snapshot(), .empty, "version 1 history is safely ignored after the privacy-format upgrade")
     }
 
     func testAnotherAccountNeverSeesTheSavedHistory() throws {
