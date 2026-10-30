@@ -308,9 +308,12 @@ public final class QuotaMergeEngine: QuotaMerging {
         case .b:
             if let gradeA = window.latestGradeA, gradeA.epoch == observation.epoch {
                 // An unstarted official window (0%, no reset time) is followed by the first use's
-                // cycle, whose reset lies after the official reading.
+                // cycle, whose reset lies after the official reading. Once a local reading holds that
+                // cycle, later readings must stay on it; crossing its reset is the pending-reset path.
+                let heldReset = window.displayed?.resetsAt
                 let startsUnstartedWindow = gradeA.resetsAt == nil && gradeA.usedPercentage == 0
                     && (reading.resetsAt.map { $0 > gradeA.effectiveTime } ?? false)
+                    && (heldReset == nil || sameCycle(reading.resetsAt, heldReset))
                 guard reading.usedPercentage >= gradeA.usedPercentage - QuotaConstants.gradeBTolerancePercentagePoints,
                       startsUnstartedWindow || sameCycle(reading.resetsAt, gradeA.resetsAt) else { return false }
             } else {

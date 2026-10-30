@@ -877,13 +877,30 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         quiet(pipeline)
         XCTAssertEqual(pipeline.latestState?.display.window(for: .fiveHour)?.usedPercentage, 0)
 
+        // A legacy snapshot without an organization hash cannot be attributed by the range check.
+        try placeModSnapshot(
+            five: 2, seven: 41, observedAt: Self.start.addingTimeInterval(7),
+            fiveReset: Self.start.addingTimeInterval(5 * 3600), organization: nil)
+        XCTAssertTrue(pollUntil { inbox.queue.sync { inbox.unverifiedSnapshotRejections } >= 2 })
+        quiet(pipeline)
+        XCTAssertEqual(pipeline.latestState?.display.window(for: .fiveHour)?.usedPercentage, 0)
+
         // The first use of the unstarted window is attributed before the official read catches up.
         try placeModSnapshot(
             five: 2, seven: 41, observedAt: Self.start.addingTimeInterval(10),
             fiveReset: Self.start.addingTimeInterval(5 * 3600))
         let attributed = try XCTUnwrap(waitForState(pipeline) { $0.display.window(for: .fiveHour)?.usedPercentage == 2 })
         XCTAssertTrue(attributed.status.isNativeRealtime)
-        XCTAssertEqual(inbox.queue.sync { inbox.unverifiedSnapshotRejections }, 1)
+        XCTAssertEqual(inbox.queue.sync { inbox.unverifiedSnapshotRejections }, 2)
+
+        // A later snapshot on an earlier cycle must not replace the cycle the Mod already holds.
+        try placeModSnapshot(
+            five: 1, seven: 41, observedAt: Self.start.addingTimeInterval(20),
+            fiveReset: Self.start.addingTimeInterval(4 * 3600))
+        quiet(pipeline)
+        let held = try XCTUnwrap(pipeline.latestState?.display.window(for: .fiveHour))
+        XCTAssertEqual(held.usedPercentage, 2)
+        XCTAssertEqual(held.resetsAt, Self.start.addingTimeInterval(5 * 3600))
     }
 
     func testModReadingBelowTheOfficialValueWithinToleranceStillCountsAsLiveEvidence() throws {

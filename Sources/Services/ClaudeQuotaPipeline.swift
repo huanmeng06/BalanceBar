@@ -584,8 +584,9 @@ final class ClaudeQuotaPipeline {
         guard let gradeA = baseline else { return nil }
         // An unstarted window reads 0% without a reset time; the first use starts a cycle whose
         // reset lies at most one window length after the snapshot, which is the only check possible
-        // until the next official read carries the reset time.
-        if gradeA.resetsAt == nil, gradeA.usedPercentage == 0, let reset = resetsAt,
+        // until the next official read carries the reset time. A snapshot that cannot prove its
+        // organization has no other attribution and keeps the strict check.
+        if organizationProven, gradeA.resetsAt == nil, gradeA.usedPercentage == 0, let reset = resetsAt,
            let length = Self.windowLength(window) {
             return reset > updatedAt && reset <= updatedAt.addingTimeInterval(length)
         }
