@@ -860,6 +860,32 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         XCTAssertEqual(mergeWindowKeys(pipeline), ["five_hour", "seven_day"])
     }
 
+    func testModSnapshotStartingAnUnstartedOfficialWindowIsAcceptedWithinOneWindowLength() throws {
+        PipelineStubProtocol.set(.init(data: Data(
+            #"{"five_hour":{"utilization":0,"resets_at":null},"seven_day":{"utilization":41,"resets_at":"2023-11-20T00:00:00Z"}}"#.utf8)))
+        let pipeline = makePipeline(configuration: claudeV1TestConfiguration, withInbox: true)
+        pipeline.start()
+        pipeline.requestFetch(reason: .initial)
+        _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+        let inbox = try XCTUnwrap(lastInbox)
+
+        // A reset beyond one five-hour window cannot belong to the cycle the first use started.
+        try placeModSnapshot(
+            five: 2, seven: 41, observedAt: Self.start.addingTimeInterval(5),
+            fiveReset: Self.start.addingTimeInterval(6 * 3600))
+        XCTAssertTrue(pollUntil { inbox.queue.sync { inbox.unverifiedSnapshotRejections } >= 1 })
+        quiet(pipeline)
+        XCTAssertEqual(pipeline.latestState?.display.window(for: .fiveHour)?.usedPercentage, 0)
+
+        // The first use of the unstarted window is attributed before the official read catches up.
+        try placeModSnapshot(
+            five: 2, seven: 41, observedAt: Self.start.addingTimeInterval(10),
+            fiveReset: Self.start.addingTimeInterval(5 * 3600))
+        let attributed = try XCTUnwrap(waitForState(pipeline) { $0.display.window(for: .fiveHour)?.usedPercentage == 2 })
+        XCTAssertTrue(attributed.status.isNativeRealtime)
+        XCTAssertEqual(inbox.queue.sync { inbox.unverifiedSnapshotRejections }, 1)
+    }
+
     func testModReadingBelowTheOfficialValueWithinToleranceStillCountsAsLiveEvidence() throws {
         let pipeline = makePipeline(
             configuration: claudeV1TestConfiguration, withTracker: true, withInbox: true)

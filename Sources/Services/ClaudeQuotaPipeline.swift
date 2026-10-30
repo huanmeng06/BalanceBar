@@ -582,6 +582,13 @@ final class ClaudeQuotaPipeline {
         if baseline == nil, !organizationProven || updatedAt < lock.withLock({ accountActiveSince }) { return false }
         if state?.pendingResetOf != nil { return isComplete }
         guard let gradeA = baseline else { return nil }
+        // An unstarted window reads 0% without a reset time; the first use starts a cycle whose
+        // reset lies at most one window length after the snapshot, which is the only check possible
+        // until the next official read carries the reset time.
+        if gradeA.resetsAt == nil, gradeA.usedPercentage == 0, let reset = resetsAt,
+           let length = Self.windowLength(window) {
+            return reset > updatedAt && reset <= updatedAt.addingTimeInterval(length)
+        }
         guard let gradeAReset = gradeA.resetsAt, let reset = resetsAt,
               QuotaMergeEngine.sameResetInstant(reset, gradeAReset) else { return false }
         return true
@@ -749,6 +756,14 @@ final class ClaudeQuotaPipeline {
                     values: [window: .init(usedPercentage: observation.usedPercentage, resetAt: observation.resetsAt)],
                     dispositions: [window: disposition])
             }
+        }
+    }
+
+    private static func windowLength(_ window: QuotaWindowKind) -> TimeInterval? {
+        switch window {
+        case .fiveHour: return 5 * 3600
+        case .sevenDay: return 7 * 86400
+        case .other: return nil
         }
     }
 
