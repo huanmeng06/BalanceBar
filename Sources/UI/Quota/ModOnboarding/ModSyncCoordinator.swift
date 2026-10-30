@@ -185,6 +185,8 @@ final class ModSyncCoordinator {
             case let .rejected(reason):
                 self.evidence.lastRejection = ModRejectionEvent(
                     rejection: Self.uiRejection(reason), at: event.receivedAt)
+            case let .formatChecked(outdated):
+                self.evidence.modOutdated = outdated
             case .accountChanged:
                 // Snapshot evidence belongs to the account that produced it; a switch must
                 // never let the new account inherit the old one's "realtime" display.
@@ -445,6 +447,10 @@ extension LocalizationKey {
         case .statusRejectedAccount: return .modSyncStatusRejectedAccount
         case .statusRejectedCycle: return .modSyncStatusRejectedCycle
         case .statusInstallationUnknown: return .modSyncStatusInstallationUnknown
+        case .statusUpdateRequired: return .modSyncStatusUpdateRequired
+        case .cardUpdateTitle: return .modCardUpdateTitle
+        case .cardUpdateReason: return .modCardUpdateReason
+        case .cardUpdateAction: return .modCardUpdateAction
         }
     }
 }

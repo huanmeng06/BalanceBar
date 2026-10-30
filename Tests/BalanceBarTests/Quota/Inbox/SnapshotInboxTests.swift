@@ -8,6 +8,13 @@ private final class FakeIdentity: AccountIdentityProviding {
     var accountEpoch = AccountEpoch(3)
 }
 
+private final class LockedFlags {
+    private let lock = NSLock()
+    private var values: [Bool] = []
+    func append(_ value: Bool) { lock.lock(); values.append(value); lock.unlock() }
+    var all: [Bool] { lock.lock(); defer { lock.unlock() }; return values }
+}
+
 private final class Collector {
     private let lock = NSLock()
     private var items: [QuotaObservation] = []
@@ -453,6 +460,55 @@ final class SnapshotInboxTests: XCTestCase {
         XCTAssertEqual(Set(reasons.all), [.accountEmailHashMismatch, .missingAccountEmailHash])
     }
 
+    func testOldFormatModSnapshotIsReportedOutdatedAndLogThrottled() throws {
+        let flags = LockedFlags()
+        let logs = LockedLines()
+        let source = SnapshotInbox(
+            inboxDirectory: inbox, identity: FakeIdentity(),
+            configuration: SnapshotInboxConfiguration(halfWriteRetryDelay: 0.05))
+        source.outdatedModObserver = { flags.append($0) }
+        source.diagnosticLog = { logs.append($0) }
+        inboxes.append(source)
+        source.start { _ in }
+        try placeModSnapshot(organizationHash: nil, as: "a.json")
+        try placeModSnapshot(organizationHash: nil, as: "b.json")
+        XCTAssertTrue(waitUntil { flags.all.count >= 2 })
+        source.stop()
+        XCTAssertTrue(flags.all.allSatisfy { $0 })
+        XCTAssertEqual(logs.all.filter { $0.hasPrefix("claude mod snapshot outdated;") }.count, 1, "same reason is throttled")
+    }
+
+    func testNewFormatModSnapshotIsNotOutdated() throws {
+        let flags = LockedFlags()
+        let logs = LockedLines()
+        let source = SnapshotInbox(
+            inboxDirectory: inbox, identity: FakeIdentity(),
+            configuration: SnapshotInboxConfiguration(halfWriteRetryDelay: 0.05))
+        source.outdatedModObserver = { flags.append($0) }
+        source.diagnosticLog = { logs.append($0) }
+        inboxes.append(source)
+        source.start { _ in }
+        try placeModSnapshot(organizationHash: SnapshotInbox.hash("org-1"))
+        XCTAssertTrue(waitUntil { !flags.all.isEmpty })
+        source.stop()
+        XCTAssertEqual(flags.all, [false])
+        XCTAssertTrue(logs.all.isEmpty)
+    }
+
+    func testNonModSnapshotWithoutOrganizationIsNotReportedOutdated() throws {
+        let flags = LockedFlags()
+        let source = SnapshotInbox(
+            inboxDirectory: inbox, identity: FakeIdentity(),
+            configuration: SnapshotInboxConfiguration(halfWriteRetryDelay: 0.05))
+        source.outdatedModObserver = { flags.append($0) }
+        inboxes.append(source)
+        source.start { _ in }
+        try placeSnapshot(source: "unrelated-producer", emailHash: SnapshotInbox.emailHash("user@example.com"))
+        Thread.sleep(forTimeInterval: 0.5)
+        source.stop()
+        XCTAssertTrue(flags.all.isEmpty)
+    }
+
     func testUnverifiedCycleIsReportedByTheRejectionObserver() throws {
         let reasons = LockedReasons()
         let source = SnapshotInbox(
@@ -626,8 +682,9 @@ final class SnapshotInboxTests: XCTestCase {
         source.cycleVerification = { _, _, _, _, proven in proven ? true : false }
         try placeModSnapshot(organizationHash: nil, as: "cycle.json")
         feed(source, "cycle.json")
-        XCTAssertEqual(lines.all.count, 1)
-        let line = try XCTUnwrap(lines.all.first)
+        let rejections = lines.all.filter { $0.hasPrefix("claude mod snapshot rejected;") }
+        XCTAssertEqual(rejections.count, 1)
+        let line = try XCTUnwrap(rejections.first)
         XCTAssertTrue(line.hasPrefix("claude mod snapshot rejected; reason=cycle_unverified_against_official; window="))
         XCTAssertFalse(line.contains("user@example.com"))
         XCTAssertFalse(line.contains("sha256"))
@@ -642,7 +699,7 @@ final class SnapshotInboxTests: XCTestCase {
         try placeSnapshot(source: "balancebar-mod", emailHash: nil, as: "b.json")
         try placeModSnapshot(organizationHash: SnapshotInbox.hash("other-org"), as: "c.json")
         for name in ["a.json", "b.json", "c.json"] { feed(source, name) }
-        let reasons = lines.all.compactMap { $0.components(separatedBy: "reason=").last?.components(separatedBy: ";").first }
+        let reasons = lines.all.filter { $0.hasPrefix("claude mod snapshot rejected;") }.compactMap { $0.components(separatedBy: "reason=").last?.components(separatedBy: ";").first }
         XCTAssertEqual(reasons, [
             "account_email_hash_mismatch", "missing_account_email_hash", "organization_hash_mismatch",
         ])
@@ -661,7 +718,7 @@ final class SnapshotInboxTests: XCTestCase {
         let clock = MutableClock()
         let source = makeLoggingInbox(identity: FakeIdentity(), clock: clock, lines: lines)
         source.cycleVerification = { _, _, _, _, _ in false }
-        try placeSnapshot(source: "balancebar-mod", emailHash: SnapshotInbox.emailHash("user@example.com"), as: "r.json")
+        try placeModSnapshot(organizationHash: SnapshotInbox.hash("org-1"), as: "r.json")
         for _ in 0..<4 { feed(source, "r.json"); clock.advance(10) }
         XCTAssertEqual(lines.all.count, 1)
         XCTAssertFalse(lines.all[0].contains("repeats="))

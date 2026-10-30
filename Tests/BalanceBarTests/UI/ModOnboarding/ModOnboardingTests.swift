@@ -502,6 +502,21 @@ final class ModSyncStatusTests: XCTestCase {
             ModSyncStatus.resolve(environment: env(installation: installed), evidence: onlyRejection, now: now),
             .snapshotRejected(ModRejectionEvent(rejection: .accountMismatch, at: now.addingTimeInterval(-60))))
     }
+
+    func testOutdatedModEvidenceResolvesToUpdateRequiredAndClears() {
+        let installed = ModPluginInstallation(scope: "user", isEnabled: true, version: "1.0.0", installedAt: now.addingTimeInterval(-86_400))
+        var evidence = ModSnapshotEvidence(lastAcceptedAt: now.addingTimeInterval(-60), modOutdated: true)
+        XCTAssertEqual(
+            ModSyncStatus.resolve(environment: env(installation: installed), evidence: evidence, now: now),
+            .updateRequired)
+        evidence.modOutdated = false
+        XCTAssertEqual(
+            ModSyncStatus.resolve(environment: env(installation: installed), evidence: evidence, now: now),
+            .active(lastAcceptedAt: now.addingTimeInterval(-60)))
+        let text = RealtimeBoostPresentation.make(status: .updateRequired, timeZone: TimeZone(identifier: "UTC")!).statusText
+        XCTAssertTrue(text.contains("claude plugin marketplace update balancebar-mods"))
+        XCTAssertTrue(text.contains("claude plugin update balancebar-mod@balancebar-mods"))
+    }
 }
 
 final class ModSyncDetectorTests: XCTestCase {

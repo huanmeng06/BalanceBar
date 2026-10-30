@@ -697,6 +697,10 @@
 "mod.sync.status.rejected_account" = "스냅샷 거부됨: Claude 로그인 계정이 BalanceBar 의 현재 계정과 일치하지 않습니다";
 "mod.sync.status.rejected_cycle" = "스냅샷 거부됨: 주기가 공식 데이터와 일치하지 않아 공식 경로로 되돌아갑니다";
 "mod.sync.status.installation_unknown" = "Mod 설치 여부를 확인할 수 없습니다(플러그인 목록 실패)";
+"mod.sync.status.update_required" = "The Mod is outdated and needs an update. In a terminal run claude plugin marketplace update balancebar-mods and then claude plugin update balancebar-mod@balancebar-mods, then restart the Claude Code session";
+"mod.card.update.title" = "Update needed";
+"mod.card.update.reason" = "Third-party plugin marketplaces do not auto-update by default";
+"mod.card.update.action" = "Run claude plugin marketplace update balancebar-mods and claude plugin update balancebar-mod@balancebar-mods in a terminal, then restart the session";
 
 // Mod management window (Issue #604)
 "mod.ui.subtitle" = "Claude Code 할당량을 최신 상태로 유지";

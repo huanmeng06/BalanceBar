@@ -697,6 +697,10 @@
 "mod.sync.status.rejected_account" = "快照被拒：Claude 登录账号与 BalanceBar 当前账号不一致";
 "mod.sync.status.rejected_cycle" = "快照被拒：周期与官方数据不一致，已回退官方额度";
 "mod.sync.status.installation_unknown" = "无法确认 Mod 是否已安装（插件列表读取失败）";
+"mod.sync.status.update_required" = "Mod 版本过旧，需要更新。请在终端依次运行 claude plugin marketplace update balancebar-mods 和 claude plugin update balancebar-mod@balancebar-mods，然后重启 Claude Code 会话";
+"mod.card.update.title" = "需要更新";
+"mod.card.update.reason" = "第三方插件市场默认不自动更新";
+"mod.card.update.action" = "终端运行 claude plugin marketplace update balancebar-mods 与 claude plugin update balancebar-mod@balancebar-mods，再重启会话";
 
 // Mod management window (Issue #604)
 "mod.ui.subtitle" = "让 Claude Code 额度更新更及时";

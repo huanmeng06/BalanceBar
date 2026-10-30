@@ -79,6 +79,11 @@ public final class SnapshotInbox: QuotaSource {
     /// rejection decisions themselves are unchanged.
     public var rejectionObserver: ((SnapshotRejectionReason) -> Void)?
 
+    /// Reports the snapshot format of every attributed Mod snapshot (inbox queue): `true` when it
+    /// carries an email hash but no organization hash (Mod 1.0.0), `false` for the current format.
+    /// Pure notification; it never changes whether the snapshot is accepted.
+    public var outdatedModObserver: ((Bool) -> Void)?
+
     /// Diagnostic log sink for Mod snapshot rejections (inbox queue). Lines carry only the
     /// reason enum and the window: never an email, hash, organization or quota value.
     public var diagnosticLog: ((String) -> Void)?
@@ -323,7 +328,7 @@ public final class SnapshotInbox: QuotaSource {
     /// Writes one throttled diagnostic line for a rejected Mod snapshot. The same reason is
     /// logged at most once per `rejectionLogInterval`; the rejections skipped in between are
     /// reported as `repeats` on the next line.
-    private func logRejection(reason: String, window: String = "all") {
+    private func logRejection(reason: String, window: String = "all", event: String = "rejected") {
         guard let diagnosticLog else { return }
         let current = now()
         var suppressed = 0
@@ -337,7 +342,7 @@ public final class SnapshotInbox: QuotaSource {
         }
         rejectionLogState[reason] = (current, 0)
         let repeats = suppressed > 0 ? "; repeats=\(suppressed)" : ""
-        diagnosticLog("claude mod snapshot rejected; reason=\(reason); window=\(window)\(repeats)")
+        diagnosticLog("claude mod snapshot \(event); reason=\(reason); window=\(window)\(repeats)")
     }
 
     private func emit(_ parsed: ParsedQuotaSnapshot, adapter: QuotaSourceAdapter) {
@@ -370,6 +375,11 @@ public final class SnapshotInbox: QuotaSource {
             logRejection(reason: "missing_account_email_hash")
             rejectionObserver?(.missingAccountEmailHash)
             return
+        }
+        if isModSnapshot {
+            let outdated = parsed.accountOrganizationHash?.isEmpty != false
+            if outdated { logRejection(reason: "mod_outdated_format", event: "outdated") }
+            outdatedModObserver?(outdated)
         }
         // Organization attribution: a mismatching organization hash is foreign data. A snapshot
         // without one (older Mod) cannot prove the organization; the consumer decides whether

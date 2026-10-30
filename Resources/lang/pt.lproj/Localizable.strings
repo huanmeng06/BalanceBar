@@ -697,6 +697,10 @@
 "mod.sync.status.rejected_account" = "Instantâneo recusado: a conta de login do Claude não coincide com a conta atual do BalanceBar";
 "mod.sync.status.rejected_cycle" = "Instantâneo recusado: o ciclo não coincide com os dados oficiais; é usado o caminho oficial";
 "mod.sync.status.installation_unknown" = "Não é possível confirmar se o Mod está instalado (falha na lista de plugins)";
+"mod.sync.status.update_required" = "The Mod is outdated and needs an update. In a terminal run claude plugin marketplace update balancebar-mods and then claude plugin update balancebar-mod@balancebar-mods, then restart the Claude Code session";
+"mod.card.update.title" = "Update needed";
+"mod.card.update.reason" = "Third-party plugin marketplaces do not auto-update by default";
+"mod.card.update.action" = "Run claude plugin marketplace update balancebar-mods and claude plugin update balancebar-mod@balancebar-mods in a terminal, then restart the session";
 
 // Mod management window (Issue #604)
 "mod.ui.subtitle" = "Mantenha a cota do Claude Code atualizada";

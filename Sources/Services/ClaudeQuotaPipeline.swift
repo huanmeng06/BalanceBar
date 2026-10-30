@@ -188,6 +188,9 @@ final class ClaudeQuotaPipeline {
             case processed(accepted: Bool)
             /// The inbox refused to emit the snapshot at all.
             case rejected(reason: SnapshotRejectionReason)
+            /// The attributed Mod snapshot's format: `outdated` means it lacks the organization
+            /// hash (Mod 1.0.0) and the installed Mod needs an update.
+            case formatChecked(outdated: Bool)
             /// The signed-in account changed: the settings entry must drop all snapshot
             /// evidence gathered for the previous account.
             case accountChanged
@@ -285,6 +288,12 @@ final class ClaudeQuotaPipeline {
         // settings entry; a forwarding-time timestamp is enough because the inbox does not
         // stamp rejections with an observation time.
         snapshotInbox?.diagnosticLog = { [diagnostics] message in diagnostics(message, .info) }
+        snapshotInbox?.outdatedModObserver = { [weak self] outdated in
+            guard let self, let sink = self.modSnapshotEventSink else { return }
+            sink(ModSnapshotEvent(
+                kind: .formatChecked(outdated: outdated), window: nil, observedAt: nil,
+                receivedAt: self.now()))
+        }
         snapshotInbox?.rejectionObserver = { [weak self] reason in
             guard let self, let sink = self.modSnapshotEventSink else { return }
             sink(ModSnapshotEvent(
