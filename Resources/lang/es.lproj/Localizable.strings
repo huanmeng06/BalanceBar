@@ -618,7 +618,6 @@
 "claude.timeline.tooltip.oauth_rule" = "Mientras los datos del Mod sean válidos, BalanceBar no consulta la API oficial; aun así calibra al menos cada hora.";
 "claude.timeline.hover.time" = "Hora";
 "claude.timeline.hover.refreshes" = "Actualizaciones";
-"claude.timeline.hover.valid_until" = "Válido hasta";
 "claude.timeline.hover.refresh_count" = "%1$@×";
 "claude.timeline.duration.seconds" = "%1$@ s";
 "claude.timeline.duration.minutes" = "%1$@ min";
@@ -630,16 +629,13 @@
 "claude.timeline.window.five_hour" = "5 h";
 "claude.timeline.window.seven_day" = "7 d";
 "claude.timeline.value.reset" = "Reinicio %1$@";
-"claude.timeline.hover.value_source" = "Valores";
-"claude.timeline.hover.request_started" = "Solicitud enviada";
-"claude.timeline.hover.before_expiry" = "Anticipación · %1$@ antes de que venza Mod (vence %2$@)";
+"claude.timeline.hover.before_expiry" = "Anticipación · %1$@ antes de que venza Mod";
 "claude.timeline.window.not_included" = "No incluido";
 "claude.timeline.value.displayed" = "Usado como valor mostrado";
 "claude.timeline.value.evidence" = "Solo evidencia de vigencia";
 "claude.timeline.estimate.label" = "Próxima solicitud";
-"claude.timeline.estimate.scheduled" = "%1$@ (%3$@) · %2$@";
+"claude.timeline.estimate.scheduled" = "%1$@ (%2$@)";
 "claude.timeline.estimate.cooldown" = "En espera hasta %1$@";
-"claude.timeline.estimate.delayed" = "Aplazada hasta %1$@ (%4$@) · %2$@ (%3$@)";
 "claude.timeline.trigger.manual_refresh" = "Actualización manual";
 "claude.timeline.trigger.first_read" = "Primera lectura";
 "claude.timeline.trigger.reset_confirmation" = "Confirmación de reinicio";

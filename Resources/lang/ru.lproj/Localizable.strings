@@ -618,7 +618,6 @@
 "claude.timeline.tooltip.oauth_rule" = "Пока данные Mod действительны, BalanceBar не обращается к официальному API; калибровка всё равно не реже раза в час.";
 "claude.timeline.hover.time" = "Время";
 "claude.timeline.hover.refreshes" = "Обновления";
-"claude.timeline.hover.valid_until" = "Действует до";
 "claude.timeline.hover.refresh_count" = "%1$@ раз";
 "claude.timeline.duration.seconds" = "%1$@ с";
 "claude.timeline.duration.minutes" = "%1$@ мин";
@@ -630,16 +629,13 @@
 "claude.timeline.window.five_hour" = "5 ч";
 "claude.timeline.window.seven_day" = "7 дн.";
 "claude.timeline.value.reset" = "Сброс %1$@";
-"claude.timeline.hover.value_source" = "Значения";
-"claude.timeline.hover.request_started" = "Запрос отправлен";
-"claude.timeline.hover.before_expiry" = "Предзагрузка · за %1$@ до истечения Mod (истекает %2$@)";
+"claude.timeline.hover.before_expiry" = "Предзагрузка · за %1$@ до истечения Mod";
 "claude.timeline.window.not_included" = "Не включено";
 "claude.timeline.value.displayed" = "Использовано как отображаемое значение";
 "claude.timeline.value.evidence" = "Только подтверждение актуальности";
 "claude.timeline.estimate.label" = "Следующий запрос";
-"claude.timeline.estimate.scheduled" = "%1$@ (%3$@) · %2$@";
+"claude.timeline.estimate.scheduled" = "%1$@ (%2$@)";
 "claude.timeline.estimate.cooldown" = "Ожидание до %1$@";
-"claude.timeline.estimate.delayed" = "Отложено до %1$@ (%4$@) · %2$@ (%3$@)";
 "claude.timeline.trigger.manual_refresh" = "Ручное обновление";
 "claude.timeline.trigger.first_read" = "Первое чтение";
 "claude.timeline.trigger.reset_confirmation" = "Подтверждение сброса";

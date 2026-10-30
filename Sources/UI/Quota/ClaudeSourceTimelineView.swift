@@ -607,8 +607,9 @@ final class ClaudeSourceTimelineView: NSView {
             if !uniform { text += " · " + sourceText(adopted: adopted(window)) }
             return .init(label: label, value: text)
         }
+        if !rows.isEmpty { rows[0].gapBefore = true }
         if uniform, let first = present.first {
-            rows.append(.init(label: tr(.keyClaudeTimelineHoverValueSource), value: sourceText(adopted: adopted(first))))
+            rows.append(.init(label: "", value: sourceText(adopted: adopted(first))))
         }
         return rows
     }
@@ -631,25 +632,25 @@ final class ClaudeSourceTimelineView: NSView {
     private func estimateRows(
         _ estimate: FetchAutomaticRequestEstimate, skippingAuthStates: Bool = false
     ) -> [ClaudeSourceTimelineTooltipContent.Row] {
-        let value: String
+        let label = tr(.keyClaudeTimelineEstimateLabel)
+        func when(_ date: Date) -> String {
+            tr(.keyClaudeTimelineEstimateScheduled, arguments: [time(date), relativeText(until: date, from: estimate.evaluatedAt)])
+        }
+        func rows(_ value: String, caption: String? = nil) -> [ClaudeSourceTimelineTooltipContent.Row] {
+            [.init(label: label, value: value, gapBefore: true)] + (caption.map { [.init(label: "", value: $0)] } ?? [])
+        }
         switch estimate.state {
         case .signedOut, .unauthorizedPaused:
             if skippingAuthStates { return [] }
-            value = tr(estimate.state == .signedOut ? .keyClaudeTimelineFailureMissingCredentials : .keyClaudeTimelineFailureUnauthorized)
-        case .inFlight: value = localize(.hoverRefreshing)
-        case let .scheduled(at, trigger):
-            value = tr(.keyClaudeTimelineEstimateScheduled, arguments: [
-                time(at), triggerText(trigger), relativeText(until: at, from: estimate.evaluatedAt)])
-        case let .coolingDown(until):
-            value = tr(.keyClaudeTimelineEstimateCooldown, arguments: [time(until)])
+            return rows(tr(estimate.state == .signedOut ? .keyClaudeTimelineFailureMissingCredentials : .keyClaudeTimelineFailureUnauthorized))
+        case .inFlight: return rows(localize(.hoverRefreshing))
+        case let .scheduled(at, trigger): return rows(when(at), caption: triggerText(trigger))
+        case let .coolingDown(until): return rows(tr(.keyClaudeTimelineEstimateCooldown, arguments: [time(until)]))
         case let .delayed(reason, until, trigger):
             let reasonText = reason == .insufficientTokens
                 ? tr(.keyClaudeTimelineDelayInsufficientTokens) : tr(.keyClaudeTimelineDelayFailureBackoff)
-            value = tr(.keyClaudeTimelineEstimateDelayed, arguments: [
-                time(until), triggerText(trigger), reasonText,
-                relativeText(until: until, from: estimate.evaluatedAt)])
+            return rows(when(until), caption: triggerText(trigger) + " · " + reasonText)
         }
-        return [.init(label: tr(.keyClaudeTimelineEstimateLabel), value: value)]
     }
 
     private func relativeText(until: Date, from: Date) -> String {
@@ -674,17 +675,14 @@ final class ClaudeSourceTimelineView: NSView {
         }
     }
 
-    /// When the request started and what triggered it; prefetches also say how early they began.
+    /// What triggered the request and when it started; prefetches also say how early they began.
     private func requestRows(_ request: ClaudeSourceTimeline.Request) -> [ClaudeSourceTimelineTooltipContent.Row] {
         var trigger = triggerText(request.trigger)
         if request.trigger == .sourceExpiryPrefetch, let expiry = request.sourceExpiryAt {
             trigger = tr(.keyClaudeTimelineHoverBeforeExpiry, arguments: [
-                Self.durationText(max(0, expiry.timeIntervalSince(request.startedAt))), time(expiry)])
+                Self.durationText(max(0, expiry.timeIntervalSince(request.startedAt)))])
         }
-        return [
-            .init(label: tr(.keyClaudeTimelineHoverRequestStarted), value: time(request.startedAt)),
-            .init(label: tr(.keyClaudeTimelineHoverTrigger), value: trigger),
-        ]
+        return [.init(label: tr(.keyClaudeTimelineHoverTrigger), value: trigger + " · " + time(request.startedAt), gapBefore: true)]
     }
 
     /// "45 秒" / "3 分钟" / "1 小时 5 分钟".
@@ -701,13 +699,9 @@ final class ClaudeSourceTimelineView: NSView {
         switch target {
         case let .piece(piece):
             let last = piece.readings[piece.readings.count - 1]
-            let ongoing = piece.end >= now()
-            let span = ongoing
-                ? time(piece.start) + " – " + tr(.keyClaudeTimelineNow)
-                : time(piece.start) + " – " + time(piece.end)
-                    + " · " + Self.durationText(piece.end.timeIntervalSince(piece.start))
+            let span = time(piece.start) + " – " + time(piece.end)
+                + " · " + Self.durationText(piece.end.timeIntervalSince(piece.start))
             var rows: [ClaudeSourceTimelineTooltipContent.Row] = [.init(label: tr(.keyClaudeTimelineHoverTime), value: span)]
-            if ongoing { rows.append(.init(label: tr(.keyClaudeTimelineHoverValidUntil), value: time(piece.end))) }
             if piece.readings.count > 1 {
                 rows.append(.init(
                     label: tr(.keyClaudeTimelineHoverRefreshes),
@@ -1097,7 +1091,7 @@ final class ClaudeSourceTimelineView: NSView {
             if let end = request.completedAt { summary += " – " + time(end) }
             if request.trigger == .sourceExpiryPrefetch, let expiry = request.sourceExpiryAt {
                 summary += ", " + tr(.keyClaudeTimelineHoverBeforeExpiry, arguments: [
-                    Self.durationText(max(0, expiry.timeIntervalSince(request.startedAt))), time(expiry)
+                    Self.durationText(max(0, expiry.timeIntervalSince(request.startedAt)))
                 ])
             }
             return summary
@@ -1155,9 +1149,12 @@ final class ClaudeSourceTimelineView: NSView {
 
 /// What a block's tooltip says: a heading with the source color, then label/value rows.
 struct ClaudeSourceTimelineTooltipContent: Equatable {
+    /// An empty label makes the row a quiet caption under the row above it.
     struct Row: Equatable {
         var label: String
         var value: String
+        /// Opens a new group: extra space above this row.
+        var gapBefore = false
     }
 
     var title: String
@@ -1166,7 +1163,7 @@ struct ClaudeSourceTimelineTooltipContent: Equatable {
 
     /// One line per row, for tests and logs.
     var plainText: String {
-        ([title] + rows.map { $0.label + " " + $0.value }).joined(separator: "\n")
+        ([title] + rows.map { $0.label.isEmpty ? $0.value : $0.label + " " + $0.value }).joined(separator: "\n")
     }
 }
 
@@ -1189,6 +1186,8 @@ final class ClaudeSourceTimelineTooltipViewController: NSViewController {
     static let dotGap: CGFloat = 6
     static let headingGap: CGFloat = 11
     static let rowGap: CGFloat = 5
+    static let groupGap: CGFloat = 12
+    static let captionGap: CGFloat = 2
     static let columnGap: CGFloat = 18
 
     /// Frame layout measured from each label's own size: the popover always fits its text.
@@ -1203,16 +1202,30 @@ final class ClaudeSourceTimelineTooltipViewController: NSViewController {
         }
         let title = label(content.title, font: .systemFont(ofSize: 13, weight: .semibold), color: .labelColor)
         let rows = content.rows.map { row in
-            (label(row.label, font: .systemFont(ofSize: 12), color: .secondaryLabelColor),
-             label(row.value, font: .monospacedDigitSystemFont(ofSize: 12, weight: .medium), color: .labelColor))
+            row.label.isEmpty
+                ? (label("", font: .systemFont(ofSize: 12), color: .secondaryLabelColor),
+                   label(row.value, font: .systemFont(ofSize: 11), color: .secondaryLabelColor))
+                : (label(row.label, font: .systemFont(ofSize: 12), color: .secondaryLabelColor),
+                   label(row.value, font: .monospacedDigitSystemFont(ofSize: 12, weight: .medium), color: .labelColor))
         }
+        let isCaption = content.rows.map { $0.label.isEmpty }
         let labelWidth = ceil(rows.map { $0.0.frame.width }.max() ?? 0)
-        let valueWidth = ceil(rows.map { $0.1.frame.width }.max() ?? 0)
-        let rowHeight = ceil(rows.map { max($0.0.frame.height, $0.1.frame.height) }.max() ?? 0)
+        let valueWidth = ceil(zip(rows, isCaption).filter { !$0.1 }.map { $0.0.1.frame.width }.max() ?? 0)
+        let captionWidth = ceil(zip(rows, isCaption).filter { $0.1 }.map { $0.0.1.frame.width }.max() ?? 0)
+        let rowHeight = ceil(zip(rows, isCaption).filter { !$0.1 }.map { max($0.0.0.frame.height, $0.0.1.frame.height) }.max() ?? 0)
+        let captionHeight = ceil(zip(rows, isCaption).filter { $0.1 }.map { $0.0.1.frame.height }.max() ?? 0)
+        // Top of each row: groups are separated by a wider gap, a caption hugs the row it explains.
+        var tops: [CGFloat] = []
+        var cursor: CGFloat = 0
+        for (index, caption) in isCaption.enumerated() {
+            if index > 0 { cursor += caption ? Self.captionGap : (content.rows[index].gapBefore ? Self.groupGap : Self.rowGap) }
+            tops.append(cursor)
+            cursor += caption ? captionHeight : rowHeight
+        }
         let titleWidth = Self.dotSize + Self.dotGap + ceil(title.frame.width)
-        let gridWidth = rows.isEmpty ? 0 : labelWidth + Self.columnGap + valueWidth
+        let gridWidth = rows.isEmpty ? 0 : labelWidth + Self.columnGap + max(valueWidth, captionWidth)
         let contentWidth = max(titleWidth, gridWidth)
-        let gridHeight = rows.isEmpty ? 0 : CGFloat(rows.count) * rowHeight + CGFloat(rows.count - 1) * Self.rowGap
+        let gridHeight = cursor
         let titleHeight = ceil(title.frame.height)
         let size = NSSize(
             width: contentWidth + 2 * Self.horizontalInset,
@@ -1238,13 +1251,14 @@ final class ClaudeSourceTimelineTooltipViewController: NSViewController {
             root.addSubview(rule)
         }
         var y = Self.verticalInset + titleHeight + Self.headingGap
-        for (name, value) in rows {
-            name.frame = NSRect(x: Self.horizontalInset, y: y, width: labelWidth, height: rowHeight)
+        for (index, (name, value)) in rows.enumerated() {
+            let height = isCaption[index] ? captionHeight : rowHeight
+            name.frame = NSRect(x: Self.horizontalInset, y: y + tops[index], width: labelWidth, height: height)
             value.frame = NSRect(
-                x: Self.horizontalInset + labelWidth + Self.columnGap, y: y, width: valueWidth, height: rowHeight)
+                x: Self.horizontalInset + labelWidth + Self.columnGap, y: y + tops[index],
+                width: ceil(value.frame.width), height: height)
             root.addSubview(name)
             root.addSubview(value)
-            y += rowHeight + Self.rowGap
         }
         root.setAccessibilityElement(true)
         root.setAccessibilityRole(.staticText)

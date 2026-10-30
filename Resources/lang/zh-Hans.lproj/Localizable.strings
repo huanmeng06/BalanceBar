@@ -618,7 +618,6 @@
 "claude.timeline.tooltip.oauth_rule" = "Mod 数据有效期内不向官方查询；至少每小时向官方校准一次。";
 "claude.timeline.hover.time" = "时间";
 "claude.timeline.hover.refreshes" = "刷新";
-"claude.timeline.hover.valid_until" = "有效期至";
 "claude.timeline.hover.refresh_count" = "%1$@ 次";
 "claude.timeline.duration.seconds" = "%1$@ 秒";
 "claude.timeline.duration.minutes" = "%1$@ 分钟";
@@ -630,16 +629,13 @@
 "claude.timeline.window.five_hour" = "5 小时";
 "claude.timeline.window.seven_day" = "7 日";
 "claude.timeline.value.reset" = "%1$@ 重置";
-"claude.timeline.hover.value_source" = "数值";
-"claude.timeline.hover.request_started" = "发起时间";
-"claude.timeline.hover.before_expiry" = "预取 · Mod 到期前 %1$@ 发起（预计 %2$@ 到期）";
+"claude.timeline.hover.before_expiry" = "预取 · Mod 到期前 %1$@ 发起";
 "claude.timeline.window.not_included" = "未包含";
 "claude.timeline.value.displayed" = "已采用为显示值";
 "claude.timeline.value.evidence" = "仅作新鲜度证据";
 "claude.timeline.estimate.label" = "下次自动请求";
-"claude.timeline.estimate.scheduled" = "%1$@（%3$@）· %2$@";
+"claude.timeline.estimate.scheduled" = "%1$@ (%2$@)";
 "claude.timeline.estimate.cooldown" = "冷却中，最早 %1$@";
-"claude.timeline.estimate.delayed" = "推迟至 %1$@（%4$@）· %2$@（%3$@）";
 "claude.timeline.trigger.manual_refresh" = "手动刷新";
 "claude.timeline.trigger.first_read" = "首次读取";
 "claude.timeline.trigger.reset_confirmation" = "重置确认";

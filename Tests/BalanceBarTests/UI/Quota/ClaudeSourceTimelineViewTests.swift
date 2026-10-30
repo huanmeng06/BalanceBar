@@ -168,10 +168,10 @@ final class ClaudeSourceTimelineViewTests: XCTestCase {
         let modBar = try! XCTUnwrap(layout.bars.first { $0.source == .mod })
         let reading = view.hoverContent(for: try! XCTUnwrap(layout.hoverTarget(at: CGPoint(x: modBar.rect.midX, y: modBar.rect.midY))))
         XCTAssertEqual(reading.title, "Mod")
-        XCTAssertEqual(Array(reading.rows.prefix(2)), [
-            .init(label: tr(.keyClaudeTimelineHoverTime), value: "07:59:00 – " + tr(.keyClaudeTimelineNow)),
-            .init(label: tr(.keyClaudeTimelineHoverValidUntil), value: "08:01:00"),
-        ], "type heading, the range so far and when the running block runs out; one refresh is not worth a row")
+        XCTAssertEqual(reading.rows.first,
+            .init(label: tr(.keyClaudeTimelineHoverTime),
+                  value: "07:59:00 – 08:01:00 · " + ClaudeSourceTimelineView.durationText(120)),
+            "type heading, then one range-and-duration row; a single refresh is not worth a row")
         let band = try! XCTUnwrap(layout.bands.first)
         let failure = view.hoverContent(for: .band(band))
         XCTAssertEqual(failure.title, "OAuth API · " + tr(.keyClaudeTimelineFailureNetwork))
@@ -280,9 +280,8 @@ final class ClaudeSourceTimelineViewTests: XCTestCase {
         let formats: [(LocalizationKey, [String])] = [
             (.keyClaudeTimelineEstimateIn, ["5"]),
             (.keyClaudeTimelineEstimateCooldown, ["10:00"]),
-            (.keyClaudeTimelineEstimateScheduled, ["10:00", "x", "y"]),
-            (.keyClaudeTimelineEstimateDelayed, ["10:00", "x", "y", "z"]),
-            (.keyClaudeTimelineHoverBeforeExpiry, ["9", "10:00"]),
+            (.keyClaudeTimelineEstimateScheduled, ["10:00", "x"]),
+            (.keyClaudeTimelineHoverBeforeExpiry, ["9"]),
             (.keyClaudeTimelineValueReset, ["10:00"]),
             (.keyClaudeTimelineHoverRefreshCount, ["2"]),
         ]
@@ -302,8 +301,7 @@ final class ClaudeSourceTimelineViewTests: XCTestCase {
                       value: tr(.keyClaudeTimelineHoverRefreshCount, arguments: ["12"], language: language)),
                 .init(label: tr(.keyClaudeTimelineWindowFiveHour, language: language),
                       value: "6.0% · " + tr(.keyClaudeTimelineValueReset, arguments: ["06:10"], language: language)),
-                .init(label: tr(.keyClaudeTimelineHoverValueSource, language: language),
-                      value: tr(.keyClaudeTimelineValueDisplayed, language: language)),
+                .init(label: "", value: tr(.keyClaudeTimelineValueDisplayed, language: language)),
             ]
             let controller = ClaudeSourceTimelineTooltipViewController(
                 content: .init(title: "OAuth API · " + tr(.keyClaudeTimelineFailureNetwork, language: language), color: .systemBlue, rows: rows))
@@ -331,7 +329,7 @@ final class ClaudeSourceTimelineViewTests: XCTestCase {
                   value: "6.0% · " + tr(.keyClaudeTimelineValueReset, arguments: ["06:10"])),
             .init(label: tr(.keyClaudeTimelineWindowSevenDay),
                   value: "58.0% · " + tr(.keyClaudeTimelineValueReset, arguments: ["10/31 05:00"])),
-            .init(label: tr(.keyClaudeTimelineHoverValueSource), value: tr(.keyClaudeTimelineValueDisplayed)),
+            .init(label: "", value: tr(.keyClaudeTimelineValueDisplayed)),
         ])
         let directory = ProcessInfo.processInfo.environment["BB_TIMELINE_RENDER_DIR"].map { URL(fileURLWithPath: $0) }
         for appearanceName in [NSAppearance.Name.aqua, .darkAqua] {
@@ -367,12 +365,12 @@ final class ClaudeSourceTimelineViewTests: XCTestCase {
             let layout = view.makeLayout()
             let bar = layout.bars.first { $0.source == .mod }
             return bar.flatMap { layout.hoverTarget(at: CGPoint(x: $0.rect.midX, y: $0.rect.midY)) }
-                .map { view.hoverContent(for: $0) }?.rows.first(where: { $0.label == tr(.keyClaudeTimelineHoverValidUntil) })?.value
+                .map { view.hoverContent(for: $0) }?.rows.first(where: { $0.label == tr(.keyClaudeTimelineHoverTime) })?.value
         }
-        XCTAssertEqual(validUntil(), "08:01:00")
+        XCTAssertTrue(validUntil()?.contains("08:01:00") == true, validUntil() ?? "nil")
 
         view.updateTimeZone(TimeZone(secondsFromGMT: 9 * 3600)!)
-        XCTAssertEqual(validUntil(), "17:01:00")
+        XCTAssertTrue(validUntil()?.contains("17:01:00") == true, validUntil() ?? "nil")
         XCTAssertNotEqual(view.statusSlot.hoverText, slotBefore)
     }
 
