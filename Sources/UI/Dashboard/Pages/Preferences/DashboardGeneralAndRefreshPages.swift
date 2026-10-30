@@ -249,6 +249,8 @@ final class DashboardAdaptiveControlsStackView: NSStackView, SettingsRowAccessor
     private(set) var stacksControlsVertically = false
     var allowsTextDrivenDedicatedRow = false
     var minimumInlineLabelWidth: CGFloat = 0
+    /// Opt-in: also stack the controls once the row's label no longer fits beside them side by side.
+    var stacksWhenLabelCannotFitBeside = false
 
     func updateAvailableRowWidth(_ width: CGFloat) {
         let normalizedWidth = max(0, width)
@@ -286,7 +288,12 @@ final class DashboardAdaptiveControlsStackView: NSStackView, SettingsRowAccessor
     }
 
     private func updateOrientationIfNeeded() {
-        let wantsVertical = availableRowWidth > 0 && availableRowWidth + 0.5 < naturalHorizontalAccessoryWidth
+        // Judged on the horizontal width, so stacking never feeds back into the decision.
+        var horizontalLimit = naturalHorizontalAccessoryWidth
+        if stacksWhenLabelCannotFitBeside {
+            horizontalLimit += SettingsRowView.contentSpacing + minimumInlineLabelWidth
+        }
+        let wantsVertical = availableRowWidth > 0 && availableRowWidth + 0.5 < horizontalLimit
         let desiredOrientation: NSUserInterfaceLayoutOrientation = wantsVertical ? .vertical : .horizontal
         let orientationChanged = orientation != desiredOrientation
         let stackingChanged = stacksControlsVertically != wantsVertical
@@ -670,6 +677,7 @@ final class DashboardGeneralPage {
         timeZoneControls.alignment = .centerY
         timeZoneControls.spacing = 12
         timeZoneControls.minimumInlineLabelWidth = SettingsRowView.minimumInlineLabelWidth
+        timeZoneControls.stacksWhenLabelCannotFitBeside = true
         timeZoneControls.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         timeZoneControls.setContentHuggingPriority(.defaultLow, for: .horizontal)
         self.timeZoneComboBox = timeZoneComboBox
