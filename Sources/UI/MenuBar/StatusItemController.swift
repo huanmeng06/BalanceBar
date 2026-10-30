@@ -2218,9 +2218,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         /// Date until which the visible official quota is rate-limited, read
         /// when the menu validates its items; nil when refresh is available.
         let manualRefreshBlockedUntil: () -> Date?
-        /// Why a manual refresh would be skipped for the visible official quota;
+        /// Whether the visible official quota is paused on a rejected login (401);
         /// read when the menu validates its items.
-        let manualRefreshNotice: () -> ClaudeManualRefreshNotice?
+        let isClaudeLoginExpired: () -> Bool
 
         init(
             manualRefresh: @escaping () -> Void,
@@ -2239,11 +2239,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             animationFallbackChanged: @escaping (Bool) -> Void = { _ in },
             visibilityChanged: @escaping (StatusItemVisibility) -> Void = { _ in },
             manualRefreshBlockedUntil: @escaping () -> Date? = { nil },
-            manualRefreshNotice: @escaping () -> ClaudeManualRefreshNotice? = { nil },
+            isClaudeLoginExpired: @escaping () -> Bool = { false },
             showModOnboarding: @escaping () -> Void = {}
         ) {
             self.manualRefreshBlockedUntil = manualRefreshBlockedUntil
-            self.manualRefreshNotice = manualRefreshNotice
+            self.isClaudeLoginExpired = isClaudeLoginExpired
             self.manualRefresh = manualRefresh
             self.openDashboard = openDashboard
             self.openChatGPT = openChatGPT
@@ -6123,36 +6123,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         actions.manualRefreshBlockedUntil().map { Date() >= $0 } ?? true
     }
 
-    /// The refresh item explains a skipped refresh up front, since the menu closes on click.
-    /// The action title stays fixed; the state goes in the secondary subtitle.
-    func manualRefreshMenuSubtitle(now: Date = Date()) -> String? {
-        switch actions.manualRefreshNotice() {
-        case nil:
-            return nil
-        case .loginExpired?:
-            return tr(.keyStatusItemControllerRefreshNowLoginExpired)
-        case let .rateLimited(until)?:
-            let remaining = DateComponentsFormatter()
-            remaining.unitsStyle = .abbreviated
-            remaining.allowedUnits = [.hour, .minute]
-            remaining.maximumUnitCount = 1
-            let text = remaining.string(from: max(60, until.timeIntervalSince(now).rounded(.up))) ?? ""
-            return tr(.keyStatusItemControllerRefreshNowRateLimited, arguments: [text])
-        case .justRefreshed?:
-            return tr(.keyStatusItemControllerRefreshNowJustRefreshed)
-        case let .recentResult(until)?:
-            let seconds = Int(max(0, until.timeIntervalSince(now).rounded(.up)))
-            return tr(.keyStatusItemControllerRefreshNowRecentResult, arguments: ["\(seconds)"])
-        case let .outOfTokens(until)?:
-            let seconds = Int(max(0, until.timeIntervalSince(now).rounded(.up)))
-            return tr(.keyStatusItemControllerRefreshNowOutOfTokens, arguments: ["\(seconds)"])
-        case .awaitingResetConfirmation?:
-            return tr(.keyStatusItemControllerRefreshNowAwaitingConfirmation)
-        case .localFresh?, .inFlight?:
-            return tr(.keyStatusItemControllerRefreshNowJustRefreshed)
-        case .networkUnavailable?, .succeeded?:
-            return nil
-        }
+    /// The refresh item only says something when the login has expired: that is the one state the user
+    /// must act on (the menu closes on click). The action title stays fixed; the hint is the subtitle.
+    func manualRefreshMenuSubtitle() -> String? {
+        actions.isClaudeLoginExpired() ? tr(.keyStatusItemControllerRefreshNowLoginExpired) : nil
     }
 
     private func applyManualRefreshContent(to item: NSMenuItem) {
@@ -6168,11 +6142,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         if #available(macOS 14.4, *), !needsManualLayout {
             item.attributedTitle = nil
             item.subtitle = subtitle
-        } else if let subtitle {
+        } else if subtitle != nil {
             if #available(macOS 14.4, *) { item.subtitle = nil }
             let text = NSMutableAttributedString(
                 string: title, attributes: [.font: NSFont.menuFont(ofSize: 0)])
-            text.append(NSAttributedString(string: "\n" + (needsManualLayout ? lines.joined(separator: "\n") : subtitle), attributes: [
+            text.append(NSAttributedString(string: "\n" + lines.joined(separator: "\n"), attributes: [
                 .font: font,
                 .foregroundColor: NSColor.secondaryLabelColor
             ]))

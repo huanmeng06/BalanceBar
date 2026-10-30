@@ -143,7 +143,8 @@
 "dashboard.advanced.page.source_validity" = "Validity of each Claude data source";
 "dashboard.advanced.page.source_validity_oauth" = "Official quota validity";
 "dashboard.advanced.page.source_validity_mod" = "Mod push validity";
-"dashboard.advanced.page.source_validity_warning" = "Validity is short: once it expires, fresh data may not arrive until the next official calibration (every %1$@ min). Set at least %2$@ min.";
+"dashboard.advanced.page.source_validity_warning" = "Validity is short: once it expires, fresh data may not arrive until the next official calibration (every %1$@ min). Pick %2$@ min.";
+"dashboard.advanced.page.source_validity_no_option" = "Official calibration runs every %1$@ min, so every validity option may leave a short gap. Shorten the official calibration interval.";
 "dashboard.advanced.page.validity_minutes" = "%1$@ min";
 "dashboard.general.and.refresh.pages.update_channel" = "Update Channel";
 "dashboard.general.and.refresh.pages.update_channel_description" = "Choose whether to check Stable or Beta releases";
@@ -599,11 +600,6 @@
 "quota.status.accessibility" = "Quota status: %1$@";
 "claude.refresh.login_expired" = "Claude Code sign-in has expired. Run claude once in a terminal to restore it; BalanceBar never renews the login itself.";
 "status.item.controller.refresh_now_login_expired" = "Sign-in credentials expired, run the Claude Code CLI in a terminal again";
-"status.item.controller.refresh_now_rate_limited" = "Rate limited, available in %1$@";
-"status.item.controller.refresh_now_just_refreshed" = "Just refreshed";
-"status.item.controller.refresh_now_recent_result" = "Just refreshed · retry in %1$@ s";
-"status.item.controller.refresh_now_awaiting_confirmation" = "Awaiting official reset confirmation; click to confirm now";
-"status.item.controller.refresh_now_out_of_tokens" = "Refreshing too often, retry in %1$@ s";
 "claude.quota.calibration" = "Claude official quota calibration";
 "claude.source_tag.all_clients" = "All clients";
 "claude.source_tag.desktop" = "Desktop first";

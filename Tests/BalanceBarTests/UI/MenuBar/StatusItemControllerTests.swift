@@ -3470,11 +3470,11 @@ extension StatusItemControllerTests {
     }
 
     @MainActor
-    func testRefreshItemExplainsLoginExpiredRateLimitAndJustRefreshed() throws {
-        var notice: ClaudeManualRefreshNotice?
+    func testRefreshItemShowsASubtitleOnlyWhenTheLoginExpired() throws {
+        var loginExpired = false
         let controller = StatusItemController(actions: .init(manualRefresh: {}, openDashboard: {}, openChatGPT: {},
             openCCSwitch: {}, quit: {}, switchProvider: { _ in }, openProviderWebsite: {}, openStatusLink: { _ in },
-            iconChanged: { _ in }, manualRefreshNotice: { notice }))
+            iconChanged: { _ in }, isClaudeLoginExpired: { loginExpired }))
         defer { controller.teardown() }
         let input = StatusItemController.MenuInput(choices: [], quickSwitchSummaries: [:], activeClient: .claude,
             openAIAccount: nil, statusLinks: [], showQuickSwitchMenu: false, showOpenChatGPTMenu: false,
@@ -3485,40 +3485,25 @@ extension StatusItemControllerTests {
         let actionTitle = tr(.keyStatusItemControllerRefreshNow)
         func assertRefresh(subtitle: String?, _ message: String, line: UInt = #line) {
             XCTAssertEqual(refresh.title.components(separatedBy: "\n").first, actionTitle, "the action title never carries the status", line: line)
-            if #available(macOS 14.4, *) {
-                // A subtitle wider than the menu is wrapped by hand into the attributed title.
-                let shown = refresh.subtitle ?? refresh.attributedTitle?.string
-                    .components(separatedBy: "\n").dropFirst().joined(separator: " ")
-                func squeezed(_ text: String?) -> String? { text.map { $0.filter { !$0.isWhitespace } } }
-                XCTAssertEqual(squeezed(shown?.isEmpty == true ? nil : shown), squeezed(subtitle), message, line: line)
+            // A long subtitle is wrapped by hand into the attributed title; a short one uses the native subtitle.
+            var shown: String?
+            if #available(macOS 14.4, *), let native = refresh.subtitle { shown = native }
+            if shown == nil, let attributed = refresh.attributedTitle?.string {
+                let rest = attributed.components(separatedBy: "\n").dropFirst()
+                shown = rest.isEmpty ? nil : rest.joined()
             }
+            // Wrapping trims the space at a break, so compare without whitespace.
+            func squashed(_ text: String?) -> String? { text?.filter { !$0.isWhitespace } }
+            XCTAssertEqual(squashed(shown), squashed(subtitle), message, line: line)
         }
 
-        assertRefresh(subtitle: nil, "no notice, no subtitle")
-        notice = .loginExpired
+        assertRefresh(subtitle: nil, "a healthy login shows no subtitle")
+        loginExpired = true
         XCTAssertTrue(controller.validateMenuItem(refresh), "a paused login can still be retried after claude renews it")
         assertRefresh(subtitle: tr(.keyStatusItemControllerRefreshNowLoginExpired), "login expired")
-        notice = .rateLimited(until: Date().addingTimeInterval(900))
+        loginExpired = false
         _ = controller.validateMenuItem(refresh)
-        assertRefresh(subtitle: tr(.keyStatusItemControllerRefreshNowRateLimited, arguments: ["15m"]), "rate limited")
-        notice = .justRefreshed
-        _ = controller.validateMenuItem(refresh)
-        assertRefresh(subtitle: tr(.keyStatusItemControllerRefreshNowJustRefreshed), "just refreshed")
-        notice = .recentResult(until: Date().addingTimeInterval(-10))
-        _ = controller.validateMenuItem(refresh)
-        assertRefresh(subtitle: tr(.keyStatusItemControllerRefreshNowRecentResult, arguments: ["0"]),
-                      "a recent result counts down to the next useful retry")
-        notice = .awaitingResetConfirmation
-        _ = controller.validateMenuItem(refresh)
-        assertRefresh(subtitle: tr(.keyStatusItemControllerRefreshNowAwaitingConfirmation),
-                      "a pending reset explains itself instead of silently skipping")
-        notice = .outOfTokens(until: Date().addingTimeInterval(-10))
-        _ = controller.validateMenuItem(refresh)
-        assertRefresh(subtitle: tr(.keyStatusItemControllerRefreshNowOutOfTokens, arguments: ["0"]),
-                      "an exhausted budget counts down to the next token")
-        notice = nil
-        _ = controller.validateMenuItem(refresh)
-        assertRefresh(subtitle: nil, "the subtitle clears with the notice")
+        assertRefresh(subtitle: nil, "the subtitle clears with the expiry")
     }
 
     @MainActor

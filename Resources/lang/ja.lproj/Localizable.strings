@@ -143,7 +143,8 @@
 "dashboard.advanced.page.source_validity" = "Claude データソースごとの有効時間";
 "dashboard.advanced.page.source_validity_oauth" = "公式クォータの有効時間";
 "dashboard.advanced.page.source_validity_mod" = "Mod プッシュの有効時間";
-"dashboard.advanced.page.source_validity_warning" = "有効期間が短めです。期限切れ後、次の公式校正（%1$@ 分ごと）まで最新データが届かない場合があります。%2$@ 分以上を推奨します。";
+"dashboard.advanced.page.source_validity_warning" = "有効期間が短めです。期限切れ後、次の公式校正（%1$@ 分ごと）まで最新データが届かない場合があります。%2$@ 分を選択してください。";
+"dashboard.advanced.page.source_validity_no_option" = "公式校正は %1$@ 分ごとのため、どの有効期間でも短い空白が生じる可能性があります。公式校正の間隔を短くしてください。";
 "dashboard.advanced.page.validity_minutes" = "%1$@分";
 "dashboard.general.and.refresh.pages.update_channel" = "更新チャンネル";
 "dashboard.general.and.refresh.pages.update_channel_description" = "正式版またはベータテストの更新を確認するか選択します";
@@ -599,11 +600,6 @@
 "quota.status.accessibility" = "クォータの状態：%1$@";
 "claude.refresh.login_expired" = "Claude Code のサインインが期限切れです。ターミナルで claude を一度実行すると復旧します。BalanceBar がサインインを自動更新することはありません。";
 "status.item.controller.refresh_now_login_expired" = "ログイン資格情報が期限切れです。ターミナルで Claude Code CLI をもう一度実行してください";
-"status.item.controller.refresh_now_rate_limited" = "レート制限中、%1$@後に利用可能";
-"status.item.controller.refresh_now_just_refreshed" = "直前に更新済み";
-"status.item.controller.refresh_now_recent_result" = "直前に更新済み · %1$@秒後に再試行できます";
-"status.item.controller.refresh_now_awaiting_confirmation" = "公式のリセット確認を待っています。クリックで今すぐ確認します";
-"status.item.controller.refresh_now_out_of_tokens" = "更新が頻繁すぎます。%1$@秒後に再試行できます";
 "claude.quota.calibration" = "Claude 公式クォータの校正";
 "claude.source_tag.all_clients" = "全環境対応";
 "claude.source_tag.desktop" = "デスクトップ優先";

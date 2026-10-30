@@ -143,7 +143,8 @@
 "dashboard.advanced.page.source_validity" = "Validité de chaque source de données Claude";
 "dashboard.advanced.page.source_validity_oauth" = "Validité du quota officiel";
 "dashboard.advanced.page.source_validity_mod" = "Validité du push du Mod";
-"dashboard.advanced.page.source_validity_warning" = "La validité est courte : après expiration, les nouvelles données peuvent n’arriver qu’au prochain calibrage officiel (toutes les %1$@ min). Au moins %2$@ min est recommandé.";
+"dashboard.advanced.page.source_validity_warning" = "La validité est courte : après expiration, les nouvelles données peuvent n’arriver qu’au prochain calibrage officiel (toutes les %1$@ min). Choisissez %2$@ min.";
+"dashboard.advanced.page.source_validity_no_option" = "Le calibrage officiel a lieu toutes les %1$@ min : toutes les options de validité peuvent laisser un court intervalle sans données. Raccourcissez l’intervalle de calibrage officiel.";
 "dashboard.advanced.page.validity_minutes" = "%1$@ min";
 "dashboard.general.and.refresh.pages.update_channel" = "Canal de mise à jour";
 "dashboard.general.and.refresh.pages.update_channel_description" = "Choisissez de rechercher les versions stables ou bêta";
@@ -599,11 +600,6 @@
 "quota.status.accessibility" = "État du quota : %1$@";
 "claude.refresh.login_expired" = "La connexion à Claude Code a expiré. Exécutez claude une fois dans un terminal pour la rétablir ; BalanceBar ne renouvelle jamais la connexion lui-même.";
 "status.item.controller.refresh_now_login_expired" = "Identifiants expirés ; relancez Claude Code CLI dans le terminal";
-"status.item.controller.refresh_now_rate_limited" = "Limite de requêtes, disponible dans %1$@";
-"status.item.controller.refresh_now_just_refreshed" = "Vient d'être actualisé";
-"status.item.controller.refresh_now_recent_result" = "Vient d'être actualisé · nouvelle tentative dans %1$@ s";
-"status.item.controller.refresh_now_awaiting_confirmation" = "En attente de confirmation de la réinitialisation ; cliquez pour confirmer maintenant";
-"status.item.controller.refresh_now_out_of_tokens" = "Actualisation trop fréquente ; nouvelle tentative dans %1$@ s";
 "claude.quota.calibration" = "Recalage du quota officiel Claude";
 "claude.source_tag.all_clients" = "Tous les clients";
 "claude.source_tag.desktop" = "Bureau d’abord";

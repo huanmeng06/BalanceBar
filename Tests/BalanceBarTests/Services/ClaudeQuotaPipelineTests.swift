@@ -396,7 +396,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         quiet(restarted)
         XCTAssertEqual(PipelineStubProtocol.requestCount, 1, "the paused credential is not retried")
         XCTAssertEqual(restarted.latestState?.failure, .unauthorized, "the skipped manual refresh must be visible")
-        XCTAssertEqual(restarted.manualRefreshNotice(), .loginExpired)
+        XCTAssertTrue(restarted.isLoginExpired())
         XCTAssertTrue(diagnosticLines.all.contains { $0.contains("skip=unauthorizedPaused") && $0.contains("reasons=manual") },
                       "the skip reason is logged: \(diagnosticLines.all)")
 
@@ -407,13 +407,10 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         let state = waitForState(restarted) { !$0.windows.isEmpty }
         XCTAssertNil(state?.failure)
         XCTAssertEqual(PipelineStubProtocol.requestCount, 2)
-        guard case let .recentResult(until)? = restarted.manualRefreshNotice() else {
-            return XCTFail("the login-expired hint is gone once a read succeeds; got \(String(describing: restarted.manualRefreshNotice()))")
-        }
-        XCTAssertEqual(until.timeIntervalSince(clock.now), 60, accuracy: 1)
+        XCTAssertFalse(restarted.isLoginExpired(), "the login-expired hint is gone once a read succeeds")
     }
 
-    func testManualRefreshDuringCooldownShowsTheWaitAndLogsTheSkip() throws {
+    func testManualRefreshDuringCooldownKeepsTheWaitAndLogsTheSkip() throws {
         PipelineStubProtocol.set(.init(status: 429, headers: ["Retry-After": "1800"]))
         let first = makePipeline()
         first.requestFetch(reason: .initial)
@@ -425,21 +422,15 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         quiet(restarted)
         XCTAssertEqual(PipelineStubProtocol.requestCount, 1)
         XCTAssertEqual(restarted.latestState?.failure, .rateLimited)
-        guard case let .rateLimited(until)? = restarted.manualRefreshNotice() else {
-            return XCTFail("expected a rate-limit notice, got \(String(describing: restarted.manualRefreshNotice()))")
-        }
-        XCTAssertEqual(until.timeIntervalSince(Self.start), 1_800, accuracy: 1)
+        XCTAssertEqual(restarted.manualRefreshBlockedUntil()?.timeIntervalSince(Self.start) ?? 0, 1_800, accuracy: 1)
+        XCTAssertFalse(restarted.isLoginExpired(), "a 429 wait is not a login problem")
         XCTAssertTrue(diagnosticLines.all.contains { $0.contains("skip=cooldown") && $0.contains("cooldown_remaining=") })
     }
 
-    func testManualRefreshRightAfterASuccessIsSkippedWithAJustRefreshedNotice() throws {
+    func testManualRefreshRightAfterASuccessIsSkippedInsideTheManualWindow() throws {
         let pipeline = makePipeline()
         pipeline.requestFetch(reason: .initial)
         XCTAssertNotNil(waitForState(pipeline) { !$0.windows.isEmpty })
-        guard case let .recentResult(until)? = pipeline.manualRefreshNotice() else {
-            return XCTFail("expected a recent-result notice, got \(String(describing: pipeline.manualRefreshNotice()))")
-        }
-        XCTAssertEqual(until.timeIntervalSince(Self.start), 60, accuracy: 1)
 
         clock.advance(by: 10)
         pipeline.requestFetch(reason: .manual)
@@ -449,31 +440,8 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         XCTAssertTrue(diagnosticLines.all.contains { $0.contains("skip=recentResult") })
 
         clock.advance(by: 61)
-        XCTAssertNil(pipeline.manualRefreshNotice())
         pipeline.requestFetch(reason: .manual)
         waitForRequests(2)
-    }
-
-    func testManualRefreshNoticeReportsLocalFreshWhenNativeWindowsAreFresh() {
-        let tracker = ClaudeRealtimeTracker(now: { [clock] in clock!.now })
-        let pipeline = makePipeline(realtimeTracker: tracker)
-        tracker.recordTrustedObservation(window: .fiveHour, observedAt: Self.start, epoch: .initial)
-        tracker.recordTrustedObservation(window: .sevenDay, observedAt: Self.start, epoch: .initial)
-        XCTAssertEqual(pipeline.manualRefreshNotice(), .localFresh)
-    }
-
-    func testManualRefreshNoticeIgnoresLocalDataOlderThanTheManualWindowEvenIfStillValid() {
-        let tracker = ClaudeRealtimeTracker(
-            validity: { ClaudeSourceValidity(oauth: 600, mod: 600) },
-            now: { [clock] in clock!.now })
-        let pipeline = makePipeline(realtimeTracker: tracker)
-        tracker.recordTrustedObservation(window: .fiveHour, observedAt: Self.start, epoch: .initial)
-        tracker.recordTrustedObservation(window: .sevenDay, observedAt: Self.start, epoch: .initial)
-        clock.advance(by: 30)
-        XCTAssertEqual(pipeline.manualRefreshNotice(), .localFresh, "inside the manual window the refresh is skipped")
-        clock.advance(by: 90)
-        XCTAssertNotNil(tracker.lastTrustedRealtimeObservationAt, "the data still counts as live for the status")
-        XCTAssertNil(pipeline.manualRefreshNotice(), "but a manual refresh would query the official API, so no skip notice")
     }
 
     func testSameAccountCredentialRefreshKeepsEpochAndScope() throws {
@@ -649,8 +617,6 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
 
         // 121 s clears the failure backoff while staying inside Claude V1's 5-minute manual window.
         clock.advance(by: 121)
-        XCTAssertEqual(pipeline.manualRefreshNotice(), .awaitingResetConfirmation,
-                       "past the backoff, the menu explains the pending confirmation")
         PipelineStubProtocol.set(.init(data: Self.nextCycle))
         pipeline.requestFetch(reason: .manual)
         waitForRequests(3)
@@ -683,56 +649,6 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         XCTAssertEqual(retryTimer.delays, [60, 120], "the cadence backs off while confirmation is pending")
     }
 
-    /// A plain failed read never locks the manual refresh: the menu offers a retry instead of
-    /// a countdown.
-    func testManualRefreshNoticeDoesNotBlockAfterAPlainFailure() throws {
-        PipelineStubProtocol.set(.init(data: Self.nearReset))
-        let tracker = ClaudeRealtimeTracker(now: { [clock] in clock!.now })
-        let pipeline = makePipeline(realtimeTracker: tracker, configuration: claudeV1TestConfiguration)
-        pipeline.requestFetch(reason: .initial)
-        _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
-
-        clock.advance(by: 120)
-        PipelineStubProtocol.set(.init(data: Data("not json".utf8)))
-        pipeline.tick()
-        waitForRequests(2)
-        quiet(pipeline)
-        XCTAssertEqual(pipeline.latestState?.display.state, .resetPendingConfirmation)
-        XCTAssertEqual(pipeline.manualRefreshNotice(), .awaitingResetConfirmation,
-                       "only the pending-confirmation hint remains; no failure countdown")
-    }
-
-    /// Issue #580 review: an exhausted request budget must be explained too, not offered
-    /// as an immediate confirmation.
-    func testManualRefreshNoticeExplainsExhaustedTokens() throws {
-        var configuration = FetchSchedulerConfiguration()
-        configuration.coalescingWindow = 0.02
-        configuration.manualRefreshWindow = 10
-        configuration.tokenRefillInterval = 600
-        let pipeline = makePipeline(configuration: configuration)
-        pipeline.requestFetch(reason: .initial) // first read: manual cost, tokens 3 → 2
-        _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
-
-        clock.advance(by: 11)
-        pipeline.requestFetch(reason: .manual) // tokens 2 → 1
-        waitForRequests(2)
-        quiet(pipeline) // the stub completes asynchronously; drain before advancing the fake clock
-        clock.advance(by: 11)
-        pipeline.requestFetch(reason: .manual) // tokens 1 → 0
-        waitForRequests(3)
-        quiet(pipeline)
-
-        clock.advance(by: 11)
-        pipeline.requestFetch(reason: .manual) // suppressed by insufficient tokens
-        quiet(pipeline)
-        XCTAssertEqual(PipelineStubProtocol.requestCount, 3)
-        XCTAssertTrue(diagnosticLines.all.contains { $0.contains("skip=insufficientTokens") })
-        guard case let .outOfTokens(until)? = pipeline.manualRefreshNotice() else {
-            return XCTFail("expected an out-of-tokens notice, got \(String(describing: pipeline.manualRefreshNotice()))")
-        }
-        XCTAssertEqual(until.timeIntervalSince(Self.start), 600, accuracy: 1,
-                       "one token refills ten minutes after the epoch anchor")
-    }
     /// A window past its reset with no newer reading shows as already reset (untouched, full
     /// window length) instead of the stale reading; the card projects "now + length" for display.
     func testCardWindowShowsAlreadyResetWhilePending() {
@@ -903,7 +819,6 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         // Past the manual window and still fresh, a manual refresh is served by the free path
         // and the notice reports the local source.
         clock.advance(by: 61)
-        XCTAssertEqual(pipeline.manualRefreshNotice(), .localFresh)
         pipeline.requestFetch(reason: .manual)
         quiet(pipeline)
         XCTAssertEqual(PipelineStubProtocol.requestCount, 1)
@@ -917,7 +832,6 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         let inbox = try XCTUnwrap(lastInbox)
         XCTAssertTrue(pollUntil { inbox.queue.sync { inbox.suppressedReplayCount } >= 1 })
         clock.advance(by: 65) // start+431; the changed snapshot's evidence expired at start+430
-        XCTAssertNil(pipeline.manualRefreshNotice(), "the same-value replay must not be local-fresh evidence")
         pipeline.requestFetch(reason: .scheduled)
         waitForRequests(2)
     }
@@ -1008,7 +922,6 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         try placeModSnapshot(five: 25, seven: 42, observedAt: Self.start.addingTimeInterval(5))
         let inbox = try XCTUnwrap(lastInbox)
         XCTAssertTrue(pollUntil { inbox.queue.sync { inbox.suppressedReplayCount } >= 1 })
-        XCTAssertNil(pipeline.manualRefreshNotice(), "a rescanned old snapshot is not local-fresh")
         pipeline.requestFetch(reason: .scheduled)
         waitForRequests(2)
         // The resumed official read recalibrates the display, as it always may.
@@ -1039,7 +952,6 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         try placeModSnapshot(five: 25, seven: 42, observedAt: Self.start.addingTimeInterval(5))
         XCTAssertTrue(pollUntil { inbox.queue.sync { inbox.suppressedReplayCount } >= 1 })
         clock.advance(by: 75) // start+380; the adopted evidence expired at start+125
-        XCTAssertNil(pipeline.manualRefreshNotice(), "a rejected snapshot must not enable a freshness extension")
         pipeline.requestFetch(reason: .scheduled)
         waitForRequests(2)
     }
@@ -1337,7 +1249,6 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         let stale = try XCTUnwrap(waitForState(pipeline) { !$0.status.isNativeRealtime })
         XCTAssertEqual(stale.status, .official(at: producedAt, source: .mod))
         XCTAssertEqual(stale.display.window(for: .fiveHour)?.usedPercentage, 25)
-        XCTAssertNil(pipeline.manualRefreshNotice())
         XCTAssertNil(stale.failure, "an uninstall is not an OAuth failure")
         XCTAssertTrue(diagnosticLines.all.contains { $0.contains("claude mod suspended; reason=uninstalled") })
         pipeline.requestFetch(reason: .scheduled)
@@ -1371,14 +1282,12 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         try placeModSnapshot(five: 26, seven: 43, observedAt: old)
         _ = try XCTUnwrap(waitForState(pipeline) { $0.display.window(for: .fiveHour)?.usedPercentage == 26 })
         XCTAssertEqual(pipeline.latestState?.status, .official(at: old, source: .mod))
-        XCTAssertNil(pipeline.manualRefreshNotice())
 
         // A newer snapshot while the Mod is still uninstalled/disabled stays non-live too.
         let whileUnavailable = Self.start.addingTimeInterval(322)
         try placeModSnapshot(five: 27, seven: 44, observedAt: whileUnavailable)
         _ = try XCTUnwrap(waitForState(pipeline) { $0.display.window(for: .fiveHour)?.usedPercentage == 27 })
         XCTAssertEqual(pipeline.latestState?.status, .official(at: whileUnavailable, source: .mod))
-        XCTAssertNil(pipeline.manualRefreshNotice())
         let lines = diagnosticLines.all
         XCTAssertTrue(lines.contains { $0.contains("claude mod snapshot not live evidence; reason=snapshot_before_suspension") })
         XCTAssertTrue(lines.contains { $0.contains("claude mod snapshot not live evidence; reason=snapshot_while_mod_unavailable") })
@@ -1395,7 +1304,6 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         try placeModSnapshot(five: 27, seven: 44, observedAt: whileUnavailable)
         quiet(pipeline)
         XCTAssertFalse(try XCTUnwrap(pipeline.latestState).status.isNativeRealtime)
-        XCTAssertNil(pipeline.manualRefreshNotice())
         XCTAssertTrue(diagnosticLines.all.contains { $0.contains("claude mod available confirmed; suspended=true") })
         XCTAssertTrue(diagnosticLines.all.contains {
             $0.contains("claude mod snapshot not live evidence; reason=snapshot_before_available_confirmation")

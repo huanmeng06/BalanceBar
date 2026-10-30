@@ -628,6 +628,27 @@ final class ProviderRefreshCoordinator {
         return !entries.isEmpty
     }
 
+    /// Seeds the launch menu with the trusted aggregation membership before
+    /// the first presentation. Network requests remain asynchronous; the
+    /// returned displays intentionally carry their loading/stale state.
+    func prepareAggregationForStartup(
+        reader: CCSwitchAggregationRepository
+    ) -> (displays: [AggregatedProviderDisplay], quickSwitchSafety: CCSwitchQuickSwitchSafety)? {
+        let prepare: () -> (displays: [AggregatedProviderDisplay], quickSwitchSafety: CCSwitchQuickSwitchSafety)? = {
+            guard self.lifetime.isCurrent() else { return nil }
+            _ = self.refreshAggregation(reader: reader, force: true, forceAPIBalance: true)
+            let displays = self.aggregationEntries.compactMap {
+                self.aggregationDisplays[self.aggregationIdentity($0)]
+            }
+            guard !displays.isEmpty else { return nil }
+            return (displays: displays, quickSwitchSafety: self.quickSwitchSafety)
+        }
+        if DispatchQueue.getSpecific(key: queueKey) != nil {
+            return prepare()
+        }
+        return queue.sync(execute: prepare)
+    }
+
     func stopAggregation() {
         performOnQueue { [weak self] in
             guard let self else { return }

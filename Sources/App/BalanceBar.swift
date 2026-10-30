@@ -1032,9 +1032,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                     guard let self, self.activeClient == .claude, self.currentProviderIsOfficialCache else { return nil }
                     return self.claudeQuota.manualRefreshBlockedUntil()
                 },
-                manualRefreshNotice: { [weak self] in
-                    guard let self, self.activeClient == .claude, self.currentProviderIsOfficialCache else { return nil }
-                    return self.claudeQuota.manualRefreshNotice()
+                isClaudeLoginExpired: { [weak self] in
+                    guard let self, self.activeClient == .claude, self.currentProviderIsOfficialCache else { return false }
+                    return self.claudeQuota.isLoginExpired()
                 },
                 showModOnboarding: { [weak self] in
                     self?.showModOnboardingFromMenu()
@@ -1264,6 +1264,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         } else {
             regularPolicyApplied = NSApp.setActivationPolicy(.accessory)
         }
+        prepareStartupAggregationPresentation()
         statusItemController.start(
             snapshot: snapshot,
             refreshDate: refreshDate(for: snapshot),
@@ -1328,6 +1329,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             )
             self.refresh(reason: .configurationChanged)
         }
+    }
+
+    private func prepareStartupAggregationPresentation() {
+        guard activeClient == .codex,
+              let startup = providerRefreshCoordinator.prepareAggregationForStartup(
+                reader: aggregationRepository
+              ) else { return }
+        aggregationDisplays = startup.displays
+        quickSwitchSafetyByClient[.codex] = startup.quickSwitchSafety
+        aggregationQuickSwitchBlocked = startup.quickSwitchSafety.isBlocked
     }
 
     func applicationWillTerminate(_ notification: Notification) {

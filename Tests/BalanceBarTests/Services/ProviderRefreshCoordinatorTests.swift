@@ -3182,6 +3182,31 @@ extension ProviderRefreshCoordinatorTests {
         XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 3, "API trailing window can end independently")
     }
 
+    func testStartupAggregationPreparationReturnsMembershipBeforeRequestsFinish() throws {
+        try addAggregationMembers(1)
+        let reader = try aggregationFixture(members: ["member-0"])
+        let requestGate = DispatchSemaphore(value: 0)
+        defer { requestGate.signal() }
+        DelayedBalanceURLProtocol.setHandler { _ in
+            .init(
+                data: Data(#"{"balance":"4.73","quota":{"unit":"USD"}}"#.utf8),
+                statusCode: 200,
+                delayUntil: requestGate
+            )
+        }
+        let coordinator = aggregationCoordinator { _, _ in }
+
+        let startup = try XCTUnwrap(coordinator.prepareAggregationForStartup(reader: reader))
+
+        XCTAssertEqual(Set(startup.displays.map(\.entry.providerID)), Set(["codex-custom", "member-0"]))
+        XCTAssertEqual(
+            startup.displays.first(where: { $0.entry.role == .default })?.entry.providerID,
+            "codex-custom"
+        )
+        XCTAssertTrue(startup.displays.allSatisfy { $0.status == .loading })
+        XCTAssertEqual(startup.quickSwitchSafety, .blockedAggregation)
+    }
+
     func testAggregationBoundsConcurrentRequestsAndCancelsRemovedMembers() throws {
         try addAggregationMembers(6)
         let reader = try aggregationFixture(members: (0..<6).map { "member-\($0)" })

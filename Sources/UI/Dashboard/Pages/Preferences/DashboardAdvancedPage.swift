@@ -85,11 +85,13 @@ final class DashboardAdvancedPage {
     /// Warning copy for a given official calibration interval; shared with the settings search corpus.
     static func validityWarning(calibrationInterval: TimeInterval) -> String {
         let threshold = calibrationInterval
-            + AppPreferences.claudeValidityPrefetchLead
-            + AppPreferences.claudeValiditySchedulingSlack
+        let calibrationMinutes = String(max(1, Int(ceil(calibrationInterval / 60))))
+        // Only recommend a value the popup actually offers.
+        guard let option = AppPreferences.claudeLocalValidityOptions.sorted().first(where: { $0 >= threshold }) else {
+            return tr(.keyDashboardAdvancedPageSourceValidityNoOption, arguments: [calibrationMinutes])
+        }
         return tr(.keyDashboardAdvancedPageSourceValidityWarning, arguments: [
-            String(max(1, Int(ceil(calibrationInterval / 60)))),
-            String(max(1, Int(ceil(threshold / 60))))
+            calibrationMinutes, String(Int(option / 60))
         ])
     }
 
