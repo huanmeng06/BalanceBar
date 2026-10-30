@@ -665,10 +665,13 @@ final class DashboardGeneralPage {
         )
         systemTimeZoneCheckbox.identifier = NSUserInterfaceItemIdentifier(AppPreferences.displayTimeZoneKey + ".system")
         systemTimeZoneCheckbox.state = input.preferences.displayTimeZoneSelection == .system ? .on : .off
-        let timeZoneControls = NSStackView(views: [systemTimeZoneCheckbox, timeZoneComboBox])
+        let timeZoneControls = DashboardAdaptiveControlsStackView(views: [systemTimeZoneCheckbox, timeZoneComboBox])
         timeZoneControls.orientation = .horizontal
         timeZoneControls.alignment = .centerY
         timeZoneControls.spacing = 12
+        timeZoneControls.minimumInlineLabelWidth = SettingsRowView.minimumInlineLabelWidth
+        timeZoneControls.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        timeZoneControls.setContentHuggingPriority(.defaultLow, for: .horizontal)
         self.timeZoneComboBox = timeZoneComboBox
         self.systemTimeZoneCheckbox = systemTimeZoneCheckbox
         let app = SettingsSectionView(
