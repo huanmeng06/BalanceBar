@@ -586,34 +586,56 @@ final class ClaudeSourceTimelineView: NSView {
         windows: [ClaudeSourceTimeline.Window: ClaudeSourceTimeline.WindowValue],
         dispositions: [ClaudeSourceTimeline.Window: ClaudeSourceTimeline.ReadingDisposition]
     ) -> [ClaudeSourceTimelineTooltipContent.Row] {
-        ClaudeSourceTimeline.Window.allCases.map { window in
-            let label = window == .fiveHour ? "5h" : "7d"
+        let formatter = NumberFormatter()
+        formatter.locale = .autoupdatingCurrent
+        formatter.numberStyle = .decimal
+        formatter.minimumFractionDigits = 1
+        formatter.maximumFractionDigits = 1
+        func adopted(_ window: ClaudeSourceTimeline.Window) -> Bool { dispositions[window] == .displayed }
+        let present = ClaudeSourceTimeline.Window.allCases.filter { windows[$0] != nil }
+        // One line says where the numbers came from unless the two windows disagree.
+        let uniform = Set(present.map(adopted)).count <= 1
+        var rows: [ClaudeSourceTimelineTooltipContent.Row] = ClaudeSourceTimeline.Window.allCases.map { window in
+            let label = tr(window == .fiveHour ? .keyClaudeTimelineWindowFiveHour : .keyClaudeTimelineWindowSevenDay)
             guard let value = windows[window] else {
                 return .init(label: label, value: tr(.keyClaudeTimelineWindowNotIncluded))
             }
-            let formatter = NumberFormatter()
-            formatter.locale = .autoupdatingCurrent
-            formatter.numberStyle = .decimal
-            formatter.minimumFractionDigits = 1
-            formatter.maximumFractionDigits = 1
-            let formatted = (formatter.string(from: NSNumber(value: value.usedPercentage)) ?? "\(value.usedPercentage)") + "%"
-            let reset = value.resetAt.map(time) ?? "—"
-            let disposition: String
-            switch dispositions[window] {
-            case .displayed: disposition = tr(.keyClaudeTimelineValueDisplayed)
-            case .freshnessEvidenceWithinTolerance: disposition = tr(.keyClaudeTimelineValueEvidenceWithinTolerance)
-            case .freshnessEvidenceBelowDisplay: disposition = tr(.keyClaudeTimelineValueEvidenceBelowDisplay)
-            case .freshnessEvidence, nil: disposition = tr(.keyClaudeTimelineValueEvidence)
+            var text = (formatter.string(from: NSNumber(value: value.usedPercentage)) ?? "\(value.usedPercentage)") + "%"
+            if let resetAt = value.resetAt {
+                text += " · " + tr(.keyClaudeTimelineValueReset, arguments: [resetText(resetAt)])
             }
-            return .init(label: label, value: "\(formatted) · \(reset) · \(disposition)")
+            if !uniform { text += " · " + sourceText(adopted: adopted(window)) }
+            return .init(label: label, value: text)
         }
+        if uniform, let first = present.first {
+            rows.append(.init(label: tr(.keyClaudeTimelineHoverValueSource), value: sourceText(adopted: adopted(first))))
+        }
+        return rows
     }
 
-    private func estimateRows(_ estimate: FetchAutomaticRequestEstimate) -> [ClaudeSourceTimelineTooltipContent.Row] {
+    private func sourceText(adopted: Bool) -> String {
+        tr(adopted ? .keyClaudeTimelineValueDisplayed : .keyClaudeTimelineValueEvidence)
+    }
+
+    /// Reset moments are minutes-precise, with the date added when it is not today.
+    private func resetText(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.timeZone = timeZone
+        formatter.locale = .autoupdatingCurrent
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        formatter.setLocalizedDateFormatFromTemplate(calendar.isDate(date, inSameDayAs: now()) ? "HHmm" : "MdHHmm")
+        return formatter.string(from: date)
+    }
+
+    private func estimateRows(
+        _ estimate: FetchAutomaticRequestEstimate, skippingAuthStates: Bool = false
+    ) -> [ClaudeSourceTimelineTooltipContent.Row] {
         let value: String
         switch estimate.state {
-        case .signedOut: value = tr(.keyClaudeTimelineFailureMissingCredentials)
-        case .unauthorizedPaused: value = tr(.keyClaudeTimelineFailureUnauthorized)
+        case .signedOut, .unauthorizedPaused:
+            if skippingAuthStates { return [] }
+            value = tr(estimate.state == .signedOut ? .keyClaudeTimelineFailureMissingCredentials : .keyClaudeTimelineFailureUnauthorized)
         case .inFlight: value = localize(.hoverRefreshing)
         case let .scheduled(at, trigger):
             value = tr(.keyClaudeTimelineEstimateScheduled, arguments: [
@@ -678,22 +700,19 @@ final class ClaudeSourceTimelineView: NSView {
     func hoverContent(for target: ClaudeSourceTimelineLayout.HoverTarget) -> ClaudeSourceTimelineTooltipContent {
         switch target {
         case let .piece(piece):
-            let first = piece.readings[0]
             let last = piece.readings[piece.readings.count - 1]
             let ongoing = piece.end >= now()
-            var rows: [ClaudeSourceTimelineTooltipContent.Row] = [
-                .init(label: tr(.keyClaudeTimelineHoverTime),
-                      value: time(piece.start) + " – " + (ongoing ? tr(.keyClaudeTimelineNow) : time(piece.end))),
-                .init(label: tr(.keyClaudeTimelineHoverDuration),
-                      value: Self.durationText(min(piece.end, now()).timeIntervalSince(piece.start))),
-                .init(label: tr(.keyClaudeTimelineHoverRefreshes),
-                      value: tr(.keyClaudeTimelineHoverRefreshCount, arguments: [String(piece.readings.count)])),
-                // A block still running says when it runs out instead of how long each refresh lasts.
-                ongoing
-                    ? .init(label: tr(.keyClaudeTimelineHoverValidUntil), value: time(piece.end))
-                    : .init(label: tr(.keyClaudeTimelineHoverValidity),
-                            value: Self.durationText(first.expiresAt.timeIntervalSince(first.observedAt))),
-            ]
+            let span = ongoing
+                ? time(piece.start) + " – " + tr(.keyClaudeTimelineNow)
+                : time(piece.start) + " – " + time(piece.end)
+                    + " · " + Self.durationText(piece.end.timeIntervalSince(piece.start))
+            var rows: [ClaudeSourceTimelineTooltipContent.Row] = [.init(label: tr(.keyClaudeTimelineHoverTime), value: span)]
+            if ongoing { rows.append(.init(label: tr(.keyClaudeTimelineHoverValidUntil), value: time(piece.end))) }
+            if piece.readings.count > 1 {
+                rows.append(.init(
+                    label: tr(.keyClaudeTimelineHoverRefreshes),
+                    value: tr(.keyClaudeTimelineHoverRefreshCount, arguments: [String(piece.readings.count)])))
+            }
             rows.append(contentsOf: valueRows(windows: last.windows, dispositions: last.dispositions))
             if piece.source == .oauthAPI {
                 if let request = request(completedAt: last.observedAt) { rows.append(contentsOf: requestRows(request)) }
@@ -704,14 +723,16 @@ final class ClaudeSourceTimelineView: NSView {
             return ClaudeSourceTimelineTooltipContent(title: laneName(piece.source), color: Self.color(for: piece.source), rows: rows)
         case let .band(band):
             let end = band.run.end ?? now()
+            let span = time(band.run.start) + " – " + (band.run.end.map(time) ?? tr(.keyClaudeTimelineNow))
+                + " · " + Self.durationText(end.timeIntervalSince(band.run.start))
+            var rows: [ClaudeSourceTimelineTooltipContent.Row] = [.init(label: tr(.keyClaudeTimelineHoverTime), value: span)]
+            if let request = request(completedAt: band.run.start) { rows.append(contentsOf: requestRows(request)) }
+            // A paused sign-in is already the heading; only a real wait is worth a line.
+            if isLatestFailure(band.run), let estimate = content.timeline.estimate {
+                rows.append(contentsOf: estimateRows(estimate, skippingAuthStates: true))
+            }
             return ClaudeSourceTimelineTooltipContent(
-                title: laneName(.oauthAPI) + " · " + Self.failureText(band.run.kind), color: .systemRed, rows: [
-                    .init(label: tr(.keyClaudeTimelineHoverTime),
-                          value: time(band.run.start) + " – " + (band.run.end.map(time) ?? tr(.keyClaudeTimelineNow))),
-                    .init(label: tr(.keyClaudeTimelineHoverDuration),
-                          value: Self.durationText(end.timeIntervalSince(band.run.start))),
-                ] + (request(completedAt: band.run.start).map(requestRows) ?? [])
-                    + (isLatestFailure(band.run) ? content.timeline.estimate.map(estimateRows) ?? [] : []))
+                title: laneName(.oauthAPI) + " · " + Self.failureText(band.run.kind), color: .systemRed, rows: rows)
         }
     }
 
@@ -1166,9 +1187,9 @@ final class ClaudeSourceTimelineTooltipViewController: NSViewController {
 
     static let dotSize: CGFloat = 8
     static let dotGap: CGFloat = 6
-    static let headingGap: CGFloat = 8
-    static let rowGap: CGFloat = 4
-    static let columnGap: CGFloat = 14
+    static let headingGap: CGFloat = 11
+    static let rowGap: CGFloat = 5
+    static let columnGap: CGFloat = 18
 
     /// Frame layout measured from each label's own size: the popover always fits its text.
     override func loadView() {
@@ -1208,6 +1229,14 @@ final class ClaudeSourceTimelineTooltipViewController: NSViewController {
         title.frame = NSRect(
             x: dot.frame.maxX + Self.dotGap, y: Self.verticalInset, width: ceil(title.frame.width), height: titleHeight)
         root.addSubview(title)
+        if !rows.isEmpty {
+            let rule = NSView(frame: NSRect(
+                x: Self.horizontalInset, y: Self.verticalInset + titleHeight + Self.headingGap / 2 - 0.25,
+                width: contentWidth, height: 0.5))
+            rule.wantsLayer = true
+            rule.layer?.backgroundColor = NSColor.separatorColor.cgColor
+            root.addSubview(rule)
+        }
         var y = Self.verticalInset + titleHeight + Self.headingGap
         for (name, value) in rows {
             name.frame = NSRect(x: Self.horizontalInset, y: y, width: labelWidth, height: rowHeight)

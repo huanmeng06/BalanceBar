@@ -168,18 +168,16 @@ final class ClaudeSourceTimelineViewTests: XCTestCase {
         let modBar = try! XCTUnwrap(layout.bars.first { $0.source == .mod })
         let reading = view.hoverContent(for: try! XCTUnwrap(layout.hoverTarget(at: CGPoint(x: modBar.rect.midX, y: modBar.rect.midY))))
         XCTAssertEqual(reading.title, "Mod")
-        XCTAssertEqual(Array(reading.rows.prefix(4)), [
+        XCTAssertEqual(Array(reading.rows.prefix(2)), [
             .init(label: tr(.keyClaudeTimelineHoverTime), value: "07:59:00 – " + tr(.keyClaudeTimelineNow)),
-            .init(label: tr(.keyClaudeTimelineHoverDuration), value: ClaudeSourceTimelineView.durationText(60)),
-            .init(label: tr(.keyClaudeTimelineHoverRefreshes), value: tr(.keyClaudeTimelineHoverRefreshCount, arguments: ["1"])),
             .init(label: tr(.keyClaudeTimelineHoverValidUntil), value: "08:01:00"),
-        ], "type heading, then range so far, duration, refreshes and each refresh's validity")
+        ], "type heading, the range so far and when the running block runs out; one refresh is not worth a row")
         let band = try! XCTUnwrap(layout.bands.first)
         let failure = view.hoverContent(for: .band(band))
         XCTAssertEqual(failure.title, "OAuth API · " + tr(.keyClaudeTimelineFailureNetwork))
         XCTAssertEqual(failure.rows, [
-            .init(label: tr(.keyClaudeTimelineHoverTime), value: "07:35:00 – 07:43:20"),
-            .init(label: tr(.keyClaudeTimelineHoverDuration), value: ClaudeSourceTimelineView.durationText(500)),
+            .init(label: tr(.keyClaudeTimelineHoverTime),
+                  value: "07:35:00 – 07:43:20 · " + ClaudeSourceTimelineView.durationText(500)),
         ])
         XCTAssertEqual(view.hoverText(at: NSPoint(x: band.rect.midX, y: band.rect.midY)), failure.plainText)
         XCTAssertEqual(
@@ -281,11 +279,13 @@ final class ClaudeSourceTimelineViewTests: XCTestCase {
     func testBlockTooltipFitsItsContentInEveryLanguage() throws {
         for language in AppLanguage.allCases {
             let rows: [ClaudeSourceTimelineTooltipContent.Row] = [
-                .init(label: tr(.keyClaudeTimelineHoverTime, language: language), value: "15:04:53 – 15:09:53"),
-                .init(label: tr(.keyClaudeTimelineHoverDuration, language: language), value: "5"),
+                .init(label: tr(.keyClaudeTimelineHoverTime, language: language), value: "15:04:53 – 15:09:53 · 5"),
                 .init(label: tr(.keyClaudeTimelineHoverRefreshes, language: language),
                       value: tr(.keyClaudeTimelineHoverRefreshCount, arguments: ["12"], language: language)),
-                .init(label: tr(.keyClaudeTimelineHoverValidity, language: language), value: "5"),
+                .init(label: tr(.keyClaudeTimelineWindowFiveHour, language: language),
+                      value: "6.0% · " + tr(.keyClaudeTimelineValueReset, arguments: ["06:10"], language: language)),
+                .init(label: tr(.keyClaudeTimelineHoverValueSource, language: language),
+                      value: tr(.keyClaudeTimelineValueDisplayed, language: language)),
             ]
             let controller = ClaudeSourceTimelineTooltipViewController(
                 content: .init(title: "OAuth API · " + tr(.keyClaudeTimelineFailureNetwork, language: language), color: .systemBlue, rows: rows))
@@ -307,10 +307,13 @@ final class ClaudeSourceTimelineViewTests: XCTestCase {
 
     func testOffscreenRendersTheBlockTooltip() throws {
         let content = ClaudeSourceTimelineTooltipContent(title: "Mod", color: .systemOrange, rows: [
-            .init(label: tr(.keyClaudeTimelineHoverTime), value: "15:04:53 – 15:09:53"),
-            .init(label: tr(.keyClaudeTimelineHoverDuration), value: ClaudeSourceTimelineView.durationText(300)),
-            .init(label: tr(.keyClaudeTimelineHoverRefreshes), value: tr(.keyClaudeTimelineHoverRefreshCount, arguments: ["1"])),
-            .init(label: tr(.keyClaudeTimelineHoverValidity), value: ClaudeSourceTimelineView.durationText(300)),
+            .init(label: tr(.keyClaudeTimelineHoverTime),
+                  value: "15:04:53 – 15:09:53 · " + ClaudeSourceTimelineView.durationText(300)),
+            .init(label: tr(.keyClaudeTimelineWindowFiveHour),
+                  value: "6.0% · " + tr(.keyClaudeTimelineValueReset, arguments: ["06:10"])),
+            .init(label: tr(.keyClaudeTimelineWindowSevenDay),
+                  value: "58.0% · " + tr(.keyClaudeTimelineValueReset, arguments: ["10/31 05:00"])),
+            .init(label: tr(.keyClaudeTimelineHoverValueSource), value: tr(.keyClaudeTimelineValueDisplayed)),
         ])
         let directory = ProcessInfo.processInfo.environment["BB_TIMELINE_RENDER_DIR"].map { URL(fileURLWithPath: $0) }
         for appearanceName in [NSAppearance.Name.aqua, .darkAqua] {

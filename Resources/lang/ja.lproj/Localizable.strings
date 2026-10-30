@@ -617,9 +617,7 @@
 "claude.timeline.failure.missing_credentials" = "未ログイン";
 "claude.timeline.tooltip.oauth_rule" = "Mod のデータが有効な間は公式 API に問い合わせません。少なくとも 1 時間ごとに公式で校正します。";
 "claude.timeline.hover.time" = "時間";
-"claude.timeline.hover.duration" = "継続";
 "claude.timeline.hover.refreshes" = "更新";
-"claude.timeline.hover.validity" = "有効期間";
 "claude.timeline.hover.valid_until" = "有効期限";
 "claude.timeline.hover.refresh_count" = "%1$@ 回";
 "claude.timeline.duration.seconds" = "%1$@ 秒";
@@ -629,12 +627,14 @@
 "claude.timeline.accessibility.count" = "%1$@ %2$@ 回";
 "claude.timeline.accessibility.failures" = "失敗 %1$@ 件";
 "claude.timeline.hover.trigger" = "トリガー";
+"claude.timeline.window.five_hour" = "5 時間";
+"claude.timeline.window.seven_day" = "7 日";
+"claude.timeline.value.reset" = "%1$@ リセット";
+"claude.timeline.hover.value_source" = "値";
 "claude.timeline.hover.request_started" = "リクエスト送信";
 "claude.timeline.hover.before_expiry" = "先行取得 · Mod の期限 %1$@ 前（期限 %2$@）";
 "claude.timeline.window.not_included" = "含まれません";
 "claude.timeline.value.displayed" = "表示値として採用";
-"claude.timeline.value.evidence_within_tolerance" = "鮮度の証拠のみ（表示値との差は許容範囲内）";
-"claude.timeline.value.evidence_below_display" = "鮮度の証拠のみ（表示値を下回る）";
 "claude.timeline.value.evidence" = "鮮度の証拠のみ";
 "claude.timeline.estimate.label" = "次回の自動リクエスト";
 "claude.timeline.estimate.scheduled" = "%1$@（%3$@）· %2$@";
