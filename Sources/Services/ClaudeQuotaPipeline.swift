@@ -586,6 +586,7 @@ final class ClaudeQuotaPipeline {
             // snapshots of the very same cycle therefore need no organization proof.
             guard updatedAt >= activeSince, state?.pendingResetOf == nil,
                   let displayed = state?.displayed, displayed.trust != .a,
+                  displayed.source == SnapshotInbox.modSourceID,
                   displayed.epoch == identity.accountEpoch,
                   let displayedReset = displayed.resetsAt, let reset = resetsAt,
                   QuotaMergeEngine.sameResetInstant(reset, displayedReset) else { return false }
