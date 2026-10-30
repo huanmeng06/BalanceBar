@@ -276,6 +276,24 @@ final class ClaudeSourceTimelineViewTests: XCTestCase {
         }
     }
 
+    func testEveryTooltipFormatRendersInEveryLanguage() {
+        let formats: [(LocalizationKey, [String])] = [
+            (.keyClaudeTimelineEstimateIn, ["5"]),
+            (.keyClaudeTimelineEstimateCooldown, ["10:00"]),
+            (.keyClaudeTimelineEstimateScheduled, ["10:00", "x", "y"]),
+            (.keyClaudeTimelineEstimateDelayed, ["10:00", "x", "y", "z"]),
+            (.keyClaudeTimelineHoverBeforeExpiry, ["9", "10:00"]),
+            (.keyClaudeTimelineValueReset, ["10:00"]),
+            (.keyClaudeTimelineHoverRefreshCount, ["2"]),
+        ]
+        for language in AppLanguage.allCases {
+            for (key, arguments) in formats {
+                let text = tr(key, arguments: arguments, language: language)
+                XCTAssertFalse(text.contains("⟦"), "\(language): \(key.rawKey) did not render: \(text)")
+            }
+        }
+    }
+
     func testBlockTooltipFitsItsContentInEveryLanguage() throws {
         for language in AppLanguage.allCases {
             let rows: [ClaudeSourceTimelineTooltipContent.Row] = [

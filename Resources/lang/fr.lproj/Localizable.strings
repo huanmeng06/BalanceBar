@@ -638,7 +638,7 @@
 "claude.timeline.value.evidence" = "Preuve de fraîcheur uniquement";
 "claude.timeline.estimate.label" = "Prochaine requête";
 "claude.timeline.estimate.scheduled" = "%1$@ (%3$@) · %2$@";
-"claude.timeline.estimate.cooldown" = "En pause jusqu’à %@";
+"claude.timeline.estimate.cooldown" = "En pause jusqu’à %1$@";
 "claude.timeline.estimate.delayed" = "Reportée à %1$@ (%4$@) · %2$@ (%3$@)";
 "claude.timeline.trigger.manual_refresh" = "Actualisation manuelle";
 "claude.timeline.trigger.first_read" = "Première lecture";
@@ -648,7 +648,7 @@
 "claude.timeline.trigger.local_expired_or_absent" = "Source locale expirée ou absente";
 "claude.timeline.delay.failure_backoff" = "temporisation après échec";
 "claude.timeline.delay.insufficient_tokens" = "attente de jetons";
-"claude.timeline.estimate.in" = "dans environ %@";
+"claude.timeline.estimate.in" = "dans environ %1$@";
 "claude.refresh.every_minutes" = "Toutes les %1$@ min";
 "claude.quota.calibration_detail" = "Interroge la source officielle à intervalles réguliers, en secours ; un intervalle plus long évite les limitations";
 

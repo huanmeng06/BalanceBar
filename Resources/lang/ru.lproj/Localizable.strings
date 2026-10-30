@@ -638,7 +638,7 @@
 "claude.timeline.value.evidence" = "Только подтверждение актуальности";
 "claude.timeline.estimate.label" = "Следующий запрос";
 "claude.timeline.estimate.scheduled" = "%1$@ (%3$@) · %2$@";
-"claude.timeline.estimate.cooldown" = "Ожидание до %@";
+"claude.timeline.estimate.cooldown" = "Ожидание до %1$@";
 "claude.timeline.estimate.delayed" = "Отложено до %1$@ (%4$@) · %2$@ (%3$@)";
 "claude.timeline.trigger.manual_refresh" = "Ручное обновление";
 "claude.timeline.trigger.first_read" = "Первое чтение";
@@ -648,7 +648,7 @@
 "claude.timeline.trigger.local_expired_or_absent" = "Локальный источник истёк или отсутствует";
 "claude.timeline.delay.failure_backoff" = "пауза после сбоя";
 "claude.timeline.delay.insufficient_tokens" = "ожидание токенов";
-"claude.timeline.estimate.in" = "примерно через %@";
+"claude.timeline.estimate.in" = "примерно через %1$@";
 "claude.refresh.every_minutes" = "Каждые %1$@ мин";
 "claude.quota.calibration_detail" = "Периодически запрашивает официальный источник как запасной вариант; больший интервал помогает избежать ограничений";
 

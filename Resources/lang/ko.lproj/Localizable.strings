@@ -638,7 +638,7 @@
 "claude.timeline.value.evidence" = "신선도 근거만";
 "claude.timeline.estimate.label" = "다음 자동 요청";
 "claude.timeline.estimate.scheduled" = "%1$@ (%3$@) · %2$@";
-"claude.timeline.estimate.cooldown" = "%@까지 대기 중";
+"claude.timeline.estimate.cooldown" = "%1$@까지 대기 중";
 "claude.timeline.estimate.delayed" = "%1$@(%4$@)까지 지연 · %2$@ (%3$@)";
 "claude.timeline.trigger.manual_refresh" = "수동 새로고침";
 "claude.timeline.trigger.first_read" = "첫 읽기";
@@ -648,7 +648,7 @@
 "claude.timeline.trigger.local_expired_or_absent" = "로컬 소스 만료 또는 없음";
 "claude.timeline.delay.failure_backoff" = "실패 백오프";
 "claude.timeline.delay.insufficient_tokens" = "토큰 보충 대기";
-"claude.timeline.estimate.in" = "약 %@ 후";
+"claude.timeline.estimate.in" = "약 %1$@ 후";
 "claude.refresh.every_minutes" = "%1$@분마다";
 "claude.quota.calibration_detail" = "일정 간격으로 공식 소스를 조회하는 대체 수단이며, 간격이 길수록 호출 제한을 피하기 쉽습니다";
 

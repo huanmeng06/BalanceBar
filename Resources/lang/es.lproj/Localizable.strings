@@ -638,7 +638,7 @@
 "claude.timeline.value.evidence" = "Solo evidencia de vigencia";
 "claude.timeline.estimate.label" = "Próxima solicitud";
 "claude.timeline.estimate.scheduled" = "%1$@ (%3$@) · %2$@";
-"claude.timeline.estimate.cooldown" = "En espera hasta %@";
+"claude.timeline.estimate.cooldown" = "En espera hasta %1$@";
 "claude.timeline.estimate.delayed" = "Aplazada hasta %1$@ (%4$@) · %2$@ (%3$@)";
 "claude.timeline.trigger.manual_refresh" = "Actualización manual";
 "claude.timeline.trigger.first_read" = "Primera lectura";
@@ -648,7 +648,7 @@
 "claude.timeline.trigger.local_expired_or_absent" = "Fuente local vencida o ausente";
 "claude.timeline.delay.failure_backoff" = "espera tras fallo";
 "claude.timeline.delay.insufficient_tokens" = "espera de tokens";
-"claude.timeline.estimate.in" = "en unos %@";
+"claude.timeline.estimate.in" = "en unos %1$@";
 "claude.refresh.every_minutes" = "Cada %1$@ min";
 "claude.quota.calibration_detail" = "Consulta la fuente oficial periódicamente como respaldo; intervalos largos evitan límites de uso";
 
