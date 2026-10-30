@@ -630,6 +630,8 @@
 "claude.timeline.window.not_included" = "No incluido";
 "claude.timeline.value.remaining" = "%1$@ restante";
 "claude.timeline.value.displayed" = "Usado como valor mostrado";
+"claude.timeline.value.evidence_within_tolerance" = "La tarjeta muestra el valor oficial";
+"claude.timeline.value.evidence_below_display" = "La tarjeta muestra un valor mayor";
 "claude.timeline.value.evidence" = "No usado en la tarjeta";
 "claude.timeline.estimate.label" = "Próxima solicitud";
 "claude.timeline.estimate.scheduled" = "%1$@ (%2$@)";

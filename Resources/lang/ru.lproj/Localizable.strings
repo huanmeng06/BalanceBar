@@ -630,6 +630,8 @@
 "claude.timeline.window.not_included" = "Не включено";
 "claude.timeline.value.remaining" = "осталось %1$@";
 "claude.timeline.value.displayed" = "Использовано как отображаемое значение";
+"claude.timeline.value.evidence_within_tolerance" = "Карточка показывает официальное значение";
+"claude.timeline.value.evidence_below_display" = "Карточка показывает большее значение";
 "claude.timeline.value.evidence" = "Не используется на карточке";
 "claude.timeline.estimate.label" = "Следующий запрос";
 "claude.timeline.estimate.scheduled" = "%1$@ (%2$@)";

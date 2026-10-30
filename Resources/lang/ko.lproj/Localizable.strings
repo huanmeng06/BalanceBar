@@ -630,6 +630,8 @@
 "claude.timeline.window.not_included" = "포함되지 않음";
 "claude.timeline.value.remaining" = "%1$@ 남음";
 "claude.timeline.value.displayed" = "표시 값으로 채택됨";
+"claude.timeline.value.evidence_within_tolerance" = "카드에 공식 값 표시";
+"claude.timeline.value.evidence_below_display" = "카드에 더 높은 값 표시";
 "claude.timeline.value.evidence" = "카드에 미반영";
 "claude.timeline.estimate.label" = "다음 자동 요청";
 "claude.timeline.estimate.scheduled" = "%1$@ (%2$@)";

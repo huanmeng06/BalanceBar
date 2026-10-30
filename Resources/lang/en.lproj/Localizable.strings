@@ -630,6 +630,8 @@
 "claude.timeline.window.not_included" = "Not included";
 "claude.timeline.value.remaining" = "%1$@ left";
 "claude.timeline.value.displayed" = "Used as displayed value";
+"claude.timeline.value.evidence_within_tolerance" = "Card shows the official reading";
+"claude.timeline.value.evidence_below_display" = "Card shows a higher value";
 "claude.timeline.value.evidence" = "Not used on the card";
 "claude.timeline.estimate.label" = "Next request";
 "claude.timeline.estimate.scheduled" = "%1$@ (%2$@)";

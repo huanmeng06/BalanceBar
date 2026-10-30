@@ -630,7 +630,9 @@
 "claude.timeline.window.not_included" = "未包含";
 "claude.timeline.value.remaining" = "剩余 %1$@";
 "claude.timeline.value.displayed" = "已采用为显示值";
-"claude.timeline.value.evidence" = "卡片未采用";
+"claude.timeline.value.evidence_within_tolerance" = "卡片显示官方读数";
+"claude.timeline.value.evidence_below_display" = "卡片显示更高的数值";
+"claude.timeline.value.evidence" = "卡片未采用此数值";
 "claude.timeline.estimate.label" = "下次自动请求";
 "claude.timeline.estimate.scheduled" = "%1$@ (%2$@)";
 "claude.timeline.estimate.cooldown" = "冷却中，最早 %1$@";

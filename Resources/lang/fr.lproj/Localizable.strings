@@ -630,6 +630,8 @@
 "claude.timeline.window.not_included" = "Non inclus";
 "claude.timeline.value.remaining" = "%1$@ restant";
 "claude.timeline.value.displayed" = "Utilisée comme valeur affichée";
+"claude.timeline.value.evidence_within_tolerance" = "La carte affiche la valeur officielle";
+"claude.timeline.value.evidence_below_display" = "La carte affiche une valeur plus élevée";
 "claude.timeline.value.evidence" = "Non utilisé sur la carte";
 "claude.timeline.estimate.label" = "Prochaine requête";
 "claude.timeline.estimate.scheduled" = "%1$@ (%2$@)";

@@ -630,6 +630,8 @@
 "claude.timeline.window.not_included" = "Non incluso";
 "claude.timeline.value.remaining" = "%1$@ rimanente";
 "claude.timeline.value.displayed" = "Usato come valore visualizzato";
+"claude.timeline.value.evidence_within_tolerance" = "La scheda mostra il valore ufficiale";
+"claude.timeline.value.evidence_below_display" = "La scheda mostra un valore più alto";
 "claude.timeline.value.evidence" = "Non usato sulla scheda";
 "claude.timeline.estimate.label" = "Prossima richiesta";
 "claude.timeline.estimate.scheduled" = "%1$@ (%2$@)";

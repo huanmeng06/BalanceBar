@@ -604,12 +604,24 @@ final class ClaudeSourceTimelineView: NSView {
             let remaining = min(100, max(0, 100 - value.usedPercentage))
             var text = tr(.keyClaudeTimelineValueRemaining, arguments: [
                 (formatter.string(from: NSNumber(value: remaining)) ?? "\(remaining)") + "%"])
-            if !allEvidence, evidenceOnly.contains(window) { text += " · " + tr(.keyClaudeTimelineValueEvidence) }
+            if !allEvidence, evidenceOnly.contains(window) { text += " · " + notAdoptedText(dispositions[window]) }
             return .init(label: label, value: text)
         }
         rows[0].gapBefore = true
-        if allEvidence { rows.append(.init(label: "", value: tr(.keyClaudeTimelineValueEvidence))) }
+        if allEvidence, let first = present.first {
+            let reasons = Set(present.map { notAdoptedText(dispositions[$0]) })
+            rows.append(.init(label: "", value: reasons.count == 1 ? notAdoptedText(dispositions[first]) : tr(.keyClaudeTimelineValueEvidence)))
+        }
         return rows
+    }
+
+    /// Why the card did not use this number, in terms of what it shows instead.
+    private func notAdoptedText(_ disposition: ClaudeSourceTimeline.ReadingDisposition?) -> String {
+        switch disposition {
+        case .freshnessEvidenceWithinTolerance: return tr(.keyClaudeTimelineValueEvidenceWithinTolerance)
+        case .freshnessEvidenceBelowDisplay: return tr(.keyClaudeTimelineValueEvidenceBelowDisplay)
+        default: return tr(.keyClaudeTimelineValueEvidence)
+        }
     }
 
     private func estimateRows(
