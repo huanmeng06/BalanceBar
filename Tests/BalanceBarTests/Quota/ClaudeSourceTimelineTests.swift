@@ -68,6 +68,19 @@ final class ClaudeSourceTimelineTests: XCTestCase {
         XCTAssertEqual(timeline.snapshot().requests.first?.outcome, .failure(.unauthorized))
     }
 
+    func testEstimateOnlyNotifiesWhenItsStateChanges() {
+        let timeline = makeTimeline(now: { self.start })
+        var changes = 0
+        timeline.onChange = { changes += 1 }
+        let state = FetchAutomaticRequestEstimate.State.scheduled(at: start.addingTimeInterval(60), trigger: .calibrationFloor)
+        timeline.updateEstimate(.init(state: state, evaluatedAt: start))
+        timeline.updateEstimate(.init(state: state, evaluatedAt: start.addingTimeInterval(5)))
+        XCTAssertEqual(changes, 1, "a later evaluation of the same state is not a change")
+        XCTAssertEqual(timeline.snapshot().estimate?.evaluatedAt, start.addingTimeInterval(5), "but the snapshot keeps the latest evaluation")
+        timeline.updateEstimate(.init(state: .coolingDown(until: start.addingTimeInterval(90)), evaluatedAt: start.addingTimeInterval(10)))
+        XCTAssertEqual(changes, 2)
+    }
+
     func testReadingsStaySortedWhenAnOlderSnapshotArrivesLate() {
         let timeline = makeTimeline(now: { self.start.addingTimeInterval(60) })
         timeline.recordReading(source: .mod, observedAt: start.addingTimeInterval(30))

@@ -214,10 +214,12 @@ final class ClaudeSourceTimeline {
     }
 
     func updateEstimate(_ estimate: FetchAutomaticRequestEstimate) {
+        // `evaluatedAt` moves on every call, so only a different state is a change worth repainting;
+        // otherwise reading the content for a repaint would schedule the next repaint forever.
         let changed = lock.withLock { () -> Bool in
-            guard self.estimate != estimate else { return false }
+            let stateChanged = self.estimate?.state != estimate.state
             self.estimate = estimate
-            return true
+            return stateChanged
         }
         if changed { onChange?() }
     }
