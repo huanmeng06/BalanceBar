@@ -68,6 +68,7 @@ enum RealtimeBoostText: String, CaseIterable {
     case cardUpdateTitle = "mod.card.update.title"
     case cardUpdateReason = "mod.card.update.reason"
     case cardUpdateAction = "mod.card.update.action"
+    case cardUpdateButton = "mod.card.update.button"
 
     var defaultText: String {
         switch self {
@@ -132,10 +133,11 @@ enum RealtimeBoostText: String, CaseIterable {
         case .statusDisabled: return "已安装但已停用，实时同步不会运行"
         case .statusRejectedAccount: return "快照被拒：Claude 登录账号与 BalanceBar 当前账号不一致"
         case .statusRejectedCycle: return "快照被拒：周期与官方数据不一致，已回退官方额度"
-        case .statusUpdateRequired: return "Mod 版本过旧，需要更新。请在终端依次运行 claude plugin marketplace update balancebar-mods 和 claude plugin update balancebar-mod@balancebar-mods，然后重启 Claude Code 会话"
+        case .statusUpdateRequired: return "Mod 版本过旧，需要更新（第三方插件市场默认不自动更新）。更新后请重启 Claude Code 会话"
         case .cardUpdateTitle: return "需要更新"
         case .cardUpdateReason: return "第三方插件市场默认不自动更新"
-        case .cardUpdateAction: return "终端运行 claude plugin marketplace update balancebar-mods 与 claude plugin update balancebar-mod@balancebar-mods，再重启会话"
+        case .cardUpdateAction: return "点「一键更新」，再重启会话"
+        case .cardUpdateButton: return "一键更新"
         case .statusInstallationUnknown: return "无法确认 Mod 是否已安装（插件列表读取失败）"
         }
     }
@@ -371,6 +373,12 @@ final class RealtimeBoostSettingsRows {
         case let .uninstalling(step):
             return .init(status: base.status,
                          reason: modLocalize([.uninstallStep1, .uninstallStep2, .step3][step.rawValue]) + "…")
+        case .updating(let step):
+            return .init(status: base.status,
+                         reason: modLocalize([.updateStep1, .updateStep2, .step3][step.rawValue]) + "…")
+        case .updateFailed:
+            return .init(status: localize(.cardUpdateTitle), reason: localize(.cardUpdateReason),
+                         action: String(format: localize(.cardViewErrorAction), localize(.viewError)))
         case .failed:
             return .init(status: localize(.cardInstallFailedTitle), reason: modLocalize(.failureTitle),
                          action: String(format: localize(.cardViewErrorAction), localize(.viewError)))
@@ -445,9 +453,9 @@ final class RealtimeBoostSettingsRows {
         var busy = false
         var failed = false
         switch operation {
-        case .installing, .uninstalling:
+        case .installing, .uninstalling, .updating:
             busy = true
-        case .failed, .uninstallFailed: failed = true
+        case .failed, .uninstallFailed, .updateFailed: failed = true
         default: break
         }
         let canInstall: Bool
@@ -457,7 +465,9 @@ final class RealtimeBoostSettingsRows {
         }
         statusRow.titleLabel.stringValue = localize(.cardRowTitle)
         applyDetail(copy.detail, dotColor: failed ? .systemRed : Self.color(for: status))
-        installButton.isHidden = !canInstall || busy
+        let canUpdate = status == .updateRequired
+        installButton.title = canUpdate ? localize(.cardUpdateButton) : localize(.install)
+        installButton.isHidden = !(canInstall || canUpdate) || busy
         descriptionButton.title = failed ? localize(.viewError)
             : busy ? localize(.manage) : localize(.cardLearnMore)
         if busy { spinner.startAnimation(nil) } else { spinner.stopAnimation(nil) }

@@ -762,6 +762,13 @@
     case modCardUpdateTitle = "mod.card.update.title"
     case modCardUpdateReason = "mod.card.update.reason"
     case modCardUpdateAction = "mod.card.update.action"
+    case modUpdateButton = "mod.update.button"
+    case modUpdateStep1 = "mod.update.step1"
+    case modUpdateStep2 = "mod.update.step2"
+    case modUpdateDone = "mod.update.done"
+    case modUpdateDoneNote = "mod.update.done_note"
+    case modFailureUpdate = "mod.failure.update_command"
+    case modCardUpdateButton = "mod.card.update.button"
 
     var rawKey: String { rawValue }
 }

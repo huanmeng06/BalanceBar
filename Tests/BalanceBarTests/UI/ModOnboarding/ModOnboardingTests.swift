@@ -135,6 +135,43 @@ final class ModInstallerTests: XCTestCase {
         XCTAssertEqual(outcome, .failure(.commandFailed(step: .addMarketplace, exitCode: 0, detail: "outcome=error")))
     }
 
+    func testUpdateRunsMarketplaceUpdateThenPluginUpdateAndStopsOnFailure() {
+        func update(_ results: [ModCommandResult?]) -> (ModInstallResult, [ModInstallStep], [[String]]) {
+            let runner = ScriptedRunner(results)
+            let q = DispatchQueue(label: "test.updater")
+            let installer = ModInstaller(locator: FakeLocator(path: "/bin/claude"), runner: runner,
+                                         prepareInbox: { false }, workQueue: q, callbackQueue: q)
+            let done = expectation(description: "update")
+            var steps: [ModInstallStep] = [], result: ModInstallResult?
+            installer.update(progress: { steps.append($0) }, completion: { result = $0; done.fulfill() })
+            wait(for: [done], timeout: 5)
+            return (result!, q.sync { steps }, runner.calls)
+        }
+        let (result, steps, calls) = update([ok, ok])
+        XCTAssertEqual(result, .success, "the inbox is not touched by an update")
+        XCTAssertEqual(steps, [.addMarketplace, .installPlugin, .finish])
+        XCTAssertEqual(calls, [["plugin", "marketplace", "update", "balancebar-mods", "--json"],
+                               ["plugin", "update", "balancebar-mod@balancebar-mods", "--scope", "user", "--json"]])
+        let bad = ModCommandResult(exitCode: 1, stdout: "", stderr: "boom")
+        let (failed, _, failedCalls) = update([bad, ok])
+        XCTAssertEqual(failed, .failure(.commandFailed(step: .addMarketplace, exitCode: 1, detail: "boom")))
+        XCTAssertEqual(failedCalls.count, 1)
+    }
+
+    func testUpdateCommandsAreCopyableAsTheUsersTwoCommands() {
+        XCTAssertEqual(ModInstallPlan.standard.copyableUpdateCommands,
+                       "claude plugin marketplace update balancebar-mods\nclaude plugin update balancebar-mod@balancebar-mods")
+    }
+
+    func testUpdateRequiredPanelOffersCopyableCommandsAndOneClickUpdate() {
+        let status = ModSyncStatus.updateRequired
+        let items = ModPanelContent.items(
+            for: .intro(dismissChecked: false), plan: .standard, localize: { $0.defaultText },
+            sync: .init(status: status, statusText: "x"), showsIntro: false)
+        XCTAssertTrue(items.contains(.codeBlock(ModInstallPlan.standard.copyableUpdateCommands, copyAction: .copyUpdate)))
+        XCTAssertTrue(items.contains(.button(title: ModOnboardingText.updateButton.defaultText, action: .update)))
+    }
+
     func testLocatorSearchesPathThenKnownDirectories() {
         var seen: [String] = []
         let locator = DefaultClaudeExecutableLocator(environment: ["PATH": "/a:/b"], homeDirectory: "/h",
@@ -514,8 +551,8 @@ final class ModSyncStatusTests: XCTestCase {
             ModSyncStatus.resolve(environment: env(installation: installed), evidence: evidence, now: now),
             .active(lastAcceptedAt: now.addingTimeInterval(-60)))
         let text = RealtimeBoostPresentation.make(status: .updateRequired, timeZone: TimeZone(identifier: "UTC")!).statusText
-        XCTAssertTrue(text.contains("claude plugin marketplace update balancebar-mods"))
-        XCTAssertTrue(text.contains("claude plugin update balancebar-mod@balancebar-mods"))
+        XCTAssertTrue(text.contains("第三方插件市场默认不自动更新"))
+        XCTAssertTrue(text.contains("重启 Claude Code 会话"))
     }
 }
 
@@ -1996,7 +2033,7 @@ final class RealtimeBoostAdvancedCardTests: XCTestCase {
             let card = RealtimeBoostSettingsRows(status: .updateRequired, operation: .intro(dismissChecked: false),
                 onInstall: { _ in }, onShowDescription: { _ in })
             try write(SettingsSectionView(title: tr(.keyDashboardGeneralAndRefreshPagesRefresh), contentViews: [card.statusRow]),
-                      width: 520, name: "card")
+                      width: 760, name: "card")
             let controller = ModOnboardingController(preference: MemoryPreference(), copyToPasteboard: { _ in })
             let panel = ModOnboardingPanelView(controller: controller, localize: modOnboardingLocalize,
                 syncProvider: { ModPanelSyncContext(status: .updateRequired,
@@ -2007,6 +2044,10 @@ final class RealtimeBoostAdvancedCardTests: XCTestCase {
             // An installed Mod opens on the pitch page; "查看当前状态" leads to the status page.
             buttons(panel).first { $0.title == tr(.modUIViewStatus) }?.performClick(nil)
             try write(panel, width: 480, name: "panel")
+            let card2 = RealtimeBoostSettingsRows(status: .updateRequired, operation: .updating(current: .installPlugin),
+                onInstall: { _ in }, onShowDescription: { _ in })
+            try write(SettingsSectionView(title: tr(.keyDashboardGeneralAndRefreshPagesRefresh), contentViews: [card2.statusRow]),
+                      width: 760, name: "card-updating")
         }
     }
 

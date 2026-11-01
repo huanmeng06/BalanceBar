@@ -77,6 +77,13 @@ final class ModSyncCoordinator {
             if case .success = result { self?.resetSnapshotEvidence() }
             self?.startDetectionIfNeeded(force: true)
         }
+        controller.onUpdateCompleted = { [weak self] result in
+            // The installed Mod is now current; only a snapshot from a still-running old session
+            // can flag it again.
+            if case .success = result { self?.evidence.modOutdated = false }
+            self?.startDetectionIfNeeded(force: true)
+            self?.recomputeStatus()
+        }
         controller.onUninstallCompleted = { [weak self] result in
             if case .success = result {
                 self?.onModUnavailable?(.inAppUninstall)
@@ -382,6 +389,12 @@ extension LocalizationKey {
         case .failureUninstall: return .modFailureUninstall
         case .copyEnableCommands: return .modFailureCopyEnable
         case .failureInbox: return .modFailureInbox
+        case .updateButton: return .modUpdateButton
+        case .updateStep1: return .modUpdateStep1
+        case .updateStep2: return .modUpdateStep2
+        case .updateDone: return .modUpdateDone
+        case .updateDoneNote: return .modUpdateDoneNote
+        case .failureUpdate: return .modFailureUpdate
         }
     }
 
@@ -451,6 +464,7 @@ extension LocalizationKey {
         case .cardUpdateTitle: return .modCardUpdateTitle
         case .cardUpdateReason: return .modCardUpdateReason
         case .cardUpdateAction: return .modCardUpdateAction
+        case .cardUpdateButton: return .modCardUpdateButton
         }
     }
 }

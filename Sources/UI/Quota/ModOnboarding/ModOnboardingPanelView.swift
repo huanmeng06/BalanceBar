@@ -16,7 +16,7 @@ enum ModPanelItem: Equatable {
     case button(title: String, action: ButtonAction)
 
     enum StepStatus: String, Equatable { case pending, running, done }
-    enum ButtonAction: Equatable { case install, close, copyCommands, copyReload, copyList, undoDismiss, uninstall, copyUninstall, copyEnable, refresh, confirmUninstall, cancelUninstall, showStatus, showIntro }
+    enum ButtonAction: Equatable { case install, update, copyUpdate, close, copyCommands, copyReload, copyList, undoDismiss, uninstall, copyUninstall, copyEnable, refresh, confirmUninstall, cancelUninstall, showStatus, showIntro }
 
     var snapshotLine: String {
         switch self {
@@ -137,6 +137,17 @@ enum ModPanelContent {
                 .button(title: t(.copyCommands), action: .copyUninstall),
                 .button(title: t(.closeButton), action: .close),
             ]
+        case let .updating(current):
+            let labels = [t(.updateStep1), t(.updateStep2), t(.step3)]
+            return [.title(t(.panelTitle))] + ModInstallStep.allCases.map { step in
+                .step(label: labels[step.rawValue], status: step.rawValue < current.rawValue ? .done
+                    : step == current ? .running : .pending)
+            }
+        case .updateSucceeded:
+            return [.title(t(.updateDone)), .text(t(.updateDoneNote)), .button(title: t(.closeButton), action: .close)]
+        case .updateFailed:
+            return [.title(t(.failureTitle)), .text(t(.failureUpdate)), .code(plan.copyableUpdateCommands),
+                    .button(title: t(.copyCommands), action: .copyUpdate), .button(title: t(.closeButton), action: .close)]
         case .dismissConfirmed:
             return [
                 .title(t(.dismissedTitle)), .text(t(.dismissedNote)),
@@ -222,6 +233,8 @@ enum ModPanelContent {
                         .text(t(.removeNote)), uninstall, refresh, close])
             case .updateRequired:
                 return statusPage([.hero(symbol: "exclamationmark.triangle.fill", title: t(.manageTitle), subtitle: sync.statusText),
+                        .codeBlock(plan.copyableUpdateCommands, copyAction: .copyUpdate),
+                        .button(title: t(.updateButton), action: .update),
                         uninstall, refresh, close])
             case let .snapshotRejected(event):
                 return statusPage([.hero(symbol: "exclamationmark.triangle.fill", title: t(.manageTitle), subtitle: sync.statusText),
@@ -273,6 +286,20 @@ enum ModPanelContent {
             return result + [.codeBlock(plan.copyableUninstallCommands, copyAction: .copyUninstall),
                              .button(title: t(.copyCommands), action: .copyUninstall),
                              .button(title: t(.retry), action: .uninstall), close]
+        case let .updating(current):
+            return [.hero(symbol: nil, title: t(.manageTitle), subtitle: t(.updateButton))]
+                + steps([t(.updateStep1), t(.updateStep2), t(.step3)], current: current.rawValue) + [close]
+        case .updateSucceeded:
+            return [.hero(symbol: "checkmark.circle.fill", title: t(.updateDone), subtitle: t(.updateDoneNote)), close]
+        case let .updateFailed(failure):
+            var result: [ModPanelItem] = [.hero(symbol: "exclamationmark.triangle.fill", title: t(.failureTitle), subtitle: nil),
+                .text(t(failure == .claudeNotFound ? .failureClaudeMissing : .failureUpdate))]
+            if case let .commandFailed(_, _, detail) = failure, !detail.isEmpty {
+                result.append(.detail(detail.split(whereSeparator: \.isNewline).prefix(2).joined(separator: "\n")))
+            }
+            return result + [.codeBlock(plan.copyableUpdateCommands, copyAction: .copyUpdate),
+                             .button(title: t(.copyCommands), action: .copyUpdate),
+                             .button(title: t(.retry), action: .update), close]
         case .dismissConfirmed:
             return [.hero(symbol: nil, title: t(.dismissedTitle), subtitle: t(.dismissedNote)),
                     .button(title: t(.undoDismiss), action: .undoDismiss), close]
@@ -584,15 +611,16 @@ final class ModOnboardingPanelView: NSView {
             if case let .hero(symbol, _, _) = item { return symbol?.hasPrefix("exclamation") == true }; return false
         }
         let leading = visible.filter { action in
-            ![.close, .cancelUninstall, .confirmUninstall, .showStatus].contains(action.1) && (action.1 != .install || warning)
+            ![.close, .cancelUninstall, .confirmUninstall, .showStatus, .update].contains(action.1) && (action.1 != .install || warning)
         }
         let trailing = visible.filter { action in
-            [.close, .cancelUninstall, .confirmUninstall, .showStatus].contains(action.1) || (action.1 == .install && !warning)
-        }.sorted { $0.1 != .install && $1.1 == .install }
+            [.close, .cancelUninstall, .confirmUninstall, .showStatus, .update].contains(action.1) || (action.1 == .install && !warning)
+        }.sorted { ![.install, .update].contains($0.1) && [.install, .update].contains($1.1) }
         let footer = makeFooter(leading: leading, trailing: trailing)
         stack.addArrangedSubview(footer)
         footer.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -48).isActive = true
-        defaultButton = warning ? nil : allButtons.first { $0.identifier?.rawValue == "install" }
+        defaultButton = allButtons.first { $0.identifier?.rawValue == "update" }
+            ?? (warning ? nil : allButtons.first { $0.identifier?.rawValue == "install" })
         defaultButton = defaultButton ?? allButtons.first { ["close", "cancelUninstall"].contains($0.identifier?.rawValue ?? "") }
         defaultButton?.keyEquivalent = "\r"
         window?.defaultButtonCell = defaultButton?.cell as? NSButtonCell
@@ -648,6 +676,8 @@ final class ModOnboardingPanelView: NSView {
     func perform(_ action: ModPanelItem.ButtonAction) {
         switch action {
         case .install: controller.startInstall()
+        case .update: controller.startUpdate()
+        case .copyUpdate: controller.copyUpdateCommands()
         case .copyCommands: controller.copyInstallCommands()
         case .copyReload: controller.copyReloadCommand()
         case .copyList: controller.copyListCommand()
@@ -860,10 +890,10 @@ final class ModOnboardingPanelView: NSView {
         guard let id = sender.identifier?.rawValue,
               let action = [ModPanelItem.ButtonAction.install, .close, .copyCommands, .copyReload, .copyList, .undoDismiss,
                             .uninstall, .copyUninstall, .copyEnable, .refresh, .confirmUninstall, .cancelUninstall,
-                            .showStatus, .showIntro]
+                            .showStatus, .showIntro, .update, .copyUpdate]
                 .first(where: { String(describing: $0) == id }) else { return }
         perform(action)
-        if [.copyCommands, .copyReload, .copyList, .copyUninstall, .copyEnable].contains(action) {
+        if [.copyCommands, .copyReload, .copyList, .copyUninstall, .copyEnable, .copyUpdate].contains(action) {
             if let copy = sender as? ModCopyButton { copy.flashCopied(); return }
             let title = sender.title
             sender.title = localize(.copied)

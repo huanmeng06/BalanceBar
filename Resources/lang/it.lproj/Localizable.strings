@@ -697,10 +697,17 @@
 "mod.sync.status.rejected_account" = "Snapshot rifiutato: l'account Claude non corrisponde all'account BalanceBar corrente";
 "mod.sync.status.rejected_cycle" = "Snapshot rifiutato: il ciclo non corrisponde ai dati ufficiali; viene usato il percorso ufficiale";
 "mod.sync.status.installation_unknown" = "Impossibile confermare se il Mod è installato (elenco plugin non riuscito)";
-"mod.sync.status.update_required" = "The Mod is outdated and needs an update. In a terminal run claude plugin marketplace update balancebar-mods and then claude plugin update balancebar-mod@balancebar-mods, then restart the Claude Code session";
+"mod.sync.status.update_required" = "The Mod is outdated and needs an update (third-party plugin marketplaces do not auto-update by default). Restart the Claude Code session afterwards";
 "mod.card.update.title" = "Update needed";
 "mod.card.update.reason" = "Third-party plugin marketplaces do not auto-update by default";
-"mod.card.update.action" = "Run claude plugin marketplace update balancebar-mods and claude plugin update balancebar-mod@balancebar-mods in a terminal, then restart the session";
+"mod.card.update.action" = "Click “Update now”, then restart the session";
+"mod.update.button" = "Update now";
+"mod.update.step1" = "Update source";
+"mod.update.step2" = "Update Mod";
+"mod.update.done" = "Updated ✓";
+"mod.update.done_note" = "Restart your Claude Code session for the new Mod to take effect.";
+"mod.failure.update_command" = "The update did not finish. Run these commands in a terminal, then restart the session:";
+"mod.card.update.button" = "Update now";
 
 // Mod management window (Issue #604)
 "mod.ui.subtitle" = "Mantieni aggiornate le quote Claude Code";

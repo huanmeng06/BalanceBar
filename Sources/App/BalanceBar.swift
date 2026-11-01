@@ -583,7 +583,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             onInstallModSync: { [weak self] anchor in
                 guard let self else { return }
                 self.modSyncCoordinator.presentPanel(from: anchor)
-                self.modSyncCoordinator.controller.startInstall()
+                if self.modSyncCoordinator.status == .updateRequired {
+                    self.modSyncCoordinator.controller.startUpdate()
+                } else {
+                    self.modSyncCoordinator.controller.startInstall()
+                }
             },
             onModSyncVisibilityChanged: { [weak self] visible in
                 self?.modSyncCoordinator.setAdvancedStatusCardVisible(visible)
