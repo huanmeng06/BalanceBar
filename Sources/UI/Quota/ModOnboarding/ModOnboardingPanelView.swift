@@ -292,7 +292,7 @@ enum ModPanelContent {
                              .button(title: t(.copyCommands), action: .copyUninstall),
                              .button(title: t(.retry), action: .uninstall), close]
         case let .updating(current):
-            return [.hero(symbol: nil, title: t(.manageTitle), subtitle: t(.updateButton))]
+            return [.hero(symbol: nil, title: t(.updateProgressTitle), subtitle: nil)]
                 + steps([t(.updateStep1), t(.updateStep2), t(.step3)], current: current.rawValue) + [close]
         case .updateSucceeded:
             return [.hero(symbol: "checkmark.circle.fill", title: t(.updateDone), subtitle: t(.updateDoneNote)), close]

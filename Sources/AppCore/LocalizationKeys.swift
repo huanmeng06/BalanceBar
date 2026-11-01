@@ -764,6 +764,7 @@
     case modCardUpdateAction = "mod.card.update.action"
     case modUpdateButton = "mod.update.button"
     case modUpdateTitle = "mod.update.title"
+    case modUpdateProgressTitle = "mod.update.progress_title"
     case modUpdateStep1 = "mod.update.step1"
     case modUpdateStep2 = "mod.update.step2"
     case modUpdateDone = "mod.update.done"

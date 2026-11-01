@@ -396,6 +396,7 @@ extension LocalizationKey {
         case .failureInbox: return .modFailureInbox
         case .updateButton: return .modUpdateButton
         case .updateTitle: return .modUpdateTitle
+        case .updateProgressTitle: return .modUpdateProgressTitle
         case .updateStep1: return .modUpdateStep1
         case .updateStep2: return .modUpdateStep2
         case .updateDone: return .modUpdateDone

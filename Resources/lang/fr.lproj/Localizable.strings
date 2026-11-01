@@ -703,6 +703,7 @@
 "mod.card.update.action" = "Dernière version : %1$@";
 "mod.update.button" = "Mettre à jour";
 "mod.update.title" = "BalanceBar Mod doit être mis à jour";
+"mod.update.progress_title" = "Mise à jour de BalanceBar Mod";
 "mod.update.step1" = "Mettre à jour la source";
 "mod.update.step2" = "Mettre à jour le Mod";
 "mod.update.done" = "Mis à jour ✓";
