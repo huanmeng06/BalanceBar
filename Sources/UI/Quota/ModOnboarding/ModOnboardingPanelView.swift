@@ -492,6 +492,13 @@ final class ModOnboardingPanelView: NSView {
     override var fittingSize: NSSize { NSSize(width: bounds.width, height: stack.fittingSize.height) }
     private var contentWidth: CGFloat { max(1, bounds.width - 48) }
 
+    static func opensOnOverview(_ status: ModSyncStatus) -> Bool {
+        switch status {
+        case .active, .waitingForData: return true
+        default: return false
+        }
+    }
+
     static func requiredWidth(localize t: (ModOnboardingText) -> String) -> CGFloat {
         let widths = [[t(.copyCommands), t(.laterButton), t(.installButton)],
                       [t(.uninstallButton), t(.closeButton)], [t(.retry), t(.closeButton)],
@@ -534,6 +541,9 @@ final class ModOnboardingPanelView: NSView {
             stack.topAnchor.constraint(equalTo: topAnchor),
         ])
         controller.onChange = { [weak self] in self?.reload() }
+        // An installed Mod in a healthy state opens on the overview; any other state opens
+        // straight on the status page, which is what the user came to look at.
+        showsIntro = syncProvider?().map { Self.opensOnOverview($0.status) } ?? true
         ready = true
         reload()
     }

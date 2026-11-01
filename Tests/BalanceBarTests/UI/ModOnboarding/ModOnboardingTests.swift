@@ -182,6 +182,19 @@ final class ModInstallerTests: XCTestCase {
         XCTAssertEqual(restart.detail, "Mod 已更新，请重启 Claude Code 会话")
     }
 
+    func testPanelOpensOnStatusUnlessTheModIsHealthy() {
+        for (status, overview) in [
+            (ModSyncStatus.active(lastAcceptedAt: Date()), true), (.waitingForData, true),
+            (.updateRequired(installedVersion: "1.0.0"), false), (.silent, false), (.disabled, false),
+            (.snapshotRejected(.init(rejection: .accountMismatch, at: Date())), false),
+        ] {
+            let panel = ModOnboardingPanelView(
+                controller: ModOnboardingController(preference: MemoryPreference(), copyToPasteboard: { _ in }),
+                syncProvider: { ModPanelSyncContext(status: status, statusText: "x") })
+            XCTAssertEqual(panel.showsIntro, overview, "\(status)")
+        }
+    }
+
     func testUpdateCommandsAreCopyableAsTheUsersTwoCommands() {
         XCTAssertEqual(ModInstallPlan.standard.copyableUpdateCommands,
                        "claude plugin marketplace update balancebar-mods\nclaude plugin update balancebar-mod@balancebar-mods")
