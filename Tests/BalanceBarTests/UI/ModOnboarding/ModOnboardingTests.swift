@@ -158,13 +158,37 @@ final class ModInstallerTests: XCTestCase {
         XCTAssertEqual(failedCalls.count, 1)
     }
 
+    func testLatestModVersionMatchesThePluginManifest() throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let data = try Data(contentsOf: root.appendingPathComponent("mod/.claude-plugin/plugin.json"))
+        let manifest = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(manifest["version"] as? String, ModOnboardingConfig.latestModVersion)
+    }
+
+    func testModVersionComparisonAndCardVersionLine() {
+        XCTAssertFalse(ModVersion.isCurrent("1.0.0", latest: "1.1.0"))
+        XCTAssertTrue(ModVersion.isCurrent("1.1.0", latest: "1.1.0"))
+        XCTAssertTrue(ModVersion.isCurrent("1.10", latest: "1.9.9"))
+        XCTAssertFalse(ModVersion.isCurrent(nil))
+        XCTAssertFalse(ModVersion.isCurrent("beta"))
+        let outdated = RealtimeBoostSettingsRows.cardCopy(
+            status: .updateRequired(installedVersion: "1.0.0"), operation: .intro(dismissChecked: false),
+            localize: { realtimeBoostLocalize($0, language: .simplifiedChinese) }, modLocalize: { $0.defaultText })
+        XCTAssertEqual(outdated.detail, "Mod 需要更新 · 当前版本：1.0.0 · 最新版本：\(ModOnboardingConfig.latestModVersion)")
+        let restart = RealtimeBoostSettingsRows.cardCopy(
+            status: .updateRequired(installedVersion: ModOnboardingConfig.latestModVersion), operation: .intro(dismissChecked: false),
+            localize: { $0.defaultText }, modLocalize: { $0.defaultText })
+        XCTAssertEqual(restart.detail, "Mod 已更新，请重启 Claude Code 会话")
+    }
+
     func testUpdateCommandsAreCopyableAsTheUsersTwoCommands() {
         XCTAssertEqual(ModInstallPlan.standard.copyableUpdateCommands,
                        "claude plugin marketplace update balancebar-mods\nclaude plugin update balancebar-mod@balancebar-mods")
     }
 
     func testUpdateRequiredPanelOffersCopyableCommandsAndOneClickUpdate() {
-        let status = ModSyncStatus.updateRequired
+        let status = ModSyncStatus.updateRequired(installedVersion: "1.0.0")
         let items = ModPanelContent.items(
             for: .intro(dismissChecked: false), plan: .standard, localize: { $0.defaultText },
             sync: .init(status: status, statusText: "x"), showsIntro: false)
@@ -545,12 +569,12 @@ final class ModSyncStatusTests: XCTestCase {
         var evidence = ModSnapshotEvidence(lastAcceptedAt: now.addingTimeInterval(-60), modOutdated: true)
         XCTAssertEqual(
             ModSyncStatus.resolve(environment: env(installation: installed), evidence: evidence, now: now),
-            .updateRequired)
+            .updateRequired(installedVersion: "1.0.0"))
         evidence.modOutdated = false
         XCTAssertEqual(
             ModSyncStatus.resolve(environment: env(installation: installed), evidence: evidence, now: now),
             .active(lastAcceptedAt: now.addingTimeInterval(-60)))
-        let text = RealtimeBoostPresentation.make(status: .updateRequired, timeZone: TimeZone(identifier: "UTC")!).statusText
+        let text = RealtimeBoostPresentation.make(status: .updateRequired(installedVersion: "1.0.0"), timeZone: TimeZone(identifier: "UTC")!).statusText
         XCTAssertTrue(text.contains("第三方插件市场默认不自动更新"))
         XCTAssertTrue(text.contains("重启 Claude Code 会话"))
     }
@@ -812,13 +836,13 @@ final class ModSyncCoordinatorTests: XCTestCase {
         let (coordinator, _) = makeCoordinator(
             locator: "/bin/claude", results: [version, list, ok, ok, version, list], simulatedOutdatedMod: true)
         let pinned = expectation(description: "pinned")
-        coordinator.onStatusChange = { if $0 == .updateRequired { pinned.fulfill() } }
+        coordinator.onStatusChange = { if $0 == .updateRequired(installedVersion: "1.0.0") { pinned.fulfill() } }
         coordinator.startDetectionIfNeeded(force: true)
         wait(for: [pinned], timeout: 3)
         // A live new-format snapshot must not clear the simulated state.
         coordinator.ingest(.init(kind: .formatChecked(outdated: false), window: nil, observedAt: nil, receivedAt: Date()))
         RunLoop.main.run(until: Date().addingTimeInterval(0.1))
-        XCTAssertEqual(coordinator.status, .updateRequired)
+        XCTAssertEqual(coordinator.status, .updateRequired(installedVersion: "1.0.0"))
         let cleared = expectation(description: "cleared by the update")
         coordinator.onStatusChange = { if $0 == .waitingForData { cleared.fulfill() } }
         coordinator.controller.startUpdate()
@@ -2051,21 +2075,21 @@ final class RealtimeBoostAdvancedCardTests: XCTestCase {
                 let png = try XCTUnwrap(image.representation(using: .png, properties: [:]))
                 try png.write(to: directory.appendingPathComponent("\(name)-\(tag).png"))
             }
-            let card = RealtimeBoostSettingsRows(status: .updateRequired, operation: .intro(dismissChecked: false),
+            let card = RealtimeBoostSettingsRows(status: .updateRequired(installedVersion: "1.0.0"), operation: .intro(dismissChecked: false),
                 onInstall: { _ in }, onShowDescription: { _ in })
             try write(SettingsSectionView(title: tr(.keyDashboardGeneralAndRefreshPagesRefresh), contentViews: [card.statusRow]),
                       width: 760, name: "card")
             let controller = ModOnboardingController(preference: MemoryPreference(), copyToPasteboard: { _ in })
             let panel = ModOnboardingPanelView(controller: controller, localize: modOnboardingLocalize,
-                syncProvider: { ModPanelSyncContext(status: .updateRequired,
-                    statusText: RealtimeBoostPresentation.make(status: .updateRequired, localize: realtimeBoostLocalize).statusText) })
+                syncProvider: { ModPanelSyncContext(status: .updateRequired(installedVersion: "1.0.0"),
+                    statusText: RealtimeBoostPresentation.make(status: .updateRequired(installedVersion: "1.0.0"), localize: realtimeBoostLocalize).statusText) })
             func buttons(_ view: NSView) -> [NSButton] {
                 view.subviews.flatMap { ($0 as? NSButton).map { [$0] } ?? [] + buttons($0) }
             }
             // An installed Mod opens on the pitch page; "查看当前状态" leads to the status page.
             buttons(panel).first { $0.title == tr(.modUIViewStatus) }?.performClick(nil)
-            try write(panel, width: 480, name: "panel")
-            let card2 = RealtimeBoostSettingsRows(status: .updateRequired, operation: .updating(current: .installPlugin),
+            try write(panel, width: ModOnboardingPanelView.requiredWidth(localize: modOnboardingLocalize), name: "panel")
+            let card2 = RealtimeBoostSettingsRows(status: .updateRequired(installedVersion: "1.0.0"), operation: .updating(current: .installPlugin),
                 onInstall: { _ in }, onShowDescription: { _ in })
             try write(SettingsSectionView(title: tr(.keyDashboardGeneralAndRefreshPagesRefresh), contentViews: [card2.statusRow]),
                       width: 760, name: "card-updating")
@@ -2082,7 +2106,7 @@ final class RealtimeBoostAdvancedCardTests: XCTestCase {
             ("waiting", .waitingForData, .succeeded),
             ("active", .active(lastAcceptedAt: Date(timeIntervalSince1970: 1_792_872_000)), .intro(dismissChecked: false)),
             ("silent", .silent, .intro(dismissChecked: false)),
-            ("update-required", .updateRequired, .intro(dismissChecked: false)),
+            ("update-required", .updateRequired(installedVersion: "1.0.0"), .intro(dismissChecked: false)),
             ("failed", .inboxNotReady, .failed(.inboxNotReady)),
             ("uninstalling", .waitingForData, .uninstalling(current: .removeMarketplace))]
         for language in TestMatrix.representativeLanguages {

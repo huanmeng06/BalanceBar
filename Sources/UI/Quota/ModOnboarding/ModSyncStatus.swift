@@ -74,7 +74,7 @@ enum ModSyncStatus: Equatable {
     /// activity grace period — the session probably predates the install.
     case silent
     /// The installed Mod writes the old snapshot format (1.0.0); it must be updated from the terminal.
-    case updateRequired
+    case updateRequired(installedVersion: String?)
     /// A newer snapshot was rejected than the last accepted one; realtime is not working.
     case snapshotRejected(ModRejectionEvent)
 
@@ -95,7 +95,7 @@ enum ModSyncStatus: Equatable {
             return .notInstalled(hasOtherScopeInstall: environment.hasNonUserScopeInstall)
         }
         guard installation.isEnabled else { return .disabled }
-        if evidence.modOutdated { return .updateRequired }
+        if evidence.modOutdated { return .updateRequired(installedVersion: installation.version) }
         // A rejection newer than the last acceptance is the current situation; an older
         // one was superseded by accepted data.
         if let rejection = evidence.lastRejection,

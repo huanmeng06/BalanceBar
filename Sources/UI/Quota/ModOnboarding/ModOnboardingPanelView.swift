@@ -231,11 +231,16 @@ enum ModPanelContent {
                         .button(title: t(.copyEnableCommands), action: .copyEnable),
                         .text(t(.reloadHint)), .codeBlock(ModInstallPlan.reloadCommand, copyAction: .copyReload),
                         .text(t(.removeNote)), uninstall, refresh, close])
-            case .updateRequired:
+            case let .updateRequired(installed):
+                if ModVersion.isCurrent(installed) {
+                    // The plugin is current; only a session that loaded the old one keeps writing the old format.
+                    return statusPage([.hero(symbol: "exclamationmark.triangle.fill", title: t(.manageTitle), subtitle: sync.statusText),
+                            refresh, close])
+                }
+                // Three buttons only: update is the one action this page is for.
                 return statusPage([.hero(symbol: "exclamationmark.triangle.fill", title: t(.manageTitle), subtitle: sync.statusText),
                         .codeBlock(plan.copyableUpdateCommands, copyAction: .copyUpdate),
-                        .button(title: t(.updateButton), action: .update),
-                        uninstall, refresh, close])
+                        .button(title: t(.updateButton), action: .update), close])
             case let .snapshotRejected(event):
                 return statusPage([.hero(symbol: "exclamationmark.triangle.fill", title: t(.manageTitle), subtitle: sync.statusText),
                         .text(t(event.rejection == .accountMismatch ? .accountAdvice : .cycleAdvice))]
@@ -502,7 +507,12 @@ final class ModOnboardingPanelView: NSView {
                         t(.uninstallFailureTitle), t(.uninstalledTitle), t(.dismissedTitle)].map {
             ($0 as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 17, weight: .semibold)]).width + 52
         }
-        return min(maximumWidth, max(minimumWidth, ceil((widths + headings).max() ?? minimumWidth)))
+        // The update page's code block shows its longest command on one line (text + copy control + paddings).
+        let commandFont = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
+        let commands = ModInstallPlan.standard.copyableUpdateCommands.split(separator: "\n").map {
+            (String($0) as NSString).size(withAttributes: [.font: commandFont]).width + 44 + 20 + 48 + 40
+        }
+        return min(maximumWidth, max(minimumWidth, ceil((widths + headings + commands).max() ?? minimumWidth)))
     }
 
     init(controller: ModOnboardingController,
@@ -1138,6 +1148,10 @@ final class ModOnboardingWindowController: NSObject, NSWindowDelegate {
         let contentSize = NSSize(width: window.contentView?.bounds.width ?? size.width,
                                  height: min(max(size.height, 220), limit))
         let old = window.frame
+        // The window is sized to its page: the height follows the content, so dragging an edge
+        // cannot squeeze the page into a scroll view that hides its buttons.
+        window.contentMinSize = NSSize(width: window.contentMinSize.width, height: contentSize.height)
+        window.contentMaxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: contentSize.height)
         guard abs((window.contentView?.bounds.height ?? 0) - contentSize.height) > 0.5 else { return }
         window.setContentSize(contentSize)
         window.setFrameOrigin(NSPoint(x: old.minX, y: old.maxY - window.frame.height))

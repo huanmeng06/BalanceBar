@@ -769,6 +769,8 @@
     case modUpdateDoneNote = "mod.update.done_note"
     case modFailureUpdate = "mod.failure.update_command"
     case modCardUpdateButton = "mod.card.update.button"
+    case modCardUpdateRestart = "mod.card.update.restart"
+    case modSyncStatusRestartRequired = "mod.sync.status.restart_required"
 
     var rawKey: String { rawValue }
 }

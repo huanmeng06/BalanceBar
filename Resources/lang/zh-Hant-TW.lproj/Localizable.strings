@@ -698,9 +698,9 @@
 "mod.sync.status.rejected_cycle" = "快照被拒：週期與官方資料不一致，已回退官方額度";
 "mod.sync.status.installation_unknown" = "無法確認 Mod 是否已安裝（外掛清單讀取失敗）";
 "mod.sync.status.update_required" = "Mod 版本過舊，需要更新（第三方外掛市集預設不自動更新）。更新後請重啟 Claude Code 會話";
-"mod.card.update.title" = "需要更新";
-"mod.card.update.reason" = "第三方外掛市集預設不自動更新";
-"mod.card.update.action" = "點「一鍵更新」，再重啟會話";
+"mod.card.update.title" = "Mod 需要更新";
+"mod.card.update.reason" = "目前版本：%1$@";
+"mod.card.update.action" = "最新版本：%1$@";
 "mod.update.button" = "一鍵更新";
 "mod.update.step1" = "更新來源";
 "mod.update.step2" = "更新 Mod";
@@ -708,6 +708,8 @@
 "mod.update.done_note" = "請重啟 Claude Code 會話，新版 Mod 才會生效。";
 "mod.failure.update_command" = "更新未完成。請在終端依次執行下面的指令，然後重啟會話：";
 "mod.card.update.button" = "一鍵更新";
+"mod.card.update.restart" = "Mod 已更新，請重啟 Claude Code 會話";
+"mod.sync.status.restart_required" = "Mod 已更新，但仍有舊會話在運行。請重啟 Claude Code 會話";
 
 // Mod management window (Issue #604)
 "mod.ui.subtitle" = "讓 Claude Code 額度更新更即時";

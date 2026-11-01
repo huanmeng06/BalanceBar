@@ -698,9 +698,9 @@
 "mod.sync.status.rejected_cycle" = "Instantâneo recusado: o ciclo não coincide com os dados oficiais; é usado o caminho oficial";
 "mod.sync.status.installation_unknown" = "Não é possível confirmar se o Mod está instalado (falha na lista de plugins)";
 "mod.sync.status.update_required" = "The Mod is outdated and needs an update (third-party plugin marketplaces do not auto-update by default). Restart the Claude Code session afterwards";
-"mod.card.update.title" = "Update needed";
-"mod.card.update.reason" = "Third-party plugin marketplaces do not auto-update by default";
-"mod.card.update.action" = "Click “Update now”, then restart the session";
+"mod.card.update.title" = "Mod update needed";
+"mod.card.update.reason" = "Current version: %1$@";
+"mod.card.update.action" = "Latest version: %1$@";
 "mod.update.button" = "Update now";
 "mod.update.step1" = "Update source";
 "mod.update.step2" = "Update Mod";
@@ -708,6 +708,8 @@
 "mod.update.done_note" = "Restart your Claude Code session for the new Mod to take effect.";
 "mod.failure.update_command" = "The update did not finish. Run these commands in a terminal, then restart the session:";
 "mod.card.update.button" = "Update now";
+"mod.card.update.restart" = "Mod updated. Restart your Claude Code session";
+"mod.sync.status.restart_required" = "The Mod is updated, but an old session is still running. Restart your Claude Code session";
 
 // Mod management window (Issue #604)
 "mod.ui.subtitle" = "Mantenha a cota do Claude Code atualizada";
