@@ -238,7 +238,7 @@ enum ModPanelContent {
                             refresh, close])
                 }
                 // Three buttons only: update is the one action this page is for.
-                return statusPage([.hero(symbol: "exclamationmark.triangle.fill", title: t(.manageTitle), subtitle: sync.statusText),
+                return statusPage([.hero(symbol: "exclamationmark.triangle.fill", title: t(.updateTitle), subtitle: sync.statusText),
                         .codeBlock(plan.copyableUpdateCommands, copyAction: .copyUpdate),
                         .button(title: t(.updateButton), action: .update), close])
             case let .snapshotRejected(event):

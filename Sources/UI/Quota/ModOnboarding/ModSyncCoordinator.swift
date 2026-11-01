@@ -395,6 +395,7 @@ extension LocalizationKey {
         case .copyEnableCommands: return .modFailureCopyEnable
         case .failureInbox: return .modFailureInbox
         case .updateButton: return .modUpdateButton
+        case .updateTitle: return .modUpdateTitle
         case .updateStep1: return .modUpdateStep1
         case .updateStep2: return .modUpdateStep2
         case .updateDone: return .modUpdateDone

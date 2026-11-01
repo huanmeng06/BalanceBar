@@ -702,6 +702,7 @@
 "mod.card.update.reason" = "Aktuelle Version: %1$@";
 "mod.card.update.action" = "Neueste Version: %1$@";
 "mod.update.button" = "Jetzt aktualisieren";
+"mod.update.title" = "BalanceBar Mod muss aktualisiert werden";
 "mod.update.step1" = "Quelle aktualisieren";
 "mod.update.step2" = "Mod aktualisieren";
 "mod.update.done" = "Aktualisiert ✓";

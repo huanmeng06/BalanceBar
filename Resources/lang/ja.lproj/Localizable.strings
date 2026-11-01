@@ -702,6 +702,7 @@
 "mod.card.update.reason" = "現在のバージョン：%1$@";
 "mod.card.update.action" = "最新バージョン：%1$@";
 "mod.update.button" = "今すぐ更新";
+"mod.update.title" = "BalanceBar Mod の更新が必要です";
 "mod.update.step1" = "ソースを更新";
 "mod.update.step2" = "Mod を更新";
 "mod.update.done" = "更新しました ✓";
