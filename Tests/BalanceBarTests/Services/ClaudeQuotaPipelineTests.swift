@@ -796,6 +796,68 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         XCTAssertNil(events.snapshot()[2].window)
     }
 
+    func testStaleModSnapshotBeforeTheFirstOfficialReadIsNotReportedAsRejected() throws {
+        final class EventBox {
+            private let lock = NSLock()
+            private var values: [ClaudeQuotaPipeline.ModSnapshotEvent] = []
+            func append(_ value: ClaudeQuotaPipeline.ModSnapshotEvent) { lock.lock(); values.append(value); lock.unlock() }
+            func snapshot() -> [ClaudeQuotaPipeline.ModSnapshotEvent] { lock.lock(); defer { lock.unlock() }; return values }
+        }
+        let events = EventBox()
+        let pipeline = makePipeline(configuration: claudeV1TestConfiguration, withInbox: true)
+        pipeline.modSnapshotEventSink = { events.append($0) }
+        pipeline.start()
+
+        // Found at launch, written before this account became active, with no official reading to
+        // check it against yet: dropped, but it must not leave a "rejected" status behind.
+        try placeModSnapshot(five: 25, seven: 42, observedAt: Self.start.addingTimeInterval(-3600))
+        let inbox = try XCTUnwrap(lastInbox)
+        XCTAssertTrue(pollUntil { inbox.queue.sync { inbox.unverifiedSnapshotRejections } >= 1 })
+        quiet(pipeline)
+        XCTAssertTrue(events.snapshot().isEmpty)
+    }
+
+    func testStaleModSnapshotAfterRestartWithRestoredOfficialStateIsNotReportedUntilTheOfficialReadLands() throws {
+        final class EventBox {
+            private let lock = NSLock()
+            private var values: [ClaudeQuotaPipeline.ModSnapshotEvent] = []
+            func append(_ value: ClaudeQuotaPipeline.ModSnapshotEvent) { lock.lock(); values.append(value); lock.unlock() }
+            func snapshot() -> [ClaudeQuotaPipeline.ModSnapshotEvent] { lock.lock(); defer { lock.unlock() }; return values }
+        }
+        // First run: an official read is merged and persisted.
+        let first = makePipeline(configuration: claudeV1TestConfiguration)
+        first.start()
+        first.requestFetch(reason: .initial)
+        _ = try XCTUnwrap(waitForState(first) { !$0.windows.isEmpty })
+        quiet(first)
+
+        // Restart with the same account: the persisted official state comes back, but this launch
+        // has not read the official quota yet.
+        let events = EventBox()
+        let second = makePipeline(configuration: claudeV1TestConfiguration, withInbox: true)
+        second.modSnapshotEventSink = { events.append($0) }
+        second.start()
+        try placeModSnapshot(
+            five: 90, seven: 95, observedAt: Self.start.addingTimeInterval(1),
+            fiveReset: Self.start.addingTimeInterval(100_000), sevenReset: Self.start.addingTimeInterval(200_000))
+        let inbox = try XCTUnwrap(lastInbox)
+        XCTAssertTrue(pollUntil { inbox.queue.sync { inbox.unverifiedSnapshotRejections } >= 1 })
+        quiet(second)
+        XCTAssertTrue(events.snapshot().isEmpty, "the restored cache is not an official read of this launch")
+
+        // Once the official read lands, a snapshot on another cycle is a real conflict again.
+        let requestsBefore = PipelineStubProtocol.requestCount
+        clock.advance(by: 600)
+        second.requestFetch(reason: .manual)
+        XCTAssertTrue(pollUntil { PipelineStubProtocol.requestCount > requestsBefore })
+        quiet(second)
+        try placeModSnapshot(
+            five: 91, seven: 96, observedAt: Self.start.addingTimeInterval(2),
+            fiveReset: Self.start.addingTimeInterval(100_000), sevenReset: Self.start.addingTimeInterval(200_000),
+            as: "after-official-read.json")
+        XCTAssertTrue(pollUntil { events.snapshot().contains { $0.kind == .rejected(reason: .cycleUnverified) } })
+    }
+
     func testModSnapshotDisplaysAndSuppressesAutomaticReadsWhileFresh() throws {
         let pipeline = makePipeline(
             configuration: claudeV1TestConfiguration, withTracker: true, withInbox: true)
@@ -884,6 +946,9 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         XCTAssertTrue(pollUntil { inbox.queue.sync { inbox.unverifiedSnapshotRejections } >= 2 })
         quiet(pipeline)
         XCTAssertEqual(pipeline.latestState?.display.window(for: .fiveHour)?.usedPercentage, 0)
+        // One file write can reach the watcher more than once, so a rejected snapshot may be counted
+        // twice; what matters below is that the valid snapshot adds no rejection of its own.
+        let rejectionsBeforeAttributed = inbox.queue.sync { inbox.unverifiedSnapshotRejections }
 
         // The first use of the unstarted window is attributed before the official read catches up.
         try placeModSnapshot(
@@ -891,7 +956,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
             fiveReset: Self.start.addingTimeInterval(5 * 3600))
         let attributed = try XCTUnwrap(waitForState(pipeline) { $0.display.window(for: .fiveHour)?.usedPercentage == 2 })
         XCTAssertTrue(attributed.status.isNativeRealtime)
-        XCTAssertEqual(inbox.queue.sync { inbox.unverifiedSnapshotRejections }, 2)
+        XCTAssertEqual(inbox.queue.sync { inbox.unverifiedSnapshotRejections }, rejectionsBeforeAttributed)
 
         // A later snapshot on an earlier cycle must not replace the cycle the Mod already holds.
         try placeModSnapshot(
@@ -901,6 +966,59 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         let held = try XCTUnwrap(pipeline.latestState?.display.window(for: .fiveHour))
         XCTAssertEqual(held.usedPercentage, 2)
         XCTAssertEqual(held.resetsAt, Self.start.addingTimeInterval(5 * 3600))
+    }
+
+    /// The official API is unreachable when the five-hour window ends, so a legacy Mod snapshot
+    /// (no organization hash) confirms the next cycle and the engine drops the official baseline.
+    private func confirmResetWithLegacyModSnapshot(
+        _ pipeline: ClaudeQuotaPipeline, newReset: Date
+    ) throws -> SnapshotInbox {
+        pipeline.start()
+        pipeline.requestFetch(reason: .initial)
+        _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+        let inbox = try XCTUnwrap(lastInbox)
+        clock.advance(by: 5 * 3_600)
+        pipeline.tick()
+        _ = try XCTUnwrap(waitForState(pipeline) {
+            if case .resetPending = $0.status { return true }
+            return false
+        })
+        try placeModSnapshot(
+            five: 0, seven: 41, observedAt: clock.now.addingTimeInterval(1), fiveReset: newReset,
+            organization: nil)
+        _ = try XCTUnwrap(waitForState(pipeline) { $0.display.window(for: .fiveHour)?.resetsAt == newReset })
+        return inbox
+    }
+
+    func testLegacyModSnapshotsOfTheCycleItConfirmedAreAcceptedWithoutOfficialBaseline() throws {
+        let pipeline = makePipeline(configuration: claudeV1TestConfiguration, withInbox: true)
+        let newReset = Self.start.addingTimeInterval(10 * 3600)
+        let inbox = try confirmResetWithLegacyModSnapshot(pipeline, newReset: newReset)
+        XCTAssertEqual(inbox.queue.sync { inbox.unverifiedSnapshotRejections }, 0)
+
+        try placeModSnapshot(
+            five: 4, seven: 41, observedAt: clock.now.addingTimeInterval(60), fiveReset: newReset,
+            organization: nil)
+        let advanced = try XCTUnwrap(waitForState(pipeline) { $0.display.window(for: .fiveHour)?.usedPercentage == 4 })
+        XCTAssertEqual(advanced.display.window(for: .fiveHour)?.resetsAt, newReset)
+        XCTAssertEqual(inbox.queue.sync { inbox.unverifiedSnapshotRejections }, 0)
+    }
+
+    func testLegacyModSnapshotOnAnotherCycleIsStillRejectedAfterModConfirmedReset() throws {
+        let pipeline = makePipeline(configuration: claudeV1TestConfiguration, withInbox: true)
+        let newReset = Self.start.addingTimeInterval(10 * 3600)
+        let inbox = try confirmResetWithLegacyModSnapshot(pipeline, newReset: newReset)
+
+        for (index, reset) in [newReset.addingTimeInterval(3600), newReset.addingTimeInterval(-3600)].enumerated() {
+            try placeModSnapshot(
+                five: 5, seven: 41, observedAt: clock.now.addingTimeInterval(60 + Double(index)), fiveReset: reset,
+                organization: nil)
+            XCTAssertTrue(pollUntil { inbox.queue.sync { inbox.unverifiedSnapshotRejections } >= index + 1 })
+        }
+        quiet(pipeline)
+        let held = try XCTUnwrap(pipeline.latestState?.display.window(for: .fiveHour))
+        XCTAssertEqual(held.usedPercentage, 0)
+        XCTAssertEqual(held.resetsAt, newReset)
     }
 
     func testModReadingBelowTheOfficialValueWithinToleranceStillCountsAsLiveEvidence() throws {

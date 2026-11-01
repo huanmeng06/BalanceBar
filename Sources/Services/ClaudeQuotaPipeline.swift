@@ -141,6 +141,9 @@ final class ClaudeQuotaPipeline {
     /// When the active account was first seen by this process; Mod snapshots produced earlier
     /// cannot be attributed to it without an official baseline.
     private var accountActiveSince: Date
+    /// Whether an official read has been merged for the active account since it became active in
+    /// this process (a restored merge state does not count). Guarded by `lock`.
+    private var officialReadSinceActivation = false
     private var state: ClaudeQuotaState?
     /// Set while the Mod is known to be uninstalled or disabled (its lifecycle, not its data
     /// validity): its readings keep their value and time but are neither live nor fresh
@@ -296,6 +299,11 @@ final class ClaudeQuotaPipeline {
         }
         snapshotInbox?.rejectionObserver = { [weak self] reason in
             guard let self, let sink = self.modSnapshotEventSink else { return }
+            // Until this launch has read the official quota for the account, a restored cache is
+            // all there is to verify a cycle against: a snapshot dropped then (typically a stale one
+            // found at launch) says nothing about the Mod, and a "rejected" status would linger
+            // until the next snapshot arrives.
+            if reason == .cycleUnverified, !self.lock.withLock({ self.officialReadSinceActivation }) { return }
             sink(ModSnapshotEvent(
                 kind: .rejected(reason: reason), window: nil, observedAt: nil,
                 receivedAt: self.now()))
@@ -518,6 +526,7 @@ final class ClaudeQuotaPipeline {
         engine.accountDidChange(epoch: change.epoch, accountID: change.identity?.stableID)
         lock.withLock {
             accountActiveSince = now()
+            officialReadSinceActivation = false
             modResumeCandidates = [:]
             modCandidateFloor = nil
             modEvidenceAt = nil
@@ -588,7 +597,19 @@ final class ClaudeQuotaPipeline {
         guard let engine else { return nil }
         let state = engine.currentState.windows[window.rawValue]
         let baseline = state?.latestGradeA.flatMap { $0.epoch == identity.accountEpoch ? $0 : nil }
-        if baseline == nil, !organizationProven || updatedAt < lock.withLock({ accountActiveSince }) { return false }
+        let activeSince = lock.withLock { accountActiveSince }
+        if baseline == nil, !organizationProven || updatedAt < activeSince {
+            // A reset confirmed by a Mod reading drops the old cycle's official baseline, but that
+            // cycle was already chained to the account's earlier one when it was confirmed. Later
+            // snapshots of the very same cycle therefore need no organization proof.
+            guard updatedAt >= activeSince, state?.pendingResetOf == nil,
+                  let displayed = state?.displayed, displayed.trust != .a,
+                  displayed.source == SnapshotInbox.modSourceID,
+                  displayed.epoch == identity.accountEpoch,
+                  let displayedReset = displayed.resetsAt, let reset = resetsAt,
+                  QuotaMergeEngine.sameResetInstant(reset, displayedReset) else { return false }
+            return nil
+        }
         if state?.pendingResetOf != nil { return isComplete }
         guard let gradeA = baseline else { return nil }
         // An unstarted window reads 0% without a reset time; the first use starts a cycle whose
@@ -922,6 +943,7 @@ final class ClaudeQuotaPipeline {
                 logSourceConflict(observation, displayed: previous, reason: "official_corrected_local")
             }
         }
+        if !readings.isEmpty { lock.withLock { officialReadSinceActivation = true } }
         adapter?.update(engine.displayModel, accountScope: Self.accountScope(for: account))
         return nil
     }
