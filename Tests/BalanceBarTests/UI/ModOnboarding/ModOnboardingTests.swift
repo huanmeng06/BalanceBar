@@ -787,7 +787,8 @@ final class ModSyncCoordinatorTests: XCTestCase {
         now: @escaping () -> Date = Date.init,
         schedule: @escaping (TimeInterval, @escaping () -> Void) -> Void = { delay, block in
             DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: block)
-        }
+        },
+        simulatedOutdatedMod: Bool = false
     ) -> (ModSyncCoordinator, ScriptedRunner) {
         let runner = ScriptedRunner(results)
         let q = DispatchQueue(label: "test.coordinator")
@@ -801,8 +802,28 @@ final class ModSyncCoordinatorTests: XCTestCase {
             inboxDirectory: inboxDirectory, workQueue: q, callbackQueue: .main)
         let coordinator = ModSyncCoordinator(
             controller: controller, detector: detector, activityProvider: activityProvider,
-            now: now, schedule: schedule)
+            now: now, schedule: schedule, simulatedOutdatedMod: simulatedOutdatedMod)
         return (coordinator, runner)
+    }
+
+    func testSimulatedOutdatedModStaysPinnedUntilTheOneClickUpdateSucceeds() {
+        let version = ModCommandResult(exitCode: 0, stdout: "2.1.291 (Claude Code)", stderr: "")
+        let list = ModCommandResult(exitCode: 0, stdout: String(decoding: listJSON(), as: UTF8.self), stderr: "")
+        let (coordinator, _) = makeCoordinator(
+            locator: "/bin/claude", results: [version, list, ok, ok, version, list], simulatedOutdatedMod: true)
+        let pinned = expectation(description: "pinned")
+        coordinator.onStatusChange = { if $0 == .updateRequired { pinned.fulfill() } }
+        coordinator.startDetectionIfNeeded(force: true)
+        wait(for: [pinned], timeout: 3)
+        // A live new-format snapshot must not clear the simulated state.
+        coordinator.ingest(.init(kind: .formatChecked(outdated: false), window: nil, observedAt: nil, receivedAt: Date()))
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+        XCTAssertEqual(coordinator.status, .updateRequired)
+        let cleared = expectation(description: "cleared by the update")
+        coordinator.onStatusChange = { if $0 == .waitingForData { cleared.fulfill() } }
+        coordinator.controller.startUpdate()
+        wait(for: [cleared], timeout: 3)
+        XCTAssertEqual(coordinator.controller.state, .updateSucceeded)
     }
 
     /// A snapshot-triggered request that arrives while a check is running is not dropped: exactly

@@ -21,6 +21,8 @@ final class ModSyncCoordinator {
     private(set) var status: ModSyncStatus = .detecting
     private var environment: ModEnvironment?
     private var evidence = ModSnapshotEvidence()
+    /// Demo bundle only: the outdated-Mod state is pinned and live snapshots are ignored.
+    private let simulatedOutdatedMod: Bool
     private var detectionInFlight = false
     /// When the running (or last finished) detection began; read by the verdict callbacks, which
     /// fire inside that detection's completion.
@@ -59,8 +61,11 @@ final class ModSyncCoordinator {
         now: @escaping () -> Date = Date.init,
         schedule: @escaping (TimeInterval, @escaping () -> Void) -> Void = { delay, block in
             DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: block)
-        }
+        },
+        simulatedOutdatedMod: Bool = false
     ) {
+        self.simulatedOutdatedMod = simulatedOutdatedMod
+        evidence.modOutdated = simulatedOutdatedMod
         self.controller = controller
         self.detector = detector
         self.activityProvider = activityProvider
@@ -181,7 +186,7 @@ final class ModSyncCoordinator {
     /// Receives one pipeline snapshot event. Safe to call from any thread.
     func ingest(_ event: ClaudeQuotaPipeline.ModSnapshotEvent) {
         DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
+            guard let self, !self.simulatedOutdatedMod else { return }
             switch event.kind {
             case let .processed(accepted):
                 guard accepted else { break }
@@ -482,5 +487,60 @@ extension ModSyncCoordinator {
         pipeline.modDetectionRequester = { [weak self] in
             DispatchQueue.main.async { self?.requestDetectionForSnapshot() }
         }
+    }
+}
+
+/// A stable "the installed Mod is outdated" scenario for manual testing. Only the explicitly
+/// named demo bundle (`scripts/build.sh demo-mod-outdated`) honours it: the Mod status is pinned
+/// to "update required", live snapshots are ignored, and the Claude CLI is replaced by a
+/// simulation, so the one-click update runs end to end without touching the real plugin setup.
+enum DevelopmentModOutdatedDemo {
+    private static let infoPlistKey = "BalanceBarModOutdatedDemo"
+
+    static var isActive: Bool {
+        Bundle.main.bundleIdentifier?.contains(".demo.") == true
+            && Bundle.main.object(forInfoDictionaryKey: infoPlistKey) as? String == "mod-outdated"
+    }
+
+    static func makeCoordinator(
+        activityProvider: @escaping () -> Bool,
+        localizePanel: @escaping (ModOnboardingText) -> String,
+        localizeSync: @escaping (RealtimeBoostText) -> String
+    ) -> ModSyncCoordinator {
+        let inbox = FileManager.default.temporaryDirectory.appendingPathComponent("balancebar-mod-outdated-demo-inbox")
+        _ = ModSyncDetector.prepareInbox(directory: inbox)
+        let locator = SimulatedClaudeLocator()
+        let runner = SimulatedModCommandRunner()
+        let installer = ModInstaller(locator: locator, runner: runner, prepareInbox: { true })
+        return ModSyncCoordinator(
+            controller: ModOnboardingController(installer: installer, preference: SimulatedPromptPreference()),
+            detector: ModSyncDetector(locator: locator, runner: runner, inboxDirectory: inbox),
+            activityProvider: activityProvider,
+            localizePanel: localizePanel,
+            localizeSync: localizeSync,
+            simulatedOutdatedMod: true)
+    }
+}
+
+private struct SimulatedClaudeLocator: ClaudeExecutableLocating {
+    func locate() -> String? { "/simulated/claude" }
+}
+
+private final class SimulatedPromptPreference: ModPromptPreferenceStoring {
+    var isPromptDismissed = false
+}
+
+/// Answers like Claude Code 2.1.300 with Mod 1.0.0 installed; every command succeeds after a short delay.
+private struct SimulatedModCommandRunner: ModCommandRunning {
+    func run(executablePath: String, arguments: [String]) -> ModCommandResult? {
+        if arguments == ModInstallPlan.versionArguments {
+            return ModCommandResult(exitCode: 0, stdout: "2.1.300 (Claude Code)\n", stderr: "")
+        }
+        if arguments == ModInstallPlan.listArguments {
+            let list = #"[{"id":"balancebar-mod@balancebar-mods","scope":"user","enabled":true,"version":"1.0.0","installedAt":"2026-10-01T08:00:00.000Z"}]"#
+            return ModCommandResult(exitCode: 0, stdout: list, stderr: "")
+        }
+        Thread.sleep(forTimeInterval: 1.2)
+        return ModCommandResult(exitCode: 0, stdout: #"{"outcome":"ok"}"#, stderr: "")
     }
 }
