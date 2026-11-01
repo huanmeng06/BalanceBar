@@ -697,19 +697,19 @@
 "mod.sync.status.rejected_account" = "Instantané refusé : le compte Claude ne correspond pas au compte BalanceBar actuel";
 "mod.sync.status.rejected_cycle" = "Instantané refusé : le cycle ne correspond pas aux données officielles ; le chemin officiel est utilisé";
 "mod.sync.status.installation_unknown" = "Impossible de confirmer l’installation du Mod (liste des plugins en échec)";
-"mod.sync.status.update_required" = "The Mod is outdated and needs an update (third-party plugin marketplaces do not auto-update by default).\nRestart the Claude Code session afterwards";
-"mod.card.update.title" = "Mod update needed";
-"mod.card.update.reason" = "Current version: %1$@";
-"mod.card.update.action" = "Latest version: %1$@";
-"mod.update.button" = "Update now";
-"mod.update.step1" = "Update source";
-"mod.update.step2" = "Update Mod";
-"mod.update.done" = "Updated ✓";
-"mod.update.done_note" = "Restart your Claude Code session for the new Mod to take effect.";
-"mod.failure.update_command" = "The update did not finish. Run these commands in a terminal, then restart the session:";
-"mod.card.update.button" = "Update now";
-"mod.card.update.restart" = "Mod updated. Restart your Claude Code session";
-"mod.sync.status.restart_required" = "The Mod is updated, but an old session is still running. Restart your Claude Code session";
+"mod.sync.status.update_required" = "Le Mod est obsolète et doit être mis à jour (les places de marché de plugins tierces ne se mettent pas à jour automatiquement par défaut).\nRedémarrez ensuite la session Claude Code";
+"mod.card.update.title" = "Mise à jour du Mod requise";
+"mod.card.update.reason" = "Version actuelle : %1$@";
+"mod.card.update.action" = "Dernière version : %1$@";
+"mod.update.button" = "Mettre à jour";
+"mod.update.step1" = "Mettre à jour la source";
+"mod.update.step2" = "Mettre à jour le Mod";
+"mod.update.done" = "Mis à jour ✓";
+"mod.update.done_note" = "Redémarrez la session Claude Code pour que le nouveau Mod soit pris en compte.";
+"mod.failure.update_command" = "La mise à jour n’a pas abouti. Exécutez ces commandes dans un terminal, l’une après l’autre, puis redémarrez la session :";
+"mod.card.update.button" = "Mettre à jour";
+"mod.card.update.restart" = "Mod mis à jour. Redémarrez la session Claude Code";
+"mod.sync.status.restart_required" = "Le Mod est à jour, mais une ancienne session tourne encore. Redémarrez la session Claude Code";
 
 // Mod management window (Issue #604)
 "mod.ui.subtitle" = "Gardez les quotas Claude Code à jour";

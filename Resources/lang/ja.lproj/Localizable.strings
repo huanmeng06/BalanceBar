@@ -697,19 +697,19 @@
 "mod.sync.status.rejected_account" = "スナップショットが拒否されました：Claude のログインアカウントが BalanceBar の現在のアカウントと一致しません";
 "mod.sync.status.rejected_cycle" = "スナップショットが拒否されました：サイクルが公式データと一致しないため、公式パスに戻ります";
 "mod.sync.status.installation_unknown" = "Mod がインストール済みか確認できません（プラグイン一覧の取得に失敗）";
-"mod.sync.status.update_required" = "The Mod is outdated and needs an update (third-party plugin marketplaces do not auto-update by default).\nRestart the Claude Code session afterwards";
-"mod.card.update.title" = "Mod update needed";
-"mod.card.update.reason" = "Current version: %1$@";
-"mod.card.update.action" = "Latest version: %1$@";
-"mod.update.button" = "Update now";
-"mod.update.step1" = "Update source";
-"mod.update.step2" = "Update Mod";
-"mod.update.done" = "Updated ✓";
-"mod.update.done_note" = "Restart your Claude Code session for the new Mod to take effect.";
-"mod.failure.update_command" = "The update did not finish. Run these commands in a terminal, then restart the session:";
-"mod.card.update.button" = "Update now";
-"mod.card.update.restart" = "Mod updated. Restart your Claude Code session";
-"mod.sync.status.restart_required" = "The Mod is updated, but an old session is still running. Restart your Claude Code session";
+"mod.sync.status.update_required" = "Mod が古いため更新が必要です（サードパーティのプラグインマーケットプレイスは既定では自動更新されません）。\n更新後に Claude Code のセッションを再起動してください";
+"mod.card.update.title" = "Mod の更新が必要";
+"mod.card.update.reason" = "現在のバージョン：%1$@";
+"mod.card.update.action" = "最新バージョン：%1$@";
+"mod.update.button" = "今すぐ更新";
+"mod.update.step1" = "ソースを更新";
+"mod.update.step2" = "Mod を更新";
+"mod.update.done" = "更新しました ✓";
+"mod.update.done_note" = "新しい Mod を有効にするには、Claude Code のセッションを再起動してください。";
+"mod.failure.update_command" = "更新が完了しませんでした。ターミナルで次のコマンドを順に実行し、セッションを再起動してください：";
+"mod.card.update.button" = "今すぐ更新";
+"mod.card.update.restart" = "Mod を更新しました。Claude Code のセッションを再起動してください";
+"mod.sync.status.restart_required" = "Mod は更新済みですが、古いセッションがまだ動作しています。Claude Code のセッションを再起動してください";
 
 // Mod management window (Issue #604)
 "mod.ui.subtitle" = "Claude Code の使用枠を最新に保つ";

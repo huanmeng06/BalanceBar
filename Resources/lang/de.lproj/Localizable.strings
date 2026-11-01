@@ -697,19 +697,19 @@
 "mod.sync.status.rejected_account" = "Snapshot abgelehnt: das Claude-Login-Konto weicht vom aktuellen BalanceBar-Konto ab";
 "mod.sync.status.rejected_cycle" = "Snapshot abgelehnt: der Zyklus passt nicht zu den offiziellen Daten; der offizielle Pfad wird verwendet";
 "mod.sync.status.installation_unknown" = "Mod-Installation kann nicht bestätigt werden (Plugin-Liste fehlgeschlagen)";
-"mod.sync.status.update_required" = "The Mod is outdated and needs an update (third-party plugin marketplaces do not auto-update by default).\nRestart the Claude Code session afterwards";
-"mod.card.update.title" = "Mod update needed";
-"mod.card.update.reason" = "Current version: %1$@";
-"mod.card.update.action" = "Latest version: %1$@";
-"mod.update.button" = "Update now";
-"mod.update.step1" = "Update source";
-"mod.update.step2" = "Update Mod";
-"mod.update.done" = "Updated ✓";
-"mod.update.done_note" = "Restart your Claude Code session for the new Mod to take effect.";
-"mod.failure.update_command" = "The update did not finish. Run these commands in a terminal, then restart the session:";
-"mod.card.update.button" = "Update now";
-"mod.card.update.restart" = "Mod updated. Restart your Claude Code session";
-"mod.sync.status.restart_required" = "The Mod is updated, but an old session is still running. Restart your Claude Code session";
+"mod.sync.status.update_required" = "Die Mod ist veraltet und muss aktualisiert werden (Plugin-Marktplätze von Drittanbietern aktualisieren sich standardmäßig nicht automatisch).\nStarte danach die Claude-Code-Sitzung neu";
+"mod.card.update.title" = "Mod-Update nötig";
+"mod.card.update.reason" = "Aktuelle Version: %1$@";
+"mod.card.update.action" = "Neueste Version: %1$@";
+"mod.update.button" = "Jetzt aktualisieren";
+"mod.update.step1" = "Quelle aktualisieren";
+"mod.update.step2" = "Mod aktualisieren";
+"mod.update.done" = "Aktualisiert ✓";
+"mod.update.done_note" = "Starte die Claude-Code-Sitzung neu, damit die neue Mod wirksam wird.";
+"mod.failure.update_command" = "Das Update wurde nicht abgeschlossen. Führe diese Befehle nacheinander im Terminal aus und starte dann die Sitzung neu:";
+"mod.card.update.button" = "Jetzt aktualisieren";
+"mod.card.update.restart" = "Mod aktualisiert. Starte die Claude-Code-Sitzung neu";
+"mod.sync.status.restart_required" = "Die Mod ist aktualisiert, aber eine alte Sitzung läuft noch. Starte die Claude-Code-Sitzung neu";
 
 // Mod management window (Issue #604)
 "mod.ui.subtitle" = "Claude Code Kontingente aktuell halten";
