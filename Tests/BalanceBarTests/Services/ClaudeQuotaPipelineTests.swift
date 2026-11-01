@@ -903,6 +903,59 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         XCTAssertEqual(held.resetsAt, Self.start.addingTimeInterval(5 * 3600))
     }
 
+    /// The official API is unreachable when the five-hour window ends, so a legacy Mod snapshot
+    /// (no organization hash) confirms the next cycle and the engine drops the official baseline.
+    private func confirmResetWithLegacyModSnapshot(
+        _ pipeline: ClaudeQuotaPipeline, newReset: Date
+    ) throws -> SnapshotInbox {
+        pipeline.start()
+        pipeline.requestFetch(reason: .initial)
+        _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+        let inbox = try XCTUnwrap(lastInbox)
+        clock.advance(by: 5 * 3_600)
+        pipeline.tick()
+        _ = try XCTUnwrap(waitForState(pipeline) {
+            if case .resetPending = $0.status { return true }
+            return false
+        })
+        try placeModSnapshot(
+            five: 0, seven: 41, observedAt: clock.now.addingTimeInterval(1), fiveReset: newReset,
+            organization: nil)
+        _ = try XCTUnwrap(waitForState(pipeline) { $0.display.window(for: .fiveHour)?.resetsAt == newReset })
+        return inbox
+    }
+
+    func testLegacyModSnapshotsOfTheCycleItConfirmedAreAcceptedWithoutOfficialBaseline() throws {
+        let pipeline = makePipeline(configuration: claudeV1TestConfiguration, withInbox: true)
+        let newReset = Self.start.addingTimeInterval(10 * 3600)
+        let inbox = try confirmResetWithLegacyModSnapshot(pipeline, newReset: newReset)
+        XCTAssertEqual(inbox.queue.sync { inbox.unverifiedSnapshotRejections }, 0)
+
+        try placeModSnapshot(
+            five: 4, seven: 41, observedAt: clock.now.addingTimeInterval(60), fiveReset: newReset,
+            organization: nil)
+        let advanced = try XCTUnwrap(waitForState(pipeline) { $0.display.window(for: .fiveHour)?.usedPercentage == 4 })
+        XCTAssertEqual(advanced.display.window(for: .fiveHour)?.resetsAt, newReset)
+        XCTAssertEqual(inbox.queue.sync { inbox.unverifiedSnapshotRejections }, 0)
+    }
+
+    func testLegacyModSnapshotOnAnotherCycleIsStillRejectedAfterModConfirmedReset() throws {
+        let pipeline = makePipeline(configuration: claudeV1TestConfiguration, withInbox: true)
+        let newReset = Self.start.addingTimeInterval(10 * 3600)
+        let inbox = try confirmResetWithLegacyModSnapshot(pipeline, newReset: newReset)
+
+        for (index, reset) in [newReset.addingTimeInterval(3600), newReset.addingTimeInterval(-3600)].enumerated() {
+            try placeModSnapshot(
+                five: 5, seven: 41, observedAt: clock.now.addingTimeInterval(60 + Double(index)), fiveReset: reset,
+                organization: nil)
+            XCTAssertTrue(pollUntil { inbox.queue.sync { inbox.unverifiedSnapshotRejections } >= index + 1 })
+        }
+        quiet(pipeline)
+        let held = try XCTUnwrap(pipeline.latestState?.display.window(for: .fiveHour))
+        XCTAssertEqual(held.usedPercentage, 0)
+        XCTAssertEqual(held.resetsAt, newReset)
+    }
+
     func testModReadingBelowTheOfficialValueWithinToleranceStillCountsAsLiveEvidence() throws {
         let pipeline = makePipeline(
             configuration: claudeV1TestConfiguration, withTracker: true, withInbox: true)
