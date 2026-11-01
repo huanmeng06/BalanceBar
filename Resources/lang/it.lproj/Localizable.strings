@@ -697,7 +697,7 @@
 "mod.sync.status.rejected_account" = "Snapshot rifiutato: l'account Claude non corrisponde all'account BalanceBar corrente";
 "mod.sync.status.rejected_cycle" = "Snapshot rifiutato: il ciclo non corrisponde ai dati ufficiali; viene usato il percorso ufficiale";
 "mod.sync.status.installation_unknown" = "Impossibile confermare se il Mod è installato (elenco plugin non riuscito)";
-"mod.sync.status.update_required" = "The Mod is outdated and needs an update (third-party plugin marketplaces do not auto-update by default). Restart the Claude Code session afterwards";
+"mod.sync.status.update_required" = "The Mod is outdated and needs an update (third-party plugin marketplaces do not auto-update by default).\nRestart the Claude Code session afterwards";
 "mod.card.update.title" = "Mod update needed";
 "mod.card.update.reason" = "Current version: %1$@";
 "mod.card.update.action" = "Latest version: %1$@";

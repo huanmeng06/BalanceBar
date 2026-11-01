@@ -697,7 +697,7 @@
 "mod.sync.status.rejected_account" = "快照被拒：Claude 登入帳號與 BalanceBar 目前帳號不一致";
 "mod.sync.status.rejected_cycle" = "快照被拒：週期與官方資料不一致，已回退官方額度";
 "mod.sync.status.installation_unknown" = "無法確認 Mod 是否已安裝（外掛清單讀取失敗）";
-"mod.sync.status.update_required" = "Mod 版本過舊，需要更新（第三方外掛市集預設不自動更新）。更新後請重啟 Claude Code 會話";
+"mod.sync.status.update_required" = "Mod 版本過舊，需要更新（第三方外掛市集預設不自動更新）。\n更新後請重啟 Claude Code 會話";
 "mod.card.update.title" = "Mod 需要更新";
 "mod.card.update.reason" = "目前版本：%1$@";
 "mod.card.update.action" = "最新版本：%1$@";

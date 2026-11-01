@@ -135,7 +135,7 @@ enum RealtimeBoostText: String, CaseIterable {
         case .statusDisabled: return "已安装但已停用，实时同步不会运行"
         case .statusRejectedAccount: return "快照被拒：Claude 登录账号与 BalanceBar 当前账号不一致"
         case .statusRejectedCycle: return "快照被拒：周期与官方数据不一致，已回退官方额度"
-        case .statusUpdateRequired: return "Mod 版本过旧，需要更新（第三方插件市场默认不自动更新）。更新后请重启 Claude Code 会话"
+        case .statusUpdateRequired: return "Mod 版本过旧，需要更新（第三方插件市场默认不自动更新）。\n更新后请重启 Claude Code 会话"
         case .cardUpdateTitle: return "Mod 需要更新"
         case .cardUpdateReason: return "当前版本：%1$@"
         case .cardUpdateAction: return "最新版本：%1$@"
