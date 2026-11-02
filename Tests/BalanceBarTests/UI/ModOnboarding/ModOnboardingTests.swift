@@ -1814,18 +1814,25 @@ final class RealtimeBoostAdvancedCardTests: XCTestCase {
         return view
     }
 
-    func testInstalledModOpensOnTheOverviewThenShowsStatusAndCanGoBack() throws {
-        let view = panelView(.silent)
+    func testUnhealthyModOpensDirectlyOnTheStatusPage() {
+        for status in [ModSyncStatus.silent, .updateRequired(installedVersion: "1.0.0")] {
+            let view = panelView(status)
+            XCTAssertFalse(view.snapshotLines.contains("<\(ModOnboardingText.viewStatus.defaultText)>"), "\(status)")
+        }
+        XCTAssertTrue(panelView(.silent).snapshotLines.contains { $0.contains(ModOnboardingText.silentTitle.defaultText) })
+    }
+
+    func testHealthyModOpensOnTheOverviewThenShowsStatusAndCanGoBack() throws {
+        let view = panelView(.waitingForData)
         XCTAssertTrue(view.snapshotLines.contains("<\(ModOnboardingText.viewStatus.defaultText)>"))
         XCTAssertTrue(view.snapshotLines.contains { $0.contains(ModOnboardingText.feature1Title.defaultText) })
-        XCTAssertFalse(view.snapshotLines.contains { $0.contains(ModOnboardingText.silentTitle.defaultText) },
+        XCTAssertFalse(view.snapshotLines.contains("<\(ModOnboardingText.backToIntro.defaultText)>"),
                        "status details stay behind the button")
         func click(_ title: String) throws {
             func buttons(_ v: NSView) -> [NSButton] { (v as? NSButton).map { [$0] } ?? v.subviews.flatMap(buttons) }
             try XCTUnwrap(buttons(view).first { $0.title == title }, title).performClick(nil)
         }
         try click(ModOnboardingText.viewStatus.defaultText)
-        XCTAssertTrue(view.snapshotLines.contains { $0.contains(ModOnboardingText.silentTitle.defaultText) })
         XCTAssertTrue(view.snapshotLines.contains("<\(ModOnboardingText.backToIntro.defaultText)>"))
         try click(ModOnboardingText.backToIntro.defaultText)
         XCTAssertTrue(view.snapshotLines.contains("<\(ModOnboardingText.viewStatus.defaultText)>"))
