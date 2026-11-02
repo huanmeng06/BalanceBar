@@ -229,7 +229,7 @@ final class ModSyncCoordinator {
         // "View error" in Advanced must retain the actual CLI failure and retry.
         // Successful pages still reset to the current management state on reopen.
         switch controller.state {
-        case .failed, .uninstallFailed: break
+        case .failed, .uninstallFailed, .updateFailed: break
         default: controller.resetToIntro()
         }
         let panel = ModOnboardingPanelView(

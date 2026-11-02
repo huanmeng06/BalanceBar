@@ -2060,6 +2060,22 @@ final class RealtimeBoostAdvancedCardTests: XCTestCase {
         XCTAssertEqual(controller.state, .intro(dismissChecked: false))
     }
 
+    func testViewErrorRetainsUpdateFailureWhenReopeningPanel() {
+        let controller = ModOnboardingController(installer: ModInstaller(
+            locator: FakeLocator(path: nil), runner: ScriptedRunner([]), prepareInbox: { true }),
+            preference: MemoryPreference())
+        let coordinator = ModSyncCoordinator(controller: controller,
+            detector: ModSyncDetector(locator: FakeLocator(path: nil)), activityProvider: { false })
+        let failed = expectation(description: "update fails without CLI")
+        controller.onChange = { if controller.state == .updateFailed(.claudeNotFound) { failed.fulfill() } }
+        controller.startUpdate()
+        wait(for: [failed], timeout: 5)
+        let panel = coordinator.attachPanel()
+        XCTAssertEqual(controller.state, .updateFailed(.claudeNotFound))
+        XCTAssertTrue(panel.snapshotLines.contains { $0.contains(ModOnboardingText.failureClaudeMissing.defaultText) })
+        XCTAssertTrue(panel.snapshotLines.contains { $0.contains(ModOnboardingText.updateFailureTitle.defaultText) })
+    }
+
     /// Offscreen render of the "update required" card and panel for review; `BB_MOD_UPDATE_RENDER_DIR` picks the output folder.
     func testRenderUpdateRequiredForReview() throws {
         let previous = AppLanguage.selected
