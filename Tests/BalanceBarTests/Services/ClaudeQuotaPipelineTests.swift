@@ -746,7 +746,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         }
         let events = EventBox()
         let pipeline = makePipeline(withInbox: true)
-        pipeline.modSnapshotEventSink = { events.append($0) }
+        pipeline.modSnapshotEventSink = { if case .formatChecked = $0.kind { return }; events.append($0) }
         pipeline.start()
         pipeline.requestFetch(reason: .initial)
         let first = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
@@ -768,7 +768,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         }
         let events = EventBox()
         let pipeline = makePipeline(configuration: claudeV1TestConfiguration, withInbox: true)
-        pipeline.modSnapshotEventSink = { events.append($0) }
+        pipeline.modSnapshotEventSink = { if case .formatChecked = $0.kind { return }; events.append($0) }  // format verdicts are covered by SnapshotInboxTests
         pipeline.start()
         pipeline.requestFetch(reason: .initial)
         _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
@@ -805,7 +805,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         }
         let events = EventBox()
         let pipeline = makePipeline(configuration: claudeV1TestConfiguration, withInbox: true)
-        pipeline.modSnapshotEventSink = { events.append($0) }
+        pipeline.modSnapshotEventSink = { if case .formatChecked = $0.kind { return }; events.append($0) }
         pipeline.start()
 
         // Found at launch, written before this account became active, with no official reading to
@@ -835,7 +835,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         // has not read the official quota yet.
         let events = EventBox()
         let second = makePipeline(configuration: claudeV1TestConfiguration, withInbox: true)
-        second.modSnapshotEventSink = { events.append($0) }
+        second.modSnapshotEventSink = { if case .formatChecked = $0.kind { return }; events.append($0) }
         second.start()
         try placeModSnapshot(
             five: 90, seven: 95, observedAt: Self.start.addingTimeInterval(1),
@@ -1426,7 +1426,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         let events = EventBox()
         let tracker = ClaudeRealtimeTracker(now: { [clock] in clock!.now })
         let pipeline = makePipeline(realtimeTracker: tracker, configuration: claudeV1TestConfiguration, withInbox: true)
-        pipeline.modSnapshotEventSink = { events.append($0) }
+        pipeline.modSnapshotEventSink = { if case .formatChecked = $0.kind { return }; events.append($0) }
         pipeline.start()
         pipeline.requestFetch(reason: .initial)
         _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })

@@ -52,6 +52,16 @@ struct ModInstallPlan: Equatable {
         "claude " + enableArguments.joined(separator: " ")
     }
 
+    /// Third-party marketplaces do not auto-update, so an outdated Mod needs these two commands.
+    var updateMarketplaceArguments: [String] { ["plugin", "marketplace", "update", marketplaceName, "--json"] }
+    var updatePluginArguments: [String] { ["plugin", "update", pluginID, "--scope", scope, "--json"] }
+
+    /// The same two commands in the form users paste into a terminal.
+    var copyableUpdateCommands: String {
+        "claude plugin marketplace update \(marketplaceName)\n"
+            + "claude plugin update \(pluginID)"
+    }
+
     static let reloadCommand = "/reload-plugins"
 }
 
@@ -157,6 +167,30 @@ final class ModInstaller {
             let steps: [(ModInstallStep, [String])] = [
                 (.addMarketplace, plan.marketplaceArguments),
                 (.installPlugin, plan.installArguments),
+            ]
+            for (step, arguments) in steps {
+                report(step)
+                guard let result = runner.run(executablePath: path, arguments: arguments) else {
+                    return finish(.failure(.commandFailed(step: step, exitCode: nil, detail: "launch failed")))
+                }
+                if let failure = Self.failure(for: result, step: step) { return finish(.failure(failure)) }
+            }
+            report(.finish)
+            finish(.success)
+        }
+    }
+
+    /// Refreshes the marketplace copy, then updates the plugin. Step labels reuse the install
+    /// steps: `.addMarketplace` is the marketplace refresh, `.installPlugin` the plugin update.
+    func update(progress: @escaping (ModInstallStep) -> Void, completion: @escaping (ModInstallResult) -> Void) {
+        workQueue.async { [plan, locator, runner, callbackQueue] in
+            func report(_ step: ModInstallStep) { callbackQueue.async { progress(step) } }
+            func finish(_ result: ModInstallResult) { callbackQueue.async { completion(result) } }
+
+            guard let path = locator.locate() else { return finish(.failure(.claudeNotFound)) }
+            let steps: [(ModInstallStep, [String])] = [
+                (.addMarketplace, plan.updateMarketplaceArguments),
+                (.installPlugin, plan.updatePluginArguments),
             ]
             for (step, arguments) in steps {
                 report(step)

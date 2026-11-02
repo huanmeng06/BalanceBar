@@ -10,7 +10,7 @@ images_src="$resources_src/images"
 lang_src="$resources_src/lang"
 usage() {
     cat <<'EOF'
-Usage: build.sh [production|dev|demo-zero|demo-unavailable|demo-five-hour-exhausted|demo-seven-day-exhausted|demo-both-exhausted|demo-banked-reset-10|demo-banked-reset-0|demo-banked-reset-confirmed|demo-banked-reset-countdown|demo-claude-idle]
+Usage: build.sh [production|dev|demo-zero|demo-unavailable|demo-five-hour-exhausted|demo-seven-day-exhausted|demo-both-exhausted|demo-banked-reset-10|demo-banked-reset-0|demo-banked-reset-confirmed|demo-banked-reset-countdown|demo-claude-idle|demo-mod-outdated]
 
 Build the macOS app without changing the checked-in Info.plist.
 
@@ -35,6 +35,9 @@ Build the macOS app without changing the checked-in Info.plist.
               Build a demo app that counts down to the next local 20:00 deadline.
   demo-claude-idle
               Build a demo app that shows untouched (100%) Claude 5-hour and 7-day quotas.
+  demo-mod-outdated
+              Build a demo app that pins the Mod status to "update required" and simulates
+              the Claude CLI, so the one-click update can be tried without touching real plugins.
 EOF
 }
 
@@ -153,6 +156,16 @@ case "$variant" in
         bundle_name="BalanceBar Demo · Reset Countdown"
         demo_mode="banked-reset-countdown"
         banked_reset_demo_mode="banked-reset-countdown"
+        module_cache_dir="$build_dir/swift-module-cache"
+        clean_paths=("$build_dir")
+        ;;
+    demo-mod-outdated)
+        build_dir="$repo_root/build/demo/mod-outdated"
+        app_bundle="$build_dir/BalanceBar-ModOutdated.app"
+        bundle_identifier="com.huanmeng06.BalanceBar.demo.mod-outdated"
+        bundle_name="BalanceBar Demo · Mod Outdated"
+        demo_mode="mod-outdated"
+        mod_outdated_demo_mode="mod-outdated"
         module_cache_dir="$build_dir/swift-module-cache"
         clean_paths=("$build_dir")
         ;;
@@ -324,7 +337,9 @@ fi
 if [[ -n "$demo_mode" ]]; then
     plutil -replace CFBundleName -string "$bundle_name" "$bundle_plist"
     plutil -replace CFBundleDisplayName -string "$bundle_name" "$bundle_plist"
-    if [[ -n "${claude_idle_demo_mode:-}" ]]; then
+    if [[ -n "${mod_outdated_demo_mode:-}" ]]; then
+        plutil -replace BalanceBarModOutdatedDemo -string "$mod_outdated_demo_mode" "$bundle_plist"
+    elif [[ -n "${claude_idle_demo_mode:-}" ]]; then
         plutil -replace BalanceBarClaudeIdleDemo -string "$claude_idle_demo_mode" "$bundle_plist"
     elif [[ -n "${banked_reset_demo_mode:-}" ]]; then
         plutil -replace BalanceBarBankedResetDemo -string "$banked_reset_demo_mode" "$bundle_plist"

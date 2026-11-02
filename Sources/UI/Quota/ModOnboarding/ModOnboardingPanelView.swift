@@ -16,7 +16,7 @@ enum ModPanelItem: Equatable {
     case button(title: String, action: ButtonAction)
 
     enum StepStatus: String, Equatable { case pending, running, done }
-    enum ButtonAction: Equatable { case install, close, copyCommands, copyReload, copyList, undoDismiss, uninstall, copyUninstall, copyEnable, refresh, confirmUninstall, cancelUninstall, showStatus, showIntro }
+    enum ButtonAction: Equatable { case install, update, copyUpdate, close, copyCommands, copyReload, copyList, undoDismiss, uninstall, copyUninstall, copyEnable, refresh, confirmUninstall, cancelUninstall, showStatus, showIntro }
 
     var snapshotLine: String {
         switch self {
@@ -50,7 +50,7 @@ enum ModPanelContent {
     /// only these expose the uninstall action.
     static func isInstalled(_ status: ModSyncStatus) -> Bool {
         switch status {
-        case .waitingForData, .active, .silent, .disabled, .snapshotRejected: return true
+        case .waitingForData, .active, .silent, .disabled, .snapshotRejected, .updateRequired: return true
         case .detecting, .claudeMissing, .claudeVersionTooOld, .inboxNotReady, .notInstalled,
              .installationUnknown: return false
         }
@@ -137,6 +137,17 @@ enum ModPanelContent {
                 .button(title: t(.copyCommands), action: .copyUninstall),
                 .button(title: t(.closeButton), action: .close),
             ]
+        case let .updating(current):
+            let labels = [t(.updateStep1), t(.updateStep2), t(.step3)]
+            return [.title(t(.panelTitle))] + ModInstallStep.allCases.map { step in
+                .step(label: labels[step.rawValue], status: step.rawValue < current.rawValue ? .done
+                    : step == current ? .running : .pending)
+            }
+        case .updateSucceeded:
+            return [.title(t(.updateDone)), .text(t(.updateDoneNote)), .button(title: t(.closeButton), action: .close)]
+        case .updateFailed:
+            return [.title(t(.updateFailureTitle)), .text(t(.failureUpdate)), .code(plan.copyableUpdateCommands),
+                    .button(title: t(.copyCommands), action: .copyUpdate), .button(title: t(.closeButton), action: .close)]
         case .dismissConfirmed:
             return [
                 .title(t(.dismissedTitle)), .text(t(.dismissedNote)),
@@ -197,7 +208,7 @@ enum ModPanelContent {
             case .detecting:
                 return [.hero(symbol: nil, title: t(.pitchTitle), subtitle: sync.statusText), close]
             case .installationUnknown:
-                return [.hero(symbol: "exclamationmark.triangle.fill", title: t(.failureTitle), subtitle: nil),
+                return [.hero(symbol: "exclamationmark.triangle.fill", title: t(.unknownStatusTitle), subtitle: nil),
                         .text(sync.statusText),
                         .codeBlock(plan.copyableListCommand, copyAction: .copyList),
                         .button(title: t(.copyCommands), action: .copyList),
@@ -220,6 +231,16 @@ enum ModPanelContent {
                         .button(title: t(.copyEnableCommands), action: .copyEnable),
                         .text(t(.reloadHint)), .codeBlock(ModInstallPlan.reloadCommand, copyAction: .copyReload),
                         .text(t(.removeNote)), uninstall, refresh, close])
+            case let .updateRequired(installed):
+                if ModVersion.isCurrent(installed) {
+                    // The plugin is current; only a session that loaded the old one keeps writing the old format.
+                    return statusPage([.hero(symbol: "exclamationmark.triangle.fill", title: t(.manageTitle), subtitle: sync.statusText),
+                            refresh, close])
+                }
+                // Three buttons only: update is the one action this page is for.
+                return statusPage([.hero(symbol: "exclamationmark.triangle.fill", title: t(.updateTitle), subtitle: sync.statusText),
+                        .codeBlock(plan.copyableUpdateCommands, copyAction: .copyUpdate),
+                        .button(title: t(.updateButton), action: .update), close])
             case let .snapshotRejected(event):
                 return statusPage([.hero(symbol: "exclamationmark.triangle.fill", title: t(.manageTitle), subtitle: sync.statusText),
                         .text(t(event.rejection == .accountMismatch ? .accountAdvice : .cycleAdvice))]
@@ -270,6 +291,20 @@ enum ModPanelContent {
             return result + [.codeBlock(plan.copyableUninstallCommands, copyAction: .copyUninstall),
                              .button(title: t(.copyCommands), action: .copyUninstall),
                              .button(title: t(.retry), action: .uninstall), close]
+        case let .updating(current):
+            return [.hero(symbol: nil, title: t(.updateProgressTitle), subtitle: nil)]
+                + steps([t(.updateStep1), t(.updateStep2), t(.step3)], current: current.rawValue) + [close]
+        case .updateSucceeded:
+            return [.hero(symbol: "checkmark.circle.fill", title: t(.updateDone), subtitle: t(.updateDoneNote)), close]
+        case let .updateFailed(failure):
+            var result: [ModPanelItem] = [.hero(symbol: "exclamationmark.triangle.fill", title: t(.updateFailureTitle), subtitle: nil),
+                .text(t(failure == .claudeNotFound ? .failureClaudeMissing : .failureUpdate))]
+            if case let .commandFailed(_, _, detail) = failure, !detail.isEmpty {
+                result.append(.detail(detail.split(whereSeparator: \.isNewline).prefix(2).joined(separator: "\n")))
+            }
+            return result + [.codeBlock(plan.copyableUpdateCommands, copyAction: .copyUpdate),
+                             .button(title: t(.copyCommands), action: .copyUpdate),
+                             .button(title: t(.retry), action: .update), close]
         case .dismissConfirmed:
             return [.hero(symbol: nil, title: t(.dismissedTitle), subtitle: t(.dismissedNote)),
                     .button(title: t(.undoDismiss), action: .undoDismiss), close]
@@ -457,6 +492,13 @@ final class ModOnboardingPanelView: NSView {
     override var fittingSize: NSSize { NSSize(width: bounds.width, height: stack.fittingSize.height) }
     private var contentWidth: CGFloat { max(1, bounds.width - 48) }
 
+    static func opensOnOverview(_ status: ModSyncStatus) -> Bool {
+        switch status {
+        case .active, .waitingForData: return true
+        default: return false
+        }
+    }
+
     static func requiredWidth(localize t: (ModOnboardingText) -> String) -> CGFloat {
         let widths = [[t(.copyCommands), t(.laterButton), t(.installButton)],
                       [t(.uninstallButton), t(.closeButton)], [t(.retry), t(.closeButton)],
@@ -469,10 +511,15 @@ final class ModOnboardingPanelView: NSView {
             } + CGFloat(titles.count) * 10 + 48
         }
         let headings = [t(.pitchTitle), t(.manageTitle), t(.silentTitle), t(.failureTitle),
-                        t(.uninstallFailureTitle), t(.uninstalledTitle), t(.dismissedTitle)].map {
+                        t(.updateFailureTitle), t(.unknownStatusTitle), t(.uninstallFailureTitle), t(.uninstalledTitle), t(.dismissedTitle)].map {
             ($0 as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 17, weight: .semibold)]).width + 52
         }
-        return min(maximumWidth, max(minimumWidth, ceil((widths + headings).max() ?? minimumWidth)))
+        // The update page's code block shows its longest command on one line (text + copy control + paddings).
+        let commandFont = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
+        let commands = ModInstallPlan.standard.copyableUpdateCommands.split(separator: "\n").map {
+            (String($0) as NSString).size(withAttributes: [.font: commandFont]).width + 44 + 20 + 48 + 40
+        }
+        return min(maximumWidth, max(minimumWidth, ceil((widths + headings + commands).max() ?? minimumWidth)))
     }
 
     init(controller: ModOnboardingController,
@@ -494,6 +541,9 @@ final class ModOnboardingPanelView: NSView {
             stack.topAnchor.constraint(equalTo: topAnchor),
         ])
         controller.onChange = { [weak self] in self?.reload() }
+        // An installed Mod in a healthy state opens on the overview; any other state opens
+        // straight on the status page, which is what the user came to look at.
+        showsIntro = syncProvider?().map { Self.opensOnOverview($0.status) } ?? true
         ready = true
         reload()
     }
@@ -581,15 +631,16 @@ final class ModOnboardingPanelView: NSView {
             if case let .hero(symbol, _, _) = item { return symbol?.hasPrefix("exclamation") == true }; return false
         }
         let leading = visible.filter { action in
-            ![.close, .cancelUninstall, .confirmUninstall, .showStatus].contains(action.1) && (action.1 != .install || warning)
+            ![.close, .cancelUninstall, .confirmUninstall, .showStatus, .update].contains(action.1) && (action.1 != .install || warning)
         }
         let trailing = visible.filter { action in
-            [.close, .cancelUninstall, .confirmUninstall, .showStatus].contains(action.1) || (action.1 == .install && !warning)
-        }.sorted { $0.1 != .install && $1.1 == .install }
+            [.close, .cancelUninstall, .confirmUninstall, .showStatus, .update].contains(action.1) || (action.1 == .install && !warning)
+        }.sorted { ![.install, .update].contains($0.1) && [.install, .update].contains($1.1) }
         let footer = makeFooter(leading: leading, trailing: trailing)
         stack.addArrangedSubview(footer)
         footer.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -48).isActive = true
-        defaultButton = warning ? nil : allButtons.first { $0.identifier?.rawValue == "install" }
+        defaultButton = allButtons.first { $0.identifier?.rawValue == "update" }
+            ?? (warning ? nil : allButtons.first { $0.identifier?.rawValue == "install" })
         defaultButton = defaultButton ?? allButtons.first { ["close", "cancelUninstall"].contains($0.identifier?.rawValue ?? "") }
         defaultButton?.keyEquivalent = "\r"
         window?.defaultButtonCell = defaultButton?.cell as? NSButtonCell
@@ -645,6 +696,8 @@ final class ModOnboardingPanelView: NSView {
     func perform(_ action: ModPanelItem.ButtonAction) {
         switch action {
         case .install: controller.startInstall()
+        case .update: controller.startUpdate()
+        case .copyUpdate: controller.copyUpdateCommands()
         case .copyCommands: controller.copyInstallCommands()
         case .copyReload: controller.copyReloadCommand()
         case .copyList: controller.copyListCommand()
@@ -857,10 +910,10 @@ final class ModOnboardingPanelView: NSView {
         guard let id = sender.identifier?.rawValue,
               let action = [ModPanelItem.ButtonAction.install, .close, .copyCommands, .copyReload, .copyList, .undoDismiss,
                             .uninstall, .copyUninstall, .copyEnable, .refresh, .confirmUninstall, .cancelUninstall,
-                            .showStatus, .showIntro]
+                            .showStatus, .showIntro, .update, .copyUpdate]
                 .first(where: { String(describing: $0) == id }) else { return }
         perform(action)
-        if [.copyCommands, .copyReload, .copyList, .copyUninstall, .copyEnable].contains(action) {
+        if [.copyCommands, .copyReload, .copyList, .copyUninstall, .copyEnable, .copyUpdate].contains(action) {
             if let copy = sender as? ModCopyButton { copy.flashCopied(); return }
             let title = sender.title
             sender.title = localize(.copied)
@@ -1105,6 +1158,10 @@ final class ModOnboardingWindowController: NSObject, NSWindowDelegate {
         let contentSize = NSSize(width: window.contentView?.bounds.width ?? size.width,
                                  height: min(max(size.height, 220), limit))
         let old = window.frame
+        // The window is sized to its page: the height follows the content, so dragging an edge
+        // cannot squeeze the page into a scroll view that hides its buttons.
+        window.contentMinSize = NSSize(width: window.contentMinSize.width, height: contentSize.height)
+        window.contentMaxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: contentSize.height)
         guard abs((window.contentView?.bounds.height ?? 0) - contentSize.height) > 0.5 else { return }
         window.setContentSize(contentSize)
         window.setFrameOrigin(NSPoint(x: old.minX, y: old.maxY - window.frame.height))
