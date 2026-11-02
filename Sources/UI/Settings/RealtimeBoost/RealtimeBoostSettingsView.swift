@@ -387,7 +387,7 @@ final class RealtimeBoostSettingsRows {
             return .init(status: base.status,
                          reason: modLocalize([.updateStep1, .updateStep2, .step3][step.rawValue]) + "…")
         case .updateFailed:
-            return .init(status: localize(.cardUpdateTitle),
+            return .init(status: localize(.cardUpdateTitle), reason: modLocalize(.updateFailureTitle),
                          action: String(format: localize(.cardViewErrorAction), localize(.viewError)))
         case .failed:
             return .init(status: localize(.cardInstallFailedTitle), reason: modLocalize(.failureTitle),

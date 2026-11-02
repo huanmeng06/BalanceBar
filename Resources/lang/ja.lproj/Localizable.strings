@@ -731,6 +731,8 @@
 "mod.ui.uninstall_reload_hint" = "既存のセッションでは、下のコマンドを実行すると削除がすぐに反映されます。";
 "mod.ui.cancel" = "キャンセル";
 "mod.ui.uninstall_failure_title" = "アンインストール未完了";
+"mod.ui.update_failure_title" = "更新に失敗しました";
+"mod.ui.unknown_status_title" = "インストール状態を確認できません";
 "mod.ui.account_advice" = "Claude Code と BalanceBar が同じアカウントを使用していることを確認し、新しいセッションを開始してください。";
 "mod.ui.cycle_advice" = "公式の使用枠を引き続き使用します。公式データで新しい周期が確認された後、新しいセッションのデータを確認してください。";
 

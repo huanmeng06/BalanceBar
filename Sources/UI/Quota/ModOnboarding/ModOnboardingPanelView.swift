@@ -146,7 +146,7 @@ enum ModPanelContent {
         case .updateSucceeded:
             return [.title(t(.updateDone)), .text(t(.updateDoneNote)), .button(title: t(.closeButton), action: .close)]
         case .updateFailed:
-            return [.title(t(.failureTitle)), .text(t(.failureUpdate)), .code(plan.copyableUpdateCommands),
+            return [.title(t(.updateFailureTitle)), .text(t(.failureUpdate)), .code(plan.copyableUpdateCommands),
                     .button(title: t(.copyCommands), action: .copyUpdate), .button(title: t(.closeButton), action: .close)]
         case .dismissConfirmed:
             return [
@@ -208,7 +208,7 @@ enum ModPanelContent {
             case .detecting:
                 return [.hero(symbol: nil, title: t(.pitchTitle), subtitle: sync.statusText), close]
             case .installationUnknown:
-                return [.hero(symbol: "exclamationmark.triangle.fill", title: t(.failureTitle), subtitle: nil),
+                return [.hero(symbol: "exclamationmark.triangle.fill", title: t(.unknownStatusTitle), subtitle: nil),
                         .text(sync.statusText),
                         .codeBlock(plan.copyableListCommand, copyAction: .copyList),
                         .button(title: t(.copyCommands), action: .copyList),
@@ -297,7 +297,7 @@ enum ModPanelContent {
         case .updateSucceeded:
             return [.hero(symbol: "checkmark.circle.fill", title: t(.updateDone), subtitle: t(.updateDoneNote)), close]
         case let .updateFailed(failure):
-            var result: [ModPanelItem] = [.hero(symbol: "exclamationmark.triangle.fill", title: t(.failureTitle), subtitle: nil),
+            var result: [ModPanelItem] = [.hero(symbol: "exclamationmark.triangle.fill", title: t(.updateFailureTitle), subtitle: nil),
                 .text(t(failure == .claudeNotFound ? .failureClaudeMissing : .failureUpdate))]
             if case let .commandFailed(_, _, detail) = failure, !detail.isEmpty {
                 result.append(.detail(detail.split(whereSeparator: \.isNewline).prefix(2).joined(separator: "\n")))
@@ -511,7 +511,7 @@ final class ModOnboardingPanelView: NSView {
             } + CGFloat(titles.count) * 10 + 48
         }
         let headings = [t(.pitchTitle), t(.manageTitle), t(.silentTitle), t(.failureTitle),
-                        t(.uninstallFailureTitle), t(.uninstalledTitle), t(.dismissedTitle)].map {
+                        t(.updateFailureTitle), t(.unknownStatusTitle), t(.uninstallFailureTitle), t(.uninstalledTitle), t(.dismissedTitle)].map {
             ($0 as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 17, weight: .semibold)]).width + 52
         }
         // The update page's code block shows its longest command on one line (text + copy control + paddings).

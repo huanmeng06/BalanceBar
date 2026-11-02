@@ -359,6 +359,8 @@ extension LocalizationKey {
         case .backToIntro: return .modUIBackToIntro
         case .lastDataNote: return .modUILastDataNote
         case .uninstallFailureTitle: return .modUIUninstallFailureTitle
+        case .updateFailureTitle: return .modUIUpdateFailureTitle
+        case .unknownStatusTitle: return .modUIUnknownStatusTitle
         case .accountAdvice: return .modUIAccountAdvice
         case .cycleAdvice: return .modUICycleAdvice
         case .promptRow: return .modPromptRow

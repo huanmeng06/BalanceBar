@@ -64,6 +64,8 @@ enum ModOnboardingText: String, CaseIterable {
     case backToIntro = "mod.ui.back_to_intro"
     case lastDataNote = "mod.ui.last_data_note"
     case uninstallFailureTitle = "mod.ui.uninstall_failure_title"
+    case updateFailureTitle = "mod.ui.update_failure_title"
+    case unknownStatusTitle = "mod.ui.unknown_status_title"
     case accountAdvice = "mod.ui.account_advice"
     case cycleAdvice = "mod.ui.cycle_advice"
 
@@ -120,6 +122,8 @@ enum ModOnboardingText: String, CaseIterable {
         case .backToIntro: return "返回介绍"
         case .lastDataNote: return "「最近可信数据」是 BalanceBar 最后一次采用额度数据的时间；额度没变化时不会更新。"
         case .uninstallFailureTitle: return "卸载未完成"
+        case .updateFailureTitle: return "更新失败"
+        case .unknownStatusTitle: return "无法确认安装状态"
         case .accountAdvice: return "请确认 Claude Code 与 BalanceBar 使用同一账号，再新开会话。"
         case .cycleAdvice: return "继续使用官方额度；新周期经官方确认后，再检查新会话的数据。"
         case .promptRow: return "启用实时增强 ›"

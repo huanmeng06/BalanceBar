@@ -731,6 +731,8 @@
 "mod.ui.uninstall_reload_hint" = "Les sessions existantes peuvent exécuter la commande ci-dessous pour appliquer la désinstallation immédiatement.";
 "mod.ui.cancel" = "Annuler";
 "mod.ui.uninstall_failure_title" = "Désinstallation incomplète";
+"mod.ui.update_failure_title" = "Échec de la mise à jour";
+"mod.ui.unknown_status_title" = "Impossible de vérifier l’installation";
 "mod.ui.account_advice" = "Vérifiez que Claude Code et BalanceBar utilisent le même compte, puis ouvrez une nouvelle session.";
 "mod.ui.cycle_advice" = "Continuez avec les quotas officiels. Vérifiez les données d’une nouvelle session après confirmation du nouveau cycle par la source officielle.";
 

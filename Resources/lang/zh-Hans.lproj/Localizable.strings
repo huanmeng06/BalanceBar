@@ -731,6 +731,8 @@
 "mod.ui.uninstall_reload_hint" = "已有会话可运行下面的命令，让卸载立即生效。";
 "mod.ui.cancel" = "取消";
 "mod.ui.uninstall_failure_title" = "卸载未完成";
+"mod.ui.update_failure_title" = "更新失败";
+"mod.ui.unknown_status_title" = "无法确认安装状态";
 "mod.ui.account_advice" = "请确认 Claude Code 与 BalanceBar 使用同一账号，再新开会话。";
 "mod.ui.cycle_advice" = "继续使用官方额度；新周期经官方确认后，再检查新会话的数据。";
 

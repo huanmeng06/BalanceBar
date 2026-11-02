@@ -731,6 +731,8 @@
 "mod.ui.uninstall_reload_hint" = "As sessões existentes podem executar o comando abaixo para aplicar a desinstalação imediatamente.";
 "mod.ui.cancel" = "Cancelar";
 "mod.ui.uninstall_failure_title" = "Desinstalação incompleta";
+"mod.ui.update_failure_title" = "Falha na atualização";
+"mod.ui.unknown_status_title" = "Não foi possível confirmar a instalação";
 "mod.ui.account_advice" = "Verifique se Claude Code e BalanceBar usam a mesma conta e inicie uma nova sessão.";
 "mod.ui.cycle_advice" = "Continue usando a cota oficial. Confira os dados de uma nova sessão após a fonte oficial confirmar o novo ciclo.";
 

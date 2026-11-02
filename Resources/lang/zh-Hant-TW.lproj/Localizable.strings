@@ -731,6 +731,8 @@
 "mod.ui.uninstall_reload_hint" = "已有會話可執行下面的指令，讓卸載立即生效。";
 "mod.ui.cancel" = "取消";
 "mod.ui.uninstall_failure_title" = "解除安裝未完成";
+"mod.ui.update_failure_title" = "更新失敗";
+"mod.ui.unknown_status_title" = "無法確認安裝狀態";
 "mod.ui.account_advice" = "請確認 Claude Code 與 BalanceBar 使用同一帳號，再開啟新工作階段。";
 "mod.ui.cycle_advice" = "繼續使用官方額度；新週期經官方確認後，再檢查新工作階段的資料。";
 

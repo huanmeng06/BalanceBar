@@ -657,6 +657,8 @@
     case modUIConfirmUninstall = "mod.ui.confirm_uninstall"
     case modUICancel = "mod.ui.cancel"
     case modUIUninstallFailureTitle = "mod.ui.uninstall_failure_title"
+    case modUIUpdateFailureTitle = "mod.ui.update_failure_title"
+    case modUIUnknownStatusTitle = "mod.ui.unknown_status_title"
     case modUIAccountAdvice = "mod.ui.account_advice"
     case modUICycleAdvice = "mod.ui.cycle_advice"
     case modPromptRow = "mod.prompt.row"

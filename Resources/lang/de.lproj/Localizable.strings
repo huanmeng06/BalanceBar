@@ -731,6 +731,8 @@
 "mod.ui.uninstall_reload_hint" = "Bestehende Sitzungen können den folgenden Befehl ausführen, damit die Deinstallation sofort wirksam wird.";
 "mod.ui.cancel" = "Abbrechen";
 "mod.ui.uninstall_failure_title" = "Deinstallation unvollständig";
+"mod.ui.update_failure_title" = "Aktualisierung fehlgeschlagen";
+"mod.ui.unknown_status_title" = "Installationsstatus nicht feststellbar";
 "mod.ui.account_advice" = "Claude Code und BalanceBar müssen dasselbe Konto verwenden. Danach eine neue Sitzung starten.";
 "mod.ui.cycle_advice" = "Offizielles Kontingent weiterverwenden. Neue Sitzungsdaten prüfen, sobald die offizielle Quelle den neuen Zyklus bestätigt.";
 
