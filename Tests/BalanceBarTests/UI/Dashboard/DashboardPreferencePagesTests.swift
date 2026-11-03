@@ -10221,6 +10221,26 @@ final class DashboardPreferencePagesTests: XCTestCase {
 }
 
 extension DashboardPreferencePagesTests {
+    func testTimeZoneMenuOrderMatchesContinentThenCatalogOrder() {
+        // The menu order is cached per locale; it must equal sorting by the localized
+        // continent heading and then the catalog's country/city comparison.
+        let previous = AppLanguage.selected
+        defer { AppLanguage.selected = previous }
+        for language in [AppLanguage.english, .simplifiedChinese, .traditionalChineseTaiwan, .german, .japanese] {
+            AppLanguage.selected = language
+            let expected = TimeZoneCityCatalog.all.sorted {
+                let left = TimeZoneCityCatalog.continentTitle(for: $0)
+                let right = TimeZoneCityCatalog.continentTitle(for: $1)
+                if left != right { return left.localizedStandardCompare(right) == .orderedAscending }
+                return TimeZoneCityCatalog.compare($0, $1)
+            }
+            let grouped = TimeZoneCityCatalog.allByContinent
+            XCTAssertEqual(grouped.map(\.city.identifier), expected.map(\.identifier), "\(language)")
+            XCTAssertEqual(grouped.map(\.header), expected.map { TimeZoneCityCatalog.continentTitle(for: $0) }, "\(language)")
+            XCTAssertEqual(TimeZoneCityCatalog.allByContinent.map(\.city.identifier), grouped.map(\.city.identifier))
+        }
+    }
+
     func testCityCatalogDeduplicatesLocalizesAndFallsBack() throws {
         let raw = "US\t+404251-0740023\tAmerica/New_York\nUS\t+404251-0740023\tAmerica/New_York\nIN\t+2232+08822\tAsia/Kolkata\n# comment\ninvalid"
         let cities = TimeZoneCityCatalog.load(zoneTab: raw, locale: Locale(identifier: "zh_CN"))

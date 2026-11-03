@@ -1091,6 +1091,7 @@ enum TimeZoneCityCatalog {
     private static let zoneTab = try? String(contentsOfFile: "/usr/share/zoneinfo/zone.tab", encoding: .utf8)
     private static let lock = NSLock()
     private static var cache: [String: [TimeZoneCity]] = [:]
+    private static var continentGroupsCache: [String: [(header: String, city: TimeZoneCity)]] = [:]
 
     private static let aliases: [String: String] = {
         var links = ["Asia/Calcutta": "Asia/Kolkata", "US/Pacific": "America/Los_Angeles", "US/Eastern": "America/New_York", "Europe/Kiev": "Europe/Kyiv"]
@@ -1261,6 +1262,35 @@ enum TimeZoneCityCatalog {
             "Pacific": ["zh": "太平洋地区", "en": "Pacific", "ja": "太平洋", "ko": "태평양", "es": "Pacífico", "pt": "Pacífico", "de": "Pazifik", "fr": "Pacifique", "ru": "Тихий океан", "it": "Pacifico"]
         ]
         return names[continent]?[language] ?? names[continent]?["en"] ?? continent
+    }
+
+    /// Every city ordered by continent heading, keeping `all`'s country/city order
+    /// within a continent. Cached per locale: the time zone menu is rebuilt with each
+    /// General page (including every Settings search entry), and sorting with
+    /// `continentTitle`/`collationKey` inside the comparator dominated that build.
+    static var allByContinent: [(header: String, city: TimeZoneCity)] {
+        let locale = locale
+        let cities = all
+        let key = locale.identifier
+        lock.lock()
+        if let groups = continentGroupsCache[key] {
+            lock.unlock()
+            return groups
+        }
+        lock.unlock()
+        let groups = cities.enumerated()
+            .map { (header: continentTitle(for: $0.element, locale: locale), index: $0.offset, city: $0.element) }
+            .sorted { lhs, rhs in
+                if lhs.header != rhs.header {
+                    return lhs.header.localizedStandardCompare(rhs.header) == .orderedAscending
+                }
+                return lhs.index < rhs.index
+            }
+            .map { (header: $0.header, city: $0.city) }
+        lock.lock()
+        continentGroupsCache[key] = groups
+        lock.unlock()
+        return groups
     }
 
     static func grouped(_ cities: [TimeZoneCity], locale: Locale = locale) -> [(header: String, city: TimeZoneCity)] {
