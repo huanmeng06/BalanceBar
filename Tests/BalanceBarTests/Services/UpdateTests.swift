@@ -607,7 +607,9 @@ final class UpdateTests: XCTestCase {
             currentApplicationURL: URL(fileURLWithPath: "/tmp/BalanceBar-test.app"),
             currentBundleIdentifier: "com.huanmeng06.BalanceBar.app",
             callbackQueue: queue,
-            workQueue: queue
+            workQueue: queue,
+            // Not a minimum-duration test (covered with the virtual scheduler).
+            minimumCheckingDuration: 0
         )
 
         let firstLatest = waitForState(service, queue: queue) {
@@ -648,7 +650,9 @@ final class UpdateTests: XCTestCase {
             currentVersionString: "1.0.0",
             updateChannel: .stable,
             callbackQueue: queue,
-            workQueue: queue
+            workQueue: queue,
+            // Not a minimum-duration test (covered with the virtual scheduler).
+            minimumCheckingDuration: 0
         )
         let available = waitForState(service, queue: queue) { state in
             if case .available(_, let latest) = state {
@@ -754,7 +758,9 @@ final class UpdateTests: XCTestCase {
             currentVersionString: "1.0.0",
             updateChannel: .beta,
             callbackQueue: queue,
-            workQueue: queue
+            workQueue: queue,
+            // Not a minimum-duration test (covered with the virtual scheduler).
+            minimumCheckingDuration: 0
         )
         let available = waitForState(service, queue: queue) { state in
             if case .available(_, let latest) = state {
@@ -1216,7 +1222,9 @@ final class UpdateTests: XCTestCase {
             releaseFetcher: fetcher,
             currentVersionString: "1.0.0",
             callbackQueue: queue,
-            workQueue: queue
+            workQueue: queue,
+            // Not a minimum-duration test (covered with the virtual scheduler).
+            minimumCheckingDuration: 0
         )
         let firstLatest = waitForState(service, queue: queue) { state in
             if case .latest = state { return true }
@@ -1250,7 +1258,9 @@ final class UpdateTests: XCTestCase {
             releaseFetcher: fetcher,
             currentVersionString: "1.0.0",
             callbackQueue: queue,
-            workQueue: queue
+            workQueue: queue,
+            // Not a minimum-duration test (covered with the virtual scheduler).
+            minimumCheckingDuration: 0
         )
         let firstFailure = waitForState(service, queue: queue) { state in
             if case .failed(.network) = state { return true }
@@ -1353,7 +1363,9 @@ final class UpdateTests: XCTestCase {
             releaseFetcher: fetcher,
             currentVersionString: current.description,
             callbackQueue: queue,
-            workQueue: queue
+            workQueue: queue,
+            // Not a minimum-duration test (covered with the virtual scheduler).
+            minimumCheckingDuration: 0
         )
         let failure = waitForState(service, queue: queue) {
             if case .failed(.invalidReleaseVersion) = $0 { return true }
@@ -1396,7 +1408,9 @@ final class UpdateTests: XCTestCase {
             installer: StubInstaller(),
             currentVersionString: "1.0.0",
             callbackQueue: queue,
-            workQueue: queue
+            workQueue: queue,
+            // Not a minimum-duration test (covered with the virtual scheduler).
+            minimumCheckingDuration: 0
         )
         service.checkForUpdates()
         service.checkForUpdates()
@@ -1425,7 +1439,9 @@ final class UpdateTests: XCTestCase {
             currentBundleIdentifier: "com.huanmeng06.BalanceBar.app",
             updateChannel: .beta,
             callbackQueue: queue,
-            workQueue: queue
+            workQueue: queue,
+            // Not a minimum-duration test (covered with the virtual scheduler).
+            minimumCheckingDuration: 0
         )
         service.checkForUpdates()
         fetcher.resolve(.success([makeRelease(tag: "v1.0.1", prerelease: true)]))
@@ -1475,7 +1491,9 @@ final class UpdateTests: XCTestCase {
             currentBundleIdentifier: "com.huanmeng06.BalanceBar.app",
             updateChannel: .beta,
             callbackQueue: queue,
-            workQueue: queue
+            workQueue: queue,
+            // Not a minimum-duration test (covered with the virtual scheduler).
+            minimumCheckingDuration: 0
         )
         service.checkForUpdates()
         fetcher.resolve(.success([makeRelease(tag: "v1.0.1", prerelease: true)]))

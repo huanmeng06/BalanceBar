@@ -3922,6 +3922,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
             .english: "When off, the dropdown menu no longer shows reset cards"
         ]
 
+        // Copy checks cover every language; mounting the page (the costly part) uses the
+        // layout samples plus every language with pinned expected copy.
+        let mountedLanguages = Set(TestMatrix.representativeLanguages).union(expectedTitles.keys)
         for language in AppLanguage.allCases where language != .system {
             AppLanguage.selected = language
             XCTAssertFalse(
@@ -3944,6 +3947,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     expectedSubtitle
                 )
             }
+            guard mountedLanguages.contains(language) else { continue }
 
             let suiteName = "DashboardPreferencePagesTests.ShowBankedResetCopy.\(language.rawValue).\(UUID().uuidString)"
             let defaults = UserDefaults(suiteName: suiteName)!
@@ -5576,9 +5580,23 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
 
-        let cases = AppLanguage.allCases.filter { $0 != .system }
+        // Every language: the headings and rows located by title below must translate to
+        // distinct strings. This needs no page, so it stays exhaustive.
+        for language in AppLanguage.allCases where language != .system {
+            let titles = [
+                LocalizationKey.keyDashboardMenuBarPagePreview, .keyDashboardMenuBarPageQuotaAndReset,
+                .keyDashboardMenuBarPageIconAndTaskStatus, .keyDashboardMenuBarPageLayout,
+                .keyDashboardMenuBarPageBalanceAmount, .keyDashboardMenuBarPageResetCountdown,
+                .keyDashboardMenuBarPageQuotaDisplayPriority, .keyDashboardMenuBarPageQuotaResetDisplayMode,
+                .keyDashboardMenuBarPageCurrentLayout, .keyDashboardMenuBarPageIconDisplayMode,
+                .keyDashboardMenuBarPageIconDisplayDelay, .keyDashboardMenuBarPageAgentIcon,
+                .keyDashboardMenuBarPagePlayTheIconAnimationWhileATaskIsRunning, .keyDashboardMenuBarPageAnimation
+            ].map { tr($0, language: language) }
+            XCTAssertEqual(Set(titles).count, titles.count, "menu bar titles collide in \(language)")
+        }
 
-        for language in cases {
+        // Section placement does not depend on the language; mount the page for samples only.
+        for language in TestMatrix.representativeLanguages {
             AppLanguage.selected = language
             let animationRowTitle = tr(
                 .keyDashboardMenuBarPagePlayTheIconAnimationWhileATaskIsRunning,
