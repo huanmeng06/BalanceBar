@@ -204,9 +204,13 @@ enum DashboardSettingsComponents {
         _ label: NSTextField?,
         with subtitle: LocalizedSubtitle
     ) {
+        // Page refreshes resend every subtitle. Re-invalidating an unchanged row
+        // re-solves its wrapping layout, which dominated entering Settings search.
         if let semanticLabel = label as? SettingsSemanticSubtitleLabel {
+            guard semanticLabel.localizedSubtitle != subtitle else { return }
             semanticLabel.setLocalizedSubtitle(subtitle)
         } else {
+            guard label?.stringValue != subtitle.text else { return }
             label?.stringValue = subtitle.text
         }
         label?.invalidateIntrinsicContentSize()

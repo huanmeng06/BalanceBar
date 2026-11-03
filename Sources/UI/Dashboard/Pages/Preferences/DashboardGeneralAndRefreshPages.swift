@@ -1117,23 +1117,16 @@ final class DashboardTimeZoneComboBox: NSPopUpButton, SettingsRowAccessoryLayout
         defer { applying = false }
         if !menuBuilt {
             removeAllItems()
-            let cities = TimeZoneCityCatalog.all.sorted {
-            let left = TimeZoneCityCatalog.continentTitle(for: $0)
-            let right = TimeZoneCityCatalog.continentTitle(for: $1)
-            if left != right { return left.localizedStandardCompare(right) == .orderedAscending }
-            return TimeZoneCityCatalog.compare($0, $1)
-        }
-        var currentContinent: String?
-        for city in cities {
-            let continent = TimeZoneCityCatalog.continentTitle(for: city)
-            if currentContinent != continent {
-                menu?.addItem(makeHeaderItem(title: continent))
-                currentContinent = continent
-            }
-            let item = NSMenuItem(title: city.title, action: #selector(selectTimeZone(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = city.identifier
-            menu?.addItem(item)
+            var currentContinent: String?
+            for (continent, city) in TimeZoneCityCatalog.allByContinent {
+                if currentContinent != continent {
+                    menu?.addItem(makeHeaderItem(title: continent))
+                    currentContinent = continent
+                }
+                let item = NSMenuItem(title: city.title, action: #selector(selectTimeZone(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = city.identifier
+                menu?.addItem(item)
             }
             menuBuilt = true
         }
