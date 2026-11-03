@@ -89,4 +89,4 @@ exact-format and traceability guarantees.
 The production build uploads only the versioned DMG asset. The client reads
 the complete description from `GitHubRelease.body`; no manifest, locale
 Markdown, or other release-notes resource is bundled or uploaded.
-
+<!-- CI docs-only lane probe -->
