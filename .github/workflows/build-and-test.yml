@@ -310,7 +310,10 @@ jobs:
   build-and-test:
     name: Full CI (CLI, probes and serial XCTest)
     needs: [scope, full-build, full-cli, xctest-shard]
-    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || (needs.scope.outputs.draft != 'true' && (needs.scope.outputs.reuse_full != 'true' || needs.scope.outputs.force_full == 'true') && (needs.scope.outputs.version_only != 'true' || needs.scope.outputs.force_full == 'true') && (needs.scope.outputs.docs_only != 'true' || needs.scope.outputs.force_full == 'true'))) }}
+    # Scope is skipped for title/body-only edits; Full must stay skipped there
+    # (the metadata gate ignores a run only when Full is skipped). A failed
+    # scope already fails the gate, so requiring success never opens a hole.
+    if: ${{ !cancelled() && needs.scope.result == 'success' && (github.event_name == 'workflow_dispatch' || (needs.scope.outputs.draft != 'true' && (needs.scope.outputs.reuse_full != 'true' || needs.scope.outputs.force_full == 'true') && (needs.scope.outputs.version_only != 'true' || needs.scope.outputs.force_full == 'true') && (needs.scope.outputs.docs_only != 'true' || needs.scope.outputs.force_full == 'true'))) }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

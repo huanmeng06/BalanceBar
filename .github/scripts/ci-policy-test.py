@@ -128,6 +128,8 @@ class PolicyTests(unittest.TestCase):
         self.assertIn('needs: [scope, full-build, full-cli, xctest-shard]', full)
         self.assertIn("[[ \"$RESULTS\" == 'success success success success' ]]", full)
         self.assertIn('ci-xctest-totals.py', full)
+        # Metadata edits skip scope; the Full aggregate must then be skipped too.
+        self.assertIn("if: ${{ !cancelled() && needs.scope.result == 'success' && (", full)
         self.assertIn("needs.scope.outputs.docs_only != 'true' || needs.scope.outputs.force_full == 'true'", full)
         totals = load('ci-xctest-totals')
         expected = totals.planned_shards('1 A\n2 B\n# 9 comment\n')
