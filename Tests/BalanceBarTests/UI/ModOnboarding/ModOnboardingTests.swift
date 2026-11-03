@@ -135,6 +135,80 @@ final class ModInstallerTests: XCTestCase {
         XCTAssertEqual(outcome, .failure(.commandFailed(step: .addMarketplace, exitCode: 0, detail: "outcome=error")))
     }
 
+    func testUpdateRunsMarketplaceUpdateThenPluginUpdateAndStopsOnFailure() {
+        func update(_ results: [ModCommandResult?]) -> (ModInstallResult, [ModInstallStep], [[String]]) {
+            let runner = ScriptedRunner(results)
+            let q = DispatchQueue(label: "test.updater")
+            let installer = ModInstaller(locator: FakeLocator(path: "/bin/claude"), runner: runner,
+                                         prepareInbox: { false }, workQueue: q, callbackQueue: q)
+            let done = expectation(description: "update")
+            var steps: [ModInstallStep] = [], result: ModInstallResult?
+            installer.update(progress: { steps.append($0) }, completion: { result = $0; done.fulfill() })
+            wait(for: [done], timeout: 5)
+            return (result!, q.sync { steps }, runner.calls)
+        }
+        let (result, steps, calls) = update([ok, ok])
+        XCTAssertEqual(result, .success, "the inbox is not touched by an update")
+        XCTAssertEqual(steps, [.addMarketplace, .installPlugin, .finish])
+        XCTAssertEqual(calls, [["plugin", "marketplace", "update", "balancebar-mods", "--json"],
+                               ["plugin", "update", "balancebar-mod@balancebar-mods", "--scope", "user", "--json"]])
+        let bad = ModCommandResult(exitCode: 1, stdout: "", stderr: "boom")
+        let (failed, _, failedCalls) = update([bad, ok])
+        XCTAssertEqual(failed, .failure(.commandFailed(step: .addMarketplace, exitCode: 1, detail: "boom")))
+        XCTAssertEqual(failedCalls.count, 1)
+    }
+
+    func testLatestModVersionMatchesThePluginManifest() throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let data = try Data(contentsOf: root.appendingPathComponent("mod/.claude-plugin/plugin.json"))
+        let manifest = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(manifest["version"] as? String, ModOnboardingConfig.latestModVersion)
+    }
+
+    func testModVersionComparisonAndCardVersionLine() {
+        XCTAssertFalse(ModVersion.isCurrent("1.0.0", latest: "1.1.0"))
+        XCTAssertTrue(ModVersion.isCurrent("1.1.0", latest: "1.1.0"))
+        XCTAssertTrue(ModVersion.isCurrent("1.10", latest: "1.9.9"))
+        XCTAssertFalse(ModVersion.isCurrent(nil))
+        XCTAssertFalse(ModVersion.isCurrent("beta"))
+        let outdated = RealtimeBoostSettingsRows.cardCopy(
+            status: .updateRequired(installedVersion: "1.0.0"), operation: .intro(dismissChecked: false),
+            localize: { realtimeBoostLocalize($0, language: .simplifiedChinese) }, modLocalize: { $0.defaultText })
+        XCTAssertEqual(outdated.detail, "Mod 需要更新 · 当前版本：1.0.0 · 最新版本：\(ModOnboardingConfig.latestModVersion)")
+        let restart = RealtimeBoostSettingsRows.cardCopy(
+            status: .updateRequired(installedVersion: ModOnboardingConfig.latestModVersion), operation: .intro(dismissChecked: false),
+            localize: { $0.defaultText }, modLocalize: { $0.defaultText })
+        XCTAssertEqual(restart.detail, "Mod 已更新，请重启 Claude Code 会话")
+    }
+
+    func testPanelOpensOnStatusUnlessTheModIsHealthy() {
+        for (status, overview) in [
+            (ModSyncStatus.active(lastAcceptedAt: Date()), true), (.waitingForData, true),
+            (.updateRequired(installedVersion: "1.0.0"), false), (.silent, false), (.disabled, false),
+            (.snapshotRejected(.init(rejection: .accountMismatch, at: Date())), false),
+        ] {
+            let panel = ModOnboardingPanelView(
+                controller: ModOnboardingController(preference: MemoryPreference(), copyToPasteboard: { _ in }),
+                syncProvider: { ModPanelSyncContext(status: status, statusText: "x") })
+            XCTAssertEqual(panel.showsIntro, overview, "\(status)")
+        }
+    }
+
+    func testUpdateCommandsAreCopyableAsTheUsersTwoCommands() {
+        XCTAssertEqual(ModInstallPlan.standard.copyableUpdateCommands,
+                       "claude plugin marketplace update balancebar-mods\nclaude plugin update balancebar-mod@balancebar-mods")
+    }
+
+    func testUpdateRequiredPanelOffersCopyableCommandsAndOneClickUpdate() {
+        let status = ModSyncStatus.updateRequired(installedVersion: "1.0.0")
+        let items = ModPanelContent.items(
+            for: .intro(dismissChecked: false), plan: .standard, localize: { $0.defaultText },
+            sync: .init(status: status, statusText: "x"), showsIntro: false)
+        XCTAssertTrue(items.contains(.codeBlock(ModInstallPlan.standard.copyableUpdateCommands, copyAction: .copyUpdate)))
+        XCTAssertTrue(items.contains(.button(title: ModOnboardingText.updateButton.defaultText, action: .update)))
+    }
+
     func testLocatorSearchesPathThenKnownDirectories() {
         var seen: [String] = []
         let locator = DefaultClaudeExecutableLocator(environment: ["PATH": "/a:/b"], homeDirectory: "/h",
@@ -502,6 +576,21 @@ final class ModSyncStatusTests: XCTestCase {
             ModSyncStatus.resolve(environment: env(installation: installed), evidence: onlyRejection, now: now),
             .snapshotRejected(ModRejectionEvent(rejection: .accountMismatch, at: now.addingTimeInterval(-60))))
     }
+
+    func testOutdatedModEvidenceResolvesToUpdateRequiredAndClears() {
+        let installed = ModPluginInstallation(scope: "user", isEnabled: true, version: "1.0.0", installedAt: now.addingTimeInterval(-86_400))
+        var evidence = ModSnapshotEvidence(lastAcceptedAt: now.addingTimeInterval(-60), modOutdated: true)
+        XCTAssertEqual(
+            ModSyncStatus.resolve(environment: env(installation: installed), evidence: evidence, now: now),
+            .updateRequired(installedVersion: "1.0.0"))
+        evidence.modOutdated = false
+        XCTAssertEqual(
+            ModSyncStatus.resolve(environment: env(installation: installed), evidence: evidence, now: now),
+            .active(lastAcceptedAt: now.addingTimeInterval(-60)))
+        let text = RealtimeBoostPresentation.make(status: .updateRequired(installedVersion: "1.0.0"), timeZone: TimeZone(identifier: "UTC")!).statusText
+        XCTAssertTrue(text.contains("第三方插件市场默认不自动更新"))
+        XCTAssertTrue(text.contains("重启 Claude Code 会话"))
+    }
 }
 
 final class ModSyncDetectorTests: XCTestCase {
@@ -735,7 +824,8 @@ final class ModSyncCoordinatorTests: XCTestCase {
         now: @escaping () -> Date = Date.init,
         schedule: @escaping (TimeInterval, @escaping () -> Void) -> Void = { delay, block in
             DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: block)
-        }
+        },
+        simulatedOutdatedMod: Bool = false
     ) -> (ModSyncCoordinator, ScriptedRunner) {
         let runner = ScriptedRunner(results)
         let q = DispatchQueue(label: "test.coordinator")
@@ -749,8 +839,28 @@ final class ModSyncCoordinatorTests: XCTestCase {
             inboxDirectory: inboxDirectory, workQueue: q, callbackQueue: .main)
         let coordinator = ModSyncCoordinator(
             controller: controller, detector: detector, activityProvider: activityProvider,
-            now: now, schedule: schedule)
+            now: now, schedule: schedule, simulatedOutdatedMod: simulatedOutdatedMod)
         return (coordinator, runner)
+    }
+
+    func testSimulatedOutdatedModStaysPinnedUntilTheOneClickUpdateSucceeds() {
+        let version = ModCommandResult(exitCode: 0, stdout: "2.1.291 (Claude Code)", stderr: "")
+        let list = ModCommandResult(exitCode: 0, stdout: String(decoding: listJSON(), as: UTF8.self), stderr: "")
+        let (coordinator, _) = makeCoordinator(
+            locator: "/bin/claude", results: [version, list, ok, ok, version, list], simulatedOutdatedMod: true)
+        let pinned = expectation(description: "pinned")
+        coordinator.onStatusChange = { if $0 == .updateRequired(installedVersion: "1.0.0") { pinned.fulfill() } }
+        coordinator.startDetectionIfNeeded(force: true)
+        wait(for: [pinned], timeout: 3)
+        // A live new-format snapshot must not clear the simulated state.
+        coordinator.ingest(.init(kind: .formatChecked(outdated: false), window: nil, observedAt: nil, receivedAt: Date()))
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+        XCTAssertEqual(coordinator.status, .updateRequired(installedVersion: "1.0.0"))
+        let cleared = expectation(description: "cleared by the update")
+        coordinator.onStatusChange = { if $0 == .waitingForData { cleared.fulfill() } }
+        coordinator.controller.startUpdate()
+        wait(for: [cleared], timeout: 3)
+        XCTAssertEqual(coordinator.controller.state, .updateSucceeded)
     }
 
     /// A snapshot-triggered request that arrives while a check is running is not dropped: exactly
@@ -1704,18 +1814,25 @@ final class RealtimeBoostAdvancedCardTests: XCTestCase {
         return view
     }
 
-    func testInstalledModOpensOnTheOverviewThenShowsStatusAndCanGoBack() throws {
-        let view = panelView(.silent)
+    func testUnhealthyModOpensDirectlyOnTheStatusPage() {
+        for status in [ModSyncStatus.silent, .updateRequired(installedVersion: "1.0.0")] {
+            let view = panelView(status)
+            XCTAssertFalse(view.snapshotLines.contains("<\(ModOnboardingText.viewStatus.defaultText)>"), "\(status)")
+        }
+        XCTAssertTrue(panelView(.silent).snapshotLines.contains { $0.contains(ModOnboardingText.silentTitle.defaultText) })
+    }
+
+    func testHealthyModOpensOnTheOverviewThenShowsStatusAndCanGoBack() throws {
+        let view = panelView(.waitingForData)
         XCTAssertTrue(view.snapshotLines.contains("<\(ModOnboardingText.viewStatus.defaultText)>"))
         XCTAssertTrue(view.snapshotLines.contains { $0.contains(ModOnboardingText.feature1Title.defaultText) })
-        XCTAssertFalse(view.snapshotLines.contains { $0.contains(ModOnboardingText.silentTitle.defaultText) },
+        XCTAssertFalse(view.snapshotLines.contains("<\(ModOnboardingText.backToIntro.defaultText)>"),
                        "status details stay behind the button")
         func click(_ title: String) throws {
             func buttons(_ v: NSView) -> [NSButton] { (v as? NSButton).map { [$0] } ?? v.subviews.flatMap(buttons) }
             try XCTUnwrap(buttons(view).first { $0.title == title }, title).performClick(nil)
         }
         try click(ModOnboardingText.viewStatus.defaultText)
-        XCTAssertTrue(view.snapshotLines.contains { $0.contains(ModOnboardingText.silentTitle.defaultText) })
         XCTAssertTrue(view.snapshotLines.contains("<\(ModOnboardingText.backToIntro.defaultText)>"))
         try click(ModOnboardingText.backToIntro.defaultText)
         XCTAssertTrue(view.snapshotLines.contains("<\(ModOnboardingText.viewStatus.defaultText)>"))
@@ -1950,6 +2067,71 @@ final class RealtimeBoostAdvancedCardTests: XCTestCase {
         XCTAssertEqual(controller.state, .intro(dismissChecked: false))
     }
 
+    func testViewErrorRetainsUpdateFailureWhenReopeningPanel() {
+        let controller = ModOnboardingController(installer: ModInstaller(
+            locator: FakeLocator(path: nil), runner: ScriptedRunner([]), prepareInbox: { true }),
+            preference: MemoryPreference())
+        let coordinator = ModSyncCoordinator(controller: controller,
+            detector: ModSyncDetector(locator: FakeLocator(path: nil)), activityProvider: { false })
+        let failed = expectation(description: "update fails without CLI")
+        controller.onChange = { if controller.state == .updateFailed(.claudeNotFound) { failed.fulfill() } }
+        controller.startUpdate()
+        wait(for: [failed], timeout: 5)
+        let panel = coordinator.attachPanel()
+        XCTAssertEqual(controller.state, .updateFailed(.claudeNotFound))
+        XCTAssertTrue(panel.snapshotLines.contains { $0.contains(ModOnboardingText.failureClaudeMissing.defaultText) })
+        XCTAssertTrue(panel.snapshotLines.contains { $0.contains(ModOnboardingText.updateFailureTitle.defaultText) })
+    }
+
+    /// Offscreen render of the "update required" card and panel for review; `BB_MOD_UPDATE_RENDER_DIR` picks the output folder.
+    func testRenderUpdateRequiredForReview() throws {
+        let previous = AppLanguage.selected
+        let originalAppearance = NSApp.appearance
+        defer { AppLanguage.selected = previous; NSApp.appearance = originalAppearance }
+        AppLanguage.selected = .simplifiedChinese
+        let directory = URL(fileURLWithPath: ProcessInfo.processInfo.environment["BB_MOD_UPDATE_RENDER_DIR"] ?? "/tmp/bb-mod-update-render")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+            NSApp.appearance = NSAppearance(named: appearance)
+            let tag = appearance == .aqua ? "light" : "dark"
+            func write(_ view: NSView, width: CGFloat, name: String) throws {
+                let host = AdvancedCardRenderHost(frame: NSRect(x: 0, y: 0, width: width, height: 1000))
+                host.appearance = try XCTUnwrap(NSAppearance(named: appearance))
+                view.translatesAutoresizingMaskIntoConstraints = false
+                host.addSubview(view)
+                NSLayoutConstraint.activate([
+                    view.leadingAnchor.constraint(equalTo: host.leadingAnchor, constant: 24),
+                    view.trailingAnchor.constraint(equalTo: host.trailingAnchor, constant: -24),
+                    view.topAnchor.constraint(equalTo: host.topAnchor, constant: 24)])
+                host.layoutSubtreeIfNeeded()
+                host.setFrameSize(NSSize(width: width, height: view.fittingSize.height + 48))
+                host.layoutSubtreeIfNeeded()
+                let image = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+                host.effectiveAppearance.performAsCurrentDrawingAppearance { host.cacheDisplay(in: host.bounds, to: image) }
+                let png = try XCTUnwrap(image.representation(using: .png, properties: [:]))
+                try png.write(to: directory.appendingPathComponent("\(name)-\(tag).png"))
+            }
+            let card = RealtimeBoostSettingsRows(status: .updateRequired(installedVersion: "1.0.0"), operation: .intro(dismissChecked: false),
+                onInstall: { _ in }, onShowDescription: { _ in })
+            try write(SettingsSectionView(title: tr(.keyDashboardGeneralAndRefreshPagesRefresh), contentViews: [card.statusRow]),
+                      width: 760, name: "card")
+            let controller = ModOnboardingController(preference: MemoryPreference(), copyToPasteboard: { _ in })
+            let panel = ModOnboardingPanelView(controller: controller, localize: modOnboardingLocalize,
+                syncProvider: { ModPanelSyncContext(status: .updateRequired(installedVersion: "1.0.0"),
+                    statusText: RealtimeBoostPresentation.make(status: .updateRequired(installedVersion: "1.0.0"), localize: realtimeBoostLocalize).statusText) })
+            func buttons(_ view: NSView) -> [NSButton] {
+                view.subviews.flatMap { ($0 as? NSButton).map { [$0] } ?? [] + buttons($0) }
+            }
+            // An installed Mod opens on the pitch page; "查看当前状态" leads to the status page.
+            buttons(panel).first { $0.title == tr(.modUIViewStatus) }?.performClick(nil)
+            try write(panel, width: ModOnboardingPanelView.requiredWidth(localize: modOnboardingLocalize), name: "panel")
+            let card2 = RealtimeBoostSettingsRows(status: .updateRequired(installedVersion: "1.0.0"), operation: .updating(current: .installPlugin),
+                onInstall: { _ in }, onShowDescription: { _ in })
+            try write(SettingsSectionView(title: tr(.keyDashboardGeneralAndRefreshPagesRefresh), contentViews: [card2.statusRow]),
+                      width: 760, name: "card-updating")
+        }
+    }
+
     func testAdvancedCardsTextStaysInsideBoundsForRepresentativeLanguages() throws {
         let previous = AppLanguage.selected
         let originalAppearance = NSApp.appearance
@@ -1960,6 +2142,7 @@ final class RealtimeBoostAdvancedCardTests: XCTestCase {
             ("waiting", .waitingForData, .succeeded),
             ("active", .active(lastAcceptedAt: Date(timeIntervalSince1970: 1_792_872_000)), .intro(dismissChecked: false)),
             ("silent", .silent, .intro(dismissChecked: false)),
+            ("update-required", .updateRequired(installedVersion: "1.0.0"), .intro(dismissChecked: false)),
             ("failed", .inboxNotReady, .failed(.inboxNotReady)),
             ("uninstalling", .waitingForData, .uninstalling(current: .removeMarketplace))]
         for language in TestMatrix.representativeLanguages {

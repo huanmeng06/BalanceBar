@@ -79,6 +79,11 @@ public final class SnapshotInbox: QuotaSource {
     /// rejection decisions themselves are unchanged.
     public var rejectionObserver: ((SnapshotRejectionReason) -> Void)?
 
+    /// Reports the snapshot format of every attributed Mod snapshot (inbox queue): `true` when it
+    /// carries an email hash but no organization hash (Mod 1.0.0), `false` for the current format.
+    /// Pure notification; it never changes whether the snapshot is accepted.
+    public var outdatedModObserver: ((Bool) -> Void)?
+
     /// Diagnostic log sink for Mod snapshot rejections (inbox queue). Lines carry only the
     /// reason enum and the window: never an email, hash, organization or quota value.
     public var diagnosticLog: ((String) -> Void)?
@@ -112,6 +117,8 @@ public final class SnapshotInbox: QuotaSource {
     private(set) var suppressedReplayCount = 0
     private(set) var unverifiedSnapshotRejections = 0
     /// Throttle state per rejection reason (inbox-queue confined).
+    /// Format verdict of the newest Mod snapshot per account and epoch (inbox queue, in memory).
+    private var modFormatVerdicts: [String: (updatedAt: Date, outdated: Bool)] = [:]
     private var rejectionLogState: [String: (lastLogged: Date, suppressed: Int)] = [:]
 
     private struct EmittedWindow: Equatable {
@@ -323,7 +330,7 @@ public final class SnapshotInbox: QuotaSource {
     /// Writes one throttled diagnostic line for a rejected Mod snapshot. The same reason is
     /// logged at most once per `rejectionLogInterval`; the rejections skipped in between are
     /// reported as `repeats` on the next line.
-    private func logRejection(reason: String, window: String = "all") {
+    private func logRejection(reason: String, window: String = "all", event: String = "rejected") {
         guard let diagnosticLog else { return }
         let current = now()
         var suppressed = 0
@@ -337,7 +344,7 @@ public final class SnapshotInbox: QuotaSource {
         }
         rejectionLogState[reason] = (current, 0)
         let repeats = suppressed > 0 ? "; repeats=\(suppressed)" : ""
-        diagnosticLog("claude mod snapshot rejected; reason=\(reason); window=\(window)\(repeats)")
+        diagnosticLog("claude mod snapshot \(event); reason=\(reason); window=\(window)\(repeats)")
     }
 
     private func emit(_ parsed: ParsedQuotaSnapshot, adapter: QuotaSourceAdapter) {
@@ -387,6 +394,26 @@ public final class SnapshotInbox: QuotaSource {
                 }
             } else if isModSnapshot {
                 organizationProven = false
+            }
+        }
+        // A mismatching organization must not clear the stale-Mod warning.
+        // Legacy snapshots can still report their format before cycle verification.
+        if isModSnapshot, account.organizationUUID != nil {
+            // Mod 1.1.0 omits the organization hash only when the account has no organization,
+            // so the missing hash proves an old Mod only for an account that does have one.
+            let outdated = parsed.accountOrganizationHash?.isEmpty != false
+            // Files from before and after an upgrade coexist and are read in path order: only a
+            // snapshot at least as new as the last judged one may change the format verdict, and
+            // at the same instant the current format wins.
+            let formatKey = "\(account.stableID)/\(identity.accountEpoch.rawValue)"
+            let previous = modFormatVerdicts[formatKey]
+            let supersedes = previous.map {
+                parsed.updatedAt > $0.updatedAt || (parsed.updatedAt == $0.updatedAt && !outdated && $0.outdated)
+            } ?? true
+            if supersedes {
+                modFormatVerdicts[formatKey] = (parsed.updatedAt, outdated)
+                if outdated { logRejection(reason: "mod_outdated_format", event: "outdated") }
+                outdatedModObserver?(outdated)
             }
         }
         let epoch = identity.accountEpoch

@@ -64,6 +64,13 @@ enum RealtimeBoostText: String, CaseIterable {
     case cardRowTitle = "mod.card.row_title"
     case cardRowDescription = "mod.card.row_description"
     case cardLearnMore = "mod.card.learn_more"
+    case statusUpdateRequired = "mod.sync.status.update_required"
+    case cardUpdateTitle = "mod.card.update.title"
+    case cardUpdateReason = "mod.card.update.reason"
+    case cardUpdateAction = "mod.card.update.action"
+    case cardUpdateButton = "mod.card.update.button"
+    case cardUpdateRestart = "mod.card.update.restart"
+    case statusRestartRequired = "mod.sync.status.restart_required"
 
     var defaultText: String {
         switch self {
@@ -128,6 +135,13 @@ enum RealtimeBoostText: String, CaseIterable {
         case .statusDisabled: return "已安装但已停用，实时同步不会运行"
         case .statusRejectedAccount: return "快照被拒：Claude 登录账号与 BalanceBar 当前账号不一致"
         case .statusRejectedCycle: return "快照被拒：周期与官方数据不一致，已回退官方额度"
+        case .statusUpdateRequired: return "Mod 版本过旧，需要更新（第三方插件市场默认不自动更新）。\n更新后请重启 Claude Code 会话"
+        case .cardUpdateTitle: return "Mod 需要更新"
+        case .cardUpdateReason: return "当前版本：%1$@"
+        case .cardUpdateAction: return "最新版本：%1$@"
+        case .cardUpdateRestart: return "Mod 已更新，请重启 Claude Code 会话"
+        case .statusRestartRequired: return "Mod 已更新，但仍有旧会话在运行。请重启 Claude Code 会话"
+        case .cardUpdateButton: return "一键更新"
         case .statusInstallationUnknown: return "无法确认 Mod 是否已安装（插件列表读取失败）"
         }
     }
@@ -197,6 +211,9 @@ struct RealtimeBoostPresentation: Equatable {
             return .init(statusText: localize(.statusSilent), showsInstallAction: false, showsCopyAction: true)
         case let .snapshotRejected(event):
             let text: RealtimeBoostText = event.rejection == .accountMismatch ? .statusRejectedAccount : .statusRejectedCycle
+            return .init(statusText: localize(text), showsInstallAction: false, showsCopyAction: false)
+        case let .updateRequired(installed):
+            let text: RealtimeBoostText = ModVersion.isCurrent(installed) ? .statusRestartRequired : .statusUpdateRequired
             return .init(statusText: localize(text), showsInstallAction: false, showsCopyAction: false)
         case .installationUnknown:
             // A failed probe is not "not installed": do not offer a reinstall.
@@ -346,6 +363,14 @@ final class RealtimeBoostSettingsRows {
                 action = .cardRejectedCycleAction
             }
             base = .init(status: localize(.cardRejectedTitle), reason: localize(reason), action: localize(action))
+        case let .updateRequired(installed):
+            if ModVersion.isCurrent(installed) {
+                base = .init(status: localize(.cardUpdateRestart))
+            } else {
+                base = .init(status: localize(.cardUpdateTitle),
+                             reason: installed.map { String(format: localize(.cardUpdateReason), $0) },
+                             action: String(format: localize(.cardUpdateAction), ModOnboardingConfig.latestModVersion))
+            }
         case .installationUnknown:
             base = .init(status: localize(.cardUnknownTitle), reason: localize(.cardUnknownReason),
                          action: localize(.cardUnknownAction))
@@ -358,6 +383,12 @@ final class RealtimeBoostSettingsRows {
         case let .uninstalling(step):
             return .init(status: base.status,
                          reason: modLocalize([.uninstallStep1, .uninstallStep2, .step3][step.rawValue]) + "…")
+        case .updating(let step):
+            return .init(status: base.status,
+                         reason: modLocalize([.updateStep1, .updateStep2, .step3][step.rawValue]) + "…")
+        case .updateFailed:
+            return .init(status: localize(.cardUpdateTitle), reason: modLocalize(.updateFailureTitle),
+                         action: String(format: localize(.cardViewErrorAction), localize(.viewError)))
         case .failed:
             return .init(status: localize(.cardInstallFailedTitle), reason: modLocalize(.failureTitle),
                          action: String(format: localize(.cardViewErrorAction), localize(.viewError)))
@@ -432,9 +463,9 @@ final class RealtimeBoostSettingsRows {
         var busy = false
         var failed = false
         switch operation {
-        case .installing, .uninstalling:
+        case .installing, .uninstalling, .updating:
             busy = true
-        case .failed, .uninstallFailed: failed = true
+        case .failed, .uninstallFailed, .updateFailed: failed = true
         default: break
         }
         let canInstall: Bool
@@ -444,7 +475,10 @@ final class RealtimeBoostSettingsRows {
         }
         statusRow.titleLabel.stringValue = localize(.cardRowTitle)
         applyDetail(copy.detail, dotColor: failed ? .systemRed : Self.color(for: status))
-        installButton.isHidden = !canInstall || busy
+        var canUpdate = false
+        if case let .updateRequired(installed) = status { canUpdate = !ModVersion.isCurrent(installed) }
+        installButton.title = canUpdate ? localize(.cardUpdateButton) : localize(.install)
+        installButton.isHidden = !(canInstall || canUpdate) || busy
         descriptionButton.title = failed ? localize(.viewError)
             : busy ? localize(.manage) : localize(.cardLearnMore)
         if busy { spinner.startAnimation(nil) } else { spinner.stopAnimation(nil) }

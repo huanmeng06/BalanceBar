@@ -583,7 +583,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             onInstallModSync: { [weak self] anchor in
                 guard let self else { return }
                 self.modSyncCoordinator.presentPanel(from: anchor)
-                self.modSyncCoordinator.controller.startInstall()
+                if case .updateRequired = self.modSyncCoordinator.status {
+                    self.modSyncCoordinator.controller.startUpdate()
+                } else {
+                    self.modSyncCoordinator.controller.startInstall()
+                }
             },
             onModSyncVisibilityChanged: { [weak self] visible in
                 self?.modSyncCoordinator.setAdvancedStatusCardVisible(visible)
@@ -645,13 +649,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private let officialQuotaClient: OfficialQuotaClient
     private let claudeQuota: ClaudeQuotaPipeline
     /// Owns the Claude Code Mod realtime sync settings entry: detection, panel, status.
-    private lazy var modSyncCoordinator = ModSyncCoordinator(
-        controller: ModOnboardingController(),
-        detector: ModSyncDetector(),
-        activityProvider: { [weak self] in self?.isClaudeProcessAvailable ?? false },
-        localizePanel: modOnboardingLocalize,
-        localizeSync: realtimeBoostLocalize
-    )
+    private lazy var modSyncCoordinator: ModSyncCoordinator = {
+        let activity: () -> Bool = { [weak self] in self?.isClaudeProcessAvailable ?? false }
+        if DevelopmentModOutdatedDemo.isActive {
+            return DevelopmentModOutdatedDemo.makeCoordinator(
+                activityProvider: activity, localizePanel: modOnboardingLocalize, localizeSync: realtimeBoostLocalize)
+        }
+        return ModSyncCoordinator(
+            controller: ModOnboardingController(),
+            detector: ModSyncDetector(),
+            activityProvider: activity,
+            localizePanel: modOnboardingLocalize,
+            localizeSync: realtimeBoostLocalize
+        )
+    }()
     private let balanceAPIClient = BalanceAPIClient()
     private let balanceProgressStore = ProviderBalanceProgressStore()
     private lazy var notificationCoordinator = BalanceNotificationCoordinator()
