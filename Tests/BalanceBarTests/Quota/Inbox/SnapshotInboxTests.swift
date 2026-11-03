@@ -431,6 +431,15 @@ final class SnapshotInboxTests: XCTestCase {
 
     /// FSEvents latency plus the watcher's coalescing interval is not a fixed constant,
     /// so assertions on asynchronously observed files poll up to a generous deadline.
+    /// Watcher batches arrive after FSEvents latency (0.05 s) plus coalescing. The default
+    /// 1 s coalescing made "nothing else arrives" checks wait 0.5–1.5 s, and a 0.5 s wait
+    /// could even end before the watcher delivered anything at all.
+    private static let fastWatchConfiguration = SnapshotInboxConfiguration(
+        halfWriteRetryDelay: 0.05, io: QuotaIOConfiguration(watchCoalescingInterval: 0.05))
+
+    /// Lets catch-up rescans and late watcher batches land (several coalescing windows).
+    private func settleWatcher() { Thread.sleep(forTimeInterval: 0.3) }
+
     private func waitUntil(timeout: TimeInterval = 3, _ condition: () -> Bool) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
@@ -520,12 +529,12 @@ final class SnapshotInboxTests: XCTestCase {
         let flags = LockedFlags()
         let source = SnapshotInbox(
             inboxDirectory: inbox, identity: organizationIdentity("org-1"),
-            configuration: SnapshotInboxConfiguration(halfWriteRetryDelay: 0.05))
+            configuration: Self.fastWatchConfiguration)
         source.outdatedModObserver = { flags.append($0) }
         inboxes.append(source)
         source.start { _ in }
         try placeSnapshot(source: "unrelated-producer", emailHash: SnapshotInbox.emailHash("user@example.com"))
-        Thread.sleep(forTimeInterval: 0.5)
+        settleWatcher()
         source.stop()
         XCTAssertTrue(flags.all.isEmpty)
     }
@@ -534,12 +543,12 @@ final class SnapshotInboxTests: XCTestCase {
         let flags = LockedFlags()
         let source = SnapshotInbox(
             inboxDirectory: inbox, identity: FakeIdentity(),
-            configuration: SnapshotInboxConfiguration(halfWriteRetryDelay: 0.05))
+            configuration: Self.fastWatchConfiguration)
         source.outdatedModObserver = { flags.append($0) }
         inboxes.append(source)
         source.start { _ in }
         try placeModSnapshot(organizationHash: nil)
-        Thread.sleep(forTimeInterval: 0.5)
+        settleWatcher()
         source.stop()
         XCTAssertTrue(flags.all.isEmpty, "Mod 1.1.0 omits the hash for accounts without an organization")
     }
@@ -548,7 +557,7 @@ final class SnapshotInboxTests: XCTestCase {
         let flags = LockedFlags()
         let source = SnapshotInbox(
             inboxDirectory: inbox, identity: organizationIdentity("org-1"),
-            configuration: SnapshotInboxConfiguration(halfWriteRetryDelay: 0.05))
+            configuration: Self.fastWatchConfiguration)
         source.outdatedModObserver = { flags.append($0) }
         inboxes.append(source)
         // "-" sorts before ".", so the upgraded file is read first and the stale 1.0.0 file last.
@@ -557,7 +566,7 @@ final class SnapshotInboxTests: XCTestCase {
         try placeModSnapshot(organizationHash: nil, as: "balancebar-mod-aaaa.json", updatedAt: "2026-10-17T06:00:00Z")
         source.start { _ in }
         XCTAssertTrue(waitUntil { !flags.all.isEmpty })
-        Thread.sleep(forTimeInterval: 0.5)
+        settleWatcher()
         source.stop()
         XCTAssertEqual(flags.all, [false], "the older 1.0.0 file must not reinstate the warning")
     }
@@ -566,7 +575,7 @@ func testUnverifiedCycleIsReportedByTheRejectionObserver() throws {
         let reasons = LockedReasons()
         let source = SnapshotInbox(
             inboxDirectory: inbox, identity: FakeIdentity(),
-            configuration: SnapshotInboxConfiguration(halfWriteRetryDelay: 0.05))
+            configuration: Self.fastWatchConfiguration)
         source.rejectionObserver = { reasons.append($0) }
         source.cycleVerification = { _, _, _, _, _ in false }
         inboxes.append(source)
@@ -582,7 +591,7 @@ func testUnverifiedCycleIsReportedByTheRejectionObserver() throws {
         let collector = Collector()
         let source = SnapshotInbox(
             inboxDirectory: inbox, identity: FakeIdentity(),
-            configuration: SnapshotInboxConfiguration(halfWriteRetryDelay: 0.05))
+            configuration: Self.fastWatchConfiguration)
         source.rejectionObserver = { reasons.append($0) }
         inboxes.append(source)
         source.start { collector.add($0) }
@@ -592,7 +601,7 @@ func testUnverifiedCycleIsReportedByTheRejectionObserver() throws {
         XCTAssertTrue(waitUntil { !collector.all.isEmpty }, "the snapshot is emitted")
         // Let FSEvents catch-up rescans of the directory settle before promoting the
         // baseline, so the replay below is measured against adopted evidence only.
-        Thread.sleep(forTimeInterval: 1.5)
+        settleWatcher()
         source.queue.sync {}
         let adopted = collector.all.map(\.receivedAt)
         for receivedAt in adopted {
@@ -603,7 +612,7 @@ func testUnverifiedCycleIsReportedByTheRejectionObserver() throws {
             source: "balancebar-mod", emailHash: SnapshotInbox.emailHash("user@example.com"),
             as: "replay.json", percentage: 20)
         XCTAssertTrue(waitUntil { source.queue.sync { source.suppressedReplayCount } >= 1 })
-        Thread.sleep(forTimeInterval: 0.5)
+        settleWatcher()
         source.stop()
         XCTAssertEqual(reasons.all, [], "a whole-snapshot replay is healthy, not a rejection")
     }
@@ -616,7 +625,7 @@ func testUnverifiedCycleIsReportedByTheRejectionObserver() throws {
         let collector = Collector()
         let source = SnapshotInbox(
             inboxDirectory: inbox, identity: FakeIdentity(),
-            configuration: SnapshotInboxConfiguration(halfWriteRetryDelay: 0.05))
+            configuration: Self.fastWatchConfiguration)
         inboxes.append(source)
         source.start { collector.add($0) }
         func place(_ updatedAt: String) throws {
@@ -632,7 +641,7 @@ func testUnverifiedCycleIsReportedByTheRejectionObserver() throws {
         func reread() { source.queue.sync { source.process(paths: [inbox.appendingPathComponent("mod.json").path]) } }
         try place("2026-10-17T06:12:03Z")
         XCTAssertTrue(waitUntil { !collector.all.isEmpty })
-        Thread.sleep(forTimeInterval: 1.5) // let directory catch-up rescans settle
+        settleWatcher()
         source.queue.sync {}
         adoptAll()
         let base = collector.all.count // the initial scan and the watcher may both have delivered
@@ -656,12 +665,12 @@ func testUnverifiedCycleIsReportedByTheRejectionObserver() throws {
         let collector = Collector()
         let source = SnapshotInbox(
             inboxDirectory: inbox, identity: FakeIdentity(),
-            configuration: SnapshotInboxConfiguration(halfWriteRetryDelay: 0.05))
+            configuration: Self.fastWatchConfiguration)
         inboxes.append(source)
         source.start { collector.add($0) }
         try placeSnapshot(source: "some-other-tool", emailHash: nil, as: "o.json", percentage: 20)
         XCTAssertTrue(waitUntil { !collector.all.isEmpty })
-        Thread.sleep(forTimeInterval: 1.5)
+        settleWatcher()
         source.queue.sync {}
         for receivedAt in collector.all.map(\.receivedAt) {
             source.noteProcessed(source: "some-other-tool", accountID: "acct-1", receivedAt: receivedAt, accepted: true)
@@ -679,7 +688,7 @@ func testUnverifiedCycleIsReportedByTheRejectionObserver() throws {
         let reasons = LockedReasons()
         let source = SnapshotInbox(
             inboxDirectory: inbox, identity: FakeIdentity(),
-            configuration: SnapshotInboxConfiguration(halfWriteRetryDelay: 0.05))
+            configuration: Self.fastWatchConfiguration)
         source.rejectionObserver = { reasons.append($0) }
         source.cycleVerification = { _, _, _, _, _ in false }
         inboxes.append(source)
@@ -688,7 +697,7 @@ func testUnverifiedCycleIsReportedByTheRejectionObserver() throws {
         try placeSnapshot(source: "some-other-tool", emailHash: "sha256:deadbeef", as: "wrong.json")
         // Cycle mismatch on a non-Mod producer: rejected, but not a Mod failure.
         try placeSnapshot(source: "some-other-tool", emailHash: SnapshotInbox.emailHash("user@example.com"), as: "cycle.json")
-        Thread.sleep(forTimeInterval: 0.5)
+        settleWatcher()
         source.stop()
         XCTAssertEqual(reasons.all, [], "non-Mod rejections must not change the Mod status entry")
     }

@@ -2539,7 +2539,9 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
     private func makeCoordinator(
         repository: CCSwitchRepository,
         officialQuotaClient: OfficialQuotaClient,
-        balanceAPIClient: BalanceAPIClient = BalanceAPIClient(),
+        // nil uses the stubbed session: a default real client sent third-party balance
+        // requests to the network, so stub-counted waits only ever ended by timeout.
+        balanceAPIClient: BalanceAPIClient? = nil,
         balanceProgressStore: ProviderBalanceProgressStore = ProviderBalanceProgressStore(),
         codexResetObservationStore: CodexResetObservationStore = CodexResetObservationStore(),
         queue: DispatchQueue = DispatchQueue(label: "test.provider-refresh.owner"),
@@ -2549,7 +2551,8 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         now: @escaping () -> Date = Date.init
     ) -> ProviderRefreshCoordinator {
         let coordinator = ProviderRefreshCoordinator(repository: repository, officialQuotaClient: officialQuotaClient,
-            balanceAPIClient: balanceAPIClient, balanceProgressStore: balanceProgressStore,
+            balanceAPIClient: balanceAPIClient ?? BalanceAPIClient(session: session),
+            balanceProgressStore: balanceProgressStore,
             codexResetObservationStore: codexResetObservationStore, queue: queue, actions: actions,
             refreshPreferences: refreshPreferences, claudeQuota: claudeQuota, now: now)
         coordinators.append(coordinator)
