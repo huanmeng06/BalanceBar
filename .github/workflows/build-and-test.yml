@@ -95,6 +95,18 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      # Only the SDK module cache is reused (~86 MB); DerivedData sources are not,
+      # since checkout mtimes force a rebuild anyway.
+      - name: Xcode version for module cache key
+        if: needs.scope.outputs.build == 'true'
+        id: xcode
+        run: echo "build=$(xcodebuild -version | awk '/Build version/ {print $3}')" >> "$GITHUB_OUTPUT"
+      - name: Restore Xcode SDK module cache
+        if: needs.scope.outputs.build == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/BalanceBar-DerivedData/ModuleCache.noindex
+          key: xcode-module-cache-${{ env.ImageVersion }}-${{ steps.xcode.outputs.build }}
       - name: Unsigned Debug build (once)
         if: needs.scope.outputs.build == 'true'
         env:
@@ -103,7 +115,7 @@ jobs:
           set -Eeuo pipefail
           [[ "$(xcrun --sdk macosx --show-sdk-version)" == 26.* ]]
           xcodebuild -project BalanceBar.xcodeproj -scheme BalanceBar \
-            -configuration Debug -derivedDataPath "$RUNNER_TEMP/BalanceBar-Fast" \
+            -configuration Debug -derivedDataPath "$RUNNER_TEMP/BalanceBar-DerivedData" \
             -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO \
             ARCHS=arm64 ONLY_ACTIVE_ARCH=YES COMPILER_INDEX_STORE_ENABLE=NO \
             -parallel-testing-enabled NO "$BUILD_ACTION"
@@ -114,7 +126,7 @@ jobs:
           ./scripts/probes/localization-resource-probe.sh
           ./scripts/probes/balance-query-probe.sh
           ./scripts/probes/balance-network-error-localization-probe.sh
-          ./scripts/probes/localization-resource-probe.sh "$RUNNER_TEMP/BalanceBar-Fast/Build/Products/Debug/BalanceBar.app"
+          ./scripts/probes/localization-resource-probe.sh "$RUNNER_TEMP/BalanceBar-DerivedData/Build/Products/Debug/BalanceBar.app"
       - name: Fast scope summary
         run: echo 'Fast feedback only. XCTest, CLI packaging, upload and old-runtime smoke NOT executed.' >> "$GITHUB_STEP_SUMMARY"
 
@@ -176,6 +188,17 @@ jobs:
           sdk_version="$(xcrun --sdk macosx --show-sdk-version)"
           [[ "${sdk_version%%.*}" == "$BALANCEBAR_REQUIRED_SDK_MAJOR" ]]
           echo "Using macOS SDK $sdk_version"
+
+      # Only the SDK module cache is reused (~86 MB); DerivedData sources are not,
+      # since checkout mtimes force a rebuild anyway.
+      - name: Xcode version for module cache key
+        id: xcode
+        run: echo "build=$(xcodebuild -version | awk '/Build version/ {print $3}')" >> "$GITHUB_OUTPUT"
+      - name: Restore Xcode SDK module cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/BalanceBar-DerivedData/ModuleCache.noindex
+          key: xcode-module-cache-${{ env.ImageVersion }}-${{ steps.xcode.outputs.build }}
 
       - name: Xcode build-for-testing
         run: |
