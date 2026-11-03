@@ -152,19 +152,19 @@ jobs:
           set -Eeuo pipefail
           python3 .github/scripts/ci-full-reuse.py "$BASE_SHA" "$HEAD_SHA" --require
 
-  # Full CI is split so the three costly parts never share one 3-core runner:
-  # build-for-testing (then XCTest shard 1), the CLI package, and XCTest shards
-  # 2..N from the uploaded build products. The job that keeps the historical
-  # Full name below aggregates them; gate scripts read only that name.
+  # Full CI is split so the costly parts never share one 3-core runner:
+  # build-for-testing, the CLI package, and XCTest shards from the uploaded
+  # build products. needs waits for a whole job, so no shard runs inside the
+  # build job. The job that keeps the historical Full name below aggregates
+  # them; gate scripts read only that name.
   full-build:
-    name: Full build-for-testing and XCTest shard 1
+    name: Full build-for-testing
     needs: scope
     if: github.event_name == 'workflow_dispatch' || (needs.scope.outputs.draft != 'true' && (needs.scope.outputs.reuse_full != 'true' || needs.scope.outputs.force_full == 'true') && (needs.scope.outputs.version_only != 'true' || needs.scope.outputs.force_full == 'true') && (needs.scope.outputs.docs_only != 'true' || needs.scope.outputs.force_full == 'true'))
     runs-on: macos-26
     timeout-minutes: 20
     env:
       BALANCEBAR_REQUIRED_SDK_MAJOR: "26"
-      SHARD: "1"
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -205,32 +205,6 @@ jobs:
           retention-days: 1
           compression-level: 0
 
-      - name: XCTest shard 1
-        run: |
-          set -Eeuo pipefail
-          .github/scripts/ci-xctest-shard.sh 1 \
-            "$RUNNER_TEMP/BalanceBar-DerivedData/Build/Products" "$RUNNER_TEMP/BalanceBar.xcresult"
-      - name: Shard test counts
-        if: always()
-        run: |
-          set -Eeuo pipefail
-          mkdir -p "$RUNNER_TEMP/xctest-summary"
-          if [[ -d "$RUNNER_TEMP/BalanceBar.xcresult" ]]; then
-            xcrun xcresulttool get test-results summary --path "$RUNNER_TEMP/BalanceBar.xcresult" \
-              > "$RUNNER_TEMP/xctest-summary/shard-$SHARD.json"
-            tee -a "$GITHUB_STEP_SUMMARY" < "$RUNNER_TEMP/xctest-summary/shard-$SHARD.json"
-          else
-            echo "XCTest shard $SHARD result absent: tests NOT proven passed." >> "$GITHUB_STEP_SUMMARY"
-          fi
-      - name: Upload shard test counts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: xctest-summary-${{ env.SHARD }}-attempt-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/xctest-summary
-          if-no-files-found: ignore
-          retention-days: 2
-
   xctest-shard:
     name: Full XCTest shard ${{ matrix.shard }}
     needs: full-build
@@ -239,7 +213,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [2, 3]
+        shard: [1, 2, 3]
     env:
       SHARD: ${{ matrix.shard }}
     steps:
@@ -345,7 +319,7 @@ jobs:
         with:
           sparse-checkout: .github
       - name: Download shard test counts
-        if: needs.full-build.result == 'success' && needs.xctest-shard.result == 'success'
+        if: needs.xctest-shard.result == 'success'
         uses: actions/download-artifact@v4
         with:
           pattern: xctest-summary-*-attempt-${{ github.run_attempt }}

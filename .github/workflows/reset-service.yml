@@ -19,8 +19,7 @@ permissions:
 
 concurrency:
   group: reset-service-${{ github.event_name == 'pull_request' && github.event.pull_request.number || 'production' }}
-  # Superseded PR pushes cancel; production collection runs are never cut short.
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: false
 
 jobs:
   test:

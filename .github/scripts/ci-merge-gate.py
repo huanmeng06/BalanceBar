@@ -12,6 +12,9 @@ NAMES = {'scope': 'CI repository checks and PR scope',
          'smoke': 'Pre-Liquid-Glass artifact smoke',
          'reuse': 'Verified prior Full reuse (version increment; no XCTest)',
          'docs': 'PR-wide docs-only exemption (no XCTest)'}
+# The Full job aggregates these split parts and is only created once they all
+# finish, so a running part means Full is still in progress, not missing.
+FULL_PART_PREFIXES = ('Full build-for-testing', 'Full CLI package', 'Full XCTest shard')
 GATE_NAME = 'PR merge gate'
 WAITING = {'queued', 'in_progress', 'waiting', 'pending', 'requested'}
 
@@ -188,6 +191,13 @@ def wait_for_evidence(event, event_name):
             selected = dict(current)
             selected['scope'] = current['scope'] or history_scope
             results = {key: job_state(j) for key, j in selected.items()}
+            parts_running = any(j.get('name', '').startswith(FULL_PART_PREFIXES)
+                                and j.get('run_attempt') == attempt and str(j.get('run_id')) == run_id
+                                and j.get('head_sha') == head and job_state(j) in WAITING
+                                for j in jobs)
+            if results['full'] == 'missing' and parts_running:
+                results['full'] = 'in_progress'
+                active['full'] = True
             results['evidence'] = {key: {'job_id': j['id'], 'attempt': j['run_attempt']}
                                    for key, j in selected.items() if j}
             results['scope_reused'] = bool(not current['scope'] and history_scope)

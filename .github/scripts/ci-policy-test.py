@@ -596,6 +596,22 @@ class PolicyTests(unittest.TestCase):
         self.assertTrue(result[0])
         self.assertEqual(elapsed, 240)
 
+    def test_running_full_parts_do_not_start_missing_full_clock(self):
+        part = lambda name, state: dict(job('scope', state), id=900 + len(name), name=name)
+        def current(now):
+            if now < 300:
+                return [job('scope'), part('Full build-for-testing', 'success'),
+                        part('Full XCTest shard 2', 'in_progress')]
+            return [job('scope'), job('full'), job('smoke')]
+        result, elapsed, _, _ = self.run_gate(current)
+        self.assertTrue(result[0])
+        self.assertEqual(elapsed, 300)
+        # Finished parts with no Full aggregate still fail closed after grace.
+        result, elapsed, _, _ = self.run_gate(
+            [job('scope'), part('Full build-for-testing', 'success')])
+        self.assertFalse(result[0])
+        self.assertEqual(elapsed, 60)
+
     def test_smoke_missing_clock_starts_after_full(self):
         def current(now):
             return [job('scope'), job('full', 'in_progress' if now < 120 else 'success')]
