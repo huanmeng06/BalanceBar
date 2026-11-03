@@ -199,6 +199,9 @@ balancebar_sdk_path="$(xcrun --sdk macosx --show-sdk-path)"
 balancebar_sdk_version="$(xcrun --sdk macosx --show-sdk-version)"
 balancebar_sdk_major="${balancebar_sdk_version%%.*}"
 balancebar_swift_target="${balancebar_build_arch}-apple-macosx${balancebar_deployment_target}"
+# swiftc runs its frontend jobs serially unless -j is given; parallel jobs keep
+# the same -Onone output and cut the app target compile about 3x.
+balancebar_swift_jobs="$(sysctl -n hw.activecpu 2>/dev/null || echo 4)"
 
 if [[ -n "$balancebar_required_sdk_major" \
       && "$balancebar_sdk_major" != "$balancebar_required_sdk_major" ]]; then
@@ -263,6 +266,7 @@ printf 'build-balancebar: SDK %s; target %s\n' "$balancebar_sdk_version" "$balan
 printf '  %s\n' "${swift_sources[@]}"
 swiftc \
     -parse-as-library \
+    -j "$balancebar_swift_jobs" \
     -sdk "$balancebar_sdk_path" \
     -target "$balancebar_swift_target" \
     "${swift_sources[@]}" \
@@ -291,6 +295,7 @@ printf 'build-balancebar: verified binary minimum OS %s; SDK %s; macOS 26 glass 
 printf 'build-balancebar: compiling ChatGPT launch agent\n'
 swiftc \
     -parse-as-library \
+    -j "$balancebar_swift_jobs" \
     -sdk "$balancebar_sdk_path" \
     -target "$balancebar_swift_target" \
     "$sources_dir/AppCore/ChatGPTApplicationIdentity.swift" \

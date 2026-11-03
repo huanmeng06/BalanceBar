@@ -12,7 +12,8 @@ permissions:
 
 concurrency:
   group: build-and-test-${{ (github.event_name == 'pull_request' && github.event.action == 'edited' && !github.event.changes.base && (github.event.changes.title || github.event.changes.body)) && format('metadata-{0}', github.run_id) || github.event_name }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # Superseded PR pushes cancel; manual (main) Full runs always finish.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   scope:
@@ -27,6 +28,7 @@ jobs:
       action: ${{ steps.scope.outputs.action }}
       force_full: ${{ steps.scope.outputs.force_full }}
       reuse_full: ${{ steps.scope.outputs.reuse_full }}
+      docs_only: ${{ steps.scope.outputs.docs_only }}
       draft: ${{ steps.scope.outputs.draft }}
     steps:
       - uses: actions/checkout@v4
@@ -57,7 +59,12 @@ jobs:
           echo "draft=$draft" >> "$GITHUB_OUTPUT"
           echo "Live draft: $draft; event payload draft: ${PAYLOAD_DRAFT:-n/a}" >> "$GITHUB_STEP_SUMMARY"
           .github/scripts/ci-basic-checks.sh "$base"
-          python3 .github/scripts/ci-scope.py "$base" "$head" >> "$GITHUB_OUTPUT"
+          scope_result="$(python3 .github/scripts/ci-scope.py "$base" "$head")"
+          echo "$scope_result" >> "$GITHUB_OUTPUT"
+          docs_only=false
+          if [[ "$GITHUB_EVENT_NAME" == pull_request ]] && grep -qx 'docs_only=true' <<< "$scope_result"; then
+            docs_only=true
+          fi
           echo "force_full=$FORCE_FULL" >> "$GITHUB_OUTPUT"
           version_only=false
           if [[ "$GITHUB_EVENT_NAME" == pull_request ]]; then
@@ -65,6 +72,9 @@ jobs:
             [[ "$classification" != version-only ]] || version_only=true
           fi
           echo "version_only=$version_only" >> "$GITHUB_OUTPUT"
+          # A version bump is not documentation; never let both exemptions publish.
+          [[ "$version_only" != true ]] || docs_only=false
+          echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
           reuse_full=false
           if [[ "$GITHUB_EVENT_NAME" == pull_request ]]; then
             reuse_result="$RUNNER_TEMP/BalanceBar-full-reuse.txt"
@@ -75,7 +85,7 @@ jobs:
             echo "reuse_full=$reuse_full" >> "$GITHUB_OUTPUT"
             echo 'reuse_reason=not-a-pull-request' >> "$GITHUB_OUTPUT"
           fi
-          echo "Event head: $head; checkout/merge SHA: $GITHUB_SHA; version exemption: $version_only" >> "$GITHUB_STEP_SUMMARY"
+          echo "Event head: $head; checkout/merge SHA: $GITHUB_SHA; version exemption: $version_only; docs exemption: $docs_only" >> "$GITHUB_STEP_SUMMARY"
 
   fast:
     name: Fast CI (Debug build and probes; no XCTest)
@@ -95,7 +105,8 @@ jobs:
           xcodebuild -project BalanceBar.xcodeproj -scheme BalanceBar \
             -configuration Debug -derivedDataPath "$RUNNER_TEMP/BalanceBar-Fast" \
             -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO \
-            ARCHS=arm64 ONLY_ACTIVE_ARCH=YES -parallel-testing-enabled NO "$BUILD_ACTION"
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=YES COMPILER_INDEX_STORE_ENABLE=NO \
+            -parallel-testing-enabled NO "$BUILD_ACTION"
       - name: Localization probes
         if: needs.scope.outputs.probes == 'true'
         run: |
@@ -115,6 +126,14 @@ jobs:
     steps:
       - run: echo 'Only approved version strings differ across the entire PR. XCTest NOT executed; explicit version exemption.' >> "$GITHUB_STEP_SUMMARY"
 
+  docs-exemption:
+    name: PR-wide docs-only exemption (no XCTest)
+    needs: scope
+    if: github.event_name == 'pull_request' && needs.scope.outputs.draft != 'true' && needs.scope.outputs.docs_only == 'true' && needs.scope.outputs.version_only != 'true' && needs.scope.outputs.reuse_full != 'true' && needs.scope.outputs.force_full != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo 'Only added/modified documentation files differ across the entire PR. Build and XCTest NOT executed; explicit docs exemption.' >> "$GITHUB_STEP_SUMMARY"
+
   full-reuse:
     name: Verified prior Full reuse (version increment; no XCTest)
     needs: scope
@@ -133,15 +152,19 @@ jobs:
           set -Eeuo pipefail
           python3 .github/scripts/ci-full-reuse.py "$BASE_SHA" "$HEAD_SHA" --require
 
-  build-and-test:
-    name: Full CI (CLI, probes and serial XCTest)
+  # Full CI is split so the three costly parts never share one 3-core runner:
+  # build-for-testing (then XCTest shard 1), the CLI package, and XCTest shards
+  # 2..N from the uploaded build products. The job that keeps the historical
+  # Full name below aggregates them; gate scripts read only that name.
+  full-build:
+    name: Full build-for-testing and XCTest shard 1
     needs: scope
-    if: github.event_name == 'workflow_dispatch' || (needs.scope.outputs.draft != 'true' && (needs.scope.outputs.reuse_full != 'true' || needs.scope.outputs.force_full == 'true') && (needs.scope.outputs.version_only != 'true' || needs.scope.outputs.force_full == 'true'))
+    if: github.event_name == 'workflow_dispatch' || (needs.scope.outputs.draft != 'true' && (needs.scope.outputs.reuse_full != 'true' || needs.scope.outputs.force_full == 'true') && (needs.scope.outputs.version_only != 'true' || needs.scope.outputs.force_full == 'true') && (needs.scope.outputs.docs_only != 'true' || needs.scope.outputs.force_full == 'true'))
     runs-on: macos-26
     timeout-minutes: 20
     env:
-      BALANCEBAR_DEPLOYMENT_TARGET: "14.0"
       BALANCEBAR_REQUIRED_SDK_MAJOR: "26"
+      SHARD: "1"
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -152,87 +175,142 @@ jobs:
           xcodebuild -version
           sdk_version="$(xcrun --sdk macosx --show-sdk-version)"
           [[ "${sdk_version%%.*}" == "$BALANCEBAR_REQUIRED_SDK_MAJOR" ]]
-          echo "Using macOS SDK $sdk_version with deployment target $BALANCEBAR_DEPLOYMENT_TARGET"
+          echo "Using macOS SDK $sdk_version"
 
-      - name: Independent build checks
-        run: |
-          set -Eeuo pipefail
-
-          cli_log="$RUNNER_TEMP/BalanceBar-cli-build.log"
-          probes_log="$RUNNER_TEMP/BalanceBar-localization-probes.log"
-          xcode_log="$RUNNER_TEMP/BalanceBar-xcode-build.log"
-
-          timed_check() {
-            local label="$1" log="$2" start status
-            shift 2
-            start=$(date +%s)
-            set +e
-            "$@" >"$log" 2>&1
-            status=$?
-            echo "$label: $(( $(date +%s) - start )) seconds, exit $status" >"$log.timing"
-            return "$status"
-          }
-          timed_check CLI "$cli_log" ./scripts/build.sh &
-          cli_pid=$!
-
-          timed_check probes "$probes_log" bash -Eeuo pipefail -c \
-            './scripts/probes/balance-query-probe.sh && ./scripts/probes/balance-network-error-localization-probe.sh' &
-          probes_pid=$!
-
-          timed_check Xcode "$xcode_log" xcodebuild \
-            -project BalanceBar.xcodeproj \
-            -scheme BalanceBar \
-            -configuration Debug \
-            -derivedDataPath "$RUNNER_TEMP/BalanceBar-DerivedData" \
-            -destination 'platform=macOS,arch=arm64' \
-            CODE_SIGNING_ALLOWED=NO \
-            ARCHS=arm64 \
-            ONLY_ACTIVE_ARCH=YES \
-            -parallel-testing-enabled NO build-for-testing &
-          xcode_pid=$!
-
-          check_status=0
-          if ! wait "$cli_pid"; then check_status=1; fi
-          if ! wait "$probes_pid"; then check_status=1; fi
-          if ! wait "$xcode_pid"; then check_status=1; fi
-
-          if ! ./scripts/probes/localization-resource-probe.sh \
-            build/BalanceBar.app; then
-            check_status=1
-          fi
-          if ! ./scripts/probes/localization-resource-probe.sh \
-            "$RUNNER_TEMP/BalanceBar-DerivedData/Build/Products/Debug/BalanceBar.app"; then
-            check_status=1
-          fi
-          cat "$cli_log.timing" "$probes_log.timing" "$xcode_log.timing" | tee -a "$GITHUB_STEP_SUMMARY"
-          cat "$cli_log"
-          cat "$probes_log"
-          cat "$xcode_log"
-          exit "$check_status"
-
-      - name: XCTest
+      - name: Xcode build-for-testing
         run: |
           set -Eeuo pipefail
           xcodebuild -project BalanceBar.xcodeproj -scheme BalanceBar \
             -configuration Debug -derivedDataPath "$RUNNER_TEMP/BalanceBar-DerivedData" \
             -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO \
-            ARCHS=arm64 ONLY_ACTIVE_ARCH=YES -parallel-testing-enabled NO \
-            -retry-tests-on-failure -test-iterations 2 \
-            -resultBundlePath "$RUNNER_TEMP/BalanceBar.xcresult" test-without-building
-      - name: Full test conclusion and counts
-        if: always()
-        env:
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          JOB_STATUS: ${{ job.status }}
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=YES COMPILER_INDEX_STORE_ENABLE=NO \
+            -parallel-testing-enabled NO build-for-testing
+          ./scripts/probes/localization-resource-probe.sh \
+            "$RUNNER_TEMP/BalanceBar-DerivedData/Build/Products/Debug/BalanceBar.app"
+
+      # Tar keeps Mach-O execute bits and bundle symlinks (upload-artifact zips).
+      - name: Stage build-for-testing products
         run: |
           set -Eeuo pipefail
-          echo "Full scope: CLI package, localization probes, build-for-testing, all serial XCTest. Head: ${HEAD_SHA:-$GITHUB_SHA}; checkout/merge: $GITHUB_SHA; status so far: $JOB_STATUS" >> "$GITHUB_STEP_SUMMARY"
+          mkdir -p "$RUNNER_TEMP/BalanceBar-test-products"
+          COPYFILE_DISABLE=1 tar -C "$RUNNER_TEMP/BalanceBar-DerivedData/Build" -czf \
+            "$RUNNER_TEMP/BalanceBar-test-products/Products.tar.gz" Products
+
+      - name: Upload build-for-testing products
+        uses: actions/upload-artifact@v4
+        with:
+          name: BalanceBar-test-products-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/BalanceBar-test-products
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+      - name: XCTest shard 1
+        run: |
+          set -Eeuo pipefail
+          .github/scripts/ci-xctest-shard.sh 1 \
+            "$RUNNER_TEMP/BalanceBar-DerivedData/Build/Products" "$RUNNER_TEMP/BalanceBar.xcresult"
+      - name: Shard test counts
+        if: always()
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$RUNNER_TEMP/xctest-summary"
           if [[ -d "$RUNNER_TEMP/BalanceBar.xcresult" ]]; then
-            xcrun xcresulttool get test-results summary --path "$RUNNER_TEMP/BalanceBar.xcresult" > "$RUNNER_TEMP/test-summary.json"
-            cat "$RUNNER_TEMP/test-summary.json" | tee -a "$GITHUB_STEP_SUMMARY"
+            xcrun xcresulttool get test-results summary --path "$RUNNER_TEMP/BalanceBar.xcresult" \
+              > "$RUNNER_TEMP/xctest-summary/shard-$SHARD.json"
+            tee -a "$GITHUB_STEP_SUMMARY" < "$RUNNER_TEMP/xctest-summary/shard-$SHARD.json"
           else
-            echo 'XCTest result absent: tests NOT proven passed.' >> "$GITHUB_STEP_SUMMARY"
+            echo "XCTest shard $SHARD result absent: tests NOT proven passed." >> "$GITHUB_STEP_SUMMARY"
           fi
+      - name: Upload shard test counts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xctest-summary-${{ env.SHARD }}-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/xctest-summary
+          if-no-files-found: ignore
+          retention-days: 2
+
+  xctest-shard:
+    name: Full XCTest shard ${{ matrix.shard }}
+    needs: full-build
+    runs-on: macos-26
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [2, 3]
+    env:
+      SHARD: ${{ matrix.shard }}
+    steps:
+      # Tests resolve fixtures through #filePath, so sources stay at the same path.
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Download build-for-testing products
+        uses: actions/download-artifact@v4
+        with:
+          name: BalanceBar-test-products-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/BalanceBar-test-products
+
+      - name: XCTest shard ${{ matrix.shard }}
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$RUNNER_TEMP/BalanceBar-DerivedData/Build"
+          tar -C "$RUNNER_TEMP/BalanceBar-DerivedData/Build" -xzf \
+            "$RUNNER_TEMP/BalanceBar-test-products/Products.tar.gz"
+          .github/scripts/ci-xctest-shard.sh "$SHARD" \
+            "$RUNNER_TEMP/BalanceBar-DerivedData/Build/Products" "$RUNNER_TEMP/BalanceBar.xcresult"
+      - name: Shard test counts
+        if: always()
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$RUNNER_TEMP/xctest-summary"
+          if [[ -d "$RUNNER_TEMP/BalanceBar.xcresult" ]]; then
+            xcrun xcresulttool get test-results summary --path "$RUNNER_TEMP/BalanceBar.xcresult" \
+              > "$RUNNER_TEMP/xctest-summary/shard-$SHARD.json"
+            tee -a "$GITHUB_STEP_SUMMARY" < "$RUNNER_TEMP/xctest-summary/shard-$SHARD.json"
+          else
+            echo "XCTest shard $SHARD result absent: tests NOT proven passed." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload shard test counts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xctest-summary-${{ env.SHARD }}-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/xctest-summary
+          if-no-files-found: ignore
+          retention-days: 2
+
+  full-cli:
+    name: Full CLI package and probes
+    needs: scope
+    if: github.event_name == 'workflow_dispatch' || (needs.scope.outputs.draft != 'true' && (needs.scope.outputs.reuse_full != 'true' || needs.scope.outputs.force_full == 'true') && (needs.scope.outputs.version_only != 'true' || needs.scope.outputs.force_full == 'true') && (needs.scope.outputs.docs_only != 'true' || needs.scope.outputs.force_full == 'true'))
+    runs-on: macos-26
+    timeout-minutes: 15
+    env:
+      BALANCEBAR_DEPLOYMENT_TARGET: "14.0"
+      BALANCEBAR_REQUIRED_SDK_MAJOR: "26"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: CLI package and probes
+        run: |
+          set -Eeuo pipefail
+          probes_log="$RUNNER_TEMP/BalanceBar-localization-probes.log"
+          bash -Eeuo pipefail -c \
+            './scripts/probes/balance-query-probe.sh && ./scripts/probes/balance-network-error-localization-probe.sh' \
+            >"$probes_log" 2>&1 &
+          probes_pid=$!
+          check_status=0
+          start=$(date +%s)
+          ./scripts/build.sh || check_status=1
+          echo "CLI: $(( $(date +%s) - start )) seconds, exit $check_status" | tee -a "$GITHUB_STEP_SUMMARY"
+          wait "$probes_pid" || check_status=1
+          cat "$probes_log"
+          ./scripts/probes/localization-resource-probe.sh build/BalanceBar.app || check_status=1
+          exit "$check_status"
 
       # upload-artifact@v4 zips the payload and drops Unix execute bits on
       # Mach-O files inside .app bundles. Tar first so old-runtime can restore
@@ -255,23 +333,56 @@ jobs:
           if-no-files-found: error
           retention-days: 2
 
+  build-and-test:
+    name: Full CI (CLI, probes and serial XCTest)
+    needs: [scope, full-build, full-cli, xctest-shard]
+    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || (needs.scope.outputs.draft != 'true' && (needs.scope.outputs.reuse_full != 'true' || needs.scope.outputs.force_full == 'true') && (needs.scope.outputs.version_only != 'true' || needs.scope.outputs.force_full == 'true') && (needs.scope.outputs.docs_only != 'true' || needs.scope.outputs.force_full == 'true'))) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out CI scripts
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github
+      - name: Download shard test counts
+        if: needs.full-build.result == 'success' && needs.xctest-shard.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: xctest-summary-*-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/xctest-summary
+          merge-multiple: true
+      - name: Full test conclusion and counts
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RESULTS: ${{ needs.scope.result }} ${{ needs.full-build.result }} ${{ needs.full-cli.result }} ${{ needs.xctest-shard.result }}
+        run: |
+          set -Eeuo pipefail
+          echo "Full scope: CLI package, localization probes, build-for-testing, all serial XCTest shards. Head: ${HEAD_SHA:-$GITHUB_SHA}; checkout/merge: $GITHUB_SHA; scope/build/cli/shards: $RESULTS" >> "$GITHUB_STEP_SUMMARY"
+          [[ "$RESULTS" == 'success success success success' ]] \
+            || { echo "Full CI parts did not all succeed: $RESULTS" >&2; exit 1; }
+          python3 .github/scripts/ci-xctest-totals.py "$RUNNER_TEMP/xctest-summary" | tee -a "$GITHUB_STEP_SUMMARY"
+
   # Snapshot 2026-09-21: macos-15 is the current GitHub-hosted
   # pre-Liquid-Glass arm64 runner. macos-14 is deprecated and is not
   # a required label. This job loads the SDK 26 / minos 14 artifact; it
   # is not Dashboard GUI acceptance. continue-on-error until the label
-  # is a stable required check.
+  # is a stable required check. It needs only the CLI package, so it runs
+  # alongside XCTest instead of after it.
   old-runtime-smoke:
     name: Pre-Liquid-Glass artifact smoke
-    needs: build-and-test
-    if: needs.build-and-test.result == 'success'
+    needs: full-cli
+    if: needs.full-cli.result == 'success'
     runs-on: macos-15
     continue-on-error: true
     timeout-minutes: 10
     env:
       BALANCEBAR_EXPECTED_DEPLOYMENT_TARGET: "14.0"
     steps:
-      - name: Check out repository
+      - name: Check out smoke probe
         uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts/probes
+          sparse-checkout-cone-mode: false
 
       - name: Download SDK 26 deployment-target artifact
         uses: actions/download-artifact@v4

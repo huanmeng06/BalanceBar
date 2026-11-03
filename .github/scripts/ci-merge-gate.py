@@ -10,7 +10,8 @@ NAMES = {'scope': 'CI repository checks and PR scope',
          'full': 'Full CI (CLI, probes and serial XCTest)',
          'version': 'PR-wide version-only exemption (no XCTest)',
          'smoke': 'Pre-Liquid-Glass artifact smoke',
-         'reuse': 'Verified prior Full reuse (version increment; no XCTest)'}
+         'reuse': 'Verified prior Full reuse (version increment; no XCTest)',
+         'docs': 'PR-wide docs-only exemption (no XCTest)'}
 GATE_NAME = 'PR merge gate'
 WAITING = {'queued', 'in_progress', 'waiting', 'pending', 'requested'}
 
@@ -52,6 +53,8 @@ def verdict(event, event_pr, live_pr, results, version_only, lane='full'):
         return False, 'Repository/scope checks did not succeed'
     if version_only:
         return results['version'] == 'success', 'PR-wide version-only exemption; XCTest NOT executed'
+    if lane == 'docs':
+        return results['docs'] == 'success', 'PR-wide docs-only exemption; build and XCTest NOT executed'
     if lane == 'reuse':
         return results['reuse'] == 'success', (
             'Verified prior Ready Full reused; current HEAD XCTest NOT executed')
@@ -112,11 +115,15 @@ def wait_for_evidence(event, event_name):
     kind = event_kind(event)
     if kind == 'metadata' and event_name == 'pull_request':
         return False, 'Metadata edit only; NO merge credential', {'event': kind}
-    version_only = False
+    version_only = docs_only = False
     if pr and kind not in ('retarget', 'revalidate'):
         version_only = subprocess.check_output([
             'bash', '.github/scripts/classify-version-only-diff.sh', pr['base']['sha'], head],
             text=True, timeout=15).strip() == 'version-only'
+        # Re-derive the docs exemption here; never trust the scope job's output.
+        docs_only = not version_only and 'docs_only=true' in subprocess.check_output([
+            'python3', '.github/scripts/ci-scope.py', pr['base']['sha'], head],
+            text=True, timeout=15).splitlines()
     run_path = f'repos/{repo}/actions/runs/{run_id}'
     jobs_path = f'{run_path}/attempts/{attempt}/jobs?per_page=100'
     attempt_info = api(f'{run_path}/attempts/{attempt}', timeout=15)
@@ -194,6 +201,8 @@ def wait_for_evidence(event, event_name):
             results['gate_job_id'] = gate_job.get('id') if gate_job else 'unknown'
             if version_only:
                 lane = 'version'
+            elif docs_only:
+                lane = 'docs'
             else:
                 lanes = [key for key in ('full', 'reuse') if active[key]]
                 if len(lanes) > 1:
@@ -227,7 +236,7 @@ def wait_for_evidence(event, event_name):
                     if not reuse_ok:
                         return False, reuse_reason, results
                 ok, reason = verdict(event_name, pr, live, results, version_only, lane or 'full')
-                if not ok or lane in ('version', 'reuse'):
+                if not ok or lane in ('version', 'reuse', 'docs'):
                     return ok, reason, results
                 if results['smoke'] not in WAITING | {'missing'}:
                     if results['smoke'] not in ('success', 'failure'):

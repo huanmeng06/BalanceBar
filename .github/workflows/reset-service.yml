@@ -19,7 +19,8 @@ permissions:
 
 concurrency:
   group: reset-service-${{ github.event_name == 'pull_request' && github.event.pull_request.number || 'production' }}
-  cancel-in-progress: false
+  # Superseded PR pushes cancel; production collection runs are never cut short.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:
@@ -33,6 +34,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+          cache: pip
+          cache-dependency-path: services/reset-service/requirements-dev.txt
       - run: python -m pip install -r services/reset-service/requirements-dev.txt
       - run: python -m unittest discover -s services/reset-service/tests -v
 
