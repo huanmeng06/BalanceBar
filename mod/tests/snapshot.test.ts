@@ -129,9 +129,10 @@ test("without an organization the legacy email-only file name and account shape 
 })
 
 /// A fake session. `state` is shared by contexts built from it: it is what survives a module reload.
-function sessionContext(options: { startedAgo?: number; config: () => string; usageFails?: boolean; state?: Map<string, { value: unknown; version: number }> }) {
+function sessionContext(options: { startedAgo?: number; noResponseYet?: boolean; carriedCost?: number; config: () => string; usageFails?: boolean; state?: Map<string, { value: unknown; version: number }> }) {
   const written: Record<string, string> = {}
   const state = options.state ?? new Map()
+  const progress = { noResponseYet: options.noResponseYet ?? false }
   const now = 1_000_000_000
   const $ = {
     env: { get: async (name: string) => ({ HOME: "/home/x", BALANCEBAR_MOD_INBOX: "/inbox" } as Record<string, string>)[name] },
@@ -148,12 +149,12 @@ function sessionContext(options: { startedAgo?: number; config: () => string; us
     session: {
       usage: async () => {
         if (options.usageFails) throw new Error("not ready")
-        return { ...usage, startedAt: now - (options.startedAgo ?? 1_000) }
+        return { ...usage, rateLimits: progress.noResponseYet ? [] : usage.rateLimits, cost: { usd: options.carriedCost ?? 0 }, startedAt: now - (options.startedAgo ?? 1_000) }
       },
     },
     fs: { exists: async () => true, read: async () => options.config(), write: async (path: string, data: string) => { written[path] = data } },
   }
-  return { $, written, state }
+  return { $, written, state, progress }
 }
 
 const configFor = (org: string, email = "a@example.com") =>
@@ -218,4 +219,35 @@ test("measuring before any session start, or with usage unavailable at start, wr
   await bindSession(failing.$)
   expect(await recordMeasure(failing.$, true)).toBe(false)
   expect(Object.keys(unbound.written).length + Object.keys(failing.written).length).toBe(0)
+})
+
+test("a resumed or forked session binds although its first launch is old, and still refuses a switch", async () => {
+  let config = configFor("org-a")
+  const resumed = sessionContext({ startedAgo: 6 * 3_600_000, noResponseYet: true, carriedCost: 0.5, config: () => config })
+  await bindSession(resumed.$)
+  expect((resumed.state.get("session")!.value as { status: string }).status).toBe("bound")
+  resumed.progress.noResponseYet = false
+  expect(await recordMeasure(resumed.$, true)).toBe(true)
+  expect(JSON.parse(Object.values(resumed.written)[0]).account.organization_hash).toBe(await hashEmail("org-a"))
+
+  for (const key of Object.keys(resumed.written)) delete resumed.written[key]
+  config = configFor("org-b")
+  expect(await recordMeasure(resumed.$, true)).toBe(false)
+  expect(Object.keys(resumed.written).length).toBe(0)
+})
+
+test("a resumed session whose account is unreadable at start stays untrusted", async () => {
+  const resumed = sessionContext({ startedAgo: 6 * 3_600_000, noResponseYet: true, carriedCost: 0.5, config: () => "{}" })
+  await bindSession(resumed.$)
+  resumed.progress.noResponseYet = false
+  expect(await recordMeasure(resumed.$, true)).toBe(false)
+})
+
+test("an old session with no response yet and no carried-over cost, added mid-run, stays untrusted", async () => {
+  const running = sessionContext({ startedAgo: 600_000, noResponseYet: true, config: () => configFor("org-b") })
+  await bindSession(running.$)
+  expect((running.state.get("session")!.value as { status: string }).status).toBe("untrusted")
+  running.progress.noResponseYet = false
+  expect(await recordMeasure(running.$, true)).toBe(false)
+  expect(Object.keys(running.written).length).toBe(0)
 })
