@@ -697,6 +697,21 @@
 "mod.sync.status.rejected_account" = "Snapshot rejected: the Claude login account differs from BalanceBar's current account";
 "mod.sync.status.rejected_cycle" = "Snapshot rejected: the cycle does not match official data; the official path is used";
 "mod.sync.status.installation_unknown" = "Can't confirm whether the Mod is installed (plugin list failed)";
+"mod.sync.status.update_required" = "The Mod is outdated and needs an update (third-party plugin marketplaces do not auto-update by default).\nRestart the Claude Code session afterwards";
+"mod.card.update.title" = "Mod update needed";
+"mod.card.update.reason" = "Current version: %1$@";
+"mod.card.update.action" = "Latest version: %1$@";
+"mod.update.button" = "Update now";
+"mod.update.title" = "BalanceBar Mod needs an update";
+"mod.update.progress_title" = "Updating BalanceBar Mod";
+"mod.update.step1" = "Update source";
+"mod.update.step2" = "Update Mod";
+"mod.update.done" = "Updated ✓";
+"mod.update.done_note" = "Restart your Claude Code session for the new Mod to take effect.";
+"mod.failure.update_command" = "The update did not finish. Run these commands in a terminal, then restart the session:";
+"mod.card.update.button" = "Update now";
+"mod.card.update.restart" = "Mod updated. Restart your Claude Code session";
+"mod.sync.status.restart_required" = "The Mod is updated, but an old session is still running. Restart your Claude Code session";
 
 // Mod management window (Issue #604)
 "mod.ui.subtitle" = "Keep Claude Code quota up to date";
@@ -716,6 +731,8 @@
 "mod.ui.uninstall_reload_hint" = "Existing sessions can run the command below to apply the removal right away.";
 "mod.ui.cancel" = "Cancel";
 "mod.ui.uninstall_failure_title" = "Uninstall incomplete";
+"mod.ui.update_failure_title" = "Update failed";
+"mod.ui.unknown_status_title" = "Can’t confirm install status";
 "mod.ui.account_advice" = "Check that Claude Code and BalanceBar use the same account, then start a new session.";
 "mod.ui.cycle_advice" = "Keep using official quota. Check new session data after the official source confirms the new cycle.";
 

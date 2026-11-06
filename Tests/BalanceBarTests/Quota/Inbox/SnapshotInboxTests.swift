@@ -8,6 +8,13 @@ private final class FakeIdentity: AccountIdentityProviding {
     var accountEpoch = AccountEpoch(3)
 }
 
+private final class LockedFlags {
+    private let lock = NSLock()
+    private var values: [Bool] = []
+    func append(_ value: Bool) { lock.lock(); values.append(value); lock.unlock() }
+    var all: [Bool] { lock.lock(); defer { lock.unlock() }; return values }
+}
+
 private final class Collector {
     private let lock = NSLock()
     private var items: [QuotaObservation] = []
@@ -118,11 +125,13 @@ final class SnapshotInboxTests: XCTestCase {
 
     // MARK: Organization attribution (Issue #629)
 
-    private func placeModSnapshot(organizationHash: String?, as name: String = "mod.json") throws {
+    private func placeModSnapshot(
+        organizationHash: String?, as name: String = "mod.json", updatedAt: String = "2026-10-17T06:12:03Z"
+    ) throws {
         var account: [String: Any] = ["email_hash": SnapshotInbox.emailHash("user@example.com")]
         if let organizationHash { account["organization_hash"] = organizationHash }
         let object: [String: Any] = [
-            "updated_at": "2026-10-17T06:12:03Z", "source": "balancebar-mod", "account": account,
+            "updated_at": updatedAt, "source": "balancebar-mod", "account": account,
             "five_hour": ["used_percentage": 10, "resets_at": "2026-10-17T09:00:00Z"],
         ]
         try JSONSerialization.data(withJSONObject: object).write(to: inbox.appendingPathComponent(name))
@@ -422,6 +431,15 @@ final class SnapshotInboxTests: XCTestCase {
 
     /// FSEvents latency plus the watcher's coalescing interval is not a fixed constant,
     /// so assertions on asynchronously observed files poll up to a generous deadline.
+    /// Watcher batches arrive after FSEvents latency (0.05 s) plus coalescing. The default
+    /// 1 s coalescing made "nothing else arrives" checks wait 0.5–1.5 s, and a 0.5 s wait
+    /// could even end before the watcher delivered anything at all.
+    private static let fastWatchConfiguration = SnapshotInboxConfiguration(
+        halfWriteRetryDelay: 0.05, io: QuotaIOConfiguration(watchCoalescingInterval: 0.05))
+
+    /// Lets catch-up rescans and late watcher batches land (several coalescing windows).
+    private func settleWatcher() { Thread.sleep(forTimeInterval: 0.3) }
+
     private func waitUntil(timeout: TimeInterval = 3, _ condition: () -> Bool) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
@@ -453,11 +471,111 @@ final class SnapshotInboxTests: XCTestCase {
         XCTAssertEqual(Set(reasons.all), [.accountEmailHashMismatch, .missingAccountEmailHash])
     }
 
-    func testUnverifiedCycleIsReportedByTheRejectionObserver() throws {
+    func testOldFormatModSnapshotIsReportedOutdatedAndLogThrottled() throws {
+        let flags = LockedFlags()
+        let logs = LockedLines()
+        let source = SnapshotInbox(
+            inboxDirectory: inbox, identity: organizationIdentity("org-1"),
+            configuration: SnapshotInboxConfiguration(halfWriteRetryDelay: 0.05))
+        source.outdatedModObserver = { flags.append($0) }
+        source.diagnosticLog = { logs.append($0) }
+        inboxes.append(source)
+        source.start { _ in }
+        try placeModSnapshot(organizationHash: nil, as: "a.json")
+        try placeModSnapshot(organizationHash: nil, as: "b.json", updatedAt: "2026-10-17T06:12:04Z")
+        XCTAssertTrue(waitUntil { flags.all.count >= 2 })
+        source.stop()
+        XCTAssertTrue(flags.all.allSatisfy { $0 })
+        XCTAssertEqual(logs.all.filter { $0.hasPrefix("claude mod snapshot outdated;") }.count, 1, "same reason is throttled")
+    }
+
+    func testNewFormatModSnapshotIsNotOutdated() throws {
+        let flags = LockedFlags()
+        let logs = LockedLines()
+        let source = SnapshotInbox(
+            inboxDirectory: inbox, identity: organizationIdentity("org-1"),
+            configuration: SnapshotInboxConfiguration(halfWriteRetryDelay: 0.05))
+        source.outdatedModObserver = { flags.append($0) }
+        source.diagnosticLog = { logs.append($0) }
+        inboxes.append(source)
+        source.start { _ in }
+        try placeModSnapshot(organizationHash: SnapshotInbox.hash("org-1"))
+        XCTAssertTrue(waitUntil { !flags.all.isEmpty })
+        source.stop()
+        XCTAssertEqual(flags.all, [false])
+        XCTAssertTrue(logs.all.isEmpty)
+    }
+
+    func testForeignOrganizationSnapshotCannotClearOutdatedWarning() throws {
+        let flags = LockedFlags()
+        let reasons = LockedReasons()
+        let source = SnapshotInbox(
+            inboxDirectory: inbox, identity: organizationIdentity("org-1"),
+            configuration: SnapshotInboxConfiguration(halfWriteRetryDelay: 0.05))
+        source.outdatedModObserver = { flags.append($0) }
+        source.rejectionObserver = { reasons.append($0) }
+        inboxes.append(source)
+        source.start { _ in }
+
+        try placeModSnapshot(organizationHash: nil, as: "a-old.json")
+        XCTAssertTrue(waitUntil { flags.all.contains(true) })
+        try placeModSnapshot(organizationHash: SnapshotInbox.hash("foreign-org"), as: "b-foreign.json")
+        XCTAssertTrue(waitUntil { reasons.all.contains(.organizationHashMismatch) })
+        source.stop()
+        XCTAssertFalse(flags.all.contains(false), "a foreign organization's new-format snapshot must not clear the update warning")
+    }
+
+    func testNonModSnapshotWithoutOrganizationIsNotReportedOutdated() throws {
+        let flags = LockedFlags()
+        let source = SnapshotInbox(
+            inboxDirectory: inbox, identity: organizationIdentity("org-1"),
+            configuration: Self.fastWatchConfiguration)
+        source.outdatedModObserver = { flags.append($0) }
+        inboxes.append(source)
+        source.start { _ in }
+        try placeSnapshot(source: "unrelated-producer", emailHash: SnapshotInbox.emailHash("user@example.com"))
+        settleWatcher()
+        source.stop()
+        XCTAssertTrue(flags.all.isEmpty)
+    }
+
+        func testModWithoutOrganizationAccountIsNotReportedOutdated() throws {
+        let flags = LockedFlags()
+        let source = SnapshotInbox(
+            inboxDirectory: inbox, identity: FakeIdentity(),
+            configuration: Self.fastWatchConfiguration)
+        source.outdatedModObserver = { flags.append($0) }
+        inboxes.append(source)
+        source.start { _ in }
+        try placeModSnapshot(organizationHash: nil)
+        settleWatcher()
+        source.stop()
+        XCTAssertTrue(flags.all.isEmpty, "Mod 1.1.0 omits the hash for accounts without an organization")
+    }
+
+    func testStaleOldFormatFileDoesNotOverrideNewerNewFormatFile() throws {
+        let flags = LockedFlags()
+        let source = SnapshotInbox(
+            inboxDirectory: inbox, identity: organizationIdentity("org-1"),
+            configuration: Self.fastWatchConfiguration)
+        source.outdatedModObserver = { flags.append($0) }
+        inboxes.append(source)
+        // "-" sorts before ".", so the upgraded file is read first and the stale 1.0.0 file last.
+        try placeModSnapshot(organizationHash: SnapshotInbox.hash("org-1"), as: "balancebar-mod-aaaa-bbbb.json",
+                             updatedAt: "2026-10-17T06:12:30Z")
+        try placeModSnapshot(organizationHash: nil, as: "balancebar-mod-aaaa.json", updatedAt: "2026-10-17T06:00:00Z")
+        source.start { _ in }
+        XCTAssertTrue(waitUntil { !flags.all.isEmpty })
+        settleWatcher()
+        source.stop()
+        XCTAssertEqual(flags.all, [false], "the older 1.0.0 file must not reinstate the warning")
+    }
+
+func testUnverifiedCycleIsReportedByTheRejectionObserver() throws {
         let reasons = LockedReasons()
         let source = SnapshotInbox(
             inboxDirectory: inbox, identity: FakeIdentity(),
-            configuration: SnapshotInboxConfiguration(halfWriteRetryDelay: 0.05))
+            configuration: Self.fastWatchConfiguration)
         source.rejectionObserver = { reasons.append($0) }
         source.cycleVerification = { _, _, _, _, _ in false }
         inboxes.append(source)
@@ -473,7 +591,7 @@ final class SnapshotInboxTests: XCTestCase {
         let collector = Collector()
         let source = SnapshotInbox(
             inboxDirectory: inbox, identity: FakeIdentity(),
-            configuration: SnapshotInboxConfiguration(halfWriteRetryDelay: 0.05))
+            configuration: Self.fastWatchConfiguration)
         source.rejectionObserver = { reasons.append($0) }
         inboxes.append(source)
         source.start { collector.add($0) }
@@ -483,7 +601,7 @@ final class SnapshotInboxTests: XCTestCase {
         XCTAssertTrue(waitUntil { !collector.all.isEmpty }, "the snapshot is emitted")
         // Let FSEvents catch-up rescans of the directory settle before promoting the
         // baseline, so the replay below is measured against adopted evidence only.
-        Thread.sleep(forTimeInterval: 1.5)
+        settleWatcher()
         source.queue.sync {}
         let adopted = collector.all.map(\.receivedAt)
         for receivedAt in adopted {
@@ -494,7 +612,7 @@ final class SnapshotInboxTests: XCTestCase {
             source: "balancebar-mod", emailHash: SnapshotInbox.emailHash("user@example.com"),
             as: "replay.json", percentage: 20)
         XCTAssertTrue(waitUntil { source.queue.sync { source.suppressedReplayCount } >= 1 })
-        Thread.sleep(forTimeInterval: 0.5)
+        settleWatcher()
         source.stop()
         XCTAssertEqual(reasons.all, [], "a whole-snapshot replay is healthy, not a rejection")
     }
@@ -507,7 +625,7 @@ final class SnapshotInboxTests: XCTestCase {
         let collector = Collector()
         let source = SnapshotInbox(
             inboxDirectory: inbox, identity: FakeIdentity(),
-            configuration: SnapshotInboxConfiguration(halfWriteRetryDelay: 0.05))
+            configuration: Self.fastWatchConfiguration)
         inboxes.append(source)
         source.start { collector.add($0) }
         func place(_ updatedAt: String) throws {
@@ -523,7 +641,7 @@ final class SnapshotInboxTests: XCTestCase {
         func reread() { source.queue.sync { source.process(paths: [inbox.appendingPathComponent("mod.json").path]) } }
         try place("2026-10-17T06:12:03Z")
         XCTAssertTrue(waitUntil { !collector.all.isEmpty })
-        Thread.sleep(forTimeInterval: 1.5) // let directory catch-up rescans settle
+        settleWatcher()
         source.queue.sync {}
         adoptAll()
         let base = collector.all.count // the initial scan and the watcher may both have delivered
@@ -547,12 +665,12 @@ final class SnapshotInboxTests: XCTestCase {
         let collector = Collector()
         let source = SnapshotInbox(
             inboxDirectory: inbox, identity: FakeIdentity(),
-            configuration: SnapshotInboxConfiguration(halfWriteRetryDelay: 0.05))
+            configuration: Self.fastWatchConfiguration)
         inboxes.append(source)
         source.start { collector.add($0) }
         try placeSnapshot(source: "some-other-tool", emailHash: nil, as: "o.json", percentage: 20)
         XCTAssertTrue(waitUntil { !collector.all.isEmpty })
-        Thread.sleep(forTimeInterval: 1.5)
+        settleWatcher()
         source.queue.sync {}
         for receivedAt in collector.all.map(\.receivedAt) {
             source.noteProcessed(source: "some-other-tool", accountID: "acct-1", receivedAt: receivedAt, accepted: true)
@@ -570,7 +688,7 @@ final class SnapshotInboxTests: XCTestCase {
         let reasons = LockedReasons()
         let source = SnapshotInbox(
             inboxDirectory: inbox, identity: FakeIdentity(),
-            configuration: SnapshotInboxConfiguration(halfWriteRetryDelay: 0.05))
+            configuration: Self.fastWatchConfiguration)
         source.rejectionObserver = { reasons.append($0) }
         source.cycleVerification = { _, _, _, _, _ in false }
         inboxes.append(source)
@@ -579,7 +697,7 @@ final class SnapshotInboxTests: XCTestCase {
         try placeSnapshot(source: "some-other-tool", emailHash: "sha256:deadbeef", as: "wrong.json")
         // Cycle mismatch on a non-Mod producer: rejected, but not a Mod failure.
         try placeSnapshot(source: "some-other-tool", emailHash: SnapshotInbox.emailHash("user@example.com"), as: "cycle.json")
-        Thread.sleep(forTimeInterval: 0.5)
+        settleWatcher()
         source.stop()
         XCTAssertEqual(reasons.all, [], "non-Mod rejections must not change the Mod status entry")
     }
@@ -626,8 +744,9 @@ final class SnapshotInboxTests: XCTestCase {
         source.cycleVerification = { _, _, _, _, proven in proven ? true : false }
         try placeModSnapshot(organizationHash: nil, as: "cycle.json")
         feed(source, "cycle.json")
-        XCTAssertEqual(lines.all.count, 1)
-        let line = try XCTUnwrap(lines.all.first)
+        let rejections = lines.all.filter { $0.hasPrefix("claude mod snapshot rejected;") }
+        XCTAssertEqual(rejections.count, 1)
+        let line = try XCTUnwrap(rejections.first)
         XCTAssertTrue(line.hasPrefix("claude mod snapshot rejected; reason=cycle_unverified_against_official; window="))
         XCTAssertFalse(line.contains("user@example.com"))
         XCTAssertFalse(line.contains("sha256"))
@@ -642,7 +761,7 @@ final class SnapshotInboxTests: XCTestCase {
         try placeSnapshot(source: "balancebar-mod", emailHash: nil, as: "b.json")
         try placeModSnapshot(organizationHash: SnapshotInbox.hash("other-org"), as: "c.json")
         for name in ["a.json", "b.json", "c.json"] { feed(source, name) }
-        let reasons = lines.all.compactMap { $0.components(separatedBy: "reason=").last?.components(separatedBy: ";").first }
+        let reasons = lines.all.filter { $0.hasPrefix("claude mod snapshot rejected;") }.compactMap { $0.components(separatedBy: "reason=").last?.components(separatedBy: ";").first }
         XCTAssertEqual(reasons, [
             "account_email_hash_mismatch", "missing_account_email_hash", "organization_hash_mismatch",
         ])
@@ -661,7 +780,7 @@ final class SnapshotInboxTests: XCTestCase {
         let clock = MutableClock()
         let source = makeLoggingInbox(identity: FakeIdentity(), clock: clock, lines: lines)
         source.cycleVerification = { _, _, _, _, _ in false }
-        try placeSnapshot(source: "balancebar-mod", emailHash: SnapshotInbox.emailHash("user@example.com"), as: "r.json")
+        try placeModSnapshot(organizationHash: SnapshotInbox.hash("org-1"), as: "r.json")
         for _ in 0..<4 { feed(source, "r.json"); clock.advance(10) }
         XCTAssertEqual(lines.all.count, 1)
         XCTAssertFalse(lines.all[0].contains("repeats="))

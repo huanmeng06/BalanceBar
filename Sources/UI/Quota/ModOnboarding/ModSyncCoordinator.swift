@@ -21,6 +21,8 @@ final class ModSyncCoordinator {
     private(set) var status: ModSyncStatus = .detecting
     private var environment: ModEnvironment?
     private var evidence = ModSnapshotEvidence()
+    /// Demo bundle only: the outdated-Mod state is pinned and live snapshots are ignored.
+    private let simulatedOutdatedMod: Bool
     private var detectionInFlight = false
     /// When the running (or last finished) detection began; read by the verdict callbacks, which
     /// fire inside that detection's completion.
@@ -59,8 +61,11 @@ final class ModSyncCoordinator {
         now: @escaping () -> Date = Date.init,
         schedule: @escaping (TimeInterval, @escaping () -> Void) -> Void = { delay, block in
             DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: block)
-        }
+        },
+        simulatedOutdatedMod: Bool = false
     ) {
+        self.simulatedOutdatedMod = simulatedOutdatedMod
+        evidence.modOutdated = simulatedOutdatedMod
         self.controller = controller
         self.detector = detector
         self.activityProvider = activityProvider
@@ -76,6 +81,13 @@ final class ModSyncCoordinator {
             // new trusted snapshot arrives the status is "waiting for data", never active.
             if case .success = result { self?.resetSnapshotEvidence() }
             self?.startDetectionIfNeeded(force: true)
+        }
+        controller.onUpdateCompleted = { [weak self] result in
+            // The installed Mod is now current; only a snapshot from a still-running old session
+            // can flag it again.
+            if case .success = result { self?.evidence.modOutdated = false }
+            self?.startDetectionIfNeeded(force: true)
+            self?.recomputeStatus()
         }
         controller.onUninstallCompleted = { [weak self] result in
             if case .success = result {
@@ -174,7 +186,7 @@ final class ModSyncCoordinator {
     /// Receives one pipeline snapshot event. Safe to call from any thread.
     func ingest(_ event: ClaudeQuotaPipeline.ModSnapshotEvent) {
         DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
+            guard let self, !self.simulatedOutdatedMod else { return }
             switch event.kind {
             case let .processed(accepted):
                 guard accepted else { break }
@@ -185,6 +197,8 @@ final class ModSyncCoordinator {
             case let .rejected(reason):
                 self.evidence.lastRejection = ModRejectionEvent(
                     rejection: Self.uiRejection(reason), at: event.receivedAt)
+            case let .formatChecked(outdated):
+                self.evidence.modOutdated = outdated
             case .accountChanged:
                 // Snapshot evidence belongs to the account that produced it; a switch must
                 // never let the new account inherit the old one's "realtime" display.
@@ -215,7 +229,7 @@ final class ModSyncCoordinator {
         // "View error" in Advanced must retain the actual CLI failure and retry.
         // Successful pages still reset to the current management state on reopen.
         switch controller.state {
-        case .failed, .uninstallFailed: break
+        case .failed, .uninstallFailed, .updateFailed: break
         default: controller.resetToIntro()
         }
         let panel = ModOnboardingPanelView(
@@ -300,7 +314,7 @@ func realtimeBoostLocalize(_ text: RealtimeBoostText, language: AppLanguage) -> 
     switch text {
     case .statusActive, .statusUnsupported, .statusVersionTooOld, .lastData,
          .cardOtherScopeAction, .cardDisabledAction, .cardVersionTooOldReason,
-         .cardInboxAction, .cardViewErrorAction:
+         .cardInboxAction, .cardViewErrorAction, .cardUpdateReason, .cardUpdateAction:
         return tr(LocalizationKey.key(for: text), arguments: ["%@"], language: language)
     default:
         return tr(LocalizationKey.key(for: text), language: language)
@@ -345,6 +359,8 @@ extension LocalizationKey {
         case .backToIntro: return .modUIBackToIntro
         case .lastDataNote: return .modUILastDataNote
         case .uninstallFailureTitle: return .modUIUninstallFailureTitle
+        case .updateFailureTitle: return .modUIUpdateFailureTitle
+        case .unknownStatusTitle: return .modUIUnknownStatusTitle
         case .accountAdvice: return .modUIAccountAdvice
         case .cycleAdvice: return .modUICycleAdvice
         case .promptRow: return .modPromptRow
@@ -380,6 +396,14 @@ extension LocalizationKey {
         case .failureUninstall: return .modFailureUninstall
         case .copyEnableCommands: return .modFailureCopyEnable
         case .failureInbox: return .modFailureInbox
+        case .updateButton: return .modUpdateButton
+        case .updateTitle: return .modUpdateTitle
+        case .updateProgressTitle: return .modUpdateProgressTitle
+        case .updateStep1: return .modUpdateStep1
+        case .updateStep2: return .modUpdateStep2
+        case .updateDone: return .modUpdateDone
+        case .updateDoneNote: return .modUpdateDoneNote
+        case .failureUpdate: return .modFailureUpdate
         }
     }
 
@@ -445,6 +469,13 @@ extension LocalizationKey {
         case .statusRejectedAccount: return .modSyncStatusRejectedAccount
         case .statusRejectedCycle: return .modSyncStatusRejectedCycle
         case .statusInstallationUnknown: return .modSyncStatusInstallationUnknown
+        case .statusUpdateRequired: return .modSyncStatusUpdateRequired
+        case .cardUpdateTitle: return .modCardUpdateTitle
+        case .cardUpdateReason: return .modCardUpdateReason
+        case .cardUpdateAction: return .modCardUpdateAction
+        case .cardUpdateButton: return .modCardUpdateButton
+        case .cardUpdateRestart: return .modCardUpdateRestart
+        case .statusRestartRequired: return .modSyncStatusRestartRequired
         }
     }
 }
@@ -462,5 +493,60 @@ extension ModSyncCoordinator {
         pipeline.modDetectionRequester = { [weak self] in
             DispatchQueue.main.async { self?.requestDetectionForSnapshot() }
         }
+    }
+}
+
+/// A stable "the installed Mod is outdated" scenario for manual testing. Only the explicitly
+/// named demo bundle (`scripts/build.sh demo-mod-outdated`) honours it: the Mod status is pinned
+/// to "update required", live snapshots are ignored, and the Claude CLI is replaced by a
+/// simulation, so the one-click update runs end to end without touching the real plugin setup.
+enum DevelopmentModOutdatedDemo {
+    private static let infoPlistKey = "BalanceBarModOutdatedDemo"
+
+    static var isActive: Bool {
+        Bundle.main.bundleIdentifier?.contains(".demo.") == true
+            && Bundle.main.object(forInfoDictionaryKey: infoPlistKey) as? String == "mod-outdated"
+    }
+
+    static func makeCoordinator(
+        activityProvider: @escaping () -> Bool,
+        localizePanel: @escaping (ModOnboardingText) -> String,
+        localizeSync: @escaping (RealtimeBoostText) -> String
+    ) -> ModSyncCoordinator {
+        let inbox = FileManager.default.temporaryDirectory.appendingPathComponent("balancebar-mod-outdated-demo-inbox")
+        _ = ModSyncDetector.prepareInbox(directory: inbox)
+        let locator = SimulatedClaudeLocator()
+        let runner = SimulatedModCommandRunner()
+        let installer = ModInstaller(locator: locator, runner: runner, prepareInbox: { true })
+        return ModSyncCoordinator(
+            controller: ModOnboardingController(installer: installer, preference: SimulatedPromptPreference()),
+            detector: ModSyncDetector(locator: locator, runner: runner, inboxDirectory: inbox),
+            activityProvider: activityProvider,
+            localizePanel: localizePanel,
+            localizeSync: localizeSync,
+            simulatedOutdatedMod: true)
+    }
+}
+
+private struct SimulatedClaudeLocator: ClaudeExecutableLocating {
+    func locate() -> String? { "/simulated/claude" }
+}
+
+private final class SimulatedPromptPreference: ModPromptPreferenceStoring {
+    var isPromptDismissed = false
+}
+
+/// Answers like Claude Code 2.1.300 with Mod 1.0.0 installed; every command succeeds after a short delay.
+private struct SimulatedModCommandRunner: ModCommandRunning {
+    func run(executablePath: String, arguments: [String]) -> ModCommandResult? {
+        if arguments == ModInstallPlan.versionArguments {
+            return ModCommandResult(exitCode: 0, stdout: "2.1.300 (Claude Code)\n", stderr: "")
+        }
+        if arguments == ModInstallPlan.listArguments {
+            let list = #"[{"id":"balancebar-mod@balancebar-mods","scope":"user","enabled":true,"version":"1.0.0","installedAt":"2026-10-01T08:00:00.000Z"}]"#
+            return ModCommandResult(exitCode: 0, stdout: list, stderr: "")
+        }
+        Thread.sleep(forTimeInterval: 1.2)
+        return ModCommandResult(exitCode: 0, stdout: #"{"outcome":"ok"}"#, stderr: "")
     }
 }

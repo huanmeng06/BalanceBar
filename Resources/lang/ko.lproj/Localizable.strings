@@ -697,6 +697,21 @@
 "mod.sync.status.rejected_account" = "스냅샷 거부됨: Claude 로그인 계정이 BalanceBar 의 현재 계정과 일치하지 않습니다";
 "mod.sync.status.rejected_cycle" = "스냅샷 거부됨: 주기가 공식 데이터와 일치하지 않아 공식 경로로 되돌아갑니다";
 "mod.sync.status.installation_unknown" = "Mod 설치 여부를 확인할 수 없습니다(플러그인 목록 실패)";
+"mod.sync.status.update_required" = "Mod가 오래되어 업데이트가 필요합니다(서드파티 플러그인 마켓플레이스는 기본적으로 자동 업데이트되지 않습니다).\n업데이트 후 Claude Code 세션을 다시 시작하세요";
+"mod.card.update.title" = "Mod 업데이트 필요";
+"mod.card.update.reason" = "현재 버전: %1$@";
+"mod.card.update.action" = "최신 버전: %1$@";
+"mod.update.button" = "지금 업데이트";
+"mod.update.title" = "BalanceBar Mod 업데이트 필요";
+"mod.update.progress_title" = "BalanceBar Mod 업데이트 중";
+"mod.update.step1" = "소스 업데이트";
+"mod.update.step2" = "Mod 업데이트";
+"mod.update.done" = "업데이트됨 ✓";
+"mod.update.done_note" = "새 Mod가 적용되도록 Claude Code 세션을 다시 시작하세요.";
+"mod.failure.update_command" = "업데이트가 완료되지 않았습니다. 터미널에서 아래 명령을 차례로 실행한 다음 세션을 다시 시작하세요:";
+"mod.card.update.button" = "지금 업데이트";
+"mod.card.update.restart" = "Mod를 업데이트했습니다. Claude Code 세션을 다시 시작하세요";
+"mod.sync.status.restart_required" = "Mod는 업데이트되었지만 이전 세션이 아직 실행 중입니다. Claude Code 세션을 다시 시작하세요";
 
 // Mod management window (Issue #604)
 "mod.ui.subtitle" = "Claude Code 할당량을 최신 상태로 유지";
@@ -716,6 +731,8 @@
 "mod.ui.uninstall_reload_hint" = "기존 세션에서는 아래 명령을 실행하면 제거가 바로 적용됩니다.";
 "mod.ui.cancel" = "취소";
 "mod.ui.uninstall_failure_title" = "제거 미완료";
+"mod.ui.update_failure_title" = "업데이트 실패";
+"mod.ui.unknown_status_title" = "설치 상태를 확인할 수 없음";
 "mod.ui.account_advice" = "Claude Code와 BalanceBar가 같은 계정을 사용하는지 확인한 후 새 세션을 시작하세요.";
 "mod.ui.cycle_advice" = "공식 할당량을 계속 사용합니다. 공식 소스에서 새 주기를 확인한 후 새 세션의 데이터를 확인하세요.";
 

@@ -1,0 +1,9 @@
+# XCTest shard plan for Full CI. Format: <shard> <XCTestCase class>.
+# Listed shards run ONLY their classes. The final shard (highest number + 1)
+# runs every class NOT listed here, so new or renamed classes are never lost.
+# Balanced from measured class seconds (runs 41395350316, 41612735164).
+1 DashboardPageSearchTests
+2 DashboardPreferencePagesTests
+2 DashboardProductionPathRegressionTests
+2 UpdateTests
+2 SnapshotInboxTests

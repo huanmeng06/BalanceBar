@@ -9,7 +9,8 @@ import time
 NAMES = {'scope': 'CI repository checks and PR scope',
          'full': 'Full CI (CLI, probes and serial XCTest)',
          'version': 'PR-wide version-only exemption (no XCTest)',
-         'smoke': 'Pre-Liquid-Glass artifact smoke'}
+         'smoke': 'Pre-Liquid-Glass artifact smoke',
+         'docs': 'PR-wide docs-only exemption (no XCTest)'}
 
 
 def api(path):
@@ -36,7 +37,8 @@ def metadata_log_matches(log, pr, merge_sha):
                 'Checkout/merge SHA: ' + merge_sha)
     return (all(item in lines for item in identity)
             and any(line.startswith('PASS: Full CI ') or
-                    line.startswith('PASS: PR-wide version-only exemption')
+                    line.startswith('PASS: PR-wide version-only exemption') or
+                    line.startswith('PASS: PR-wide docs-only exemption')
                     for line in lines))
 
 
@@ -136,8 +138,9 @@ def metadata_gate(event):
                 full = names.get(NAMES['full'], {}).get('conclusion') == 'success'
                 version = names.get(NAMES['version'], {}).get('conclusion') == 'success'
                 smoke = names.get(NAMES['smoke'], {}).get('conclusion') in ('success', 'failure')
-                if not ((full and smoke) or version):
-                    return False, 'Latest Ready Full/version evidence incomplete', {'run_id': source['id']}
+                docs = names.get(NAMES['docs'], {}).get('conclusion') == 'success'
+                if not ((full and smoke) or version or docs):
+                    return False, 'Latest Ready Full/version/docs evidence incomplete', {'run_id': source['id']}
                 logs = subprocess.check_output(
                     ['gh', 'api', '--allow-escape-sequences', f'repos/{repo}/actions/jobs/{gate["id"]}/logs'],
                     text=True, timeout=30)

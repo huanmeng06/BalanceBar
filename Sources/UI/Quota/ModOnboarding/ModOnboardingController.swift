@@ -35,6 +35,14 @@ enum ModOnboardingText: String, CaseIterable {
     case failureUninstall = "mod.failure.uninstall_command"
     case copyEnableCommands = "mod.failure.copy_enable"
     case failureInbox = "mod.failure.inbox"
+    case updateButton = "mod.update.button"
+    case updateTitle = "mod.update.title"
+    case updateProgressTitle = "mod.update.progress_title"
+    case updateStep1 = "mod.update.step1"
+    case updateStep2 = "mod.update.step2"
+    case updateDone = "mod.update.done"
+    case updateDoneNote = "mod.update.done_note"
+    case failureUpdate = "mod.failure.update_command"
 
     case subtitle = "mod.ui.subtitle"
     case benefitRealtime = "mod.ui.benefit_realtime"
@@ -56,6 +64,8 @@ enum ModOnboardingText: String, CaseIterable {
     case backToIntro = "mod.ui.back_to_intro"
     case lastDataNote = "mod.ui.last_data_note"
     case uninstallFailureTitle = "mod.ui.uninstall_failure_title"
+    case updateFailureTitle = "mod.ui.update_failure_title"
+    case unknownStatusTitle = "mod.ui.unknown_status_title"
     case accountAdvice = "mod.ui.account_advice"
     case cycleAdvice = "mod.ui.cycle_advice"
 
@@ -112,6 +122,8 @@ enum ModOnboardingText: String, CaseIterable {
         case .backToIntro: return "返回介绍"
         case .lastDataNote: return "「最近可信数据」是 BalanceBar 最后一次采用额度数据的时间；额度没变化时不会更新。"
         case .uninstallFailureTitle: return "卸载未完成"
+        case .updateFailureTitle: return "更新失败"
+        case .unknownStatusTitle: return "无法确认安装状态"
         case .accountAdvice: return "请确认 Claude Code 与 BalanceBar 使用同一账号，再新开会话。"
         case .cycleAdvice: return "继续使用官方额度；新周期经官方确认后，再检查新会话的数据。"
         case .promptRow: return "启用实时增强 ›"
@@ -146,6 +158,14 @@ enum ModOnboardingText: String, CaseIterable {
         case .uninstallDoneNote: return "额度已改为定时向官方查询。其他插件不受影响。"
         case .failureUninstall: return "卸载未完成。请在终端中运行下面的命令："
         case .copyEnableCommands: return "复制启用命令"
+        case .updateButton: return "一键更新"
+        case .updateTitle: return "BalanceBar Mod 需要更新"
+        case .updateProgressTitle: return "正在更新 BalanceBar Mod"
+        case .updateStep1: return "更新来源"
+        case .updateStep2: return "更新 Mod"
+        case .updateDone: return "已更新 ✓"
+        case .updateDoneNote: return "请重启 Claude Code 会话，新版 Mod 才会生效。"
+        case .failureUpdate: return "更新未完成。请在终端中依次运行下面的命令，然后重启会话："
         case .failureInbox: return "快照收件箱无法创建（权限不足或所有者不符）。请检查 ~/Library/Application Support/BalanceBar/inbox 后重试。"
         }
     }
@@ -177,6 +197,10 @@ enum ModPanelState: Equatable {
     case uninstalling(current: ModUninstallStep)
     case uninstallSucceeded
     case uninstallFailed(ModUninstallFailure)
+    /// Updating the outdated Mod; steps reuse `ModInstallStep` (see `ModInstaller.update`).
+    case updating(current: ModInstallStep)
+    case updateSucceeded
+    case updateFailed(ModInstallFailure)
 }
 
 /// Drives the panel and the settings page. Main-thread only; installation work runs on the installer's queue.
@@ -196,10 +220,13 @@ final class ModOnboardingController {
     private let copyToPasteboard: (String) -> Void
     private var installInFlight = false
     private var uninstallInFlight = false
+    private var updateInFlight = false
     /// Fired when the install commands finish, so the owner can re-run detection.
     var onInstallCompleted: ((ModInstallResult) -> Void)?
     /// Fired when the uninstall commands finish, so the owner can re-run detection.
     var onUninstallCompleted: ((ModUninstallResult) -> Void)?
+    /// Fired when the update commands finish, so the owner can clear the outdated-Mod state.
+    var onUpdateCompleted: ((ModInstallResult) -> Void)?
 
     init(
         plan: ModInstallPlan = .standard,
@@ -222,7 +249,7 @@ final class ModOnboardingController {
     /// pages must not survive into the next management session. Operations that are
     /// still running keep their progress.
     func resetToIntro() {
-        guard !installInFlight, !uninstallInFlight else { return }
+        guard !installInFlight, !uninstallInFlight, !updateInFlight else { return }
         state = .intro(dismissChecked: false)
     }
 
@@ -239,7 +266,7 @@ final class ModOnboardingController {
     }
 
     func startInstall() {
-        guard !installInFlight, !uninstallInFlight else { return }
+        guard !installInFlight, !uninstallInFlight, !updateInFlight else { return }
         installInFlight = true
         state = .installing(current: .addMarketplace)
         installer.install(
@@ -256,10 +283,29 @@ final class ModOnboardingController {
         )
     }
 
+    /// Runs `claude plugin marketplace update` and `claude plugin update` for the outdated Mod.
+    func startUpdate() {
+        guard !installInFlight, !uninstallInFlight, !updateInFlight else { return }
+        updateInFlight = true
+        state = .updating(current: .addMarketplace)
+        installer.update(
+            progress: { [weak self] step in self?.state = .updating(current: step) },
+            completion: { [weak self] result in
+                guard let self else { return }
+                self.updateInFlight = false
+                switch result {
+                case .success: self.state = .updateSucceeded
+                case let .failure(failure): self.state = .updateFailed(failure)
+                }
+                self.onUpdateCompleted?(result)
+            }
+        )
+    }
+
     /// Uninstalls this plugin's user-scope registration and the marketplace entry the
     /// install flow created. Nothing else is touched: no other plugin.
     func startUninstall() {
-        guard !uninstallInFlight, !installInFlight else { return }
+        guard !uninstallInFlight, !installInFlight, !updateInFlight else { return }
         uninstallInFlight = true
         state = .uninstalling(current: .uninstallPlugin)
         installer.uninstall(
@@ -277,6 +323,7 @@ final class ModOnboardingController {
     }
 
     func copyInstallCommands() { copyToPasteboard(plan.copyableCommands) }
+    func copyUpdateCommands() { copyToPasteboard(plan.copyableUpdateCommands) }
     func copyUninstallCommands() { copyToPasteboard(plan.copyableUninstallCommands) }
     func copyEnableCommand() { copyToPasteboard(plan.copyableEnableCommand) }
     func copyReloadCommand() { copyToPasteboard(ModInstallPlan.reloadCommand) }
