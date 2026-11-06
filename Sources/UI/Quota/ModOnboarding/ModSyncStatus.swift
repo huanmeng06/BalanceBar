@@ -95,7 +95,13 @@ enum ModSyncStatus: Equatable {
             return .notInstalled(hasOtherScopeInstall: environment.hasNonUserScopeInstall)
         }
         guard installation.isEnabled else { return .disabled }
-        if evidence.modOutdated { return .updateRequired(installedVersion: installation.version) }
+        // Two independent signals: the installed plugin is older than this build expects (a plugin
+        // that writes the current snapshot format can still lack a fix), or a snapshot in the old
+        // format arrived. A current plugin with old-format evidence means a session still runs the
+        // old module (the views show that as "restart", not "update").
+        if evidence.modOutdated || !ModVersion.isCurrent(installation.version) {
+            return .updateRequired(installedVersion: installation.version)
+        }
         // A rejection newer than the last acceptance is the current situation; an older
         // one was superseded by accepted data.
         if let rejection = evidence.lastRejection,
