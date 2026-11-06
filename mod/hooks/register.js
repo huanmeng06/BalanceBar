@@ -63,9 +63,11 @@ export async function writeSnapshot($, snapshot, filename) {
 
 /// A first load into a session that started in the last 30 seconds is taken as the session's real
 /// start. `usage().startedAt` is the session's first launch, so a resumed or forked session looks
-/// old however recently its process started; such a session counts as freshly started instead
-/// while the process has seen no API response (`rateLimits` still empty). An old session that
-/// already has a reading means this module was added to one that was already running.
+/// old however recently its process started. Such a session is recognised by two things at start
+/// that a Mod added to a running session never shows together: no API response yet in this
+/// process (`rateLimits` empty) and a cost already carried over from the earlier run
+/// (`cost.usd > 0`, which a new session starts without). A session that has had a response, or has
+/// no carried-over cost, stays untrusted.
 const FRESH_START_MS = 30_000
 
 /// The account a session started under. The Mod API gives a session no identity of its own
@@ -85,8 +87,8 @@ export async function bindSession($) {
     try {
       const usage = await $.session.usage()
       const newSession = Number.isFinite(usage?.startedAt) && (await $.clock.now()) - usage.startedAt <= FRESH_START_MS
-      // A resumed session has an old startedAt but its process has not had a response yet.
       const resumedAtStart = Array.isArray(usage?.rateLimits) && usage.rateLimits.length === 0
+        && Number.isFinite(usage?.cost?.usd) && usage.cost.usd > 0
       const fresh = newSession || resumedAtStart
       const hashes = await readAccountHashes($, await readHome($))
       if (fresh && hashes.emailHash) session = { status: "bound", ...hashes }
