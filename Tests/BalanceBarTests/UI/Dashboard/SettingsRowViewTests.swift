@@ -270,6 +270,40 @@ final class SettingsRowViewTests: XCTestCase {
         )
     }
 
+    func testTitleHeightShrinksToSingleLineAfterNarrowThenWideResize() throws {
+        let badge = DashboardUpdateBadgeView()
+        let row = SettingsRowView(
+            title: "BalanceBar Mod 实时增强",
+            detail: "等待数据：打开桌面端后即可获得实时读数。",
+            titleAccessory: badge,
+            accessoryView: NSButton(title: "了解更多", target: nil, action: nil)
+        )
+        let section = SettingsSectionView(title: "Mod", contentViews: [row])
+        let window = makeTestWindow(width: 720)
+        let host = pinningHost(for: section, in: window, width: 720)
+        defer { window.orderOut(nil) }
+
+        let singleLineTitle = row.titleLabel.frame.height
+        let wideRowHeight = row.frame.height
+        for width in [300, 260, 720, 280, 640, 250, 800] as [CGFloat] {
+            // 不转动 run loop、不 flush：模拟缩放过程中的瞬态。
+            window.setContentSize(NSSize(width: width, height: 360))
+            host.setFrameSize(NSSize(width: width, height: 360))
+            window.layoutIfNeeded()
+            section.layoutSubtreeIfNeeded()
+            let needed = measuredLabelHeight(row.titleLabel, width: row.titleLabel.preferredMaxLayoutWidth)
+            XCTAssertEqual(row.titleLabel.frame.height, needed, accuracy: 0.5, "title height stale mid-resize at \(width)")
+        }
+        pin(section, to: host, window: window, width: 720)
+        XCTAssertEqual(row.titleLabel.frame.height, singleLineTitle, accuracy: 0.5)
+        XCTAssertEqual(row.frame.height, wideRowHeight, accuracy: 0.5)
+    }
+
+    private func measuredLabelHeight(_ label: NSTextField, width: CGFloat) -> CGFloat {
+        guard let cell = label.cell else { return 0 }
+        return cell.cellSize(forBounds: NSRect(x: 0, y: 0, width: width, height: .greatestFiniteMagnitude)).height
+    }
+
     func testWrappingHeightCommitsAfterLiveResizeEndsWithoutLayoutInvalidation() throws {
         let longDetail = "This native settings description must wrap onto additional lines when the dashboard content column is narrow so the switch stays visible beside the complete text."
         let row = SettingsRowView(

@@ -409,6 +409,26 @@ final class SettingsRowView: NSView {
         updateSearchNaturalHeightConstraint()
         isPerformingLayout = false
         scheduleWrappingHeightCommitIfNeeded()
+        commitWrappingHeightSynchronouslyIfLabelsAreStale()
+    }
+
+    /// The deferred commit leaves the title/detail labels at the previous
+    /// width's height for a run-loop turn (or longer while a live resize holds
+    /// the loop in tracking mode), which shows up as extra vertical space
+    /// above and between the labels after a narrow-to-wide resize. When a
+    /// label's laid-out height no longer matches its solved wrapping height,
+    /// commit now instead of waiting.
+    private func commitWrappingHeightSynchronouslyIfLabelsAreStale() {
+        guard wrappingHeightIsDirty, window != nil else { return }
+        let labels = [titleLabel, detailLabel].filter { !$0.isHidden && $0.superview != nil }
+        let stale = labels.contains { label in
+            let width = label.preferredMaxLayoutWidth
+            guard width > 1, label.frame.height > 1 else { return false }
+            return abs(label.frame.height - SettingsTextHeight.measured(label, at: width)) > 0.5
+        }
+        guard stale else { return }
+        wrappingCommitWorkItem?.cancel()
+        performScheduledWrappingHeightCommit()
     }
 
     private func updateSearchNaturalHeightConstraint() {
