@@ -473,7 +473,9 @@ final class ModSyncStatusTests: XCTestCase {
     }
 
     private var installed: ModPluginInstallation {
-        ModPluginInstallation(scope: "user", isEnabled: true, version: "1.0.0", installedAt: now.addingTimeInterval(-600))
+        ModPluginInstallation(
+            scope: "user", isEnabled: true, version: ModOnboardingConfig.latestModVersion,
+            installedAt: now.addingTimeInterval(-600))
     }
 
     func testDetectingWithoutEnvironment() {
@@ -539,17 +541,17 @@ final class ModSyncStatusTests: XCTestCase {
             ModSyncStatus.resolve(environment: env(installation: installed, processRunning: true), evidence: stale, now: now),
             .silent)
         // Never accepted anything, installed longer than the grace period, Claude running.
-        let oldInstall = ModPluginInstallation(scope: "user", isEnabled: true, version: "1.0.0", installedAt: now.addingTimeInterval(-3_600))
+        let oldInstall = ModPluginInstallation(scope: "user", isEnabled: true, version: ModOnboardingConfig.latestModVersion, installedAt: now.addingTimeInterval(-3_600))
         XCTAssertEqual(
             ModSyncStatus.resolve(environment: env(installation: oldInstall, processRunning: true), evidence: .init(), now: now),
             .silent)
         // At the grace boundary the silence is reported…
-        let boundaryInstall = ModPluginInstallation(scope: "user", isEnabled: true, version: "1.0.0", installedAt: now.addingTimeInterval(-600))
+        let boundaryInstall = ModPluginInstallation(scope: "user", isEnabled: true, version: ModOnboardingConfig.latestModVersion, installedAt: now.addingTimeInterval(-600))
         XCTAssertEqual(
             ModSyncStatus.resolve(environment: env(installation: boundaryInstall, processRunning: true), evidence: .init(), now: now),
             .silent)
         // …and a recently installed Claude session is still just waiting for its first turn.
-        let freshInstall = ModPluginInstallation(scope: "user", isEnabled: true, version: "1.0.0", installedAt: now.addingTimeInterval(-300))
+        let freshInstall = ModPluginInstallation(scope: "user", isEnabled: true, version: ModOnboardingConfig.latestModVersion, installedAt: now.addingTimeInterval(-300))
         XCTAssertEqual(
             ModSyncStatus.resolve(environment: env(installation: freshInstall, processRunning: true), evidence: .init(), now: now),
             .waitingForData)
@@ -584,12 +586,68 @@ final class ModSyncStatusTests: XCTestCase {
             ModSyncStatus.resolve(environment: env(installation: installed), evidence: evidence, now: now),
             .updateRequired(installedVersion: "1.0.0"))
         evidence.modOutdated = false
+        // Clearing the snapshot evidence alone does not clear it while the plugin itself is old (#669)…
         XCTAssertEqual(
             ModSyncStatus.resolve(environment: env(installation: installed), evidence: evidence, now: now),
+            .updateRequired(installedVersion: "1.0.0"))
+        // …updating the plugin does.
+        let updated = ModPluginInstallation(
+            scope: "user", isEnabled: true, version: ModOnboardingConfig.latestModVersion,
+            installedAt: now.addingTimeInterval(-60))
+        XCTAssertEqual(
+            ModSyncStatus.resolve(environment: env(installation: updated), evidence: evidence, now: now),
             .active(lastAcceptedAt: now.addingTimeInterval(-60)))
         let text = RealtimeBoostPresentation.make(status: .updateRequired(installedVersion: "1.0.0"), timeZone: TimeZone(identifier: "UTC")!).statusText
         XCTAssertTrue(text.contains("第三方插件市场默认不自动更新"))
         XCTAssertTrue(text.contains("重启 Claude Code 会话"))
+    }
+
+    /// #669: a plugin that writes the current snapshot format but is older than this build expects
+    /// (1.1.0 lacks the resumed-session fix) must still be reported as needing an update.
+    func testInstalledVersionBelowExpectedResolvesToUpdateRequiredWithoutOutdatedEvidence() {
+        func install(_ version: String?, enabled: Bool = true) -> ModPluginInstallation {
+            ModPluginInstallation(scope: "user", isEnabled: enabled, version: version, installedAt: now.addingTimeInterval(-86_400))
+        }
+        let accepted = ModSnapshotEvidence(lastAcceptedAt: now.addingTimeInterval(-60))
+        XCTAssertFalse(accepted.modOutdated)
+        // The Mod keeps producing trusted snapshots, yet a lower version still needs the update.
+        XCTAssertEqual(
+            ModSyncStatus.resolve(environment: env(installation: install("1.1.0")), evidence: accepted, now: now),
+            .updateRequired(installedVersion: "1.1.0"))
+        XCTAssertEqual(
+            ModSyncStatus.resolve(environment: env(installation: install("1.1.0")), evidence: .init(), now: now),
+            .updateRequired(installedVersion: "1.1.0"))
+        // An unreadable version is not proven current.
+        XCTAssertEqual(
+            ModSyncStatus.resolve(environment: env(installation: install(nil)), evidence: accepted, now: now),
+            .updateRequired(installedVersion: nil))
+        // The expected version itself, and anything newer (a Mod installed from a newer build), prompt nothing:
+        // updating could not change the version and the prompt would never clear.
+        XCTAssertEqual(
+            ModSyncStatus.resolve(environment: env(installation: install(ModOnboardingConfig.latestModVersion)), evidence: accepted, now: now),
+            .active(lastAcceptedAt: now.addingTimeInterval(-60)))
+        XCTAssertEqual(
+            ModSyncStatus.resolve(environment: env(installation: install("99.0.0")), evidence: accepted, now: now),
+            .active(lastAcceptedAt: now.addingTimeInterval(-60)))
+        // Old-format evidence still wins with a current plugin: a session still runs the old module.
+        XCTAssertEqual(
+            ModSyncStatus.resolve(
+                environment: env(installation: install(ModOnboardingConfig.latestModVersion)),
+                evidence: ModSnapshotEvidence(lastAcceptedAt: now.addingTimeInterval(-60), modOutdated: true), now: now),
+            .updateRequired(installedVersion: ModOnboardingConfig.latestModVersion))
+        // Higher-priority states are not overridden by an old version.
+        XCTAssertEqual(
+            ModSyncStatus.resolve(environment: env(installation: install("1.1.0", enabled: false)), evidence: accepted, now: now),
+            .disabled)
+        XCTAssertEqual(
+            ModSyncStatus.resolve(environment: env(installation: install("1.1.0"), inboxReady: false), evidence: accepted, now: now),
+            .inboxNotReady)
+        XCTAssertEqual(
+            ModSyncStatus.resolve(environment: env(version: ClaudeCodeVersion(major: 2, minor: 1, patch: 100), installation: install("1.1.0")), evidence: accepted, now: now),
+            .claudeVersionTooOld(ClaudeCodeVersion(major: 2, minor: 1, patch: 100)))
+        XCTAssertEqual(
+            ModSyncStatus.resolve(environment: env(installation: nil), evidence: accepted, now: now),
+            .notInstalled(hasOtherScopeInstall: false))
     }
 }
 
@@ -811,10 +869,10 @@ final class ModSyncCoordinatorTests: XCTestCase {
         inboxDirectory = nil
     }
 
-    private func listJSON(enabled: Bool = true) -> Data {
+    private func listJSON(enabled: Bool = true, version: String = ModOnboardingConfig.latestModVersion) -> Data {
         try! JSONSerialization.data(withJSONObject: [[
             "id": "balancebar-mod@balancebar-mods", "scope": "user", "enabled": enabled,
-            "version": "1.0.0", "installedAt": "2026-10-20T08:00:00.000Z",
+            "version": version, "installedAt": "2026-10-20T08:00:00.000Z",
         ]])
     }
 
@@ -845,9 +903,10 @@ final class ModSyncCoordinatorTests: XCTestCase {
 
     func testSimulatedOutdatedModStaysPinnedUntilTheOneClickUpdateSucceeds() {
         let version = ModCommandResult(exitCode: 0, stdout: "2.1.291 (Claude Code)", stderr: "")
-        let list = ModCommandResult(exitCode: 0, stdout: String(decoding: listJSON(), as: UTF8.self), stderr: "")
+        let list = ModCommandResult(exitCode: 0, stdout: String(decoding: listJSON(version: "1.0.0"), as: UTF8.self), stderr: "")
+        let updatedList = ModCommandResult(exitCode: 0, stdout: String(decoding: listJSON(), as: UTF8.self), stderr: "")
         let (coordinator, _) = makeCoordinator(
-            locator: "/bin/claude", results: [version, list, ok, ok, version, list], simulatedOutdatedMod: true)
+            locator: "/bin/claude", results: [version, list, ok, ok, version, updatedList], simulatedOutdatedMod: true)
         let pinned = expectation(description: "pinned")
         coordinator.onStatusChange = { if $0 == .updateRequired(installedVersion: "1.0.0") { pinned.fulfill() } }
         coordinator.startDetectionIfNeeded(force: true)
