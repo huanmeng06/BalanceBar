@@ -7,7 +7,7 @@ enum ModOnboardingConfig {
     /// An enabled Mod that stays silent this long while Claude Code is active is reported as "no data".
     static let noDataWithActivityGrace: TimeInterval = 10 * 60
     /// The Mod version this BalanceBar build expects; `mod/.claude-plugin/plugin.json` must carry the same value.
-    static let latestModVersion = "1.1.0"
+    static let latestModVersion = "1.1.1"
     static let minimumClaudeCodeVersion = ClaudeCodeVersion(major: 2, minor: 1, patch: 287)
 }
 
