@@ -1065,11 +1065,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         // reading it here never launches the Keychain tool.
         let accountProfile = isOfficialOpenAICodex ? currentAccountProfileCache
             : isOfficialClaude ? officialQuotaClient.cachedClaudeAccountProfile() : nil
+        let claudeLoginHint = isOfficialClaude && accountProfile?.email == nil
+            && claudeQuota.latestState?.failure == .missingCredentials
+            ? OpenAIAccountPresentation.UnavailableReason.claudeLoginRequired
+            : nil
         let openAIAccount = OpenAIAccountPresentation.current(
             activeClient: activeClient,
             providerIsOfficial: isOfficialOpenAICodex || isOfficialClaude,
             email: accountProfile?.email,
-            subscription: OpenAISubscriptionTier(planType: accountProfile?.planType, client: activeClient)
+            subscription: OpenAISubscriptionTier(planType: accountProfile?.planType, client: activeClient),
+            unavailableReason: claudeLoginHint
         )
         let directProviderID = providerChoicesCache.first(where: \.isCurrent)?.id ?? lastProviderID
         let directProviderNotes = aggregationDisplays.isEmpty || activeClient != .codex

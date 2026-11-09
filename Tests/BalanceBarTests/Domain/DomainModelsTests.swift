@@ -394,6 +394,21 @@ final class DomainModelsTests: XCTestCase {
         )
         XCTAssertEqual(claude?.state, .available("claude@example.com"))
         XCTAssertEqual(claude?.subscription?.text, "Max · 5x")
+
+        let claudeLoginRequired = OpenAIAccountPresentation.current(
+            activeClient: .claude,
+            providerIsOfficial: true,
+            email: nil,
+            unavailableReason: .claudeLoginRequired
+        )
+        XCTAssertEqual(
+            claudeLoginRequired?.text(language: .english),
+            "Claude Code sign-in has expired. Run claude once in a terminal to restore it; BalanceBar never renews the login itself."
+        )
+        XCTAssertEqual(
+            claudeLoginRequired?.text(language: .simplifiedChinese),
+            "Claude Code 登录已过期。在终端运行一次 claude 即可恢复；BalanceBar 不会自行续期登录。"
+        )
         XCTAssertNil(
             OpenAIAccountPresentation.current(
                 activeClient: .grok,

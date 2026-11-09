@@ -114,6 +114,10 @@ enum OpenAISubscriptionTier: Equatable {
 }
 
 struct OpenAIAccountPresentation: Equatable {
+    enum UnavailableReason: Equatable {
+        case claudeLoginRequired
+    }
+
     enum State: Equatable {
         case available(String)
         case unavailable
@@ -121,8 +125,13 @@ struct OpenAIAccountPresentation: Equatable {
 
     let state: State
     let subscription: OpenAISubscriptionTier?
+    /// Optional provider-specific guidance shown when the account identity is unavailable.
+    /// The default remains the generic account-unavailable copy for callers that do not have
+    /// a more precise reason from their refresh pipeline.
+    let unavailableReason: UnavailableReason?
 
-    init(email: String?, subscription: OpenAISubscriptionTier? = nil) {
+    init(email: String?, subscription: OpenAISubscriptionTier? = nil, unavailableReason: UnavailableReason? = nil) {
+        self.unavailableReason = unavailableReason
         if let email {
             let normalized = email.trimmingCharacters(in: .whitespacesAndNewlines)
             state = normalized.isEmpty ? .unavailable : .available(normalized)
@@ -137,10 +146,11 @@ struct OpenAIAccountPresentation: Equatable {
         activeClient: AssistantClient,
         providerIsOfficial: Bool,
         email: String?,
-        subscription: OpenAISubscriptionTier? = nil
+        subscription: OpenAISubscriptionTier? = nil,
+        unavailableReason: UnavailableReason? = nil
     ) -> Self? {
         guard activeClient == .codex || activeClient == .claude, providerIsOfficial else { return nil }
-        return Self(email: email, subscription: subscription)
+        return Self(email: email, subscription: subscription, unavailableReason: unavailableReason)
     }
 
     func text(language: AppLanguage = .selected) -> String {
@@ -148,7 +158,12 @@ struct OpenAIAccountPresentation: Equatable {
         case .available(let email):
             return tr(.keyProviderModelsValue, arguments: [String(describing: email)], language: language)
         case .unavailable:
-            return tr(.keyProviderModelsAccountUnavailable, language: language)
+            switch unavailableReason {
+            case .claudeLoginRequired:
+                return tr(.keyClaudeRefreshLoginExpired, language: language)
+            case nil:
+                return tr(.keyProviderModelsAccountUnavailable, language: language)
+            }
         }
     }
 }
