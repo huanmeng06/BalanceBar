@@ -5,7 +5,7 @@ import AppKit
 /// semantic line breaks at the solved width; the source value remains intact
 /// for accessibility and later updates.
 final class SettingsSemanticSubtitleLabel: NSTextField {
-    private var localizedSubtitle: LocalizedSubtitle?
+    private(set) var localizedSubtitle: LocalizedSubtitle?
     private var isApplyingLayoutText = false
     private var isApplyingEmphasis = false
     private var lastAppliedWidth: CGFloat = -1

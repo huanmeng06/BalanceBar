@@ -62,7 +62,12 @@ export async function writeSnapshot($, snapshot, filename) {
 }
 
 /// A first load into a session that started in the last 30 seconds is taken as the session's real
-/// start; an older session means this module was added to one that was already running.
+/// start. `usage().startedAt` is the session's first launch, so a resumed or forked session looks
+/// old however recently its process started. Such a session is recognised by two things at start
+/// that a Mod added to a running session never shows together: no API response yet in this
+/// process (`rateLimits` empty) and a cost already carried over from the earlier run
+/// (`cost.usd > 0`, which a new session starts without). A session that has had a response, or has
+/// no carried-over cost, stays untrusted.
 const FRESH_START_MS = 30_000
 
 /// The account a session started under. The Mod API gives a session no identity of its own
@@ -71,9 +76,9 @@ const FRESH_START_MS = 30_000
 /// are still running. A session therefore remembers what the file said when this module first
 /// loaded into it, in `$.state`: that survives a reload of the module, so a reload never binds
 /// again, whatever the session's age. It then writes nothing once the file disagrees. Anything
-/// that cannot be proven to be a real start (added to a running session, a resumed session,
-/// an unreadable account, no start event) leaves the session untrusted: it writes nothing
-/// until it is restarted.
+/// that cannot be proven to be a real start (added to a running session, an unreadable account,
+/// no start event) leaves the session untrusted: it writes nothing until it is restarted.
+/// A resumed or forked session binds like a new one, to the account the file names at that moment.
 export async function bindSession($) {
   try {
     const held = await $.state.get({ plugin: "balancebar-mod", key: "session" })
@@ -81,7 +86,10 @@ export async function bindSession($) {
     let session = { status: "untrusted", emailHash: null, organizationHash: null }
     try {
       const usage = await $.session.usage()
-      const fresh = Number.isFinite(usage?.startedAt) && (await $.clock.now()) - usage.startedAt <= FRESH_START_MS
+      const newSession = Number.isFinite(usage?.startedAt) && (await $.clock.now()) - usage.startedAt <= FRESH_START_MS
+      const resumedAtStart = Array.isArray(usage?.rateLimits) && usage.rateLimits.length === 0
+        && Number.isFinite(usage?.cost?.usd) && usage.cost.usd > 0
+      const fresh = newSession || resumedAtStart
       const hashes = await readAccountHashes($, await readHome($))
       if (fresh && hashes.emailHash) session = { status: "bound", ...hashes }
     } catch {

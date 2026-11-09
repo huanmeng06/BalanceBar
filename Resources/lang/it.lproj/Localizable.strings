@@ -697,6 +697,21 @@
 "mod.sync.status.rejected_account" = "Snapshot rifiutato: l'account Claude non corrisponde all'account BalanceBar corrente";
 "mod.sync.status.rejected_cycle" = "Snapshot rifiutato: il ciclo non corrisponde ai dati ufficiali; viene usato il percorso ufficiale";
 "mod.sync.status.installation_unknown" = "Impossibile confermare se il Mod è installato (elenco plugin non riuscito)";
+"mod.sync.status.update_required" = "Il Mod è obsoleto e va aggiornato (i marketplace di plugin di terze parti per impostazione predefinita non si aggiornano automaticamente).\nRiavvia poi la sessione di Claude Code";
+"mod.card.update.title" = "Aggiornamento del Mod necessario";
+"mod.card.update.reason" = "Versione attuale: %1$@";
+"mod.card.update.action" = "Ultima versione: %1$@";
+"mod.update.button" = "Aggiorna ora";
+"mod.update.title" = "BalanceBar Mod va aggiornato";
+"mod.update.progress_title" = "Aggiornamento di BalanceBar Mod";
+"mod.update.step1" = "Aggiorna origine";
+"mod.update.step2" = "Aggiorna Mod";
+"mod.update.done" = "Aggiornato ✓";
+"mod.update.done_note" = "Riavvia la sessione di Claude Code perché il nuovo Mod abbia effetto.";
+"mod.failure.update_command" = "L’aggiornamento non è stato completato. Esegui questi comandi in un terminale, uno dopo l’altro, poi riavvia la sessione:";
+"mod.card.update.button" = "Aggiorna ora";
+"mod.card.update.restart" = "Mod aggiornato. Riavvia la sessione di Claude Code";
+"mod.sync.status.restart_required" = "Il Mod è aggiornato, ma una vecchia sessione è ancora in esecuzione. Riavvia la sessione di Claude Code";
 
 // Mod management window (Issue #604)
 "mod.ui.subtitle" = "Mantieni aggiornate le quote Claude Code";
@@ -716,6 +731,8 @@
 "mod.ui.uninstall_reload_hint" = "Le sessioni esistenti possono eseguire il comando qui sotto per applicare subito la disinstallazione.";
 "mod.ui.cancel" = "Annulla";
 "mod.ui.uninstall_failure_title" = "Disinstallazione incompleta";
+"mod.ui.update_failure_title" = "Aggiornamento non riuscito";
+"mod.ui.unknown_status_title" = "Impossibile verificare l’installazione";
 "mod.ui.account_advice" = "Verifica che Claude Code e BalanceBar usino lo stesso account, poi avvia una nuova sessione.";
 "mod.ui.cycle_advice" = "Continua con la quota ufficiale. Controlla i dati di una nuova sessione dopo la conferma ufficiale del nuovo ciclo.";
 

@@ -48,6 +48,8 @@ struct ModRejectionEvent: Equatable {
 struct ModSnapshotEvidence: Equatable {
     var lastAcceptedAt: Date?
     var lastRejection: ModRejectionEvent?
+    /// The latest attributed snapshot lacked the organization hash: the installed Mod is outdated.
+    var modOutdated = false
 }
 
 /// The settings entry's honest state. Installed is never conflated with collecting:
@@ -71,6 +73,8 @@ enum ModSyncStatus: Equatable {
     /// Installed and enabled, Claude Code is running, but no accepted data for the
     /// activity grace period — the session probably predates the install.
     case silent
+    /// The installed Mod writes the old snapshot format (1.0.0); it must be updated from the terminal.
+    case updateRequired(installedVersion: String?)
     /// A newer snapshot was rejected than the last accepted one; realtime is not working.
     case snapshotRejected(ModRejectionEvent)
 
@@ -91,6 +95,13 @@ enum ModSyncStatus: Equatable {
             return .notInstalled(hasOtherScopeInstall: environment.hasNonUserScopeInstall)
         }
         guard installation.isEnabled else { return .disabled }
+        // Two independent signals: the installed plugin is older than this build expects (a plugin
+        // that writes the current snapshot format can still lack a fix), or a snapshot in the old
+        // format arrived. A current plugin with old-format evidence means a session still runs the
+        // old module (the views show that as "restart", not "update").
+        if evidence.modOutdated || !ModVersion.isCurrent(installation.version) {
+            return .updateRequired(installedVersion: installation.version)
+        }
         // A rejection newer than the last acceptance is the current situation; an older
         // one was superseded by accepted data.
         if let rejection = evidence.lastRejection,

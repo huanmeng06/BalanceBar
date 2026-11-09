@@ -32,71 +32,45 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release:
-    name: Package and publish Release
+  # Most merges carry no version change, so the decision runs on Ubuntu and a
+  # macOS runner is only taken when a Release is actually built. DMG packaging
+  # (macOS) and note generation (Ubuntu) then run in parallel; the tag and the
+  # Release are created only after both succeed.
+  plan:
+    name: Plan Release
     if: (github.event_name == 'pull_request' && github.event.pull_request.merged == true) || (github.event_name == 'workflow_dispatch' && inputs.source_pr != '')
-    runs-on: macos-26
-    timeout-minutes: 35
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     env:
       GH_TOKEN: ${{ github.token }}
       GITHUB_REPOSITORY: ${{ github.repository }}
       MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
-      BALANCEBAR_DEPLOYMENT_TARGET: "14.0"
-      BALANCEBAR_REQUIRED_SDK_MAJOR: "26"
-
+    outputs:
+      should_release: ${{ steps.release_context.outputs.should_release }}
+      skip: ${{ steps.release_guard.outputs.skip }}
+      merge_sha: ${{ steps.release_context.outputs.merge_sha }}
+      version: ${{ steps.version_plan.outputs.version }}
+      tag: ${{ steps.version_plan.outputs.tag }}
+      prerelease: ${{ steps.version_plan.outputs.prerelease }}
     steps:
+      # release-context only reads the merge commit and its parent.
       - name: Check out the merge commit
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
-          fetch-depth: 0
-
+          fetch-depth: 2
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
-
       - name: Prepare manually selected merged PR event
         if: github.event_name == 'workflow_dispatch' && inputs.source_pr != ''
         env:
           SOURCE_PR: ${{ inputs.source_pr }}
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          pr_json="$(gh pr view "$SOURCE_PR" \
-            --repo "$GITHUB_REPOSITORY" \
-            --json number,title,body,url,state,mergedAt,mergeCommit,labels,closingIssuesReferences)"
-          state="$(jq -r '.state' <<< "$pr_json")"
-          [[ "$state" == "MERGED" ]] \
-            || { echo "PR #$SOURCE_PR is not merged (state: $state)." >&2; exit 1; }
-
-          merge_sha="$(jq -r '.mergeCommit.oid // empty' <<< "$pr_json")"
-          [[ "$merge_sha" =~ ^[0-9a-f]{40}$ ]] \
-            || { echo "PR #$SOURCE_PR has no valid merge commit." >&2; exit 1; }
-          echo "MERGE_SHA=$merge_sha" >> "$GITHUB_ENV"
-
-          manual_event="$RUNNER_TEMP/balancebar-manual-event.json"
-          jq --arg merge_sha "$merge_sha" '{
-            pull_request: {
-              number,
-              title,
-              body,
-              html_url: .url,
-              merged: true,
-              merge_commit_sha: $merge_sha,
-              labels,
-              closingIssuesReferences
-            }
-          }' <<< "$pr_json" > "$manual_event"
-          echo "RELEASE_EVENT_PATH=$manual_event" >> "$GITHUB_ENV"
-
-      - name: Verify macOS 26 build environment
-        run: |
-          set -Eeuo pipefail
-          xcodebuild -version
-          sdk_version="$(xcrun --sdk macosx --show-sdk-version)"
-          [[ "${sdk_version%%.*}" == "$BALANCEBAR_REQUIRED_SDK_MAJOR" ]]
-          echo "Using macOS SDK $sdk_version with deployment target $BALANCEBAR_DEPLOYMENT_TARGET"
+        run: ./scripts/release/prepare-manual-event.sh "$SOURCE_PR"
+      - name: Fetch a manually selected merge commit
+        if: github.event_name == 'workflow_dispatch' && inputs.source_pr != ''
+        run: git fetch --no-tags --depth=2 origin "$MERGE_SHA"
 
       - name: Detect version change in the merged PR
         id: release_context
@@ -143,9 +117,79 @@ jobs:
           fi
           echo "skip=false" >> "$GITHUB_OUTPUT"
 
+  build-dmg:
+    name: Build the production app and DMG
+    needs: plan
+    if: needs.plan.outputs.should_release == 'true' && needs.plan.outputs.skip != 'true'
+    runs-on: macos-26
+    timeout-minutes: 35
+    env:
+      BALANCEBAR_DEPLOYMENT_TARGET: "14.0"
+      BALANCEBAR_REQUIRED_SDK_MAJOR: "26"
+      VERSION: ${{ needs.plan.outputs.version }}
+    steps:
+      - name: Check out the merge commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+          fetch-depth: 1
+
+      - name: Verify macOS 26 build environment
+        run: |
+          set -Eeuo pipefail
+          xcodebuild -version
+          sdk_version="$(xcrun --sdk macosx --show-sdk-version)"
+          [[ "${sdk_version%%.*}" == "$BALANCEBAR_REQUIRED_SDK_MAJOR" ]]
+          echo "Using macOS SDK $sdk_version with deployment target $BALANCEBAR_DEPLOYMENT_TARGET"
+
+      - name: Build the production app and DMG
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ./scripts/build.sh production
+          mkdir -p "$RUNNER_TEMP/release-dmg"
+          ./scripts/release/create-dmg.sh \
+            --app build/BalanceBar.app \
+            --version "$VERSION" \
+            --output "$RUNNER_TEMP/release-dmg/BalanceBar-${VERSION}.dmg"
+
+      - name: Upload the DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-dmg
+          path: ${{ runner.temp }}/release-dmg
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+
+  notes:
+    name: Generate Release notes
+    needs: plan
+    if: needs.plan.outputs.should_release == 'true' && needs.plan.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GITHUB_REPOSITORY: ${{ github.repository }}
+      MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+    steps:
+      - name: Check out the merge commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+          fetch-depth: 0
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Prepare manually selected merged PR event
+        if: github.event_name == 'workflow_dispatch' && inputs.source_pr != ''
+        env:
+          SOURCE_PR: ${{ inputs.source_pr }}
+        run: ./scripts/release/prepare-manual-event.sh "$SOURCE_PR"
+
       - name: Find the previous Release
         id: previous_release
-        if: steps.release_context.outputs.should_release == 'true' && steps.release_guard.outputs.skip != 'true'
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -159,11 +203,11 @@ jobs:
 
           previous_tag="$(node scripts/release/select-previous-release.mjs \
             --releases "$releases_json" \
-            --current-version "${{ steps.version_plan.outputs.version }}" \
-            --prerelease "${{ steps.version_plan.outputs.prerelease }}")"
+            --current-version "${{ needs.plan.outputs.version }}" \
+            --prerelease "${{ needs.plan.outputs.prerelease }}")"
 
           if [[ -z "$previous_tag" ]]; then
-            if [[ "${{ steps.version_plan.outputs.prerelease }}" == "true" ]]; then
+            if [[ "${{ needs.plan.outputs.prerelease }}" == "true" ]]; then
               previous_tag="$(git describe --tags --abbrev=0 "${MERGE_SHA}^" 2>/dev/null || true)"
             fi
           fi
@@ -174,11 +218,10 @@ jobs:
           echo "Previous release: $previous_tag"
 
       - name: Collect bounded commits, files, PR, and Issue context
-        if: steps.release_context.outputs.should_release == 'true' && steps.release_guard.outputs.skip != 'true'
         env:
           PREVIOUS_TAG: ${{ steps.previous_release.outputs.previous_tag }}
-          VERSION: ${{ steps.version_plan.outputs.version }}
-          TAG: ${{ steps.version_plan.outputs.tag }}
+          VERSION: ${{ needs.plan.outputs.version }}
+          TAG: ${{ needs.plan.outputs.tag }}
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -386,7 +429,6 @@ jobs:
           echo "RELEASE_INPUT=$input_json" >> "$GITHUB_ENV"
 
       - name: Generate structured description with the selected AI provider
-        if: steps.release_context.outputs.should_release == 'true' && steps.release_guard.outputs.skip != 'true'
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
@@ -404,7 +446,6 @@ jobs:
           echo "RELEASE_AI_NOTES=$ai_json" >> "$GITHUB_ENV"
 
       - name: Render and validate the exact Release format
-        if: steps.release_context.outputs.should_release == 'true' && steps.release_guard.outputs.skip != 'true'
         run: |
           set -Eeuo pipefail
           notes_file="$RUNNER_TEMP/balancebar-release-notes.md"
@@ -414,38 +455,69 @@ jobs:
             --output "$notes_file"
           echo "RELEASE_NOTES=$notes_file" >> "$GITHUB_ENV"
 
-      - name: Build the production app and DMG
-        if: steps.release_context.outputs.should_release == 'true' && steps.release_guard.outputs.skip != 'true'
+      - name: Upload the Release notes
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-notes
+          path: ${{ env.RELEASE_NOTES }}
+          if-no-files-found: error
+          retention-days: 3
+
+  publish:
+    name: Package and publish Release
+    needs: [plan, build-dmg, notes]
+    if: needs.plan.outputs.should_release == 'true' && needs.plan.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GITHUB_REPOSITORY: ${{ github.repository }}
+    steps:
+      - name: Check out the merge commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+          fetch-depth: 1
+
+      - name: Download the DMG and notes
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/release
+          merge-multiple: true
+
+      - name: Locate Release assets
         env:
-          VERSION: ${{ steps.version_plan.outputs.version }}
-        shell: bash
+          VERSION: ${{ needs.plan.outputs.version }}
+          VERSION_SHA: ${{ needs.plan.outputs.merge_sha }}
         run: |
           set -Eeuo pipefail
-          ./scripts/build.sh production
-          dmg="$RUNNER_TEMP/BalanceBar-${VERSION}.dmg"
-          ./scripts/release/create-dmg.sh \
-            --app build/BalanceBar.app \
-            --version "$VERSION" \
-            --output "$dmg"
+          dmg="$RUNNER_TEMP/release/BalanceBar-${VERSION}.dmg"
+          notes="$RUNNER_TEMP/release/balancebar-release-notes.md"
+          [[ -s "$dmg" && -s "$notes" ]] || { ls -la "$RUNNER_TEMP/release" >&2; exit 1; }
           echo "RELEASE_DMG=$dmg" >> "$GITHUB_ENV"
+          echo "RELEASE_NOTES=$notes" >> "$GITHUB_ENV"
+          # A manually selected PR may tag a commit older than the checkout.
+          git cat-file -e "$VERSION_SHA^{commit}" 2>/dev/null \
+            || git fetch --no-tags --depth=1 origin "$VERSION_SHA"
 
       - name: Create the Git tag
-        if: steps.release_context.outputs.should_release == 'true' && steps.release_guard.outputs.skip != 'true'
         env:
-          TAG: ${{ steps.version_plan.outputs.tag }}
-          VERSION: ${{ steps.version_plan.outputs.version }}
-          VERSION_SHA: ${{ steps.release_context.outputs.merge_sha }}
+          TAG: ${{ needs.plan.outputs.tag }}
+          VERSION: ${{ needs.plan.outputs.version }}
+          VERSION_SHA: ${{ needs.plan.outputs.merge_sha }}
         run: |
           set -Eeuo pipefail
-          git tag -a "$TAG" "$VERSION_SHA" -m "BalanceBar ${VERSION}"
+          # Ubuntu runners have no auto-detectable tagger identity (macOS did).
+          git -c user.name='github-actions[bot]' \
+            -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            tag -a "$TAG" "$VERSION_SHA" -m "BalanceBar ${VERSION}"
           git push origin "$TAG"
 
       - name: Publish the GitHub Release
-        if: steps.release_context.outputs.should_release == 'true' && steps.release_guard.outputs.skip != 'true'
         env:
-          TAG: ${{ steps.version_plan.outputs.tag }}
-          VERSION: ${{ steps.version_plan.outputs.version }}
-          PRERELEASE: ${{ steps.version_plan.outputs.prerelease }}
+          TAG: ${{ needs.plan.outputs.tag }}
+          VERSION: ${{ needs.plan.outputs.version }}
+          PRERELEASE: ${{ needs.plan.outputs.prerelease }}
         shell: bash
         run: |
           set -Eeuo pipefail

@@ -6,7 +6,25 @@ enum ModOnboardingConfig {
     static let modDataFreshnessWindow: TimeInterval = 7 * 24 * 60 * 60
     /// An enabled Mod that stays silent this long while Claude Code is active is reported as "no data".
     static let noDataWithActivityGrace: TimeInterval = 10 * 60
+    /// The Mod version this BalanceBar build expects; `mod/.claude-plugin/plugin.json` must carry the same value.
+    static let latestModVersion = "1.1.1"
     static let minimumClaudeCodeVersion = ClaudeCodeVersion(major: 2, minor: 1, patch: 287)
+}
+
+enum ModVersion {
+    /// `installed >= latest` by dotted numeric components; unparsable or missing versions are not current.
+    static func isCurrent(_ installed: String?, latest: String = ModOnboardingConfig.latestModVersion) -> Bool {
+        func parts(_ text: String) -> [Int]? {
+            let numbers = text.split(separator: ".", omittingEmptySubsequences: false).map { Int($0) }
+            return numbers.contains(where: { $0 == nil }) ? nil : numbers.compactMap { $0 }
+        }
+        guard let installed, let a = parts(installed), let b = parts(latest) else { return false }
+        for index in 0..<max(a.count, b.count) {
+            let x = index < a.count ? a[index] : 0, y = index < b.count ? b[index] : 0
+            if x != y { return x > y }
+        }
+        return true
+    }
 }
 
 /// Parsed `claude --version` value (for example "2.1.291 (Claude Code)").

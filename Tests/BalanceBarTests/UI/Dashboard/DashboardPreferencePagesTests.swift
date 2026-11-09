@@ -3922,6 +3922,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
             .english: "When off, the dropdown menu no longer shows reset cards"
         ]
 
+        // Copy checks cover every language; mounting the page (the costly part) uses the
+        // layout samples plus every language with pinned expected copy.
+        let mountedLanguages = Set(TestMatrix.representativeLanguages).union(expectedTitles.keys)
         for language in AppLanguage.allCases where language != .system {
             AppLanguage.selected = language
             XCTAssertFalse(
@@ -3944,6 +3947,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     expectedSubtitle
                 )
             }
+            guard mountedLanguages.contains(language) else { continue }
 
             let suiteName = "DashboardPreferencePagesTests.ShowBankedResetCopy.\(language.rawValue).\(UUID().uuidString)"
             let defaults = UserDefaults(suiteName: suiteName)!
@@ -5576,9 +5580,23 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
 
-        let cases = AppLanguage.allCases.filter { $0 != .system }
+        // Every language: the headings and rows located by title below must translate to
+        // distinct strings. This needs no page, so it stays exhaustive.
+        for language in AppLanguage.allCases where language != .system {
+            let titles = [
+                LocalizationKey.keyDashboardMenuBarPagePreview, .keyDashboardMenuBarPageQuotaAndReset,
+                .keyDashboardMenuBarPageIconAndTaskStatus, .keyDashboardMenuBarPageLayout,
+                .keyDashboardMenuBarPageBalanceAmount, .keyDashboardMenuBarPageResetCountdown,
+                .keyDashboardMenuBarPageQuotaDisplayPriority, .keyDashboardMenuBarPageQuotaResetDisplayMode,
+                .keyDashboardMenuBarPageCurrentLayout, .keyDashboardMenuBarPageIconDisplayMode,
+                .keyDashboardMenuBarPageIconDisplayDelay, .keyDashboardMenuBarPageAgentIcon,
+                .keyDashboardMenuBarPagePlayTheIconAnimationWhileATaskIsRunning, .keyDashboardMenuBarPageAnimation
+            ].map { tr($0, language: language) }
+            XCTAssertEqual(Set(titles).count, titles.count, "menu bar titles collide in \(language)")
+        }
 
-        for language in cases {
+        // Section placement does not depend on the language; mount the page for samples only.
+        for language in TestMatrix.representativeLanguages {
             AppLanguage.selected = language
             let animationRowTitle = tr(
                 .keyDashboardMenuBarPagePlayTheIconAnimationWhileATaskIsRunning,
@@ -10221,6 +10239,26 @@ final class DashboardPreferencePagesTests: XCTestCase {
 }
 
 extension DashboardPreferencePagesTests {
+    func testTimeZoneMenuOrderMatchesContinentThenCatalogOrder() {
+        // The menu order is cached per locale; it must equal sorting by the localized
+        // continent heading and then the catalog's country/city comparison.
+        let previous = AppLanguage.selected
+        defer { AppLanguage.selected = previous }
+        for language in [AppLanguage.english, .simplifiedChinese, .traditionalChineseTaiwan, .german, .japanese] {
+            AppLanguage.selected = language
+            let expected = TimeZoneCityCatalog.all.sorted {
+                let left = TimeZoneCityCatalog.continentTitle(for: $0)
+                let right = TimeZoneCityCatalog.continentTitle(for: $1)
+                if left != right { return left.localizedStandardCompare(right) == .orderedAscending }
+                return TimeZoneCityCatalog.compare($0, $1)
+            }
+            let grouped = TimeZoneCityCatalog.allByContinent
+            XCTAssertEqual(grouped.map(\.city.identifier), expected.map(\.identifier), "\(language)")
+            XCTAssertEqual(grouped.map(\.header), expected.map { TimeZoneCityCatalog.continentTitle(for: $0) }, "\(language)")
+            XCTAssertEqual(TimeZoneCityCatalog.allByContinent.map(\.city.identifier), grouped.map(\.city.identifier))
+        }
+    }
+
     func testCityCatalogDeduplicatesLocalizesAndFallsBack() throws {
         let raw = "US\t+404251-0740023\tAmerica/New_York\nUS\t+404251-0740023\tAmerica/New_York\nIN\t+2232+08822\tAsia/Kolkata\n# comment\ninvalid"
         let cities = TimeZoneCityCatalog.load(zoneTab: raw, locale: Locale(identifier: "zh_CN"))

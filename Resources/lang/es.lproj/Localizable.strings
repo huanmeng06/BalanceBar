@@ -697,6 +697,21 @@
 "mod.sync.status.rejected_account" = "Instantánea rechazada: la cuenta de Claude no coincide con la cuenta actual de BalanceBar";
 "mod.sync.status.rejected_cycle" = "Instantánea rechazada: el ciclo no coincide con los datos oficiales; se usa la ruta oficial";
 "mod.sync.status.installation_unknown" = "No se puede confirmar si el Mod está instalado (falló la lista de plugins)";
+"mod.sync.status.update_required" = "El Mod está desactualizado y necesita actualizarse (los marketplaces de plugins de terceros no se actualizan automáticamente por defecto).\nReinicia después la sesión de Claude Code";
+"mod.card.update.title" = "Hay que actualizar el Mod";
+"mod.card.update.reason" = "Versión actual: %1$@";
+"mod.card.update.action" = "Última versión: %1$@";
+"mod.update.button" = "Actualizar ahora";
+"mod.update.title" = "Hay que actualizar BalanceBar Mod";
+"mod.update.progress_title" = "Actualizando BalanceBar Mod";
+"mod.update.step1" = "Actualizar origen";
+"mod.update.step2" = "Actualizar Mod";
+"mod.update.done" = "Actualizado ✓";
+"mod.update.done_note" = "Reinicia la sesión de Claude Code para que el nuevo Mod surta efecto.";
+"mod.failure.update_command" = "La actualización no terminó. Ejecuta estos comandos en un terminal, uno tras otro, y reinicia la sesión:";
+"mod.card.update.button" = "Actualizar ahora";
+"mod.card.update.restart" = "Mod actualizado. Reinicia la sesión de Claude Code";
+"mod.sync.status.restart_required" = "El Mod está actualizado, pero sigue en marcha una sesión antigua. Reinicia la sesión de Claude Code";
 
 // Mod management window (Issue #604)
 "mod.ui.subtitle" = "Mantén al día la cuota de Claude Code";
@@ -716,6 +731,8 @@
 "mod.ui.uninstall_reload_hint" = "Las sesiones existentes pueden ejecutar el comando de abajo para aplicar la desinstalación de inmediato.";
 "mod.ui.cancel" = "Cancelar";
 "mod.ui.uninstall_failure_title" = "Desinstalación incompleta";
+"mod.ui.update_failure_title" = "Error al actualizar";
+"mod.ui.unknown_status_title" = "No se puede confirmar la instalación";
 "mod.ui.account_advice" = "Comprueba que Claude Code y BalanceBar usan la misma cuenta e inicia una sesión nueva.";
 "mod.ui.cycle_advice" = "Sigue usando la cuota oficial. Revisa los datos de una sesión nueva cuando la fuente oficial confirme el nuevo ciclo.";
 

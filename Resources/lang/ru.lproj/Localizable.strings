@@ -697,6 +697,21 @@
 "mod.sync.status.rejected_account" = "Снимок отклонён: учётная запись Claude не совпадает с текущей учётной записью BalanceBar";
 "mod.sync.status.rejected_cycle" = "Снимок отклонён: цикл не совпадает с официальными данными; используется официальный путь";
 "mod.sync.status.installation_unknown" = "Не удаётся подтвердить установку Mod (список плагинов недоступен)";
+"mod.sync.status.update_required" = "Мод устарел и требует обновления (сторонние маркетплейсы плагинов по умолчанию не обновляются автоматически).\nПосле этого перезапустите сессию Claude Code";
+"mod.card.update.title" = "Требуется обновление Mod";
+"mod.card.update.reason" = "Текущая версия: %1$@";
+"mod.card.update.action" = "Последняя версия: %1$@";
+"mod.update.button" = "Обновить";
+"mod.update.title" = "Требуется обновление BalanceBar Mod";
+"mod.update.progress_title" = "Обновление BalanceBar Mod";
+"mod.update.step1" = "Обновить источник";
+"mod.update.step2" = "Обновить Mod";
+"mod.update.done" = "Обновлено ✓";
+"mod.update.done_note" = "Перезапустите сессию Claude Code, чтобы новый Mod вступил в силу.";
+"mod.failure.update_command" = "Обновление не завершено. Выполните эти команды в терминале по очереди, затем перезапустите сессию:";
+"mod.card.update.button" = "Обновить";
+"mod.card.update.restart" = "Mod обновлён. Перезапустите сессию Claude Code";
+"mod.sync.status.restart_required" = "Mod обновлён, но старая сессия всё ещё работает. Перезапустите сессию Claude Code";
 
 // Mod management window (Issue #604)
 "mod.ui.subtitle" = "Актуальные квоты Claude Code";
@@ -716,6 +731,8 @@
 "mod.ui.uninstall_reload_hint" = "В уже открытых сессиях можно выполнить команду ниже, чтобы удаление вступило в силу сразу.";
 "mod.ui.cancel" = "Отмена";
 "mod.ui.uninstall_failure_title" = "Удаление не завершено";
+"mod.ui.update_failure_title" = "Не удалось обновить";
+"mod.ui.unknown_status_title" = "Не удалось проверить установку";
 "mod.ui.account_advice" = "Убедитесь, что Claude Code и BalanceBar используют одну учётную запись, затем начните новый сеанс.";
 "mod.ui.cycle_advice" = "Продолжайте использовать официальные квоты. Проверьте данные нового сеанса после официального подтверждения нового цикла.";
 

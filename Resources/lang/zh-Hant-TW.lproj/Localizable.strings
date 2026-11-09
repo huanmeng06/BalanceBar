@@ -697,6 +697,21 @@
 "mod.sync.status.rejected_account" = "快照被拒：Claude 登入帳號與 BalanceBar 目前帳號不一致";
 "mod.sync.status.rejected_cycle" = "快照被拒：週期與官方資料不一致，已回退官方額度";
 "mod.sync.status.installation_unknown" = "無法確認 Mod 是否已安裝（外掛清單讀取失敗）";
+"mod.sync.status.update_required" = "Mod 版本過舊，需要更新（第三方外掛市集預設不自動更新）。\n更新後請重啟 Claude Code 會話";
+"mod.card.update.title" = "Mod 需要更新";
+"mod.card.update.reason" = "目前版本：%1$@";
+"mod.card.update.action" = "最新版本：%1$@";
+"mod.update.button" = "一鍵更新";
+"mod.update.title" = "BalanceBar Mod 需要更新";
+"mod.update.progress_title" = "正在更新 BalanceBar Mod";
+"mod.update.step1" = "更新來源";
+"mod.update.step2" = "更新 Mod";
+"mod.update.done" = "已更新 ✓";
+"mod.update.done_note" = "請重啟 Claude Code 會話，新版 Mod 才會生效。";
+"mod.failure.update_command" = "更新未完成。請在終端依次執行下面的指令，然後重啟會話：";
+"mod.card.update.button" = "一鍵更新";
+"mod.card.update.restart" = "Mod 已更新，請重啟 Claude Code 會話";
+"mod.sync.status.restart_required" = "Mod 已更新，但仍有舊會話在運行。請重啟 Claude Code 會話";
 
 // Mod management window (Issue #604)
 "mod.ui.subtitle" = "讓 Claude Code 額度更新更即時";
@@ -716,6 +731,8 @@
 "mod.ui.uninstall_reload_hint" = "已有會話可執行下面的指令，讓卸載立即生效。";
 "mod.ui.cancel" = "取消";
 "mod.ui.uninstall_failure_title" = "解除安裝未完成";
+"mod.ui.update_failure_title" = "更新失敗";
+"mod.ui.unknown_status_title" = "無法確認安裝狀態";
 "mod.ui.account_advice" = "請確認 Claude Code 與 BalanceBar 使用同一帳號，再開啟新工作階段。";
 "mod.ui.cycle_advice" = "繼續使用官方額度；新週期經官方確認後，再檢查新工作階段的資料。";
 

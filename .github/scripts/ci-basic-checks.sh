@@ -5,6 +5,11 @@ base="${1:-HEAD^}"
 git diff --check "$base" HEAD
 while IFS= read -r -d '' script; do bash -n "$script"; done < <(git ls-files -z '*.sh')
 python3 .github/scripts/ci-policy-test.py
+# Listed XCTest shard classes must exist; the final shard runs all the rest.
+while read -r shard class; do
+  [[ -z "$shard" || "$shard" == \#* ]] && continue
+  grep -rqE "class $class\b" Tests/BalanceBarTests || { echo "ci-test-shards.txt: unknown class $class" >&2; exit 1; }
+done < .github/ci-test-shards.txt
 bash .github/scripts/classify-version-only-diff-test.sh
 # actionlint validates expressions, needs references and workflow syntax.
 # Pin the release and verify its published checksum before running.

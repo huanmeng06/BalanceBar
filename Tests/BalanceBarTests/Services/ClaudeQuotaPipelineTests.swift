@@ -746,7 +746,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         }
         let events = EventBox()
         let pipeline = makePipeline(withInbox: true)
-        pipeline.modSnapshotEventSink = { events.append($0) }
+        pipeline.modSnapshotEventSink = { if case .formatChecked = $0.kind { return }; events.append($0) }
         pipeline.start()
         pipeline.requestFetch(reason: .initial)
         let first = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
@@ -768,7 +768,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         }
         let events = EventBox()
         let pipeline = makePipeline(configuration: claudeV1TestConfiguration, withInbox: true)
-        pipeline.modSnapshotEventSink = { events.append($0) }
+        pipeline.modSnapshotEventSink = { if case .formatChecked = $0.kind { return }; events.append($0) }  // format verdicts are covered by SnapshotInboxTests
         pipeline.start()
         pipeline.requestFetch(reason: .initial)
         _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
@@ -805,7 +805,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         }
         let events = EventBox()
         let pipeline = makePipeline(configuration: claudeV1TestConfiguration, withInbox: true)
-        pipeline.modSnapshotEventSink = { events.append($0) }
+        pipeline.modSnapshotEventSink = { if case .formatChecked = $0.kind { return }; events.append($0) }
         pipeline.start()
 
         // Found at launch, written before this account became active, with no official reading to
@@ -835,7 +835,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         // has not read the official quota yet.
         let events = EventBox()
         let second = makePipeline(configuration: claudeV1TestConfiguration, withInbox: true)
-        second.modSnapshotEventSink = { events.append($0) }
+        second.modSnapshotEventSink = { if case .formatChecked = $0.kind { return }; events.append($0) }
         second.start()
         try placeModSnapshot(
             five: 90, seven: 95, observedAt: Self.start.addingTimeInterval(1),
@@ -1426,7 +1426,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         let events = EventBox()
         let tracker = ClaudeRealtimeTracker(now: { [clock] in clock!.now })
         let pipeline = makePipeline(realtimeTracker: tracker, configuration: claudeV1TestConfiguration, withInbox: true)
-        pipeline.modSnapshotEventSink = { events.append($0) }
+        pipeline.modSnapshotEventSink = { if case .formatChecked = $0.kind { return }; events.append($0) }
         pipeline.start()
         pipeline.requestFetch(reason: .initial)
         _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
@@ -1493,6 +1493,10 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         diagnosticLines.all.filter { $0.contains("claude native observation refreshed evidence") }.count
     }
 
+    /// Lets catch-up rescans land: several 0.05 s watcher coalescing windows plus the
+    /// 0.1 s half-write retry.
+    private func settleWatcher() { Thread.sleep(forTimeInterval: 0.3) }
+
     /// F1: an unchanged integer percentage must still keep the Mod live. The newer snapshot is not
     /// merged again, but it renews the local evidence; a re-read of the same file adds nothing.
     func testSameValueNewerModSnapshotRenewsLiveEvidenceButAFileRereadDoesNot() throws {
@@ -1505,7 +1509,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         try placeModSnapshot(five: 25, seven: 42, observedAt: Self.start.addingTimeInterval(310))
         _ = try XCTUnwrap(waitForState(pipeline) { $0.status.isNativeRealtime })
         // Let directory catch-up rescans settle so the adopted baseline is in place.
-        Thread.sleep(forTimeInterval: 0.5)
+        settleWatcher()
         quiet(pipeline)
         XCTAssertEqual(refreshedEvidenceLines(), 0)
 
@@ -1543,7 +1547,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         clock.advance(by: 305)
         try placeModSnapshot(five: 25, seven: 42, observedAt: Self.start.addingTimeInterval(310))
         _ = try XCTUnwrap(waitForState(pipeline) { $0.status.isNativeRealtime })
-        Thread.sleep(forTimeInterval: 0.5)
+        settleWatcher()
         quiet(pipeline)
 
         clock.advance(by: 15) // start+320
@@ -1571,7 +1575,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         clock.advance(by: 305)
         try placeModSnapshot(five: 25, seven: 42, observedAt: Self.start.addingTimeInterval(310))
         _ = try XCTUnwrap(waitForState(pipeline) { $0.status.isNativeRealtime })
-        Thread.sleep(forTimeInterval: 0.5)
+        settleWatcher()
         quiet(pipeline)
 
         clock.advance(by: 15) // start+320
@@ -1604,7 +1608,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         clock.advance(by: 305)
         try placeModSnapshot(five: 25, seven: 42, observedAt: Self.start.addingTimeInterval(310))
         _ = try XCTUnwrap(waitForState(pipeline) { $0.status.isNativeRealtime })
-        Thread.sleep(forTimeInterval: 0.5)
+        settleWatcher()
         quiet(pipeline)
 
         clock.advance(by: 15) // start+320
@@ -1647,7 +1651,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         clock.advance(by: 305)
         try placeModSnapshot(five: 25, seven: 42, observedAt: Self.start.addingTimeInterval(310))
         _ = try XCTUnwrap(waitForState(pipeline) { $0.status.isNativeRealtime })
-        Thread.sleep(forTimeInterval: 0.5)
+        settleWatcher()
         quiet(pipeline)
 
         clock.advance(by: 15) // start+320
@@ -1683,7 +1687,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         clock.advance(by: 305)
         try placeModSnapshot(five: 25, seven: 42, observedAt: Self.start.addingTimeInterval(310))
         _ = try XCTUnwrap(waitForState(pipeline) { $0.status.isNativeRealtime })
-        Thread.sleep(forTimeInterval: 0.5)
+        settleWatcher()
         quiet(pipeline)
 
         clock.advance(by: 15) // start+320

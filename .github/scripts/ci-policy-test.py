@@ -46,7 +46,8 @@ class Clock:
 
 
 class PolicyTests(unittest.TestCase):
-    def run_gate(self, current, history=(), event=None, live=None, attempt=2, classifier='full'):
+    def run_gate(self, current, history=(), event=None, live=None, attempt=2, classifier='full',
+                 scope_output=None):
         clock = Clock()
         calls = []
         event = event or {'action': 'synchronize', 'pull_request': copy.deepcopy(READY)}
@@ -73,7 +74,9 @@ class PolicyTests(unittest.TestCase):
 
         with patch.dict(os.environ, dict(ENV, GITHUB_RUN_ATTEMPT=str(attempt))), \
              patch.object(gate, 'api', side_effect=api), \
-             patch.object(gate.subprocess, 'check_output', return_value=classifier + '\n') as classify, \
+             patch.object(gate.subprocess, 'check_output',
+                          side_effect=lambda argv, **_: (scope_output if scope_output is not None
+                                                         and 'ci-scope.py' in argv[1] else classifier) + '\n') as classify, \
              patch.object(gate.time, 'monotonic', side_effect=lambda: clock.now), \
              patch.object(gate.time, 'sleep', side_effect=clock.sleep):
             result = gate.wait_for_evidence(event, 'pull_request')
@@ -89,6 +92,54 @@ class PolicyTests(unittest.TestCase):
             self.assertEqual(scope.classify([(status, path)]),
                              (True, True, path.startswith(('Tests/', 'BalanceBar.xcodeproj/'))))
         self.assertEqual(scope.classify([('D', 'old.swift'), ('A', 'docs/new.md')]), (True, True, False))
+
+    def test_scope_docs_only_needs_a_nonempty_docs_diff(self):
+        self.assertTrue(scope.docs_only([('M', 'docs/a.md'), ('A', 'README.md')]))
+        self.assertFalse(scope.docs_only([]))
+        self.assertFalse(scope.docs_only([('M', 'docs/a.md'), ('M', 'Sources/a.swift')]))
+        self.assertFalse(scope.docs_only([('D', 'docs/a.md')]))
+
+    def test_docs_lane_requires_its_own_fresh_job(self):
+        result, _, _, _ = self.run_gate([job('scope'), job('docs')], scope_output='docs_only=true')
+        self.assertTrue(result[0])
+        self.assertIn('docs-only', result[1])
+        for state in ('skipped', 'failure', 'cancelled'):
+            result, _, _, _ = self.run_gate([job('scope'), job('docs', state)],
+                                            scope_output='docs_only=true')
+            self.assertFalse(result[0])
+        # A docs job never substitutes for Full on a code change.
+        result, elapsed, _, _ = self.run_gate([job('scope'), job('docs')], scope_output='docs_only=false')
+        self.assertFalse(result[0])
+        self.assertEqual(elapsed, 60)
+        # Retarget/revalidate edits always require Full, even for docs-only diffs.
+        event = {'action': 'edited', 'changes': {'base': {}}, 'pull_request': READY}
+        result, _, _, _ = self.run_gate([job('scope'), job('docs')], event=event,
+                                        scope_output='docs_only=true')
+        self.assertFalse(result[0])
+        self.assertTrue(meta.metadata_log_matches(
+            'PASS: PR-wide docs-only exemption; build and XCTest NOT executed\n'
+            'Event head: new\nBase: main / base\nCheckout/merge SHA: merge\n', READY, 'merge'))
+
+    def test_full_name_aggregates_every_split_part(self):
+        workflow = (Path(__file__).resolve().parent.parent / 'workflows' /
+                    'build-and-test.yml').read_text(encoding='utf-8')
+        full = workflow.split('\n  build-and-test:\n', 1)[1].split('\n\n  ', 1)[0]
+        self.assertIn('name: Full CI (CLI, probes and serial XCTest)', full)
+        self.assertIn('needs: [scope, full-build, full-cli, xctest-shard]', full)
+        self.assertIn("[[ \"$RESULTS\" == 'success success success success' ]]", full)
+        self.assertIn('ci-xctest-totals.py', full)
+        # Metadata edits skip scope; the Full aggregate must then be skipped too.
+        self.assertIn("if: ${{ !cancelled() && needs.scope.result == 'success' && (", full)
+        self.assertIn("needs.scope.outputs.docs_only != 'true' || needs.scope.outputs.force_full == 'true'", full)
+        totals = load('ci-xctest-totals')
+        expected = totals.planned_shards('1 A\n2 B\n# 9 comment\n')
+        self.assertEqual(expected, {1, 2, 3})
+        ok = {'result': 'Passed', 'totalTestCount': 3, 'failedTests': 0}
+        self.assertEqual(totals.totals({1: ok, 2: ok, 3: ok}, expected)['totalTestCount'], 9)
+        for bad in ({1: ok, 2: ok}, {1: ok, 2: ok, 3: dict(ok, totalTestCount=0)},
+                    {1: ok, 2: ok, 3: dict(ok, result='Failed')}):
+            with self.assertRaises(SystemExit):
+                totals.totals(bad, expected)
 
     def test_draft_does_not_publish_a_required_merge_gate(self):
         # A skipped job named "PR merge gate" can satisfy a required check.
@@ -546,6 +597,22 @@ class PolicyTests(unittest.TestCase):
         result, elapsed, _, _ = self.run_gate(current)
         self.assertTrue(result[0])
         self.assertEqual(elapsed, 240)
+
+    def test_running_full_parts_do_not_start_missing_full_clock(self):
+        part = lambda name, state: dict(job('scope', state), id=900 + len(name), name=name)
+        def current(now):
+            if now < 300:
+                return [job('scope'), part('Full build-for-testing', 'success'),
+                        part('Full XCTest shard 2', 'in_progress')]
+            return [job('scope'), job('full'), job('smoke')]
+        result, elapsed, _, _ = self.run_gate(current)
+        self.assertTrue(result[0])
+        self.assertEqual(elapsed, 300)
+        # Finished parts with no Full aggregate still fail closed after grace.
+        result, elapsed, _, _ = self.run_gate(
+            [job('scope'), part('Full build-for-testing', 'success')])
+        self.assertFalse(result[0])
+        self.assertEqual(elapsed, 60)
 
     def test_smoke_missing_clock_starts_after_full(self):
         def current(now):
