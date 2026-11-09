@@ -409,26 +409,6 @@ final class SettingsRowView: NSView {
         updateSearchNaturalHeightConstraint()
         isPerformingLayout = false
         scheduleWrappingHeightCommitIfNeeded()
-        commitWrappingHeightSynchronouslyIfLabelsAreStale()
-    }
-
-    /// The deferred commit leaves the title/detail labels at the previous
-    /// width's height for a run-loop turn (or longer while a live resize holds
-    /// the loop in tracking mode), which shows up as extra vertical space
-    /// above and between the labels after a narrow-to-wide resize. When a
-    /// label's laid-out height no longer matches its solved wrapping height,
-    /// commit now instead of waiting.
-    private func commitWrappingHeightSynchronouslyIfLabelsAreStale() {
-        guard wrappingHeightIsDirty, window != nil else { return }
-        let labels = [titleLabel, detailLabel].filter { !$0.isHidden && $0.superview != nil }
-        let stale = labels.contains { label in
-            let width = label.preferredMaxLayoutWidth
-            guard width > 1, label.frame.height > 1 else { return false }
-            return abs(label.frame.height - SettingsTextHeight.measured(label, at: width)) > 0.5
-        }
-        guard stale else { return }
-        wrappingCommitWorkItem?.cancel()
-        performScheduledWrappingHeightCommit()
     }
 
     private func updateSearchNaturalHeightConstraint() {
@@ -1256,8 +1236,14 @@ private enum SettingsTextHeight {
             (field.font ?? NSFont.systemFont(ofSize: 12)).boundingRectForFont.height
         )
         guard width > 1, let cell = field.cell else { return fontHeight }
+        // `width` is the label's alignment-rect (solved column) width, but the
+        // field lays its text out in its frame, which is wider by the
+        // alignment insets (2pt per side for a label). Measuring at the bare
+        // column width wraps a line the label itself keeps on one row, so a
+        // row would reserve a phantom extra line near every wrap threshold.
+        let frameInset = field.alignmentRectInsets.left + field.alignmentRectInsets.right
         let fitted = cell.cellSize(
-            forBounds: NSRect(x: 0, y: 0, width: width, height: .greatestFiniteMagnitude)
+            forBounds: NSRect(x: 0, y: 0, width: width + frameInset, height: .greatestFiniteMagnitude)
         ).height
         return max(fontHeight, fitted)
     }
