@@ -270,6 +270,118 @@ final class SettingsRowViewTests: XCTestCase {
         )
     }
 
+    func testTitleHeightShrinksToSingleLineAfterNarrowThenWideResize() throws {
+        let badge = DashboardUpdateBadgeView()
+        let row = SettingsRowView(
+            title: "BalanceBar Mod 实时增强",
+            detail: "等待数据：打开桌面端后即可获得实时读数。",
+            titleAccessory: badge,
+            accessoryView: NSButton(title: "了解更多", target: nil, action: nil)
+        )
+        let section = SettingsSectionView(title: "Mod", contentViews: [row])
+        let window = makeTestWindow(width: 720)
+        let host = pinningHost(for: section, in: window, width: 720)
+        defer { window.orderOut(nil) }
+
+        let singleLineTitle = row.titleLabel.frame.height
+        let wideRowHeight = row.frame.height
+        for width in [300, 260, 720, 280, 640, 250, 800] as [CGFloat] {
+            // 每一步转一轮 run loop，让延后的换行高度提交落地（不在 layout() 内同步提交，
+            // 那样会在布局期间失效 intrinsic size，真实窗口里会触发约束更新异常）。
+            window.setContentSize(NSSize(width: width, height: 360))
+            host.setFrameSize(NSSize(width: width, height: 360))
+            window.layoutIfNeeded()
+            RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.01))
+            window.layoutIfNeeded()
+            section.layoutSubtreeIfNeeded()
+            let needed = measuredLabelHeight(row.titleLabel, width: row.titleLabel.preferredMaxLayoutWidth)
+            XCTAssertEqual(row.titleLabel.frame.height, needed, accuracy: 0.5, "title height stale after resize turn at \(width)")
+        }
+        pin(section, to: host, window: window, width: 720)
+        XCTAssertEqual(row.titleLabel.frame.height, singleLineTitle, accuracy: 0.5)
+        XCTAssertEqual(row.frame.height, wideRowHeight, accuracy: 0.5)
+    }
+
+    /// 连续缩放 + 转动 run loop：不能引发约束更新循环，
+    /// 且同一宽度下反复布局后高度必须稳定。
+    func testRepeatedResizeKeepsWrappingHeightsStableAcrossRunLoopTurns() throws {
+        let row = SettingsRowView(
+            title: "BalanceBar Mod 实时增强",
+            detail: "等待数据：打开桌面端后即可获得实时读数。",
+            titleAccessory: DashboardUpdateBadgeView(),
+            accessoryView: NSButton(title: "了解更多", target: nil, action: nil)
+        )
+        let section = SettingsSectionView(title: "Mod", contentViews: [row])
+        let window = makeTestWindow(width: 720)
+        let host = pinningHost(for: section, in: window, width: 720)
+        defer { window.orderOut(nil) }
+
+        for round in 0..<3 {
+            for width in [300, 260, 720, 280, 640, 250, 800, 320] as [CGFloat] {
+                window.setContentSize(NSSize(width: width, height: 360))
+                host.setFrameSize(NSSize(width: width, height: 360))
+                window.layoutIfNeeded()
+                RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.01))
+                window.layoutIfNeeded()
+                let needed = measuredLabelHeight(row.titleLabel, width: row.titleLabel.preferredMaxLayoutWidth)
+                XCTAssertEqual(row.titleLabel.frame.height, needed, accuracy: 0.5, "round \(round) width \(width)")
+
+                let settledRow = row.frame.height
+                let settledTitle = row.titleLabel.frame.height
+                for _ in 0..<5 {
+                    row.needsLayout = true
+                    window.layoutIfNeeded()
+                }
+                XCTAssertEqual(row.frame.height, settledRow, accuracy: 0.5, "row height drifted at \(width)")
+                XCTAssertEqual(row.titleLabel.frame.height, settledTitle, accuracy: 0.5, "title height drifted at \(width)")
+            }
+        }
+    }
+
+    /// 真实的 Mod 状态行（两行副标题 + 标题徽标）：在换行阈值附近（例如行宽 528pt、
+    /// 副标题第二行刚好放得下）行高模型不能多算一行，否则标题上方和标题与副标题之间
+    /// 会出现多余空白。按每 4pt 扫一遍，先窄后宽、再先宽后窄，每步都检查。
+    func testModStatusRowHasNoPhantomLineAcrossWrapThresholds() throws {
+        let rows = RealtimeBoostSettingsRows(
+            status: .waitingForData, onInstall: { _ in }, onShowDescription: { _ in }
+        )
+        let row = rows.statusRow
+        let section = SettingsSectionView(title: "Mod", contentViews: [row])
+        let window = makeTestWindow(width: 720)
+        let host = pinningHost(for: section, in: window, width: 720)
+        defer { window.orderOut(nil) }
+
+        func actualWrappedHeight(_ label: NSTextField) -> CGFloat {
+            guard let cell = label.cell else { return 0 }
+            return cell.cellSize(
+                forBounds: NSRect(x: 0, y: 0, width: label.frame.width, height: .greatestFiniteMagnitude)
+            ).height
+        }
+        func assertTight(_ context: String) {
+            let title = row.titleLabel.convert(row.titleLabel.bounds, to: row)
+            let detail = row.detailLabel.convert(row.detailLabel.bounds, to: row)
+            XCTAssertEqual(row.titleLabel.frame.height, actualWrappedHeight(row.titleLabel), accuracy: 0.5, "title \(context)")
+            XCTAssertEqual(row.detailLabel.frame.height, actualWrappedHeight(row.detailLabel), accuracy: 0.5, "detail \(context)")
+            XCTAssertLessThanOrEqual(title.minY - detail.maxY, 4, "extra space between title and detail \(context)")
+        }
+
+        let widths = Array(stride(from: 720, through: 400, by: -4)) + Array(stride(from: 400, through: 720, by: 4))
+        for width in widths {
+            let w = CGFloat(width)
+            window.setContentSize(NSSize(width: w, height: 360))
+            host.setFrameSize(NSSize(width: w, height: 360))
+            window.layoutIfNeeded()
+            RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.03))
+            window.layoutIfNeeded()
+            assertTight("at width \(width)")
+        }
+    }
+
+    private func measuredLabelHeight(_ label: NSTextField, width: CGFloat) -> CGFloat {
+        guard let cell = label.cell else { return 0 }
+        return cell.cellSize(forBounds: NSRect(x: 0, y: 0, width: width, height: .greatestFiniteMagnitude)).height
+    }
+
     func testWrappingHeightCommitsAfterLiveResizeEndsWithoutLayoutInvalidation() throws {
         let longDetail = "This native settings description must wrap onto additional lines when the dashboard content column is narrow so the switch stays visible beside the complete text."
         let row = SettingsRowView(

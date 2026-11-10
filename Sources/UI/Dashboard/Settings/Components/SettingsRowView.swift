@@ -1236,8 +1236,14 @@ private enum SettingsTextHeight {
             (field.font ?? NSFont.systemFont(ofSize: 12)).boundingRectForFont.height
         )
         guard width > 1, let cell = field.cell else { return fontHeight }
+        // `width` is the label's alignment-rect (solved column) width, but the
+        // field lays its text out in its frame, which is wider by the
+        // alignment insets (2pt per side for a label). Measuring at the bare
+        // column width wraps a line the label itself keeps on one row, so a
+        // row would reserve a phantom extra line near every wrap threshold.
+        let frameInset = field.alignmentRectInsets.left + field.alignmentRectInsets.right
         let fitted = cell.cellSize(
-            forBounds: NSRect(x: 0, y: 0, width: width, height: .greatestFiniteMagnitude)
+            forBounds: NSRect(x: 0, y: 0, width: width + frameInset, height: .greatestFiniteMagnitude)
         ).height
         return max(fontHeight, fitted)
     }
