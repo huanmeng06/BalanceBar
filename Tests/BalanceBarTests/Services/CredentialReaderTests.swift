@@ -179,6 +179,34 @@ final class CredentialReaderTests: XCTestCase {
         XCTAssertEqual(fileReader.readPaths.map(\.path), [home.appendingPathComponent(".codex/auth.json").path, home.appendingPathComponent(".claude/.credentials.json").path])
     }
 
+    func testClaudeCredentialsTellSignedOutApartFromUnreadableKeychain() {
+        let home = URL(fileURLWithPath: "/fixture-home")
+        func credentials(status: Int32, output: String = "", file: String? = nil) -> ClaudeStoredCredentials {
+            let credentialsURL = home.appendingPathComponent(".claude/.credentials.json")
+            return CredentialReader(
+                homeDirectoryURL: home,
+                fileReader: FixtureFileReader(dataByPath: file.map { [credentialsURL.path: Data($0.utf8)] } ?? [:]),
+                processRunner: FixtureProcessRunner(result: CredentialProcessResult(
+                    terminationStatus: status, standardOutput: Data(output.utf8)))
+            ).claudeCredentials()
+        }
+        // Signed out: the item exists with an empty token, or there is no item at all.
+        let emptyToken = credentials(status: 0, output: #"{"claudeAiOauth":{"accessToken":""}}"#)
+        XCTAssertNil(emptyToken.accessToken)
+        XCTAssertFalse(emptyToken.keychainUnreadable)
+        XCTAssertFalse(credentials(status: CredentialReader.keychainItemNotFoundStatus).keychainUnreadable)
+        // Timeout (-1), denied prompt (51) or locked keychain (36): the token may exist but was not read.
+        for status: Int32 in [-1, 51, 36] {
+            let unreadable = credentials(status: status)
+            XCTAssertNil(unreadable.accessToken)
+            XCTAssertTrue(unreadable.keychainUnreadable, "status \(status)")
+        }
+        // The file fallback still wins when it has a token.
+        let fromFile = credentials(status: 51, file: #"{"claudeAiOauth":{"accessToken":"file-value"}}"#)
+        XCTAssertEqual(fromFile.accessToken, "file-value")
+        XCTAssertFalse(fromFile.keychainUnreadable)
+    }
+
     private final class FixtureFileReader: CredentialFileReading {
         let dataByPath: [String: Data]
         private(set) var readPaths: [URL] = []

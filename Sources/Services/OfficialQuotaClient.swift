@@ -6,6 +6,10 @@ import Network
 /// Values never include a request URL or credential material.
 enum OfficialQuotaClientError: Error {
     case missingCredentials
+    /// Claude only: the keychain item could not be read (prompt not allowed, timed out or locked).
+    case credentialsUnreadable
+    /// Claude only: `~/.claude.json` has no signed-in subscription account (for example an API key setup).
+    case missingAccount
     case transport(OfficialQuotaTransportError)
     case httpStatus(statusCode: Int, dataSize: Int)
     case invalidJSON(dataSize: Int)
@@ -58,6 +62,8 @@ protocol OfficialQuotaCredentialReading {
 struct ClaudeStoredCredentials: Equatable {
     let accessToken: String?
     let planType: String?
+    /// True when no token was found because the keychain could not be read, not because it is empty.
+    var keychainUnreadable = false
 }
 
 extension OfficialQuotaCredentialReading {
@@ -226,7 +232,7 @@ final class OfficialQuotaClient {
     private let credentialReader: OfficialQuotaCredentialReading
     private let parser: OfficialQuotaParsing
     private let now: () -> Date
-    private var claudeAccountProbe: (credentials: CodexRequestCredentials, profile: CodexAccountProfile?, readAt: Date)?
+    private var claudeAccountProbe: (credentials: CodexRequestCredentials, profile: CodexAccountProfile?, readAt: Date, keychainUnreadable: Bool)?
     private var claudeProbeInFlight = false
     private let claudeProbeCondition = NSCondition()
 
@@ -378,11 +384,18 @@ final class OfficialQuotaClient {
             profile = CodexAccountProfile(email: credentialReader.claudeAccountEmail(), planType: stored.planType)
         }
         claudeProbeCondition.lock()
-        claudeAccountProbe = (credentials, profile, now())
+        claudeAccountProbe = (credentials, profile, now(), stored.keychainUnreadable)
         claudeProbeInFlight = false
         claudeProbeCondition.broadcast()
         claudeProbeCondition.unlock()
         return credentials
+    }
+
+    /// Whether the last probe found no token because the keychain could not be read.
+    func lastClaudeKeychainUnreadable() -> Bool {
+        claudeProbeCondition.lock()
+        defer { claudeProbeCondition.unlock() }
+        return claudeAccountProbe?.keychainUnreadable ?? false
     }
 
     /// Display-only email/plan from the last probe; never starts `security`.
@@ -528,7 +541,11 @@ final class OfficialQuotaClient {
     ) {
         guard let token = claudeRequestCredentials(cacheFor: 0).accessToken, !token.isEmpty,
               let request = makeRequest(client: .claude, storedAccessToken: token) else {
-            completion(.failure("missing_credentials"), .missingCredentials)
+            if lastClaudeKeychainUnreadable() {
+                completion(.failure("credentials_unreadable"), .credentialsUnreadable)
+            } else {
+                completion(.failure("missing_credentials"), .missingCredentials)
+            }
             return
         }
         didReadToken(token)

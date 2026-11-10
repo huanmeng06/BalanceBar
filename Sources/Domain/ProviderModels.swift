@@ -116,6 +116,19 @@ enum OpenAISubscriptionTier: Equatable {
 struct OpenAIAccountPresentation: Equatable {
     enum UnavailableReason: Equatable {
         case claudeLoginRequired
+        case claudeCredentialsUnreadable
+        case claudeNoSubscriptionAccount
+
+        /// The short account-row status for a Claude official failure; nil when the failure
+        /// says nothing about the account (network, rate limit, server error).
+        init?(claudeFailure: ClaudeQuotaFailure) {
+            switch claudeFailure {
+            case .missingCredentials, .unauthorized: self = .claudeLoginRequired
+            case .credentialsUnreadable: self = .claudeCredentialsUnreadable
+            case .noAccount: self = .claudeNoSubscriptionAccount
+            case .rateLimited, .transport, .http, .invalidResponse: return nil
+            }
+        }
     }
 
     enum State: Equatable {
@@ -159,8 +172,14 @@ struct OpenAIAccountPresentation: Equatable {
             return tr(.keyProviderModelsValue, arguments: [String(describing: email)], language: language)
         case .unavailable:
             switch unavailableReason {
+            // Short status only: the account row is a single line, and the failure
+            // area below carries the full guidance.
             case .claudeLoginRequired:
-                return tr(.keyClaudeRefreshLoginExpired, language: language)
+                return tr(.keyClaudeAccountSignedOut, language: language)
+            case .claudeCredentialsUnreadable:
+                return tr(.keyClaudeAccountCredentialsUnreadable, language: language)
+            case .claudeNoSubscriptionAccount:
+                return tr(.keyClaudeAccountNoSubscriptionAccount, language: language)
             case nil:
                 return tr(.keyProviderModelsAccountUnavailable, language: language)
             }

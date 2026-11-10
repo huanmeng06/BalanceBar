@@ -14,6 +14,7 @@ final class ClaudeSourceTimeline {
         case unauthorized
         case serverError
         case missingCredentials
+        case credentialsUnreadable
 
         init(_ failure: ClaudeQuotaFailure) {
             switch failure {
@@ -21,7 +22,8 @@ final class ClaudeSourceTimeline {
             case .rateLimited, .http(429): self = .rateLimited
             case .unauthorized, .http(401): self = .unauthorized
             case .http, .invalidResponse: self = .serverError
-            case .missingCredentials: self = .missingCredentials
+            case .missingCredentials, .noAccount: self = .missingCredentials
+            case .credentialsUnreadable: self = .credentialsUnreadable
             }
         }
     }
@@ -460,6 +462,7 @@ private struct StoredHistory: Codable {
         private static let kinds: [(String, ClaudeSourceTimeline.FailureKind)] = [
             ("network", .network), ("rateLimited", .rateLimited), ("unauthorized", .unauthorized),
             ("serverError", .serverError), ("missingCredentials", .missingCredentials),
+            ("credentialsUnreadable", .credentialsUnreadable),
         ]
 
         init(_ run: ClaudeSourceTimeline.FailureRun) {
@@ -531,6 +534,7 @@ private struct StoredHistory: Codable {
             case "unauthorized": return .unauthorized
             case "serverError": return .serverError
             case "missingCredentials": return .missingCredentials
+            case "credentialsUnreadable": return .credentialsUnreadable
             default: return nil
             }
         }

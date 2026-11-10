@@ -597,6 +597,17 @@
 "quota.status.reset_pending" = "Probabile ripristino; in attesa di conferma";
 "quota.status.reset_pending_short" = "In attesa";
 "quota.failure.open_usage_page" = "Apri la pagina di utilizzo ufficiale";
+"quota.failure.copy_sign_in_command" = "Copia il comando claude";
+"quota.failure.copied" = "Copiato";
+"claude.account.signed_out" = "Accesso scaduto";
+"claude.account.credentials_unreadable" = "Accesso non leggibile";
+"claude.account.no_subscription_account" = "Nessun account in abbonamento";
+"claude.refresh.credentials_unreadable" = "Impossibile leggere l'accesso di Claude Code dal portachiavi. Fai clic su Aggiorna ora, poi scegli «Consenti sempre» nella richiesta del portachiavi che compare.";
+"claude.refresh.no_subscription_account" = "Nessun account Claude in abbonamento trovato. Claude Code con chiave API non ha quota di abbonamento; altrimenti esegui claude nel terminale per accedere.";
+"claude.login_prompt.title" = "Accesso a Claude scaduto; dati precedenti";
+"claude.login_prompt.action" = "Fai clic per copiare il comando claude ed eseguilo nel terminale";
+"claude.login_prompt.copied_title" = "Comando claude copiato";
+"claude.login_prompt.copied_detail" = "Incollalo ed eseguilo nel terminale per accedere di nuovo";
 "quota.status.accessibility" = "Stato della quota: %1$@";
 "claude.refresh.login_expired" = "L'accesso a Claude Code è scaduto. Esegui claude una volta nel terminale per ripristinarlo; BalanceBar non rinnova mai l'accesso da solo.";
 "status.item.controller.refresh_now_login_expired" = "Credenziali scadute; esegui di nuovo Claude Code CLI nel terminale";

@@ -346,9 +346,20 @@ final class ModPromptRowView: NSView {
         width - 2 * blockInset - 2 * contentPadding - iconWidth - iconTextSpacing
     }
 
-    init(localize: (ModOnboardingText) -> String = ModOnboardingText.defaultLocalize) {
-        mainLabel = NSTextField(wrappingLabelWithString: localize(.promptMenu))
-        whyLabel = NSTextField(labelWithString: localize(.promptWhy))
+    private var tint: NSColor
+    /// False keeps the menu open on click so the row can confirm in place (the Claude copy row).
+    var closesMenuOnClick = true
+
+    convenience init(localize: (ModOnboardingText) -> String = ModOnboardingText.defaultLocalize) {
+        self.init(mainText: localize(.promptMenu), detailText: localize(.promptWhy),
+                  symbolName: "bolt.fill", tint: .controlAccentColor)
+    }
+
+    /// The same under-the-card row with other copy, icon and tint (the Claude re-login prompt uses it).
+    init(mainText: String, detailText: String, symbolName: String, tint: NSColor) {
+        self.tint = tint
+        mainLabel = NSTextField(wrappingLabelWithString: mainText)
+        whyLabel = NSTextField(labelWithString: detailText)
         super.init(frame: NSRect(x: 0, y: 0, width: Self.width, height: Self.rowHeight))
         autoresizingMask = [.width]
         setAccessibilityRole(.button)
@@ -359,12 +370,12 @@ final class ModPromptRowView: NSView {
         block.translatesAutoresizingMaskIntoConstraints = false
         addSubview(block)
 
-        iconView.image = Self.symbol("bolt.fill", size: 15)
-        iconView.contentTintColor = .controlAccentColor
+        iconView.image = Self.symbol(symbolName, size: 15)
+        iconView.contentTintColor = tint
         iconView.setContentHuggingPriority(.required, for: .horizontal)
 
         mainLabel.font = .systemFont(ofSize: 13, weight: .medium)
-        mainLabel.textColor = .controlAccentColor
+        mainLabel.textColor = tint
         mainLabel.lineBreakMode = .byWordWrapping
         mainLabel.cell?.truncatesLastVisibleLine = true
         mainLabel.maximumNumberOfLines = Self.maximumMainLines
@@ -372,7 +383,7 @@ final class ModPromptRowView: NSView {
         mainLabel.isSelectable = false
 
         whyLabel.font = .systemFont(ofSize: 11)
-        whyLabel.textColor = .controlAccentColor
+        whyLabel.textColor = tint
         whyLabel.lineBreakMode = .byTruncatingTail
         whyLabel.preferredMaxLayoutWidth = Self.textWidth
 
@@ -435,8 +446,22 @@ final class ModPromptRowView: NSView {
         if newWindow == nil { isHovering = false }
     }
 
+    /// Replaces the row's copy, icon and tint in place, for example to confirm an action.
+    func showConfirmation(mainText: String, detailText: String, symbolName: String, tint: NSColor) {
+        self.tint = tint
+        mainLabel.stringValue = mainText
+        whyLabel.stringValue = detailText
+        iconView.image = Self.symbol(symbolName, size: 15)
+        iconView.contentTintColor = tint
+        mainLabel.textColor = tint
+        whyLabel.textColor = tint
+        setAccessibilityLabel(mainText + ", " + detailText)
+        updateBackground()
+    }
+
     override func mouseUp(with event: NSEvent) {
         guard bounds.contains(convert(event.locationInWindow, from: nil)) else { return }
+        guard closesMenuOnClick else { return onClick() }
         enclosingMenuItem?.menu?.cancelTracking()
         let handler = onClick
         DispatchQueue.main.async { handler() }
@@ -454,7 +479,7 @@ final class ModPromptRowView: NSView {
 
     private func updateBackground() {
         effectiveAppearance.performAsCurrentDrawingAppearance {
-            block.layer?.backgroundColor = NSColor.controlAccentColor
+            block.layer?.backgroundColor = tint
                 .withAlphaComponent(isHovering ? 0.20 : 0.12).cgColor
         }
     }

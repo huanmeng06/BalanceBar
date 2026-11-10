@@ -2377,6 +2377,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let showsAvailableUpdateBadge: Bool
         /// The realtime-boost prompt row under the quota card.
         let modRow: ModMenuRow
+        /// Claude official keeps old data on screen while its login failed: show the re-login row.
+        let claudeLoginPrompt: Bool
 
         init(
             choices: [ProviderChoice],
@@ -2396,6 +2398,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             bankedResetDisplayMode: CodexBankedResetDisplayMode = .defaultValue,
             showsAvailableUpdateBadge: Bool = false,
             modRow: ModMenuRow = .none,
+            claudeLoginPrompt: Bool = false,
             aggregatedProviders: [AggregatedProviderDisplay] = [],
             aggregationQuickSwitchBlocked: Bool = false,
             quickSwitchSafety: CCSwitchQuickSwitchSafety? = nil
@@ -2421,6 +2424,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             self.bankedResetDisplayMode = bankedResetDisplayMode
             self.showsAvailableUpdateBadge = showsAvailableUpdateBadge
             self.modRow = modRow
+            self.claudeLoginPrompt = claudeLoginPrompt
         }
 
         static func == (lhs: Self, rhs: Self) -> Bool {
@@ -2447,6 +2451,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 && lhs.bankedResetDisplayMode == rhs.bankedResetDisplayMode
                 && lhs.showsAvailableUpdateBadge == rhs.showsAvailableUpdateBadge
                 && lhs.modRow == rhs.modRow
+                && lhs.claudeLoginPrompt == rhs.claudeLoginPrompt
         }
         func hasSameNativeItems(as other: Self) -> Bool {
             activeClient == other.activeClient
@@ -2454,6 +2459,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 && showOpenChatGPTMenu == other.showOpenChatGPTMenu && showOpenCCSwitchMenu == other.showOpenCCSwitchMenu
                 && showStatusMenu == other.showStatusMenu && showsAvailableUpdateBadge == other.showsAvailableUpdateBadge
                 && language == other.language && modRow == other.modRow
+                && claudeLoginPrompt == other.claudeLoginPrompt
         }
     }
 
@@ -6210,6 +6216,29 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     /// The accent-tinted realtime-boost prompt row under the quota card.
+    private func makeClaudeLoginPromptItem() -> NSMenuItem? {
+        guard menuInput.claudeLoginPrompt else { return nil }
+        let view = ModPromptRowView(
+            mainText: tr(.keyClaudeLoginPromptTitle),
+            detailText: tr(.keyClaudeLoginPromptAction),
+            symbolName: "exclamationmark.triangle.fill",
+            tint: .systemOrange
+        )
+        view.identifier = NSUserInterfaceItemIdentifier("menu.claudeLoginPrompt")
+        // Stay open and confirm in place, so the user sees the copy succeeded.
+        view.closesMenuOnClick = false
+        view.onClick = { [weak view] in
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(FailureStateView.signInCommand, forType: .string)
+            view?.showConfirmation(mainText: tr(.keyClaudeLoginPromptCopiedTitle),
+                                   detailText: tr(.keyClaudeLoginPromptCopiedDetail),
+                                   symbolName: "checkmark.circle.fill", tint: .systemOrange)
+        }
+        let item = NSMenuItem()
+        item.view = view
+        return item
+    }
+
     private func makeModPromptItem() -> NSMenuItem? {
         guard menuInput.modRow == .prompt else { return nil }
         let view = ModPromptRowView(localize: modOnboardingLocalize)
@@ -6295,7 +6324,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             item.view = viewport
             menu.addItem(item)
         }
-        // The realtime-boost prompt sits right under the quota card, above Quick Switch.
+        // The re-login and realtime-boost prompts sit right under the quota card, above Quick Switch.
+        if let prompt = makeClaudeLoginPromptItem() { menu.addItem(prompt) }
         if let prompt = makeModPromptItem() { menu.addItem(prompt) }
         menu.addItem(.separator())
         if menuInput.showQuickSwitchMenu {
@@ -7591,14 +7621,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         // Claude official failures add the BB-07 failure view: reason plus a button
         // that opens the official usage page, in extra height below the detail.
         let showsUsagePageButton = snapshot.quotaStatus != nil
-        let buttonShift = showsUsagePageButton ? ErrorCardLayout.usagePageButtonHeight : 0
+        let buttonShift = showsUsagePageButton && snapshot.failureRecovery != .none
+            ? ErrorCardLayout.usagePageButtonHeight : 0
         let baseFrames = ErrorCardLayout.errorFrames(
             for: message,
             includesAccount: context.account != nil,
             includesSubscription: context.account?.subscription != nil,
             subscriptionTextWidth: context.account?.subscription.map {
                 AccountMarqueeView.textWidth(of: $0.text, font: Self.subscriptionFont)
-            }
+            },
+            fullWidthDetail: showsUsagePageButton
         )
         let frames = baseFrames.shiftedUp(by: buttonShift)
         let view = NSView(frame: NSRect(origin: .zero, size: frames.cardSize))
@@ -7628,13 +7660,19 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let quotaDetail = makeOverviewLabel(snapshot.overviewQuotaDetail, font: ErrorCardLayout.quotaFont)
         quotaDetail.frame = frames.quotaDetail
         view.addSubview(quotaDetail)
-        let amount = makeOverviewLabel(snapshot.overviewLargeAmount, font: ErrorCardLayout.amountFont)
-        amount.alignment = .right
-        amount.frame = frames.amount
-        view.addSubview(amount)
+        // The Claude failure view spans the full width; its amount would only be an empty "—".
+        if !showsUsagePageButton {
+            let amount = makeOverviewLabel(snapshot.overviewLargeAmount, font: ErrorCardLayout.amountFont)
+            amount.alignment = .right
+            amount.frame = frames.amount
+            view.addSubview(amount)
+        }
         if showsUsagePageButton {
             let failure = FailureStateView(
                 reason: frames.detailText,
+                action: snapshot.failureRecovery,
+                // The detail frame was measured with this font; a smaller one leaves a blank gap.
+                font: ErrorCardLayout.detailFont,
                 localize: StatusSlotText.appLocalize,
                 onOpenUsagePage: { [weak self] in self?.actions.openStatusLink(FailureStateView.officialUsageURL) })
             failure.identifier = NSUserInterfaceItemIdentifier("overview.failureState")

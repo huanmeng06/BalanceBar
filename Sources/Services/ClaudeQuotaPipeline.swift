@@ -4,7 +4,12 @@ import AppKit
 
 /// Why the latest Claude official refresh did not produce new data.
 enum ClaudeQuotaFailure: Equatable {
+    /// A subscription account is recorded but its token is empty or absent: Claude Code is signed out.
     case missingCredentials
+    /// The keychain could not be read; signing in again would not help.
+    case credentialsUnreadable
+    /// No subscription account is recorded (never signed in, or an API key setup).
+    case noAccount
     case rateLimited
     case unauthorized
     case transport(possibleProxy: Bool, description: String)
@@ -911,6 +916,8 @@ final class ClaudeQuotaPipeline {
     private static func failureKind(_ failure: ClaudeQuotaFailure) -> String {
         switch failure {
         case .missingCredentials: return "missing_credentials"
+        case .credentialsUnreadable: return "credentials_unreadable"
+        case .noAccount: return "no_account"
         case .rateLimited: return "rate_limited"
         case .unauthorized: return "unauthorized"
         case let .transport(possibleProxy, description):
@@ -922,7 +929,7 @@ final class ClaudeQuotaPipeline {
 
     private func merge(_ data: Data, delivery: FetchSchedulerDelivery, into engine: QuotaMergeEngine) -> ClaudeQuotaFailure? {
         guard identity.accountEpoch == delivery.epoch else { return nil }
-        guard let account = identity.accountIdentity else { return .missingCredentials }
+        guard let account = identity.accountIdentity else { return .noAccount }
         guard let readings = try? OfficialQuotaResponseParser.claudeReadings(data: data, now: delivery.receivedAt) else {
             return .invalidResponse
         }
@@ -1235,6 +1242,8 @@ final class ClaudeQuotaPipeline {
     private static func failure(from error: OfficialQuotaClientError?) -> ClaudeQuotaFailure {
         switch error {
         case .missingCredentials?, nil: return .missingCredentials
+        case .credentialsUnreadable?: return .credentialsUnreadable
+        case .missingAccount?: return .noAccount
         case let .transport(transport)?:
             if case .possibleProxy = transport {
                 return .transport(possibleProxy: true, description: transport.localizedDescription)
@@ -1267,7 +1276,7 @@ private final class ClaudeUsageTransport: UsageFetchTransport {
     func fetchUsage(completion: @escaping (UsageFetchResult) -> Void) {
         guard let pipeline else { return completion(.failure("pipeline_released")) }
         guard pipeline.hasAccount else {
-            pipeline.recordClientError(.missingCredentials)
+            pipeline.recordClientError(.missingAccount)
             completion(.failure("missing_account"))
             return
         }

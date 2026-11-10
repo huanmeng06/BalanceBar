@@ -90,24 +90,13 @@ enum DashboardSettingsComponents {
     static let settingsTitleMaximumNumberOfLines = 0
     static let settingsSubtitleMaximumNumberOfLines = 0
 
-    /// CJK UI copy is naturally breakable between characters. Word wrapping
-    /// treats a run without spaces as one large word, which leaves an entire
-    /// suffix stranded on the next line even though adaptive row height can
-    /// now accommodate the additional line. English keeps word wrapping so
-    /// Latin words are never laid out one letter at a time.
+    /// Word wrapping for every language. The text system's line breaking already
+    /// breaks CJK text between characters, and unlike character wrapping it keeps
+    /// closing punctuation off line starts, opening quotes off line ends, Latin
+    /// words (Claude, BalanceBar) whole, and non-breaking-space groups (`0.0 pt`)
+    /// together. Measured line counts match character wrapping for CJK copy.
     static func settingsSubtitleLineBreakMode(for subtitle: String) -> NSLineBreakMode {
-        // Numeric summaries intentionally use non-breaking spaces to keep a
-        // descriptor/value group together. Character wrapping would ignore
-        // that grouping and could split `0.0 pt` again.
-        if subtitle.contains("\u{00A0}") {
-            return .byWordWrapping
-        }
-        switch AppLanguage.resolved {
-        case .simplifiedChinese, .traditionalChineseTaiwan, .traditionalChineseHongKong, .japanese, .korean:
-            return .byCharWrapping
-        case .english, .spanish, .german, .french, .portuguese, .russian, .italian, .system:
-            return .byWordWrapping
-        }
+        .byWordWrapping
     }
 
     /// Semantic subtitles use word wrapping so AppKit honors the invisible

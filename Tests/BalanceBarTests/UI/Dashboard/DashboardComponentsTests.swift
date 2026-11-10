@@ -1767,10 +1767,8 @@ final class DashboardComponentsTests: XCTestCase {
             XCTAssertTrue(longRow.bounds.insetBy(dx: 0, dy: -0.5).contains(labelsFrame), "(language) labels must stay in row")
             XCTAssertEqual(
                 subtitle.lineBreakMode,
-                language == .english || language == .spanish || language == .german || language == .french
-                    ? .byWordWrapping
-                    : .byCharWrapping,
-                "(language) subtitle should use the script-appropriate wrapping mode"
+                .byWordWrapping,
+                "(language) subtitle keeps line-breaking rules (no leading punctuation, whole Latin words)"
             )
             XCTAssertLessThanOrEqual(
                 subtitle.cell!.cellSize(

@@ -597,6 +597,17 @@
 "quota.status.reset_pending" = "Provável redefinição; aguardando confirmação";
 "quota.status.reset_pending_short" = "Pendente";
 "quota.failure.open_usage_page" = "Abrir a página oficial de uso";
+"quota.failure.copy_sign_in_command" = "Copiar o comando claude";
+"quota.failure.copied" = "Copiado";
+"claude.account.signed_out" = "Login expirado";
+"claude.account.credentials_unreadable" = "Login ilegível";
+"claude.account.no_subscription_account" = "Sem conta de assinatura";
+"claude.refresh.credentials_unreadable" = "Não foi possível ler o login do Claude Code nas Chaves. Clique em Atualizar agora e escolha “Sempre Permitir” no aviso das Chaves que aparecer.";
+"claude.refresh.no_subscription_account" = "Nenhuma conta de assinatura do Claude encontrada. O Claude Code com chave de API não tem cota de assinatura; caso contrário, execute claude no terminal para entrar.";
+"claude.login_prompt.title" = "Login do Claude expirado; dados anteriores";
+"claude.login_prompt.action" = "Clique para copiar o comando claude e execute-o no terminal";
+"claude.login_prompt.copied_title" = "Comando claude copiado";
+"claude.login_prompt.copied_detail" = "Cole e execute no terminal para entrar novamente";
 "quota.status.accessibility" = "Estado da cota: %1$@";
 "claude.refresh.login_expired" = "O login do Claude Code expirou. Execute claude uma vez no terminal para restaurá-lo; o BalanceBar nunca renova o login por conta própria.";
 "status.item.controller.refresh_now_login_expired" = "As credenciais expiraram; execute o Claude Code CLI novamente no terminal";

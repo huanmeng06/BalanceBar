@@ -98,19 +98,31 @@ struct CredentialReader {
         claudeCredentials().accessToken
     }
 
+    /// `security` exit status for "the specified item could not be found in the keychain".
+    static let keychainItemNotFoundStatus: Int32 = 44
+
     func claudeCredentials() -> ClaudeStoredCredentials {
-        if let result = try? processRunner.run(arguments: [
+        let result = try? processRunner.run(arguments: [
             "find-generic-password", "-s", "Claude Code-credentials", "-w"
-        ]), result.terminationStatus == 0,
+        ])
+        if let result, result.terminationStatus == 0,
            let token = Self.claudeAccessToken(from: result.standardOutput) {
             return ClaudeStoredCredentials(accessToken: token, planType: Self.claudePlanType(from: result.standardOutput))
         }
+        // Read succeeded (empty token = signed out) or the item does not exist: not a keychain problem.
+        // Anything else (timeout, denied prompt, locked keychain, `security` not runnable) means the
+        // token may exist but could not be read; running `claude` would not help.
+        let keychainUnreadable = result.map {
+            $0.terminationStatus != 0 && $0.terminationStatus != Self.keychainItemNotFoundStatus
+        } ?? true
 
         let credentialsURL = homeDirectoryURL.appendingPathComponent(".claude/.credentials.json")
         guard let data = try? fileReader.readData(from: credentialsURL) else {
-            return ClaudeStoredCredentials(accessToken: nil, planType: nil)
+            return ClaudeStoredCredentials(accessToken: nil, planType: nil, keychainUnreadable: keychainUnreadable)
         }
-        return ClaudeStoredCredentials(accessToken: Self.claudeAccessToken(from: data), planType: Self.claudePlanType(from: data))
+        let token = Self.claudeAccessToken(from: data)
+        return ClaudeStoredCredentials(accessToken: token, planType: Self.claudePlanType(from: data),
+                                       keychainUnreadable: token == nil && keychainUnreadable)
     }
 
     /// Claude Code records the signed-in account in `~/.claude.json`.

@@ -1045,7 +1045,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 },
                 isClaudeLoginExpired: { [weak self] in
                     guard let self, self.activeClient == .claude, self.currentProviderIsOfficialCache else { return false }
-                    return self.claudeQuota.isLoginExpired()
+                    // A rejected token (401 pause) or a signed-out CLI: both need `claude` run again.
+                    return self.claudeQuota.isLoginExpired() || self.claudeQuota.latestState?.failure == .missingCredentials
                 },
                 showModOnboarding: { [weak self] in
                     self?.showModOnboardingFromMenu()
@@ -1066,8 +1067,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         let accountProfile = isOfficialOpenAICodex ? currentAccountProfileCache
             : isOfficialClaude ? officialQuotaClient.cachedClaudeAccountProfile() : nil
         let claudeLoginHint = isOfficialClaude && accountProfile?.email == nil
-            && claudeQuota.latestState?.failure == .missingCredentials
-            ? OpenAIAccountPresentation.UnavailableReason.claudeLoginRequired
+            ? claudeQuota.latestState?.failure.flatMap(OpenAIAccountPresentation.UnavailableReason.init(claudeFailure:))
             : nil
         let openAIAccount = OpenAIAccountPresentation.current(
             activeClient: activeClient,
@@ -1100,10 +1100,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             bankedResetDisplayMode: preferences.menuBankedResetDisplayMode,
             showsAvailableUpdateBadge: showsAvailableUpdateBadge,
             modRow: modSyncCoordinator.menuRow(isOfficialDirect: isOfficialClaude),
+            claudeLoginPrompt: isOfficialClaude && Self.showsClaudeLoginPrompt(claudeQuota.latestState),
             aggregatedProviders: activeClient == .codex ? aggregationDisplays : [],
             aggregationQuickSwitchBlocked: activeClient == .codex && aggregationQuickSwitchBlocked,
             quickSwitchSafety: quickSwitchSafety
         )
+    }
+
+    /// Old Claude data stays on the card while the login failed; the failure reason would otherwise
+    /// only be in the status tooltip. A live realtime source (Mod) keeps the data current, so the
+    /// row stays hidden then. With no data the error card already shows the reason and button.
+    static func showsClaudeLoginPrompt(_ state: ClaudeQuotaState?) -> Bool {
+        guard let state else { return false }
+        return showsClaudeLoginPrompt(hasWindows: !state.windows.isEmpty, failure: state.failure, status: state.status)
+    }
+
+    static func showsClaudeLoginPrompt(hasWindows: Bool, failure: ClaudeQuotaFailure?, status: StatusSlotState) -> Bool {
+        guard hasWindows, failure == .missingCredentials || failure == .unauthorized else { return false }
+        if case .realtime = status { return false }
+        return true
     }
 
     private var showsAvailableUpdateBadge: Bool {
@@ -2764,9 +2779,23 @@ enum ErrorCardLayout {
 
     private static func wrapIfNeeded(_ token: String, width: CGFloat) -> String {
         guard !token.isEmpty else { return token }
+        // CJK text already has break opportunities between characters, and the text system
+        // keeps closing punctuation off line starts and opening quotes off line ends. Forcing a
+        // break point after every character would override those rules.
+        guard !token.unicodeScalars.contains(where: isCJK) else { return token }
         let tokenWidth = (token as NSString).size(withAttributes: [.font: detailFont]).width
         guard tokenWidth > width else { return token }
         return token.map(String.init).joined(separator: "\u{200B}")
+    }
+
+    private static func isCJK(_ scalar: Unicode.Scalar) -> Bool {
+        switch scalar.value {
+        case 0x3000...0x303F, 0x3040...0x30FF, 0x3400...0x4DBF, 0x4E00...0x9FFF,
+             0xAC00...0xD7AF, 0xF900...0xFAFF, 0xFF00...0xFFEF:
+            return true
+        default:
+            return false
+        }
     }
 
     /// Minimum height that renders the full `message` at `width` using word
@@ -2798,10 +2827,14 @@ enum ErrorCardLayout {
         for message: String,
         includesAccount: Bool = false,
         includesSubscription: Bool = false,
-        subscriptionTextWidth: CGFloat? = nil
+        subscriptionTextWidth: CGFloat? = nil,
+        fullWidthDetail: Bool = false
     ) -> ErrorFrames {
-        let text = detailText(for: message, width: detailWidth)
-        let detailH = measuredHeight(of: text, width: detailWidth)
+        // A full-width detail is used when the card shows no amount (the Claude failure view),
+        // so long guidance does not wrap into a narrow column beside an empty "—".
+        let width = fullWidthDetail ? contentWidth : detailWidth
+        let text = detailText(for: message, width: width)
+        let detailH = measuredHeight(of: text, width: width)
         let extraDetailHeight = max(0, detailH - singleLineDetailHeight)
         let hasSubscription = includesAccount && includesSubscription
         let accountShift: CGFloat = includesAccount ? 19 : 0
@@ -2830,7 +2863,7 @@ enum ErrorCardLayout {
                 : nil,
             quotaDetail: NSRect(x: horizontalInset, y: 31 + extraDetailHeight, width: 128, height: 18),
             amount: NSRect(x: amountX, y: amountY, width: amountWidth, height: 48),
-            detail: NSRect(x: horizontalInset, y: 7, width: detailWidth, height: detailH),
+            detail: NSRect(x: horizontalInset, y: 7, width: width, height: detailH),
             detailText: text
         )
     }

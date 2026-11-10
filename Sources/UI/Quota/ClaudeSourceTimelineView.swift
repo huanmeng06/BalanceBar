@@ -423,6 +423,7 @@ final class ClaudeSourceTimelineView: NSView {
         case .unauthorized: return tr(.keyClaudeTimelineFailureUnauthorized)
         case .serverError: return tr(.keyClaudeTimelineFailureServerError)
         case .missingCredentials: return tr(.keyClaudeTimelineFailureMissingCredentials)
+        case .credentialsUnreadable: return tr(.keyClaudeAccountCredentialsUnreadable)
         }
     }
 

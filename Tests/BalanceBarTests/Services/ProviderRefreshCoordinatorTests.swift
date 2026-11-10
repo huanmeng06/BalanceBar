@@ -59,6 +59,35 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         super.tearDown()
     }
 
+    func testClaudeMissingCredentialsReasonGivesReloginGuidance() {
+        XCTAssertEqual(
+            ProviderRefreshCoordinator.claudeFailureReason(.missingCredentials),
+            tr(.keyClaudeRefreshLoginExpired)
+        )
+        XCTAssertEqual(
+            ProviderRefreshCoordinator.claudeFailureReason(.unauthorized),
+            tr(.keyClaudeRefreshLoginExpired)
+        )
+        XCTAssertEqual(
+            ProviderRefreshCoordinator.claudeFailureReason(.credentialsUnreadable),
+            tr(.keyClaudeRefreshCredentialsUnreadable)
+        )
+        XCTAssertEqual(
+            ProviderRefreshCoordinator.claudeFailureReason(.noAccount),
+            tr(.keyClaudeRefreshNoSubscriptionAccount)
+        )
+    }
+
+    func testClaudeFailureRecoveryMatchesWhatTheUserCanDo() {
+        XCTAssertEqual(ProviderRefreshCoordinator.claudeFailureRecovery(.missingCredentials), .copySignInCommand)
+        XCTAssertEqual(ProviderRefreshCoordinator.claudeFailureRecovery(.unauthorized), .copySignInCommand)
+        XCTAssertEqual(ProviderRefreshCoordinator.claudeFailureRecovery(.noAccount), .copySignInCommand)
+        // Running claude does not fix an unreadable keychain; no button.
+        XCTAssertEqual(ProviderRefreshCoordinator.claudeFailureRecovery(.credentialsUnreadable), .none)
+        XCTAssertEqual(ProviderRefreshCoordinator.claudeFailureRecovery(.rateLimited), .openUsagePage)
+        XCTAssertEqual(ProviderRefreshCoordinator.claudeFailureRecovery(.http(500)), .openUsagePage)
+    }
+
     func testStoppedCoordinatorRejectsLateCallbacksAndRefreshesAgainstInvalidatedSession() throws {
         let started = expectation(description: "delayed transport started")
         let release = DispatchSemaphore(value: 0)

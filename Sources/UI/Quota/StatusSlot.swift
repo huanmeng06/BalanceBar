@@ -87,6 +87,8 @@ enum StatusSlotText: String, CaseIterable {
     case resetPending = "quota.status.reset_pending"
     case resetPendingShort = "quota.status.reset_pending_short"
     case openUsagePage = "quota.failure.open_usage_page"
+    case copySignInCommand = "quota.failure.copy_sign_in_command"
+    case copied = "quota.failure.copied"
     case accessibilityStatus = "quota.status.accessibility"
 
     var defaultText: String {
@@ -108,6 +110,8 @@ enum StatusSlotText: String, CaseIterable {
         case .resetPending: return "预计已重置，等待确认"
         case .resetPendingShort: return "待确认"
         case .openUsagePage: return "打开官方用量页"
+        case .copySignInCommand: return "复制 claude 命令"
+        case .copied: return "已复制"
         case .accessibilityStatus: return "额度状态：%@"
         }
     }
