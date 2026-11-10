@@ -1023,6 +1023,16 @@ struct BalanceRecharge: Codable, Equatable {
     }
 }
 
+/// Recovery offered by a Claude official failure card.
+enum FailureRecovery: Equatable {
+    /// Default: open the official usage page.
+    case openUsagePage
+    /// Claude Code is signed out or its token was rejected: copy the `claude` command.
+    case copySignInCommand
+    /// Nothing the card can do (for example the keychain prompt must be allowed); no button.
+    case none
+}
+
 struct Snapshot: Equatable {
     enum Kind: Equatable { case placeholder, official, balance, error }
     let kind: Kind
@@ -1043,6 +1053,8 @@ struct Snapshot: Equatable {
     /// reset pending, ...); nil for every other source, which keeps the
     /// plain refresh-time label.
     var quotaStatus: StatusSlotState? = nil
+    /// Which recovery button a Claude official failure card offers.
+    var failureRecovery: FailureRecovery = .openUsagePage
     /// Opaque identity of the account this official quota belongs to, so
     /// notification progress and stored samples never cross accounts.
     var notificationAccountScope: String? = nil

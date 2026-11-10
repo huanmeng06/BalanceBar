@@ -5260,7 +5260,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let cases: [(AppLanguage, String, String)] = [
             (
                 .simplifiedChinese,
-                "当前已启用「仅在运行时显示」，任务结束后的隐藏延迟已到期，因此菜单栏图标暂时隐藏。",
+                "当前已启用“仅在运行时显示”，任务结束后的隐藏延迟已到期，因此菜单栏图标暂时隐藏。",
                 "立即设置"
             ),
             (

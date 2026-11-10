@@ -114,6 +114,23 @@ enum OpenAISubscriptionTier: Equatable {
 }
 
 struct OpenAIAccountPresentation: Equatable {
+    enum UnavailableReason: Equatable {
+        case claudeLoginRequired
+        case claudeCredentialsUnreadable
+        case claudeNoSubscriptionAccount
+
+        /// The short account-row status for a Claude official failure; nil when the failure
+        /// says nothing about the account (network, rate limit, server error).
+        init?(claudeFailure: ClaudeQuotaFailure) {
+            switch claudeFailure {
+            case .missingCredentials, .unauthorized: self = .claudeLoginRequired
+            case .credentialsUnreadable: self = .claudeCredentialsUnreadable
+            case .noAccount: self = .claudeNoSubscriptionAccount
+            case .rateLimited, .transport, .http, .invalidResponse: return nil
+            }
+        }
+    }
+
     enum State: Equatable {
         case available(String)
         case unavailable
@@ -121,8 +138,13 @@ struct OpenAIAccountPresentation: Equatable {
 
     let state: State
     let subscription: OpenAISubscriptionTier?
+    /// Optional provider-specific guidance shown when the account identity is unavailable.
+    /// The default remains the generic account-unavailable copy for callers that do not have
+    /// a more precise reason from their refresh pipeline.
+    let unavailableReason: UnavailableReason?
 
-    init(email: String?, subscription: OpenAISubscriptionTier? = nil) {
+    init(email: String?, subscription: OpenAISubscriptionTier? = nil, unavailableReason: UnavailableReason? = nil) {
+        self.unavailableReason = unavailableReason
         if let email {
             let normalized = email.trimmingCharacters(in: .whitespacesAndNewlines)
             state = normalized.isEmpty ? .unavailable : .available(normalized)
@@ -137,10 +159,11 @@ struct OpenAIAccountPresentation: Equatable {
         activeClient: AssistantClient,
         providerIsOfficial: Bool,
         email: String?,
-        subscription: OpenAISubscriptionTier? = nil
+        subscription: OpenAISubscriptionTier? = nil,
+        unavailableReason: UnavailableReason? = nil
     ) -> Self? {
         guard activeClient == .codex || activeClient == .claude, providerIsOfficial else { return nil }
-        return Self(email: email, subscription: subscription)
+        return Self(email: email, subscription: subscription, unavailableReason: unavailableReason)
     }
 
     func text(language: AppLanguage = .selected) -> String {
@@ -148,7 +171,18 @@ struct OpenAIAccountPresentation: Equatable {
         case .available(let email):
             return tr(.keyProviderModelsValue, arguments: [String(describing: email)], language: language)
         case .unavailable:
-            return tr(.keyProviderModelsAccountUnavailable, language: language)
+            switch unavailableReason {
+            // Short status only: the account row is a single line, and the failure
+            // area below carries the full guidance.
+            case .claudeLoginRequired:
+                return tr(.keyClaudeAccountSignedOut, language: language)
+            case .claudeCredentialsUnreadable:
+                return tr(.keyClaudeAccountCredentialsUnreadable, language: language)
+            case .claudeNoSubscriptionAccount:
+                return tr(.keyClaudeAccountNoSubscriptionAccount, language: language)
+            case nil:
+                return tr(.keyProviderModelsAccountUnavailable, language: language)
+            }
         }
     }
 }

@@ -2018,19 +2018,19 @@ final class RealtimeBoostAdvancedCardTests: XCTestCase {
         assertCopy(.notInstalled(hasOtherScopeInstall: false), title: "未安装",
                    reason: "安装后可实时同步额度", action: nil)
         assertCopy(.notInstalled(hasOtherScopeInstall: true), title: "仅项目级安装",
-                   reason: "只在该项目内生效", action: "点「一键安装」装到用户级")
+                   reason: "只在该项目内生效", action: "点“一键安装”装到用户级")
         assertCopy(.waitingForData, title: "等待数据",
                    reason: "已安装，还没收到会话数据", action: "新开一个 Claude 会话即可")
         assertCopy(.silent, title: "暂无数据",
                    reason: "10 分钟内没有收到数据", action: "新开会话，或运行 /reload-plugins")
         assertCopy(.disabled, title: "已停用",
-                   reason: "插件已安装，但被停用", action: "点「了解更多」查看启用方法")
+                   reason: "插件已安装，但被停用", action: "点“了解更多”查看启用方法")
         assertCopy(.claudeMissing, title: "未找到 Claude Code",
                    reason: "系统中没有 claude 命令", action: "安装 Claude Code 后重试")
         assertCopy(.claudeVersionTooOld(.init(major: 2, minor: 1, patch: 100)), title: "版本过旧",
                    reason: "当前 Claude Code 2.1.100", action: "请升级到 v2.1.287 或更高")
         assertCopy(.inboxNotReady, title: "收件箱不可用",
-                   reason: "权限不足或所有者不符", action: "点「一键安装」重建")
+                   reason: "权限不足或所有者不符", action: "点“一键安装”重建")
         assertCopy(.snapshotRejected(.init(rejection: .accountMismatch, at: Date())), title: "数据被拒绝",
                    reason: "Claude 与 BalanceBar 登录的账号不同", action: "请切换到同一账号")
         assertCopy(.snapshotRejected(.init(rejection: .unverifiedCycle, at: Date())), title: "数据被拒绝",
@@ -2043,9 +2043,9 @@ final class RealtimeBoostAdvancedCardTests: XCTestCase {
         assertCopy(.waitingForData, operation: .uninstalling(current: .removeMarketplace),
                    title: "等待数据", reason: "移除安装来源…", action: nil)
         assertCopy(.notInstalled(hasOtherScopeInstall: false), operation: .failed(.inboxNotReady),
-                   title: "安装失败", reason: "无法自动安装", action: "点「查看原因」了解详情")
+                   title: "安装失败", reason: "无法自动安装", action: "点“查看原因”了解详情")
         assertCopy(.waitingForData, operation: .uninstallFailed(.commandFailed(step: .removeMarketplace, exitCode: 1, detail: "")),
-                   title: "卸载失败", reason: "卸载未完成", action: "点「查看原因」了解详情")
+                   title: "卸载失败", reason: "卸载未完成", action: "点“查看原因”了解详情")
     }
 
     func testCardCopyExistsInEveryLanguage() {

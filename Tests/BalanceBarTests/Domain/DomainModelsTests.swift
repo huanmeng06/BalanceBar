@@ -394,6 +394,48 @@ final class DomainModelsTests: XCTestCase {
         )
         XCTAssertEqual(claude?.state, .available("claude@example.com"))
         XCTAssertEqual(claude?.subscription?.text, "Max · 5x")
+
+        let claudeLoginRequired = OpenAIAccountPresentation.current(
+            activeClient: .claude,
+            providerIsOfficial: true,
+            email: nil,
+            unavailableReason: .claudeLoginRequired
+        )
+        XCTAssertEqual(
+            claudeLoginRequired?.text(language: .english),
+            "Sign-in expired"
+        )
+        XCTAssertEqual(
+            claudeLoginRequired?.text(language: .simplifiedChinese),
+            "登录已失效"
+        )
+        typealias Reason = OpenAIAccountPresentation.UnavailableReason
+        // The re-login row under the card: old data kept while the login failed, and no live Mod data.
+        let stale = StatusSlotState.error(at: nil, source: .oauthAPI)
+        XCTAssertTrue(AppDelegate.showsClaudeLoginPrompt(hasWindows: true, failure: .unauthorized, status: stale))
+        XCTAssertTrue(AppDelegate.showsClaudeLoginPrompt(hasWindows: true, failure: .missingCredentials, status: stale))
+        XCTAssertFalse(AppDelegate.showsClaudeLoginPrompt(hasWindows: false, failure: .unauthorized, status: stale),
+                       "the error card already carries the reason and button")
+        XCTAssertFalse(AppDelegate.showsClaudeLoginPrompt(hasWindows: true, failure: .unauthorized,
+                                                          status: .realtime(.mod, at: nil)), "live Mod data stays primary")
+        XCTAssertFalse(AppDelegate.showsClaudeLoginPrompt(hasWindows: true, failure: .credentialsUnreadable, status: stale))
+        XCTAssertFalse(AppDelegate.showsClaudeLoginPrompt(hasWindows: true, failure: .rateLimited, status: stale))
+        XCTAssertEqual(Reason(claudeFailure: .missingCredentials), .claudeLoginRequired)
+        XCTAssertEqual(Reason(claudeFailure: .unauthorized), .claudeLoginRequired)
+        XCTAssertEqual(Reason(claudeFailure: .credentialsUnreadable), .claudeCredentialsUnreadable)
+        XCTAssertEqual(Reason(claudeFailure: .noAccount), .claudeNoSubscriptionAccount)
+        XCTAssertNil(Reason(claudeFailure: .rateLimited))
+        XCTAssertNil(Reason(claudeFailure: .http(500)))
+        XCTAssertEqual(
+            OpenAIAccountPresentation(email: nil, unavailableReason: .claudeCredentialsUnreadable)
+                .text(language: .simplifiedChinese),
+            "无法读取登录信息"
+        )
+        XCTAssertEqual(
+            OpenAIAccountPresentation(email: nil, unavailableReason: .claudeNoSubscriptionAccount)
+                .text(language: .simplifiedChinese),
+            "未登录订阅账号"
+        )
         XCTAssertNil(
             OpenAIAccountPresentation.current(
                 activeClient: .grok,

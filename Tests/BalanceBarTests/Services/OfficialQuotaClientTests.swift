@@ -942,7 +942,7 @@ extension OfficialQuotaClientTests {
 
         let before = StubURLProtocol.requestCount
         let (missing, missingError) = fetchClaudeUsage(makeClient(claudeToken: nil))
-        XCTAssertEqual(missing, .failure("missing_credentials"))
+        XCTAssertEqual(missing, .notSent("missing_credentials"))
         guard case .missingCredentials? = missingError else { return XCTFail("expected missing credentials") }
         XCTAssertEqual(StubURLProtocol.requestCount, before, "a missing token must not start transport")
     }

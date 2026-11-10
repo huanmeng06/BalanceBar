@@ -365,7 +365,7 @@ public final class FetchScheduler: FetchScheduling {
         log(.dispatched, reasons: reasons, trigger: trigger)
         transport.fetchUsage { [self] result in
             queue.async {
-                complete(result, reasons: reasons, epoch: epoch, credentialVersion: credentialVersion)
+                complete(result, reasons: reasons, epoch: epoch, credentialVersion: credentialVersion, cost: cost)
             }
         }
     }
@@ -374,10 +374,15 @@ public final class FetchScheduler: FetchScheduling {
         _ result: UsageFetchResult,
         reasons: [FetchRequestReason],
         epoch: AccountEpoch,
-        credentialVersion: CredentialVersion?
+        credentialVersion: CredentialVersion?,
+        cost: Int = 0
     ) {
         isBusy = false
         let now = clock.now
+        // Nothing reached the server, so the request budget is untouched (and stale epochs alike).
+        if case .notSent = result {
+            tokens = min(configuration.tokenCapacity, tokens + cost)
+        }
         let stale = identity.accountEpoch != epoch
         defer {
             replayDeferred(staleEpoch: stale)
@@ -409,7 +414,7 @@ public final class FetchScheduler: FetchScheduling {
                 persistent.unauthorizedCredentialVersion = credentialVersion
                 stateStore.save(persistent)
             }
-        case .rateLimited:
+        case .rateLimited, .notSent:
             break
         case .failure:
             lastFailureAt = now
@@ -561,6 +566,7 @@ public final class FetchScheduler: FetchScheduling {
         case .rateLimited: return "rate_limited"
         case .unauthorized: return "unauthorized"
         case .failure: return "failure"
+        case .notSent: return "not_sent"
         }
     }
 }

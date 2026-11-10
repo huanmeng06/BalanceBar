@@ -1438,6 +1438,7 @@ final class ProviderRefreshCoordinator {
         } else if let failure = state.failure {
             var error = Snapshot.providerError(target.providerName, reason: Self.claudeFailureReason(failure), cachedBalance: nil)
             error.quotaStatus = state.status
+            error.failureRecovery = Self.claudeFailureRecovery(failure)
             snapshot = error
         } else {
             return
@@ -1481,11 +1482,26 @@ final class ProviderRefreshCoordinator {
         clearStandardDisplay(client: .claude, providerID: target.providerID, revision: target.revision)
     }
 
-    private static func claudeFailureReason(_ failure: ClaudeQuotaFailure) -> String {
+    static func claudeFailureRecovery(_ failure: ClaudeQuotaFailure) -> FailureRecovery {
+        switch failure {
+        // Signed out, token rejected, or never signed in: running claude fixes all three
+        // (an API key setup is told in the reason text that there is no subscription quota).
+        case .missingCredentials, .unauthorized, .noAccount: return .copySignInCommand
+        case .credentialsUnreadable: return .none
+        case .rateLimited, .transport, .http, .invalidResponse: return .openUsagePage
+        }
+    }
+
+    static func claudeFailureReason(_ failure: ClaudeQuotaFailure) -> String {
         let name = String(describing: AssistantClient.claude.displayName)
         switch failure {
         case .missingCredentials:
-            return tr(.keyProviderRefreshCoordinatorOfficialValueLocalSignInCredentialsWereNotFound, arguments: [name])
+            // A recorded account with an empty token: the CLI is signed out; say how to recover.
+            return tr(.keyClaudeRefreshLoginExpired)
+        case .credentialsUnreadable:
+            return tr(.keyClaudeRefreshCredentialsUnreadable)
+        case .noAccount:
+            return tr(.keyClaudeRefreshNoSubscriptionAccount)
         case let .transport(_, description):
             return tr(.keyProviderRefreshCoordinatorOfficialValueValue, arguments: [name, description])
         case .unauthorized:

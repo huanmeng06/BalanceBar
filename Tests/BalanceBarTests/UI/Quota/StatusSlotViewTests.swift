@@ -381,7 +381,7 @@ final class StatusSlotViewTests: XCTestCase {
     func testFailureStateReasonButtonAndAccessibility() throws {
         var opened = 0
         for appearanceName in [NSAppearance.Name.aqua, .darkAqua] {
-            let view = FailureStateView(reason: "登录已过期") { opened += 1 }
+            let view = FailureStateView(reason: "登录已过期", onOpenUsagePage: { opened += 1 })
             view.appearance = NSAppearance(named: appearanceName)
             view.frame = NSRect(x: 0, y: 0, width: 240, height: 60)
             view.layoutSubtreeIfNeeded()
@@ -396,6 +396,77 @@ final class StatusSlotViewTests: XCTestCase {
         XCTAssertEqual(opened, 2)
     }
 
+    func testFailureStateCopiesSignInCommandForSignedOutClaude() {
+        var opened = 0
+        var copied: [String] = []
+        let view = FailureStateView(
+            reason: "Claude Code 登录已过期。在终端运行一次 claude 即可恢复；BalanceBar 不会自行续期登录。",
+            action: .copySignInCommand,
+            onOpenUsagePage: { opened += 1 },
+            copyToPasteboard: { copied.append($0) }
+        )
+        XCTAssertEqual(view.actionButton.title, "复制 claude 命令")
+        XCTAssertEqual(view.actionButton.accessibilityLabel(), "复制 claude 命令")
+        view.actionButton.performClick(nil)
+        XCTAssertEqual(copied, ["claude"])
+        XCTAssertEqual(opened, 0)
+        XCTAssertEqual(view.actionButton.title, "已复制")
+    }
+
+    func testFailureStateWithoutRecoveryShowsReasonOnly() {
+        let view = FailureStateView(reason: "无法读取钥匙串", action: .none)
+        view.frame = NSRect(x: 0, y: 0, width: 240, height: 40)
+        view.layoutSubtreeIfNeeded()
+        XCTAssertNil(view.actionButton.superview, "no button when the card cannot fix the failure")
+        XCTAssertEqual(view.reasonForTesting, "无法读取钥匙串")
+    }
+
+    func testFailureStateReasonFrameStartsAtTheCardTextEdge() throws {
+        // Frame-placed labels above the failure view sit at x = 0 with their own text inset;
+        // the reason label's frame must start there too so the glyphs line up.
+        let view = FailureStateView(reason: "Claude Code 登录已失效。", action: .copySignInCommand)
+        view.frame = NSRect(x: 0, y: 0, width: 272, height: 60)
+        view.layoutSubtreeIfNeeded()
+        let label = try XCTUnwrap(view.descendantTextFields().first { $0.stringValue == "Claude Code 登录已失效。" })
+        XCTAssertEqual(label.convert(label.bounds, to: view).minX, 0, accuracy: 0.5)
+    }
+
+    func testPromptRowCanConfirmInPlaceWithoutClosingTheMenu() {
+        let row = ModPromptRowView(mainText: "Claude 登录已失效，下面是旧数据", detailText: "点此复制 claude 命令",
+                                   symbolName: "exclamationmark.triangle.fill", tint: .systemOrange)
+        row.closesMenuOnClick = false
+        var clicks = 0
+        row.onClick = { [weak row] in
+            clicks += 1
+            row?.showConfirmation(mainText: "已复制 claude 命令", detailText: "在终端粘贴并运行即可恢复登录",
+                                  symbolName: "checkmark.circle.fill", tint: .systemGreen)
+        }
+        XCTAssertTrue(row.accessibilityPerformPress())
+        XCTAssertEqual(clicks, 1)
+        XCTAssertEqual(row.mainText, "已复制 claude 命令")
+        XCTAssertEqual(row.whyText, "在终端粘贴并运行即可恢复登录")
+        XCTAssertEqual(row.iconView.contentTintColor, .systemGreen)
+    }
+
+    func testErrorDetailLeavesCJKLineBreakingToTheTextSystem() {
+        let chinese = "无法读取钥匙串中的 Claude Code 登录信息。请点击“立即刷新”，并在弹出的钥匙串对话框中选择“始终允许”。"
+        XCTAssertEqual(ErrorCardLayout.detailText(for: chinese, width: 120), chinese,
+                       "no forced break points, so punctuation never starts or ends a line")
+        let longCode = String(repeating: "x", count: 80)
+        XCTAssertTrue(ErrorCardLayout.detailText(for: longCode, width: 120).contains("\u{200B}"),
+                      "unbroken Latin runs still get break points")
+    }
+
+    func testFailureStateCopyStringsAreLocalized() {
+        for language in AppLanguage.allCases {
+            for text in [StatusSlotText.copySignInCommand, .copied] {
+                let value = StatusSlotText.appLocalize(text: text, language: language)
+                XCTAssertFalse(value.isEmpty, "\(text) \(language)")
+                XCTAssertNotEqual(value, text.rawValue, "\(text) \(language)")
+            }
+        }
+    }
+
     private func hasOpaquePixel(_ rep: NSBitmapImageRep) -> Bool {
         for x in 0..<rep.pixelsWide {
             for y in 0..<rep.pixelsHigh where (rep.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.1 {
@@ -403,5 +474,11 @@ final class StatusSlotViewTests: XCTestCase {
             }
         }
         return false
+    }
+}
+
+private extension NSView {
+    func descendantTextFields() -> [NSTextField] {
+        subviews.flatMap { ($0 as? NSTextField).map { [$0] } ?? [] + $0.descendantTextFields() }
     }
 }

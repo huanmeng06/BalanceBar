@@ -597,6 +597,17 @@
 "quota.status.reset_pending" = "Вероятно, сброшено; ожидается подтверждение";
 "quota.status.reset_pending_short" = "Ожидание";
 "quota.failure.open_usage_page" = "Открыть официальную страницу использования";
+"quota.failure.copy_sign_in_command" = "Скопировать команду claude";
+"quota.failure.copied" = "Скопировано";
+"claude.account.signed_out" = "Срок входа истёк";
+"claude.account.credentials_unreadable" = "Вход не читается";
+"claude.account.no_subscription_account" = "Нет аккаунта с подпиской";
+"claude.refresh.credentials_unreadable" = "Не удаётся прочитать вход Claude Code из связки ключей. Нажмите «Обновить сейчас», затем выберите «Разрешать всегда» в появившемся окне связки ключей.";
+"claude.refresh.no_subscription_account" = "Аккаунт с подпиской Claude не найден. У Claude Code, вошедшего по API-ключу, нет лимитов подписки; иначе запустите claude в терминале и войдите.";
+"claude.login_prompt.title" = "Вход в Claude истёк; старые данные";
+"claude.login_prompt.action" = "Нажмите, чтобы скопировать команду claude и запустить её в терминале";
+"claude.login_prompt.copied_title" = "Команда claude скопирована";
+"claude.login_prompt.copied_detail" = "Вставьте и запустите её в терминале, чтобы войти снова";
 "quota.status.accessibility" = "Состояние квоты: %1$@";
 "claude.refresh.login_expired" = "Срок входа в Claude Code истёк. Запустите claude один раз в терминале, чтобы восстановить вход; BalanceBar сам вход не продлевает.";
 "status.item.controller.refresh_now_login_expired" = "Учётные данные истекли; снова запустите Claude Code CLI в терминале";

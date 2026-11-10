@@ -597,6 +597,17 @@
 "quota.status.reset_pending" = "Wahrscheinlich zurückgesetzt; Bestätigung steht aus";
 "quota.status.reset_pending_short" = "Offen";
 "quota.failure.open_usage_page" = "Offizielle Nutzungsseite öffnen";
+"quota.failure.copy_sign_in_command" = "Befehl claude kopieren";
+"quota.failure.copied" = "Kopiert";
+"claude.account.signed_out" = "Anmeldung abgelaufen";
+"claude.account.credentials_unreadable" = "Anmeldung nicht lesbar";
+"claude.account.no_subscription_account" = "Kein Abo-Konto";
+"claude.refresh.credentials_unreadable" = "Die Claude-Code-Anmeldung kann nicht aus dem Schlüsselbund gelesen werden. Klicke auf „Jetzt aktualisieren“ und wähle im erscheinenden Schlüsselbund-Dialog „Immer erlauben“.";
+"claude.refresh.no_subscription_account" = "Kein Claude-Abo-Konto gefunden. Mit einem API-Schlüssel angemeldetes Claude Code hat kein Abo-Kontingent; andernfalls führe claude im Terminal aus, um dich anzumelden.";
+"claude.login_prompt.title" = "Claude-Anmeldung abgelaufen; ältere Daten";
+"claude.login_prompt.action" = "Klicken, um den Befehl claude zu kopieren und im Terminal auszuführen";
+"claude.login_prompt.copied_title" = "Befehl claude kopiert";
+"claude.login_prompt.copied_detail" = "Im Terminal einfügen und ausführen, um dich erneut anzumelden";
 "quota.status.accessibility" = "Kontingentstatus: %1$@";
 "claude.refresh.login_expired" = "Die Claude-Code-Anmeldung ist abgelaufen. Führe einmal claude im Terminal aus, um sie wiederherzustellen; BalanceBar erneuert die Anmeldung nie selbst.";
 "status.item.controller.refresh_now_login_expired" = "Anmeldedaten abgelaufen; führe die Claude Code CLI erneut im Terminal aus";

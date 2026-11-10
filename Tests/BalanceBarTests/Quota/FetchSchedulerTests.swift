@@ -391,6 +391,19 @@ final class FetchSchedulerTests: XCTestCase {
         XCTAssertEqual(transport.completions.count, 1)
     }
 
+    func testRequestThatNeverLeftTheMachineRefundsItsTokens() {
+        let scheduler = makeScheduler()
+        request(scheduler, .scheduled) // 3 -> 1
+        complete(scheduler, .notSent("missing_credentials")) // refund -> 3
+        request(scheduler, .scheduled)
+        XCTAssertEqual(logs.last { $0.kind == .dispatched }?.tokens, 1, "the refunded tokens pay for the next check")
+        complete(scheduler, .notSent("missing_credentials")) // -> 3
+        // Signed in again: a manual refresh dispatches at once instead of waiting for a refill.
+        request(scheduler, .manual)
+        XCTAssertEqual(logs.last { $0.kind == .dispatched }?.tokens, 2)
+        XCTAssertNotEqual(lastSkip, .insufficientTokens)
+    }
+
     func testTokenReservationAutomaticNeedsTwoManualNeedsOne() {
         let scheduler = makeScheduler()
         request(scheduler, .scheduled) // 3 -> 1
