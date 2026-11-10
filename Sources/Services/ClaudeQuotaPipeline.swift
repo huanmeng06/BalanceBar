@@ -832,7 +832,7 @@ final class ClaudeQuotaPipeline {
             newFailure = .rateLimited
         case .unauthorized:
             newFailure = .unauthorized
-        case .failure:
+        case .failure, .notSent:
             newFailure = Self.failure(from: lock.withLock { lastClientError })
         }
         lock.withLock {
@@ -1274,10 +1274,10 @@ private final class ClaudeUsageTransport: UsageFetchTransport {
     init(pipeline: ClaudeQuotaPipeline) { self.pipeline = pipeline }
 
     func fetchUsage(completion: @escaping (UsageFetchResult) -> Void) {
-        guard let pipeline else { return completion(.failure("pipeline_released")) }
+        guard let pipeline else { return completion(.notSent("pipeline_released")) }
         guard pipeline.hasAccount else {
             pipeline.recordClientError(.missingAccount)
-            completion(.failure("missing_account"))
+            completion(.notSent("missing_account"))
             return
         }
         if DevelopmentClaudeUnauthorizedSimulation.isActive {

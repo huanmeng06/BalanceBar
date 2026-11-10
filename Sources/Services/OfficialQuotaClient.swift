@@ -542,9 +542,9 @@ final class OfficialQuotaClient {
         guard let token = claudeRequestCredentials(cacheFor: 0).accessToken, !token.isEmpty,
               let request = makeRequest(client: .claude, storedAccessToken: token) else {
             if lastClaudeKeychainUnreadable() {
-                completion(.failure("credentials_unreadable"), .credentialsUnreadable)
+                completion(.notSent("credentials_unreadable"), .credentialsUnreadable)
             } else {
-                completion(.failure("missing_credentials"), .missingCredentials)
+                completion(.notSent("missing_credentials"), .missingCredentials)
             }
             return
         }

@@ -37,6 +37,9 @@ public enum UsageFetchResult: Equatable {
     case unauthorized
     /// Any other failure, with a non-secret diagnostic description.
     case failure(String)
+    /// No request left this machine (no credentials, unreadable keychain, no account). The
+    /// scheduler refunds its request token, so a manual refresh works as soon as the user signs in.
+    case notSent(String)
 }
 
 /// Performs the single Usage API request; tests inject a fake transport.
