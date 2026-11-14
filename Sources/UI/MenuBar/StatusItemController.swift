@@ -6140,8 +6140,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     /// The refresh item only says something when the login has expired: that is the one state the user
     /// must act on (the menu closes on click). The action title stays fixed; the hint is the subtitle.
+    /// The orange re-login row under the card already says it (and copies the command), so the
+    /// subtitle stays empty while that row is shown.
     func manualRefreshMenuSubtitle() -> String? {
-        actions.isClaudeLoginExpired() ? tr(.keyStatusItemControllerRefreshNowLoginExpired) : nil
+        guard menuInput.claudeLoginPrompt == nil else { return nil }
+        return actions.isClaudeLoginExpired() ? tr(.keyStatusItemControllerRefreshNowLoginExpired) : nil
     }
 
     private func applyManualRefreshContent(to item: NSMenuItem) {
