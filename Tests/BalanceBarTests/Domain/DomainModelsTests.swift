@@ -410,16 +410,18 @@ final class DomainModelsTests: XCTestCase {
             "登录已失效"
         )
         typealias Reason = OpenAIAccountPresentation.UnavailableReason
-        // The re-login row under the card: old data kept while the login failed, and no live Mod data.
+        // The re-login row under the card: shown whenever data stays on the card while the login
+        // failed, worded for old data, or for live Mod data that keeps the card current.
         let stale = StatusSlotState.error(at: nil, source: .oauthAPI)
-        XCTAssertTrue(AppDelegate.showsClaudeLoginPrompt(hasWindows: true, failure: .unauthorized, status: stale))
-        XCTAssertTrue(AppDelegate.showsClaudeLoginPrompt(hasWindows: true, failure: .missingCredentials, status: stale))
-        XCTAssertFalse(AppDelegate.showsClaudeLoginPrompt(hasWindows: false, failure: .unauthorized, status: stale),
-                       "the error card already carries the reason and button")
-        XCTAssertFalse(AppDelegate.showsClaudeLoginPrompt(hasWindows: true, failure: .unauthorized,
-                                                          status: .realtime(.mod, at: nil)), "live Mod data stays primary")
-        XCTAssertFalse(AppDelegate.showsClaudeLoginPrompt(hasWindows: true, failure: .credentialsUnreadable, status: stale))
-        XCTAssertFalse(AppDelegate.showsClaudeLoginPrompt(hasWindows: true, failure: .rateLimited, status: stale))
+        let prompt = AppDelegate.claudeLoginPrompt(hasWindows:failure:status:)
+        XCTAssertEqual(prompt(true, .unauthorized, stale), .staleData)
+        XCTAssertEqual(prompt(true, .missingCredentials, stale), .staleData)
+        XCTAssertNil(prompt(false, .unauthorized, stale), "the error card already carries the reason and button")
+        XCTAssertEqual(prompt(true, .unauthorized, .realtime(.mod, at: nil)), .liveData)
+        XCTAssertEqual(prompt(true, .missingCredentials, .realtime(.mod, at: nil)), .liveData)
+        XCTAssertNil(prompt(true, .credentialsUnreadable, stale))
+        XCTAssertNil(prompt(true, .rateLimited, stale))
+        XCTAssertNil(prompt(true, nil, .realtime(.mod, at: nil)), "no login failure, no row")
         XCTAssertEqual(Reason(claudeFailure: .missingCredentials), .claudeLoginRequired)
         XCTAssertEqual(Reason(claudeFailure: .unauthorized), .claudeLoginRequired)
         XCTAssertEqual(Reason(claudeFailure: .credentialsUnreadable), .claudeCredentialsUnreadable)

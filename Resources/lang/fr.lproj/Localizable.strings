@@ -605,6 +605,7 @@
 "claude.refresh.credentials_unreadable" = "Impossible de lire la connexion Claude Code dans le trousseau. Cliquez sur Actualiser maintenant, puis choisissez « Toujours autoriser » dans la fenêtre du trousseau qui s’affiche.";
 "claude.refresh.no_subscription_account" = "Aucun compte d’abonnement Claude trouvé. Claude Code connecté avec une clé API n’a pas de quota d’abonnement ; sinon, exécutez claude dans un terminal pour vous connecter.";
 "claude.login_prompt.title" = "Connexion Claude expirée ; données anciennes";
+"claude.login_prompt.title_live" = "Connexion Claude Code expirée ; usage officiel en pause";
 "claude.login_prompt.action" = "Cliquez pour copier la commande claude, puis exécutez-la dans un terminal";
 "claude.login_prompt.copied_title" = "Commande claude copiée";
 "claude.login_prompt.copied_detail" = "Collez-la et exécutez-la dans un terminal pour vous reconnecter";

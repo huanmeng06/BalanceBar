@@ -605,6 +605,7 @@
 "claude.refresh.credentials_unreadable" = "キーチェーンから Claude Code のサインイン情報を読み取れません。「今すぐ更新」を押し、表示されるキーチェーンのダイアログで「常に許可」を選んでください。";
 "claude.refresh.no_subscription_account" = "Claude のサブスクリプションアカウントが見つかりません。API キーでサインインした Claude Code には表示できる枠がありません。そうでなければターミナルで claude を実行してサインインしてください。";
 "claude.login_prompt.title" = "Claude のサインインが期限切れ・以前のデータ";
+"claude.login_prompt.title_live" = "Claude Code のサインインが期限切れ・公式使用量の更新を停止中";
 "claude.login_prompt.action" = "クリックで claude コマンドをコピーし、ターミナルで実行";
 "claude.login_prompt.copied_title" = "claude コマンドをコピーしました";
 "claude.login_prompt.copied_detail" = "ターミナルに貼り付けて実行すると再サインインできます";

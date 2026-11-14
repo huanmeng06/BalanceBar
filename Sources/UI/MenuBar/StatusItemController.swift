@@ -2187,6 +2187,14 @@ struct MenuBarStableBitmapAnimationFrameBuffer {
     }
 }
 
+/// Wording of the orange re-login row under the Claude card.
+enum ClaudeLoginPrompt: Equatable {
+    /// Official reads failed and the card shows older data.
+    case staleData
+    /// Official reads failed, but live Mod data keeps the card current.
+    case liveData
+}
+
 final class StatusItemController: NSObject, NSMenuDelegate {
     /// macOS renders status items whose button carries no image with a
     /// greyed-out, translucent appearance on displays that do not own
@@ -2377,8 +2385,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let showsAvailableUpdateBadge: Bool
         /// The realtime-boost prompt row under the quota card.
         let modRow: ModMenuRow
-        /// Claude official keeps old data on screen while its login failed: show the re-login row.
-        let claudeLoginPrompt: Bool
+        /// Claude official's login failed while the card still has data: show the re-login row,
+        /// worded for old data or for live Mod data.
+        let claudeLoginPrompt: ClaudeLoginPrompt?
 
         init(
             choices: [ProviderChoice],
@@ -2398,7 +2407,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             bankedResetDisplayMode: CodexBankedResetDisplayMode = .defaultValue,
             showsAvailableUpdateBadge: Bool = false,
             modRow: ModMenuRow = .none,
-            claudeLoginPrompt: Bool = false,
+            claudeLoginPrompt: ClaudeLoginPrompt? = nil,
             aggregatedProviders: [AggregatedProviderDisplay] = [],
             aggregationQuickSwitchBlocked: Bool = false,
             quickSwitchSafety: CCSwitchQuickSwitchSafety? = nil
@@ -6217,9 +6226,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     /// The accent-tinted realtime-boost prompt row under the quota card.
     private func makeClaudeLoginPromptItem() -> NSMenuItem? {
-        guard menuInput.claudeLoginPrompt else { return nil }
+        guard let prompt = menuInput.claudeLoginPrompt else { return nil }
         let view = ModPromptRowView(
-            mainText: tr(.keyClaudeLoginPromptTitle),
+            mainText: tr(prompt == .liveData ? .keyClaudeLoginPromptTitleLive : .keyClaudeLoginPromptTitle),
             detailText: tr(.keyClaudeLoginPromptAction),
             symbolName: "exclamationmark.triangle.fill",
             tint: .systemOrange

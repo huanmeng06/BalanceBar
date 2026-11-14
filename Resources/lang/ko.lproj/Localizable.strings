@@ -605,6 +605,7 @@
 "claude.refresh.credentials_unreadable" = "키체인에서 Claude Code 로그인 정보를 읽을 수 없습니다. 지금 업데이트를 누른 뒤 나타나는 키체인 창에서 '항상 허용'을 선택하세요.";
 "claude.refresh.no_subscription_account" = "Claude 구독 계정을 찾을 수 없습니다. API 키로 로그인한 Claude Code에는 표시할 구독 사용량이 없습니다. 그렇지 않다면 터미널에서 claude를 실행해 로그인하세요.";
 "claude.login_prompt.title" = "Claude 로그인 만료, 이전 데이터 표시 중";
+"claude.login_prompt.title_live" = "Claude Code 로그인 만료, 공식 사용량 업데이트 중지됨";
 "claude.login_prompt.action" = "클릭하여 claude 명령을 복사한 뒤 터미널에서 실행";
 "claude.login_prompt.copied_title" = "claude 명령을 복사했습니다";
 "claude.login_prompt.copied_detail" = "터미널에 붙여넣고 실행하면 다시 로그인됩니다";
