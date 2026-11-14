@@ -1066,13 +1066,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         // reading it here never launches the Keychain tool.
         let accountProfile = isOfficialOpenAICodex ? currentAccountProfileCache
             : isOfficialClaude ? officialQuotaClient.cachedClaudeAccountProfile() : nil
-        let claudeLoginHint = isOfficialClaude && accountProfile?.email == nil
+        // Without a Keychain profile, the Mod-verified account still names the account.
+        let claudeMenuEmail = isOfficialClaude ? OpenAIAccountPresentation.claudeMenuEmail(
+            profileEmail: accountProfile?.email, quotaState: claudeQuota.latestState) : nil
+        let claudeLoginHint = isOfficialClaude && claudeMenuEmail == nil
             ? claudeQuota.latestState?.failure.flatMap(OpenAIAccountPresentation.UnavailableReason.init(claudeFailure:))
             : nil
         let openAIAccount = OpenAIAccountPresentation.current(
             activeClient: activeClient,
             providerIsOfficial: isOfficialOpenAICodex || isOfficialClaude,
-            email: accountProfile?.email,
+            email: claudeMenuEmail ?? accountProfile?.email,
             subscription: OpenAISubscriptionTier(planType: accountProfile?.planType, client: activeClient),
             unavailableReason: claudeLoginHint
         )
