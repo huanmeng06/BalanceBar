@@ -605,6 +605,7 @@
 "claude.refresh.credentials_unreadable" = "無法讀取鑰匙圈中的 Claude Code 登入資訊。點「立即刷新」，在彈出的鑰匙圈對話框中選擇「永遠允許」。";
 "claude.refresh.no_subscription_account" = "找不到 Claude 訂閱帳戶。以 API Key 登入的 Claude Code 沒有訂閱額度可顯示；否則請在終端機執行 claude 登入。";
 "claude.login_prompt.title" = "Claude 登入已失效，下方為舊資料";
+"claude.login_prompt.title_live" = "Claude 登入已失效，官方額度暫停";
 "claude.login_prompt.action" = "點此複製 claude 指令，在終端機執行即可恢復";
 "claude.login_prompt.copied_title" = "已複製 claude 指令";
 "claude.login_prompt.copied_detail" = "在終端機貼上並執行即可恢復登入";

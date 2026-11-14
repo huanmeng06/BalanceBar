@@ -211,8 +211,9 @@ public struct FetchSchedulerConfiguration: Equatable {
     /// Debounce applied to automatic requests after non-429 failures. Manual
     /// refreshes ignore it.
     public var failureBackoff: [TimeInterval] = []
-    /// While a 401 pause holds, how often the owner may re-read credentials to notice a new
-    /// login. `0` waits for an explicit request instead.
+    /// While a 401 pause holds, or after a request could not be sent for lack of credentials,
+    /// how often the owner may re-read credentials to notice a new login. `0` waits for an
+    /// explicit request after a 401 and leaves unsent requests unthrottled.
     public var unauthorizedRecheckInterval: TimeInterval = 0
     /// Minimum timer delay after a timer check was skipped, so an unmodelled gate cannot spin.
     public var idleRecheckFloor: TimeInterval = 60
@@ -271,6 +272,9 @@ public enum FetchSkipReason: String, Equatable {
     case recentResult = "recent_result"
     case freePathSatisfied = "free_path_satisfied"
     case failureBackoff = "failure_backoff"
+    /// The last automatic attempt could not be sent (no readable credentials); automatic checks
+    /// wait for a credential change or `unauthorizedRecheckInterval`. Manual refreshes ignore it.
+    case credentialsUnavailable = "credentials_unavailable"
 }
 
 /// What made a request pass the scheduler's gates; logged with `dispatched` events.

@@ -631,6 +631,7 @@
     case keyClaudeRefreshCredentialsUnreadable = "claude.refresh.credentials_unreadable"
     case keyClaudeRefreshNoSubscriptionAccount = "claude.refresh.no_subscription_account"
     case keyClaudeLoginPromptTitle = "claude.login_prompt.title"
+    case keyClaudeLoginPromptTitleLive = "claude.login_prompt.title_live"
     case keyClaudeLoginPromptAction = "claude.login_prompt.action"
     case keyClaudeLoginPromptCopiedTitle = "claude.login_prompt.copied_title"
     case keyClaudeLoginPromptCopiedDetail = "claude.login_prompt.copied_detail"

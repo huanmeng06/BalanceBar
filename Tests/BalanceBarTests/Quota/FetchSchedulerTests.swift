@@ -404,6 +404,48 @@ final class FetchSchedulerTests: XCTestCase {
         XCTAssertNotEqual(lastSkip, .insufficientTokens)
     }
 
+    func testUnsentRequestHoldsAutomaticChecksButNotManualOrNewLogin() {
+        let scheduler = makeScheduler(configuration: .claudeV1)
+        scheduler.setDemand(true)
+        request(scheduler, .initial)
+        // Signed out: the timer waits out the recheck interval instead of re-dispatching at once.
+        XCTAssertEqual(armedDelay { complete(scheduler, .notSent("missing_credentials")) }, 300)
+        clock.advance(10)
+        request(scheduler, .scheduled)
+        XCTAssertEqual(lastSkip, .credentialsUnavailable)
+        XCTAssertEqual(transport.completions.count, 0, "no automatic re-dispatch while nothing changed")
+        guard case let .delayed(reason, until, _) = scheduler.automaticRequestEstimate().state else {
+            return XCTFail("expected a delayed estimate")
+        }
+        XCTAssertEqual(reason, .credentialsUnavailable)
+        XCTAssertEqual(until, clock.now.addingTimeInterval(290))
+
+        // A manual refresh is never held back.
+        request(scheduler, .manual)
+        XCTAssertEqual(transport.completions.count, 1)
+        complete(scheduler, .notSent("missing_credentials"))
+
+        // A new login (credential version change) lifts the hold at once.
+        identity.credentialVersion = CredentialVersion("v2")
+        request(scheduler, .scheduled)
+        XCTAssertEqual(transport.completions.count, 1)
+        complete(scheduler, .notSent("missing_credentials"))
+
+        // Same credentials: once the interval passes, one automatic check is allowed again.
+        clock.advance(301)
+        request(scheduler, .scheduled)
+        XCTAssertEqual(transport.completions.count, 1)
+    }
+
+    func testUnsentRequestWithoutRecheckIntervalStaysUnthrottled() {
+        let scheduler = makeScheduler() // unauthorizedRecheckInterval = 0
+        request(scheduler, .scheduled)
+        complete(scheduler, .notSent("missing_credentials"))
+        request(scheduler, .scheduled)
+        XCTAssertNotEqual(lastSkip, .credentialsUnavailable)
+        XCTAssertEqual(transport.completions.count, 1)
+    }
+
     func testTokenReservationAutomaticNeedsTwoManualNeedsOne() {
         let scheduler = makeScheduler()
         request(scheduler, .scheduled) // 3 -> 1
