@@ -605,7 +605,7 @@
 "claude.refresh.credentials_unreadable" = "Can't read the Claude Code sign-in from the keychain. Click Refresh Now, then choose “Always Allow” in the keychain prompt that appears.";
 "claude.refresh.no_subscription_account" = "No Claude subscription account found. Claude Code signed in with an API key has no subscription quota to show; otherwise run claude in a terminal to sign in.";
 "claude.login_prompt.title" = "Claude sign-in expired; showing older data";
-"claude.login_prompt.title_live" = "Claude Code sign-in expired; official usage paused";
+"claude.login_prompt.title_live" = "Claude signed out; usage paused";
 "claude.login_prompt.action" = "Click to copy the claude command, then run it in a terminal";
 "claude.login_prompt.copied_title" = "Copied the claude command";
 "claude.login_prompt.copied_detail" = "Paste and run it in a terminal to sign in again";

@@ -605,7 +605,7 @@
 "claude.refresh.credentials_unreadable" = "Не удаётся прочитать вход Claude Code из связки ключей. Нажмите «Обновить сейчас», затем выберите «Разрешать всегда» в появившемся окне связки ключей.";
 "claude.refresh.no_subscription_account" = "Аккаунт с подпиской Claude не найден. У Claude Code, вошедшего по API-ключу, нет лимитов подписки; иначе запустите claude в терминале и войдите.";
 "claude.login_prompt.title" = "Вход в Claude истёк; старые данные";
-"claude.login_prompt.title_live" = "Вход в Claude Code истёк; официальные данные приостановлены";
+"claude.login_prompt.title_live" = "Вход в Claude истёк; пауза";
 "claude.login_prompt.action" = "Нажмите, чтобы скопировать команду claude и запустить её в терминале";
 "claude.login_prompt.copied_title" = "Команда claude скопирована";
 "claude.login_prompt.copied_detail" = "Вставьте и запустите её в терминале, чтобы войти снова";

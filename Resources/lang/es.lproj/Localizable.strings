@@ -605,7 +605,7 @@
 "claude.refresh.credentials_unreadable" = "No se puede leer el inicio de sesión de Claude Code desde el llavero. Haz clic en Actualizar ahora y elige «Permitir siempre» en el aviso del llavero que aparece.";
 "claude.refresh.no_subscription_account" = "No se encontró una cuenta de suscripción de Claude. Claude Code con una clave de API no tiene cuota de suscripción; si no, ejecuta claude en una terminal para iniciar sesión.";
 "claude.login_prompt.title" = "Sesión de Claude caducada; datos anteriores";
-"claude.login_prompt.title_live" = "Sesión de Claude Code caducada; uso oficial en pausa";
+"claude.login_prompt.title_live" = "Claude sin sesión; datos en pausa";
 "claude.login_prompt.action" = "Haz clic para copiar el comando claude y ejecútalo en una terminal";
 "claude.login_prompt.copied_title" = "Comando claude copiado";
 "claude.login_prompt.copied_detail" = "Pégalo y ejecútalo en una terminal para volver a iniciar sesión";

@@ -605,7 +605,7 @@
 "claude.refresh.credentials_unreadable" = "Não foi possível ler o login do Claude Code nas Chaves. Clique em Atualizar agora e escolha “Sempre Permitir” no aviso das Chaves que aparecer.";
 "claude.refresh.no_subscription_account" = "Nenhuma conta de assinatura do Claude encontrada. O Claude Code com chave de API não tem cota de assinatura; caso contrário, execute claude no terminal para entrar.";
 "claude.login_prompt.title" = "Login do Claude expirado; dados anteriores";
-"claude.login_prompt.title_live" = "Login do Claude Code expirado; uso oficial pausado";
+"claude.login_prompt.title_live" = "Login expirado; dados pausados";
 "claude.login_prompt.action" = "Clique para copiar o comando claude e execute-o no terminal";
 "claude.login_prompt.copied_title" = "Comando claude copiado";
 "claude.login_prompt.copied_detail" = "Cole e execute no terminal para entrar novamente";

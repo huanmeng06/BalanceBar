@@ -605,7 +605,7 @@
 "claude.refresh.credentials_unreadable" = "Impossibile leggere l'accesso di Claude Code dal portachiavi. Fai clic su Aggiorna ora, poi scegli «Consenti sempre» nella richiesta del portachiavi che compare.";
 "claude.refresh.no_subscription_account" = "Nessun account Claude in abbonamento trovato. Claude Code con chiave API non ha quota di abbonamento; altrimenti esegui claude nel terminale per accedere.";
 "claude.login_prompt.title" = "Accesso a Claude scaduto; dati precedenti";
-"claude.login_prompt.title_live" = "Accesso a Claude Code scaduto; utilizzo ufficiale in pausa";
+"claude.login_prompt.title_live" = "Claude disconnesso; dati in pausa";
 "claude.login_prompt.action" = "Fai clic per copiare il comando claude ed eseguilo nel terminale";
 "claude.login_prompt.copied_title" = "Comando claude copiato";
 "claude.login_prompt.copied_detail" = "Incollalo ed eseguilo nel terminale per accedere di nuovo";
