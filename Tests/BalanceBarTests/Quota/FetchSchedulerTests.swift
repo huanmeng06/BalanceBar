@@ -437,6 +437,37 @@ final class FetchSchedulerTests: XCTestCase {
         XCTAssertEqual(transport.completions.count, 1)
     }
 
+    func testNewLoginAfterLoginFailureConfirmsWithTheServerDespiteFreshLocalData() {
+        let failures: [UsageFetchResult] = [.notSent("missing_credentials"), .unauthorized]
+        for failure in failures {
+            for manual in [false, true] {
+                store = MemoryStore()
+                transport = FakeTransport()
+                identity = FakeIdentity()
+                let realtime = FakeRealtime()
+                let freePath = FakeFreePath()
+                let scheduler = makeScheduler(freePath: freePath, realtime: realtime, configuration: .claudeV1)
+                request(scheduler, .initial)
+                complete(scheduler, failure)
+                // Live Mod data keeps the card current: a routine or manual read would be skipped.
+                realtime.lastTrustedRealtimeObservationAt = clock.now
+                realtime.realtimeFreshUntil = clock.now.addingTimeInterval(1_800)
+                freePath.satisfied = true
+
+                identity.credentialVersion = CredentialVersion("v2") // signed in again
+                request(scheduler, manual ? .manual : .scheduled)
+                XCTAssertEqual(transport.completions.count, 1,
+                               "\(failure) manual=\(manual): the new login is confirmed with the server")
+                complete(scheduler, .success(Data()))
+
+                clock.advance(400)
+                request(scheduler, .scheduled)
+                XCTAssertEqual(lastSkip, .realtimeSourceFresh, "\(failure): one confirming read, then the usual gates")
+                XCTAssertEqual(transport.completions.count, 0)
+            }
+        }
+    }
+
     func testUnsentRequestWithoutRecheckIntervalStaysUnthrottled() {
         let scheduler = makeScheduler() // unauthorizedRecheckInterval = 0
         request(scheduler, .scheduled)

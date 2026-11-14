@@ -128,6 +128,15 @@ final class ClaudeQuotaPipeline {
     let sourceTimeline: ClaudeSourceTimeline
     private let snapshotInbox: SnapshotInbox?
     private let confirmationTimer: SchedulerTimer
+    /// Delays the Keychain re-read after `~/.claude.json` changes while the login has failed.
+    private let loginRecheckTimer: SchedulerTimer
+    private var loginRecheckPending = false
+    private var lastLoginRecheckAt: Date?
+    /// Lets a login finish writing the Keychain before it is read; longer than the 2-second
+    /// credential cache in `prepareAndRequest`, so the read is always fresh.
+    static let loginRecheckSettleDelay: TimeInterval = 3
+    /// Claude Code rewrites `~/.claude.json` often while in use; read the Keychain at most this often.
+    static let loginRecheckMinimumInterval: TimeInterval = 30
     fileprivate let now: () -> Date
     private let diagnostics: (String, SwitchLog.Level) -> Void
     private let queue = DispatchQueue(label: "BalanceBar.ClaudeQuotaPipeline", qos: .utility)
@@ -244,6 +253,7 @@ final class ClaudeQuotaPipeline {
         schedulerClock: SchedulerClock = SystemSchedulerClock(),
         schedulerTimer: SchedulerTimer = DispatchSchedulerTimer(),
         confirmationTimer: SchedulerTimer = DispatchSchedulerTimer(),
+        loginRecheckTimer: SchedulerTimer = DispatchSchedulerTimer(),
         schedulerConfiguration: FetchSchedulerConfiguration = FetchSchedulerConfiguration(),
         realtimeTracker: ClaudeRealtimeTracker? = nil,
         snapshotInbox: SnapshotInbox? = nil,
@@ -266,6 +276,7 @@ final class ClaudeQuotaPipeline {
             fileURL: stateDirectory.appendingPathComponent("claude-source-timeline.json"))
         self.snapshotInbox = snapshotInbox
         self.confirmationTimer = confirmationTimer
+        self.loginRecheckTimer = loginRecheckTimer
         stateStore = ObservedFetchSchedulerStateStore(
             base: FileFetchSchedulerStateStore(fileURL: stateDirectory.appendingPathComponent("claude-fetch-scheduler.json")))
         mergeFileStore = QuotaMergeFileStore(url: stateDirectory.appendingPathComponent("claude-quota-merge.json"))
@@ -494,6 +505,9 @@ final class ClaudeQuotaPipeline {
         observerToken = identity.addObserver { [weak self] change in
             self?.queue.async { self?.identityChanged(change) }
         }
+        identity.onConfigurationReloaded = { [weak self] in
+            self?.queue.async { self?.configurationReloaded() }
+        }
         wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didWakeNotification, object: nil, queue: nil
         ) { [weak self] _ in
@@ -521,6 +535,33 @@ final class ClaudeQuotaPipeline {
         identity.ingestCredential(accessToken: token, expectedEpoch: epoch)
         identityQueue.sync {}
         scheduler.requestFetch(reason: reason)
+    }
+
+    /// Whether official reads are waiting for Claude Code to be signed in again.
+    private var awaitsLogin: Bool {
+        let failure = latestState?.failure
+        return failure == .missingCredentials || failure == .unauthorized
+    }
+
+    /// A new login rewrites `~/.claude.json`. While official reads wait for one, re-read the
+    /// Keychain shortly after so the login is picked up without a manual refresh. Claude Code
+    /// also rewrites the file during normal use, so the reads are spaced out; an unchanged
+    /// credential leaves the scheduler's pause in place and sends nothing.
+    private func configurationReloaded() {
+        guard awaitsLogin, !loginRecheckPending else { return }
+        let earliest = (lastLoginRecheckAt ?? .distantPast).addingTimeInterval(Self.loginRecheckMinimumInterval)
+        let delay = max(Self.loginRecheckSettleDelay, earliest.timeIntervalSince(now()))
+        loginRecheckPending = true
+        loginRecheckTimer.schedule(after: delay) { [weak self] in
+            self?.queue.async { [weak self] in
+                guard let self else { return }
+                loginRecheckPending = false
+                guard awaitsLogin else { return }
+                lastLoginRecheckAt = now()
+                diagnostics("claude login recheck after account file change", .debug)
+                prepareAndRequest(.scheduled)
+            }
+        }
     }
 
     private func identityChanged(_ change: AccountIdentityChange) {

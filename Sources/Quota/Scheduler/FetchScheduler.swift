@@ -33,6 +33,9 @@ public final class FetchScheduler: FetchScheduling {
     /// The last result never left the device (no readable credentials). Automatic checks for the
     /// same account and credential version wait instead of re-dispatching on every wakeup.
     private var notSentPause: (at: Date, epoch: AccountEpoch, credentialVersion: CredentialVersion?)?
+    /// Credentials changed after a login failure (401 or unsent request): the next request has to
+    /// reach the server to confirm the new login, even when fresh local data would skip it.
+    private var credentialRecoveryPending = false
     private var lastDispatchAt: Date?
     private var lastDispatchTrigger: FetchDispatchTrigger?
     private var demandEnabled = false
@@ -237,6 +240,12 @@ public final class FetchScheduler: FetchScheduling {
             persistent.isUnauthorizedPaused = false
             persistent.unauthorizedCredentialVersion = nil
             stateStore.save(persistent)
+            credentialRecoveryPending = true
+        }
+        if let pause = notSentPause, pause.epoch == identity.accountEpoch,
+           identity.credentialVersion != nil, pause.credentialVersion != identity.credentialVersion {
+            notSentPause = nil
+            credentialRecoveryPending = true
         }
         if cooldownRemaining(now: now) > 0 {
             return log(.skipped, reasons: reasons, skip: .cooldown)
@@ -265,6 +274,9 @@ public final class FetchScheduler: FetchScheduling {
     }
 
     private func evaluateManual(_ reasons: [FetchRequestReason], now: Date) {
+        if credentialRecoveryPending {
+            return spendAndDispatch(reasons, cost: configuration.manualTokenCost, trigger: .manualRefresh)
+        }
         let window = configuration.manualRefreshWindow
         if let lastSuccessAt = currentEpochLastSuccessAt, now.timeIntervalSince(lastSuccessAt) < window,
            !manualResultCannotConfirmPendingReset(lastSuccessAt: lastSuccessAt) {
@@ -294,13 +306,13 @@ public final class FetchScheduler: FetchScheduling {
             && currentEpochLastSuccessAt == nil
         // A reset confirmation cannot wait out the minimum interval: the deadline already
         // passed, so only the 401 pause, cooldown, failure backoff and budget may hold it.
-        let bypassMinimum = firstRead || reasons.contains(.resetConfirmation)
+        let bypassMinimum = firstRead || reasons.contains(.resetConfirmation) || credentialRecoveryPending
         if !bypassMinimum,
            let lastSuccessAt = currentEpochLastSuccessAt,
            now.timeIntervalSince(lastSuccessAt) < automaticMinimumInterval {
             return log(.skipped, reasons: reasons, skip: .minimumInterval)
         }
-        if !reasons.contains(.resetConfirmation),
+        if !reasons.contains(.resetConfirmation), !credentialRecoveryPending,
            let freshUntil = realtimeFreshUntil(),
            now < freshUntil.addingTimeInterval(-configuration.sourceExpiryPrefetchLead),
            !calibrationCapExceeded(now: now) {
@@ -365,6 +377,7 @@ public final class FetchScheduler: FetchScheduling {
             return log(.skipped, reasons: reasons, skip: .insufficientTokens)
         }
         tokens -= cost
+        credentialRecoveryPending = false
         isBusy = true
         lastServerAttemptAt = clock.now
         lastDispatchAt = lastServerAttemptAt
