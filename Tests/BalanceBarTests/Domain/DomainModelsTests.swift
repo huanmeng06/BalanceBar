@@ -459,6 +459,41 @@ final class DomainModelsTests: XCTestCase {
         )
     }
 
+    func testClaudeMenuEmailFallsBackToModVerifiedAccountOnlyWithoutProfile() {
+        func state(source: StatusSlotLiveSource?, status: StatusSlotState = .refreshing,
+                   email: String? = "claude@example.com") -> ClaudeQuotaState {
+            ClaudeQuotaState(
+                display: QuotaDisplayModel(windows: [], isEstimated: false, state: .inProgress, hoverTextKey: ""),
+                windows: [], accountEpoch: .initial, accountScope: nil,
+                predictionAccountKey: email, predictionEvidenceKey: nil,
+                updatedAt: nil, isRefreshing: false, failure: nil,
+                status: status, newestReadingSource: source)
+        }
+        let email = OpenAIAccountPresentation.claudeMenuEmail
+
+        // A probed profile keeps winning, whatever the displayed source.
+        XCTAssertEqual(email("Person@Example.com", state(source: .oauthAPI)), "Person@Example.com")
+        XCTAssertEqual(email("Person@Example.com", nil), "Person@Example.com")
+
+        // No Keychain token: the Mod-verified account shows, even while refreshing
+        // (the status slot itself drops the source then).
+        XCTAssertEqual(email(nil, state(source: .mod)), "claude@example.com")
+        XCTAssertEqual(email("  ", state(source: .mod, status: .error(at: nil, source: .mod))), "claude@example.com")
+
+        // Without Mod evidence the account stays unavailable.
+        XCTAssertNil(email(nil, state(source: .oauthAPI)))
+        XCTAssertNil(email(nil, state(source: nil)))
+        XCTAssertNil(email(nil, state(source: .mod, email: nil)))
+        XCTAssertNil(email(nil, nil))
+
+        let fallback = OpenAIAccountPresentation.current(
+            activeClient: .claude, providerIsOfficial: true,
+            email: email(nil, state(source: .mod)),
+            subscription: OpenAISubscriptionTier(planType: nil, client: .claude))
+        XCTAssertEqual(fallback?.state, .available("claude@example.com"))
+        XCTAssertNil(fallback?.subscription)
+    }
+
     func testOpenAISubscriptionTierMapsOfficialPlanClaimsToTheRequestedBadgeText() {
         XCTAssertEqual(OpenAISubscriptionTier(planType: "plus"), .plus)
         XCTAssertEqual(OpenAISubscriptionTier(planType: "prolite"), .proFiveX)

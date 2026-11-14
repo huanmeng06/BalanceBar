@@ -40,6 +40,9 @@ struct ClaudeQuotaState: Equatable {
     let failure: ClaudeQuotaFailure?
     /// Status-slot state resolved with BB-07's rules.
     let status: StatusSlotState
+    /// Source of the newest displayed standard-window reading, independent of
+    /// `status` (which drops the source while refreshing or estimating).
+    let newestReadingSource: StatusSlotLiveSource?
 }
 
 /// Forwards notification snapshots from the quota adapter to the existing rules.
@@ -1120,7 +1123,8 @@ final class ClaudeQuotaPipeline {
             updatedAt: updatedAt,
             isRefreshing: refreshing,
             failure: failure,
-            status: status)
+            status: status,
+            newestReadingSource: Self.statusSource(of: standard))
         let changed = lock.withLock { () -> Bool in
             guard state != next else { return false }
             state = next
