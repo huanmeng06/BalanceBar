@@ -674,6 +674,55 @@ final class OfficialQuotaClientTests: XCTestCase {
         XCTAssertFalse(client.isRequestInFlight(client: .codex, providerID: "reusable-provider"))
     }
 
+    // MARK: Egress probe (Issue #686)
+
+    private func probe(_ client: OfficialQuotaClient) -> Result<String, OfficialQuotaTransportError>? {
+        let done = expectation(description: "egress probe")
+        var result: Result<String, OfficialQuotaTransportError>?
+        client.probeClaudeEgressIP { result = $0; done.fulfill() }
+        wait(for: [done], timeout: 3)
+        return result
+    }
+
+    func testEgressProbeReadsTraceWithoutCredentials() throws {
+        StubURLProtocol.setHandler { _ in
+            StubResult(data: Data("fl=1\nh=claude.ai\nip=203.0.113.7\nloc=JP\n".utf8))
+        }
+        let client = makeClient(claudeToken: "fixture-claude-value")
+        guard case .success("203.0.113.7")? = probe(client) else { return XCTFail("expected the trace IP") }
+        let request = try XCTUnwrap(StubURLProtocol.lastRequest)
+        XCTAssertEqual(request.url, URL(string: "https://claude.ai/cdn-cgi/trace"))
+        XCTAssertEqual(request.httpMethod, "GET")
+        XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"), "the probe never carries the OAuth token")
+        XCTAssertNil(request.value(forHTTPHeaderField: "Cookie"))
+        XCTAssertFalse(request.httpShouldHandleCookies)
+        XCTAssertEqual(StubURLProtocol.requestCount, 1)
+    }
+
+    func testEgressProbeFailsOnHTTPErrorUnparsableBodyAndTransportError() {
+        let client = makeClient(claudeToken: "fixture")
+        StubURLProtocol.setHandler { _ in StubResult(statusCode: 403, data: Data("ip=203.0.113.7\n".utf8)) }
+        guard case .failure? = probe(client) else { return XCTFail("non-2xx must fail") }
+        StubURLProtocol.setHandler { _ in StubResult(data: Data("<html>challenge</html>".utf8)) }
+        guard case .failure? = probe(client) else { return XCTFail("a body without ip= must fail") }
+        StubURLProtocol.setHandler { _ in StubResult(error: URLError(.timedOut)) }
+        guard case .failure(.possibleProxy(.timedOut))? = probe(client) else { return XCTFail("timeouts are transport failures") }
+    }
+
+    func testEgressProbeUsesTheClaudeProxyRoute() {
+        var reads = 0
+        StubURLProtocol.setHandler { _ in StubResult(data: Data("ip=203.0.113.7\n".utf8)) }
+        let client = OfficialQuotaClient(
+            session: session,
+            claudeProxyConfigurationProvider: {
+                reads += 1
+                return CCSwitchProxyConfiguration(httpsProxy: URL(string: "http://proxy.example:8080"))
+            },
+            credentialReader: FixtureCredentialReader(codexToken: nil, claudeToken: "fixture"))
+        guard case .success? = probe(client) else { return XCTFail("expected a probe result") }
+        XCTAssertEqual(reads, 1, "the probe resolves the same proxy configuration as the usage request")
+    }
+
     private func makeClient(
         codexToken: String? = nil,
         claudeToken: String? = nil,

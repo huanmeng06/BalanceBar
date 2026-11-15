@@ -16,6 +16,7 @@ final class FailureStateView: NSView {
     let action: Action
     private let localize: (StatusSlotText) -> String
     private let onOpenUsagePage: () -> Void
+    private let onOpenEgressGuardSettings: () -> Void
     private let copyToPasteboard: (String) -> Void
 
     var reasonForTesting: String { reasonLabel.stringValue }
@@ -28,6 +29,7 @@ final class FailureStateView: NSView {
     ///   - font: Font of the reason; callers that pre-measure the height must pass the font they measured with.
     ///   - onOpenUsagePage: Called for `.openUsagePage`; defaults to opening `officialUsageURL`.
     ///   - copyToPasteboard: Called for `.copySignInCommand`; defaults to the general pasteboard.
+    ///   - onOpenEgressGuardSettings: Called for `.openEgressGuardSettings`.
     init(
         reason: String,
         action: Action = .openUsagePage,
@@ -37,13 +39,20 @@ final class FailureStateView: NSView {
         copyToPasteboard: @escaping (String) -> Void = { text in
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(text, forType: .string)
-        }
+        },
+        onOpenEgressGuardSettings: @escaping () -> Void = {}
     ) {
         self.action = action
         self.localize = localize
         self.onOpenUsagePage = onOpenUsagePage
+        self.onOpenEgressGuardSettings = onOpenEgressGuardSettings
         self.copyToPasteboard = copyToPasteboard
-        let title = action == .copySignInCommand ? localize(.copySignInCommand) : localize(.openUsagePage)
+        let title: String
+        switch action {
+        case .copySignInCommand: title = localize(.copySignInCommand)
+        case .openEgressGuardSettings: title = localize(.openEgressGuardSettings)
+        case .openUsagePage, .none: title = localize(.openUsagePage)
+        }
         actionButton = NSButton(title: title, target: nil, action: nil)
         super.init(frame: .zero)
         reasonLabel.font = font
@@ -85,6 +94,8 @@ final class FailureStateView: NSView {
         case .copySignInCommand:
             copyToPasteboard(Self.signInCommand)
             actionButton.title = localize(.copied)
+        case .openEgressGuardSettings:
+            onOpenEgressGuardSettings()
         case .none:
             break
         }

@@ -277,6 +277,8 @@ public enum FetchSkipReason: String, Equatable {
     case credentialsUnavailable = "credentials_unavailable"
     /// Same wait, but the Keychain item exists and could not be read (not a sign-out).
     case credentialsUnreadable = "credentials_unreadable"
+    /// Same wait, but the egress guard kept the last request on this machine (Issue #686).
+    case egressGuardBlocked = "egress_guard_blocked"
 }
 
 /// What made a request pass the scheduler's gates; logged with `dispatched` events.

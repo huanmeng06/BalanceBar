@@ -591,7 +591,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             },
             onModSyncVisibilityChanged: { [weak self] visible in
                 self?.modSyncCoordinator.setAdvancedStatusCardVisible(visible)
-            }
+            },
+            claudeEgressGuard: ClaudeEgressGuardPageActions(
+                setAllowedIPs: { [weak self] ips in self?.setClaudeEgressGuardAllowedIPs(ips) },
+                detectEgressIP: { [weak self] completion in
+                    guard let self else { return completion(.failure(.unknown)) }
+                    self.claudeEgressGuard.currentEgressIP(completion: completion)
+                })
         ),
         launchAtLoginController: launchAtLoginController
     )
@@ -648,6 +654,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private let ccSwitchRepository: CCSwitchRepository
     private let officialQuotaClient: OfficialQuotaClient
     private let claudeQuota: ClaudeQuotaPipeline
+    /// Also used by the Advanced page's "detect current egress" button.
+    private let claudeEgressGuard: ClaudeEgressGuard
     /// Owns the Claude Code Mod realtime sync settings entry: detection, panel, status.
     private lazy var modSyncCoordinator: ModSyncCoordinator = {
         let activity: () -> Bool = { [weak self] in self?.isClaudeProcessAvailable ?? false }
@@ -766,11 +774,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     ) {
         self.ccSwitchRepository = repository
         self.officialQuotaClient = officialQuotaClient
+        let egressGuard = ClaudeEgressGuard(
+            settings: { AppPreferences().claudeEgressGuardSettings },
+            probe: { [officialQuotaClient] completion in officialQuotaClient.probeClaudeEgressIP(completion: completion) })
+        self.claudeEgressGuard = egressGuard
         self.claudeQuota = claudeQuota ?? ClaudeQuotaPipeline.makeProduction(
             client: officialQuotaClient,
             calibrationIntervalCap: { nil },
             automaticInterval: { AppPreferences().claudeCalibrationInterval },
-            sourceValidity: { AppPreferences().claudeSourceValidity })
+            sourceValidity: { AppPreferences().claudeSourceValidity },
+            egressGuard: egressGuard)
         self.launchAtLoginController = LaunchAtLoginController(service: launchAtLoginService)
         self.launchWithChatGPTController = LaunchWithChatGPTController(service: launchWithChatGPTService)
         self.updateService = updateService ?? UpdateService(
@@ -1050,6 +1063,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 },
                 showModOnboarding: { [weak self] in
                     self?.showModOnboardingFromMenu()
+                },
+                openEgressGuardSettings: { [weak self] in
+                    self?.openEgressGuardSettings()
                 }
             ),
             codexAnimationBackend: MenuBarCodexAnimationBackend(
@@ -1591,6 +1607,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             category: "configuration"
         )
         switch identifier {
+        case AppPreferences.claudeEgressGuardEnabledKey:
+            preferences.claudeEgressGuardEnabled = enabled
+            claudeEgressGuardSettingsChanged()
         case "showMenuBarIcon":
             if !enabled && !showMenuBarAmount {
                 dashboardComposition.restoreRequiredMenuBarToggle(identifier: identifier)
@@ -2083,6 +2102,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     /// dashboard is intentionally not opened or raised; only the small panel appears.
     private func showModOnboardingFromMenu() {
         modSyncCoordinator.presentPanelStandalone()
+    }
+
+    private func setClaudeEgressGuardAllowedIPs(_ ips: [String]) {
+        preferences.claudeEgressGuardAllowedIPs = ips
+        // The count only: IP addresses never enter the log.
+        SwitchLog.write(
+            "preference changed; key=\(AppPreferences.claudeEgressGuardAllowedIPsKey); count=\(preferences.claudeEgressGuardAllowedIPs.count)",
+            category: "configuration")
+        claudeEgressGuardSettingsChanged()
+    }
+
+    /// Both Advanced page copies follow the new settings and Claude re-evaluates at once.
+    private func claudeEgressGuardSettingsChanged() {
+        dashboardComposition.refreshClaudeEgressGuard()
+        claudeQuota.egressGuardSettingsChanged()
+    }
+
+    /// The Claude egress guard lives on the Advanced page (Issue #686).
+    private func openEgressGuardSettings() {
+        openDashboard()
+        dashboardComposition.showSection(.advanced)
     }
 
     private func clampDashboardScrollViewBounds() {

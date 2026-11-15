@@ -13,14 +13,17 @@ final class DashboardAdvancedPage {
         let preferences: AppPreferences
         /// Recent Claude source activity and the card's current status for the timeline.
         let sourceTimeline: () -> ClaudeSourceTimelineView.Content
+        let egressGuard: ClaudeEgressGuardPageActions
 
         init(
             relay: DashboardPreferencePageRelay,
             logViewer: NSView?,
             includeLogViewer: Bool = true,
             preferences: AppPreferences = AppPreferences(),
-            sourceTimeline: @escaping () -> ClaudeSourceTimelineView.Content = { .empty }
+            sourceTimeline: @escaping () -> ClaudeSourceTimelineView.Content = { .empty },
+            egressGuard: ClaudeEgressGuardPageActions = ClaudeEgressGuardPageActions()
         ) {
+            self.egressGuard = egressGuard
             self.relay = relay
             self.logViewer = logViewer
             self.includeLogViewer = includeLogViewer
@@ -34,6 +37,12 @@ final class DashboardAdvancedPage {
     private weak var oauthValidityPopup: NSPopUpButton?
     private weak var sourceTimelineView: ClaudeSourceTimelineView?
     private var sourceValidityRows: [String: SettingsRowView] = [:]
+    private(set) var egressGuardSection: ClaudeEgressGuardSectionController?
+
+    /// Re-reads the egress guard settings without rebuilding the cached page.
+    func refreshEgressGuard(preferences: AppPreferences) {
+        egressGuardSection?.refresh(preferences: preferences)
+    }
 
     /// Redraws the source timeline after a new reading, failure, status or validity change.
     /// A page that is not on screen skips it; the view reloads itself when it enters a window.
@@ -136,7 +145,12 @@ final class DashboardAdvancedPage {
             title: tr(.keyDashboardAdvancedPageDiagnostics),
             contentViews: contentViews
         )
-        return DashboardSettingsComponents.makeSettingsPageContent([makeSourceValiditySection(input), logs])
+        let egressGuard = ClaudeEgressGuardSectionController(
+            preferences: input.preferences, relay: input.relay, actions: input.egressGuard)
+        egressGuardSection = egressGuard
+        return DashboardSettingsComponents.makeSettingsPageContent([
+            makeSourceValiditySection(input), egressGuard.makeSection(), logs,
+        ])
     }
 
     /// How long a reading from each Claude source counts as valid: it drives the card's status
@@ -236,4 +250,222 @@ final class DashboardAdvancedPage {
             suppressVerticalIntrinsicGrowth(subview)
         }
     }
+}
+
+/// Callbacks for the Claude egress guard section (Issue #686). The switch itself goes through
+/// the shared toggle relay; these cover the allowed-IP list and the detect button.
+struct ClaudeEgressGuardPageActions {
+    /// Persists the edited allowed-IP list (already validated and de-duplicated).
+    var setAllowedIPs: ([String]) -> Void = { _ in }
+    /// Probes the current egress IP through the Claude proxy route; completes on any queue.
+    var detectEgressIP: (@escaping (Result<String, OfficialQuotaTransportError>) -> Void) -> Void = {
+        $0(.failure(.unknown))
+    }
+}
+
+/// Owns the egress guard section's controls: the switch, the allowed-IP row, the add field and
+/// the detect row. Every row is a direct section row, so settings search shows and hides them like
+/// any other; a list change only updates the allowed-IP row's text and its remove menu.
+final class ClaudeEgressGuardSectionController: NSObject {
+    static let addFieldIdentifier = NSUserInterfaceItemIdentifier("dashboard.advanced.egressGuard.addField")
+    static let removeMenuIdentifier = NSUserInterfaceItemIdentifier("dashboard.advanced.egressGuard.remove")
+    static let detectButtonIdentifier = NSUserInterfaceItemIdentifier("dashboard.advanced.egressGuard.detect")
+    static let addDetectedButtonIdentifier = NSUserInterfaceItemIdentifier("dashboard.advanced.egressGuard.addDetected")
+
+    private let actions: ClaudeEgressGuardPageActions
+    private var allowedIPs: [String]
+    private let toggle: NSSwitch
+    /// Pull-down listing each allowed IP; choosing one removes it.
+    let removeMenu = NSPopUpButton(frame: .zero, pullsDown: true)
+    private(set) var listRow: SettingsRowView!
+    let addField = NSTextField(string: "")
+    private(set) var addRow: SettingsRowView!
+    private(set) var detectRow: SettingsRowView!
+    let detectButton = NSButton(title: "", target: nil, action: nil)
+    let addDetectedButton = NSButton(title: "", target: nil, action: nil)
+    private var detectedIP: String?
+    private var detectGeneration = 0
+
+    init(preferences: AppPreferences, relay: DashboardPreferencePageRelay, actions: ClaudeEgressGuardPageActions) {
+        self.actions = actions
+        allowedIPs = preferences.claudeEgressGuardAllowedIPs
+        toggle = DashboardSettingsComponents.makeSwitch(
+            identifier: AppPreferences.claudeEgressGuardEnabledKey,
+            isOn: preferences.claudeEgressGuardEnabled,
+            target: relay,
+            action: #selector(DashboardPreferencePageRelay.toggle(_:)))
+        super.init()
+    }
+
+    func makeSection() -> SettingsSectionView {
+        let toggleRow = SettingsRowView(
+            title: tr(.keyDashboardAdvancedPageEgressGuardEnabled),
+            detail: tr(.keyDashboardAdvancedPageEgressGuardEnabledDetail),
+            titleAccessory: DashboardRefreshPage.agentIconStrip(["Claude"]),
+            accessoryView: toggle)
+
+        removeMenu.identifier = Self.removeMenuIdentifier
+        removeMenu.target = self
+        removeMenu.action = #selector(removeSelectedIP(_:))
+        listRow = SettingsRowView(
+            title: tr(.keyDashboardAdvancedPageEgressGuardAllowed),
+            detail: " ",
+            accessoryView: removeMenu)
+        rebuildList()
+
+        addField.identifier = Self.addFieldIdentifier
+        addField.placeholderString = tr(.keyDashboardAdvancedPageEgressGuardAddPlaceholder)
+        addField.isBezeled = true
+        addField.bezelStyle = .roundedBezel
+        addField.target = self
+        addField.action = #selector(addTypedIP)
+        addField.translatesAutoresizingMaskIntoConstraints = false
+        addField.widthAnchor.constraint(equalToConstant: 190).isActive = true
+        let addButton = NSButton(title: tr(.keyDashboardAdvancedPageEgressGuardAdd), target: self, action: #selector(addTypedIP))
+        addRow = SettingsRowView(
+            title: tr(.keyDashboardAdvancedPageEgressGuardAddTitle),
+            accessoryView: Self.hStack([addField, addButton]))
+
+        detectButton.title = tr(.keyDashboardAdvancedPageEgressGuardDetect)
+        detectButton.identifier = Self.detectButtonIdentifier
+        detectButton.target = self
+        detectButton.action = #selector(detect)
+        addDetectedButton.title = tr(.keyDashboardAdvancedPageEgressGuardAddDetected)
+        addDetectedButton.identifier = Self.addDetectedButtonIdentifier
+        addDetectedButton.target = self
+        addDetectedButton.action = #selector(addDetectedIP)
+        addDetectedButton.isHidden = true
+        detectRow = SettingsRowView(
+            title: tr(.keyDashboardAdvancedPageEgressGuardDetectTitle),
+            accessoryView: Self.hStack([addDetectedButton, detectButton]))
+
+        return SettingsSectionView(
+            title: tr(.keyDashboardAdvancedPageEgressGuard),
+            contentViews: [toggleRow, listRow, addRow, detectRow],
+            footnote: tr(.keyDashboardAdvancedPageEgressGuardFootnote))
+    }
+
+    /// Re-reads the saved settings (after a change from the other page copy or the app).
+    func refresh(preferences: AppPreferences) {
+        toggle.state = preferences.claudeEgressGuardEnabled ? .on : .off
+        let saved = preferences.claudeEgressGuardAllowedIPs
+        guard saved != allowedIPs else { return }
+        allowedIPs = saved
+        rebuildList()
+        updateDetectedRow()
+    }
+
+    private func rebuildList() {
+        listRow.updateDetail(allowedIPs.isEmpty
+            ? tr(.keyDashboardAdvancedPageEgressGuardAllowedEmpty)
+            : allowedIPs.joined(separator: ", "))
+        removeMenu.removeAllItems()
+        // A pull-down shows its first item as the button title.
+        removeMenu.addItem(withTitle: tr(.keyDashboardAdvancedPageEgressGuardRemove))
+        for ip in allowedIPs {
+            removeMenu.addItem(withTitle: ip)
+            removeMenu.lastItem?.representedObject = ip
+        }
+        removeMenu.isHidden = allowedIPs.isEmpty
+    }
+
+    private func save(_ ips: [String]) {
+        let sanitized = EgressIPAddress.sanitizedList(ips)
+        allowedIPs = sanitized
+        rebuildList()
+        updateDetectedRow()
+        actions.setAllowedIPs(sanitized)
+    }
+
+    @objc private func addTypedIP() {
+        let text = addField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        guard EgressIPAddress.isValid(text) else {
+            addRow.updateDetail(tr(.keyDashboardAdvancedPageEgressGuardInvalidIp))
+            addRow.detailLabel.textColor = .systemOrange
+            return
+        }
+        addRow.updateDetail(nil)
+        addField.stringValue = ""
+        save(allowedIPs + [text])
+    }
+
+    @objc private func removeSelectedIP(_ sender: NSPopUpButton) {
+        guard let ip = sender.selectedItem?.representedObject as? String else { return }
+        remove(ip)
+    }
+
+    private func remove(_ ip: String) {
+        save(allowedIPs.filter { $0 != ip })
+    }
+
+    @objc private func addDetectedIP() {
+        guard let detectedIP else { return }
+        save(allowedIPs + [detectedIP])
+    }
+
+    @objc private func detect() {
+        detectGeneration += 1
+        let generation = detectGeneration
+        detectedIP = nil
+        detectButton.isEnabled = false
+        addDetectedButton.isHidden = true
+        detectRow.updateDetail(tr(.keyDashboardAdvancedPageEgressGuardDetecting))
+        detectRow.detailLabel.textColor = .secondaryLabelColor
+        actions.detectEgressIP { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self, generation == self.detectGeneration else { return }
+                self.detectButton.isEnabled = true
+                switch result {
+                case let .success(ip):
+                    self.detectedIP = ip
+                    self.updateDetectedRow()
+                case .failure:
+                    self.detectRow.updateDetail(tr(.keyDashboardAdvancedPageEgressGuardDetectFailed))
+                    self.detectRow.detailLabel.textColor = .systemOrange
+                }
+            }
+        }
+    }
+
+    private func updateDetectedRow() {
+        guard let detectedIP else { return }
+        let listed = EgressIPAddress.contains(allowedIPs, detectedIP)
+        detectRow.updateDetail(tr(
+            listed ? .keyDashboardAdvancedPageEgressGuardDetectedListedValue
+                : .keyDashboardAdvancedPageEgressGuardDetectedUnlistedValue,
+            arguments: [detectedIP]))
+        detectRow.detailLabel.textColor = listed ? .secondaryLabelColor : .systemOrange
+        addDetectedButton.isHidden = listed
+    }
+
+    private static func hStack(_ views: [NSView]) -> NSStackView {
+        let stack = NSStackView(views: views)
+        stack.orientation = .horizontal
+        stack.spacing = 8
+        stack.setContentHuggingPriority(.required, for: .horizontal)
+        stack.setContentCompressionResistancePriority(.required, for: .horizontal)
+        stack.setContentHuggingPriority(.required, for: .vertical)
+        return stack
+    }
+
+    // MARK: Testing
+
+    func addForTesting(_ text: String) {
+        addField.stringValue = text
+        addTypedIP()
+    }
+
+    func removeForTesting(_ ip: String) {
+        guard let index = removeMenu.itemArray.firstIndex(where: { $0.representedObject as? String == ip }) else { return }
+        removeMenu.selectItem(at: index)
+        removeSelectedIP(removeMenu)
+    }
+
+    func detectForTesting() { detect() }
+    func addDetectedForTesting() { addDetectedIP() }
+    var allowedIPsForTesting: [String] { allowedIPs }
+    var addDetailForTesting: String { addRow.detailLabel.stringValue }
+    var listDetailForTesting: String { listRow.detailLabel.stringValue }
+    var detectDetailForTesting: String { detectRow.detailLabel.stringValue }
 }

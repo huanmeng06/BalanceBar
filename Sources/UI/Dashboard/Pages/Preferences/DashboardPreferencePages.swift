@@ -39,6 +39,7 @@ struct DashboardPreferencePageActions {
     var onInstallModSync: ((NSView) -> Void)? = nil
     var modPanelStateProvider: () -> ModPanelState? = { nil }
     var claudeSourceTimelineProvider: () -> ClaudeSourceTimelineView.Content = { .empty }
+    var claudeEgressGuard = ClaudeEgressGuardPageActions()
 }
 
 final class DashboardPreferencePages {
@@ -178,7 +179,8 @@ final class DashboardPreferencePages {
                 logViewer: forSearch ? nil : logsPage.makeViewer(),
                 includeLogViewer: !forSearch,
                 preferences: preferences,
-                sourceTimeline: actions.claudeSourceTimelineProvider
+                sourceTimeline: actions.claudeSourceTimelineProvider,
+                egressGuard: actions.claudeEgressGuard
             ))
         case .notifications:
             notificationsPage?.showRoot()
@@ -239,6 +241,11 @@ final class DashboardPreferencePages {
     func refreshClaudeSourceValidity() {
         advancedPage.refreshOAuthValidity(preferences: preferences)
         searchAdvancedPage.refreshOAuthValidity(preferences: preferences)
+    }
+
+    func refreshClaudeEgressGuard() {
+        advancedPage.refreshEgressGuard(preferences: preferences)
+        searchAdvancedPage.refreshEgressGuard(preferences: preferences)
     }
 
     func refreshClaudeSourceTimeline() {

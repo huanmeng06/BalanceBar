@@ -10,6 +10,8 @@ enum OfficialQuotaClientError: Error {
     case credentialsUnreadable
     /// Claude only: `~/.claude.json` has no signed-in subscription account (for example an API key setup).
     case missingAccount
+    /// Claude only: the egress guard kept the request on this machine (Issue #686).
+    case egressGuard(ClaudeEgressGuardBlock)
     case transport(OfficialQuotaTransportError)
     case httpStatus(statusCode: Int, dataSize: Int)
     case invalidJSON(dataSize: Int)
@@ -571,6 +573,33 @@ final class OfficialQuotaClient {
                 SwitchLog.write("official quota request failed; client=claude; http_status=\(status)", level: .warning, category: "refresh.transport")
                 completion(.failure("http_\(status)"), .httpStatus(statusCode: status, dataSize: data?.count ?? 0))
             }
+        }.resume()
+    }
+
+    static let claudeEgressTraceURL = URL(string: "https://claude.ai/cdn-cgi/trace")!
+
+    /// Reads the egress IP Cloudflare sees for `claude.ai`, through the same proxy route as
+    /// `fetchClaudeUsage`. Carries no token, cookie or account data. Non-2xx and an unparsable
+    /// body are failures.
+    func probeClaudeEgressIP(completion: @escaping (Result<String, OfficialQuotaTransportError>) -> Void) {
+        var request = URLRequest(url: Self.claudeEgressTraceURL)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 6
+        request.httpShouldHandleCookies = false
+        request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        request.setValue("text/plain", forHTTPHeaderField: "Accept")
+        request.setValue("BalanceBar/1.0 (+https://github.com/huanmeng06/BalanceBar)", forHTTPHeaderField: "User-Agent")
+        claudeSession().dataTask(with: request) { data, response, error in
+            if let error {
+                completion(.failure(Self.transportError(from: error, client: .claude)))
+                return
+            }
+            guard let status = (response as? HTTPURLResponse)?.statusCode, (200..<300).contains(status),
+                  let data, let ip = CloudflareTraceParser.ip(from: data) else {
+                completion(.failure(.unknown))
+                return
+            }
+            completion(.success(ip))
         }.resume()
     }
 

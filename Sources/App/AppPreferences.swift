@@ -548,6 +548,22 @@ final class AppPreferences {
     var claudeSourceValidity: ClaudeSourceValidity {
         ClaudeSourceValidity(oauth: claudeOAuthValidity, mod: claudeModValidity)
     }
+    /// Claude official-request egress guard (Issue #686). Off means official requests are off.
+    static let claudeEgressGuardEnabledKey = "claudeEgressGuardEnabled"
+    static let claudeEgressGuardEnabledDefault = false
+    static let claudeEgressGuardAllowedIPsKey = "claudeEgressGuardAllowedIPs"
+    var claudeEgressGuardEnabled: Bool {
+        get { bool(Self.claudeEgressGuardEnabledKey, default: Self.claudeEgressGuardEnabledDefault) }
+        set { defaults.set(newValue, forKey: Self.claudeEgressGuardEnabledKey) }
+    }
+    /// Valid, de-duplicated IP literals in the order they were added.
+    var claudeEgressGuardAllowedIPs: [String] {
+        get { EgressIPAddress.sanitizedList(defaults.stringArray(forKey: Self.claudeEgressGuardAllowedIPsKey) ?? []) }
+        set { defaults.set(EgressIPAddress.sanitizedList(newValue), forKey: Self.claudeEgressGuardAllowedIPsKey) }
+    }
+    var claudeEgressGuardSettings: ClaudeEgressGuardSettings {
+        ClaudeEgressGuardSettings(enabled: claudeEgressGuardEnabled, allowedIPs: claudeEgressGuardAllowedIPs)
+    }
     /// Saved values below the shortest option (legacy 1 s / 2 s) read as 3 s, so scheduling matches the selector.
     var codexUsageRefreshInterval: TimeInterval { get { max(Self.refreshIntervalOptions[0], positiveDouble("codexUsageRefreshInterval", default: 3)) } set { defaults.set(newValue, forKey: "codexUsageRefreshInterval") } }
     var showQuickSwitchMenu: Bool { get { bool("showQuickSwitchMenu", default: true) } set { defaults.set(newValue, forKey: "showQuickSwitchMenu") } }
