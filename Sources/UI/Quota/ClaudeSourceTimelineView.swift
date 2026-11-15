@@ -646,6 +646,7 @@ final class ClaudeSourceTimelineView: NSView {
             switch reason {
             case .insufficientTokens: reasonText = tr(.keyClaudeTimelineDelayInsufficientTokens)
             case .credentialsUnavailable: reasonText = tr(.keyClaudeTimelineFailureMissingCredentials)
+            case .credentialsUnreadable: reasonText = tr(.keyClaudeAccountCredentialsUnreadable)
             default: reasonText = tr(.keyClaudeTimelineDelayFailureBackoff)
             }
             return rows(when(until), then: triggerText(trigger) + " · " + reasonText)

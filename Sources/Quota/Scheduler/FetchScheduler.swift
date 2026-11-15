@@ -32,7 +32,7 @@ public final class FetchScheduler: FetchScheduling {
     private var lastFailureAt: Date?
     /// The last result never left the device (no readable credentials). Automatic checks for the
     /// same account and credential version wait instead of re-dispatching on every wakeup.
-    private var notSentPause: (at: Date, epoch: AccountEpoch, credentialVersion: CredentialVersion?)?
+    private var notSentPause: (at: Date, epoch: AccountEpoch, credentialVersion: CredentialVersion?, reason: FetchSkipReason)?
     /// Credentials changed after a login failure (401 or unsent request): the next request has to
     /// reach the server to confirm the new login, even when fresh local data would skip it.
     private var credentialRecoveryPending = false
@@ -179,8 +179,8 @@ public final class FetchScheduler: FetchScheduling {
                 let trigger = automaticTrigger([], firstRead: currentEpochLastSuccessAt == nil, now: at)
                 if let until = persistent.cooldownUntil, until > now {
                     state = .coolingDown(until: max(until, at))
-                } else if notSentPauseUntil(now: now) != nil {
-                    state = .delayed(reason: .credentialsUnavailable, until: at, trigger: trigger)
+                } else if notSentPauseUntil(now: now) != nil, let pause = notSentPause {
+                    state = .delayed(reason: pause.reason, until: at, trigger: trigger)
                 } else if let lastServerAttemptAt, consecutiveFailures > 0,
                           lastServerAttemptAt.addingTimeInterval(failureBackoffInterval) > now {
                     state = .delayed(reason: .failureBackoff, until: at, trigger: trigger)
@@ -253,8 +253,8 @@ public final class FetchScheduler: FetchScheduling {
 
         // Nothing could be sent last time and the credentials have not changed since: an automatic
         // retry would fail the same way, so only a manual refresh or a new login tries again.
-        if !reasons.contains(.manual), notSentPauseUntil(now: now) != nil {
-            return log(.skipped, reasons: reasons, skip: .credentialsUnavailable)
+        if !reasons.contains(.manual), notSentPauseUntil(now: now) != nil, let pause = notSentPause {
+            return log(.skipped, reasons: reasons, skip: pause.reason)
         }
 
         // A plain failure only debounces automatic retries; the user may always try again by hand
@@ -419,8 +419,9 @@ public final class FetchScheduler: FetchScheduling {
         guard !stale else {
             return log(.discardedStaleEpoch, reasons: reasons, outcome: Self.label(result))
         }
-        if case .notSent = result {
-            notSentPause = (now, epoch, credentialVersion)
+        if case let .notSent(detail) = result {
+            let reason: FetchSkipReason = detail == Self.credentialsUnreadableDetail ? .credentialsUnreadable : .credentialsUnavailable
+            notSentPause = (now, epoch, credentialVersion, reason)
         } else {
             notSentPause = nil
         }
@@ -502,6 +503,9 @@ public final class FetchScheduler: FetchScheduling {
         guard let until = persistent.cooldownUntil else { return 0 }
         return max(0, until.timeIntervalSince(now))
     }
+
+    /// `UsageFetchResult.notSent` detail for a Keychain item that exists but could not be read.
+    static let credentialsUnreadableDetail = "credentials_unreadable"
 
     /// End of the wait after an unsent request, while the account and credentials are unchanged.
     private func notSentPauseUntil(now: Date) -> Date? {

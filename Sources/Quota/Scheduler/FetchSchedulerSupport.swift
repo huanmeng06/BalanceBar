@@ -275,6 +275,8 @@ public enum FetchSkipReason: String, Equatable {
     /// The last automatic attempt could not be sent (no readable credentials); automatic checks
     /// wait for a credential change or `unauthorizedRecheckInterval`. Manual refreshes ignore it.
     case credentialsUnavailable = "credentials_unavailable"
+    /// Same wait, but the Keychain item exists and could not be read (not a sign-out).
+    case credentialsUnreadable = "credentials_unreadable"
 }
 
 /// What made a request pass the scheduler's gates; logged with `dispatched` events.

@@ -437,6 +437,20 @@ final class FetchSchedulerTests: XCTestCase {
         XCTAssertEqual(transport.completions.count, 1)
     }
 
+    func testUnreadableKeychainHoldIsReportedAsUnreadableNotSignedOut() {
+        let scheduler = makeScheduler(configuration: .claudeV1)
+        request(scheduler, .initial)
+        complete(scheduler, .notSent(FetchScheduler.credentialsUnreadableDetail))
+        clock.advance(10)
+        request(scheduler, .scheduled)
+        XCTAssertEqual(lastSkip, .credentialsUnreadable)
+        XCTAssertEqual(transport.completions.count, 0)
+        guard case let .delayed(reason, _, _) = scheduler.automaticRequestEstimate().state else {
+            return XCTFail("expected a delayed estimate")
+        }
+        XCTAssertEqual(reason, .credentialsUnreadable)
+    }
+
     func testNewLoginAfterLoginFailureConfirmsWithTheServerDespiteFreshLocalData() {
         let failures: [UsageFetchResult] = [.notSent("missing_credentials"), .unauthorized]
         for failure in failures {
