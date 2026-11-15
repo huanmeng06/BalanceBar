@@ -635,6 +635,9 @@
 "claude.timeline.window.five_hour" = "5 時間";
 "claude.timeline.window.seven_day" = "7 日";
 "claude.timeline.hover.before_expiry" = "Mod 期限の %1$@ 前に先行取得";
+"claude.timeline.hover.failure_streak" = "連続失敗";
+"claude.timeline.hover.failure_attempt" = "%2$@ 回中 %1$@ 回目 · 計 %3$@";
+"claude.timeline.hover.failure_total" = "計 %1$@";
 "claude.timeline.window.not_included" = "含まれません";
 "claude.timeline.value.remaining" = "残り %1$@";
 "claude.timeline.value.evidence_within_tolerance" = "カードは公式の値を表示";
@@ -650,7 +653,6 @@
 "claude.timeline.trigger.source_expiry_prefetch" = "Mod 期限前の先行取得";
 "claude.timeline.trigger.local_expired_or_absent" = "定期取得";
 "claude.timeline.delay.failure_backoff" = "失敗バックオフ";
-"claude.timeline.delay.insufficient_tokens" = "トークン補充待ち";
 "claude.timeline.estimate.in" = "約 %1$@後";
 "claude.refresh.every_minutes" = "%1$@ 分ごと";
 "claude.quota.calibration_detail" = "一定間隔で公式に問い合わせるフォールバックです。間隔を長くするとレート制限を避けられます";

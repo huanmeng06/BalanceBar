@@ -635,6 +635,9 @@
 "claude.timeline.window.five_hour" = "5 小时";
 "claude.timeline.window.seven_day" = "7 日";
 "claude.timeline.hover.before_expiry" = "Mod 过期前 %1$@ 预取";
+"claude.timeline.hover.failure_streak" = "连续失败";
+"claude.timeline.hover.failure_attempt" = "第 %1$@ / %2$@ 次 · 共 %3$@";
+"claude.timeline.hover.failure_total" = "共 %1$@";
 "claude.timeline.window.not_included" = "未包含";
 "claude.timeline.value.remaining" = "剩余 %1$@";
 "claude.timeline.value.evidence_within_tolerance" = "卡片显示官方读数";
@@ -650,7 +653,6 @@
 "claude.timeline.trigger.source_expiry_prefetch" = "Mod 过期前预取";
 "claude.timeline.trigger.local_expired_or_absent" = "定期轮询";
 "claude.timeline.delay.failure_backoff" = "失败退避";
-"claude.timeline.delay.insufficient_tokens" = "等待令牌补充";
 "claude.timeline.estimate.in" = "约 %1$@后";
 "claude.refresh.every_minutes" = "每 %1$@ 分钟";
 "claude.quota.calibration_detail" = "定时向官方查询作为兜底；间隔越长越不容易被限流";

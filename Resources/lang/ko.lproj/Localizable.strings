@@ -635,6 +635,9 @@
 "claude.timeline.window.five_hour" = "5시간";
 "claude.timeline.window.seven_day" = "7일";
 "claude.timeline.hover.before_expiry" = "Mod 만료 %1$@ 전 사전 가져오기";
+"claude.timeline.hover.failure_streak" = "연속 실패";
+"claude.timeline.hover.failure_attempt" = "%2$@회 중 %1$@번째 · 총 %3$@";
+"claude.timeline.hover.failure_total" = "총 %1$@";
 "claude.timeline.window.not_included" = "포함되지 않음";
 "claude.timeline.value.remaining" = "%1$@ 남음";
 "claude.timeline.value.evidence_within_tolerance" = "카드에 공식 값 표시";
@@ -650,7 +653,6 @@
 "claude.timeline.trigger.source_expiry_prefetch" = "Mod 만료 전 사전 가져오기";
 "claude.timeline.trigger.local_expired_or_absent" = "정기 폴링";
 "claude.timeline.delay.failure_backoff" = "실패 백오프";
-"claude.timeline.delay.insufficient_tokens" = "토큰 보충 대기";
 "claude.timeline.estimate.in" = "약 %1$@ 후";
 "claude.refresh.every_minutes" = "%1$@분마다";
 "claude.quota.calibration_detail" = "일정 간격으로 공식 소스를 조회하는 대체 수단이며, 간격이 길수록 호출 제한을 피하기 쉽습니다";

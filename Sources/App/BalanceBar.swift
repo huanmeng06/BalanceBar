@@ -472,7 +472,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 guard let self else { return .empty }
                 self.claudeQuota.refreshSourceTimelineEstimate()
                 return ClaudeSourceTimelineView.Content(
-                    timeline: self.claudeQuota.sourceTimeline.snapshot(),
+                    timeline: DevelopmentClaudeFailuresDemo.decorate(self.claudeQuota.sourceTimeline.snapshot()),
                     status: self.claudeQuota.latestState?.status)
             }
         ),

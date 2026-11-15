@@ -635,6 +635,9 @@
 "claude.timeline.window.five_hour" = "5 Std.";
 "claude.timeline.window.seven_day" = "7 Tage";
 "claude.timeline.hover.before_expiry" = "Vorabruf %1$@ vor Mod-Ablauf";
+"claude.timeline.hover.failure_streak" = "Fehlerserie";
+"claude.timeline.hover.failure_attempt" = "Versuch %1$@ von %2$@ · insgesamt %3$@";
+"claude.timeline.hover.failure_total" = "insgesamt %1$@";
 "claude.timeline.window.not_included" = "Nicht enthalten";
 "claude.timeline.value.remaining" = "%1$@ übrig";
 "claude.timeline.value.evidence_within_tolerance" = "Karte zeigt den offiziellen Wert";
@@ -650,7 +653,6 @@
 "claude.timeline.trigger.source_expiry_prefetch" = "Vorabruf vor Mod-Ablauf";
 "claude.timeline.trigger.local_expired_or_absent" = "Regelmäßige Abfrage";
 "claude.timeline.delay.failure_backoff" = "Fehler-Backoff";
-"claude.timeline.delay.insufficient_tokens" = "Warten auf Tokens";
 "claude.timeline.estimate.in" = "in ca. %1$@";
 "claude.refresh.every_minutes" = "Alle %1$@ Min.";
 "claude.quota.calibration_detail" = "Fragt die offizielle Quelle zeitgesteuert als Rückfall ab; längere Intervalle vermeiden Rate-Limits";

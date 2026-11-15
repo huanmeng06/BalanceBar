@@ -9,16 +9,24 @@ final class ClaudeSourceTimelineViewTests: XCTestCase {
     private typealias Run = ClaudeSourceTimeline.FailureRun
 
     private func layout(
-        readings: [Reading] = [], failures: [Run] = [], width: CGFloat = 660, labelColumn: CGFloat = 60
+        readings: [Reading] = [], failures: [Run] = [], requests: [ClaudeSourceTimeline.Request] = [],
+        width: CGFloat = 660, labelColumn: CGFloat = 60
     ) -> ClaudeSourceTimelineLayout {
         ClaudeSourceTimelineLayout(
-            snapshot: .init(readings: readings, failures: failures), now: now,
+            snapshot: .init(readings: readings, failures: failures, requests: requests), now: now,
             bounds: CGRect(x: 0, y: 0, width: width, height: ClaudeSourceTimelineLayout.height),
             labelColumnWidth: labelColumn, timeZone: utc)
     }
 
     private func reading(_ source: StatusSlotLiveSource, _ from: TimeInterval, _ to: TimeInterval) -> Reading {
         Reading(source: source, observedAt: now.addingTimeInterval(from), expiresAt: now.addingTimeInterval(to))
+    }
+
+    private func request(
+        completedAt offset: TimeInterval, _ outcome: ClaudeSourceTimeline.RequestOutcome = .failure(.network)
+    ) -> ClaudeSourceTimeline.Request {
+        .init(trigger: .localExpiredOrAbsent, startedAt: now.addingTimeInterval(offset - 1),
+              completedAt: now.addingTimeInterval(offset), outcome: outcome)
     }
 
     func testLanesFollowTheSketchOrderAndTheNowLineIsTheRightEdge() {
@@ -134,6 +142,90 @@ final class ClaudeSourceTimelineViewTests: XCTestCase {
         XCTAssertEqual(layout.bands[0].rect.midY, bar.rect.midY, accuracy: 0.01)
     }
 
+    func testEachLaterFailedRequestIsAShortLineInsideItsFailureBox() {
+        let layout = layout(
+            failures: [
+                Run(start: now.addingTimeInterval(-1_500), end: now.addingTimeInterval(-900), kind: .network),
+                Run(start: now.addingTimeInterval(-120), end: nil, kind: .unauthorized),
+            ],
+            requests: [
+                request(completedAt: -1_500), // opens the run: its left edge, not a line
+                request(completedAt: -1_380), request(completedAt: -1_260), request(completedAt: -1_140),
+                request(completedAt: -900, .failure(.unauthorized)), // ends this run, belongs to no box
+                request(completedAt: -600, .success),
+                request(completedAt: -120, .failure(.unauthorized)),
+                request(completedAt: -60, .failure(.unauthorized)),
+                request(completedAt: -30, .interrupted),
+            ])
+        XCTAssertEqual(layout.bands.count, 2)
+        XCTAssertEqual(layout.bands[0].dividers, [-1_380.0, -1_260, -1_140].map { layout.x(for: now.addingTimeInterval($0)) })
+        XCTAssertEqual(layout.bands[1].dividers, [layout.x(for: now.addingTimeInterval(-60))], "an open run counts up to now")
+        for band in layout.bands {
+            XCTAssertTrue(band.dividers.allSatisfy { $0 > band.rect.minX && $0 < band.rect.maxX })
+        }
+
+        // Each failed request is its own block, like a bar's pieces: they tile the box exactly.
+        let pieces = layout.bands[0].pieces
+        XCTAssertEqual(pieces.map(\.attempt), [1, 2, 3, 4])
+        XCTAssertTrue(pieces.allSatisfy { $0.attempts == 4 && $0.request != nil })
+        XCTAssertEqual(pieces.first?.rect.minX ?? 0, layout.bands[0].rect.minX, accuracy: 0.01)
+        XCTAssertEqual(pieces.last?.rect.maxX ?? 0, layout.bands[0].rect.maxX, accuracy: 0.01)
+        XCTAssertEqual(zip(pieces, pieces.dropFirst()).map { $1.rect.minX - $0.rect.maxX }, [0, 0, 0])
+        XCTAssertEqual(pieces.map(\.start), [-1_500.0, -1_380, -1_260, -1_140].map { now.addingTimeInterval($0) })
+        XCTAssertEqual(pieces.last?.end, now.addingTimeInterval(-900), "the last block ends with the run")
+        XCTAssertNil(layout.bands[1].pieces.last?.end, "the last block of an open run is still going")
+        let middle = pieces[1]
+        XCTAssertEqual(layout.hoverTarget(at: CGPoint(x: middle.rect.midX, y: middle.rect.midY)), .failure(middle))
+    }
+
+    func testFailureBlockTooltipDescribesItsOwnRequestAndTheStreak() throws {
+        var manual = request(completedAt: -1_380)
+        manual.trigger = .manualRefresh
+        let content = ClaudeSourceTimelineView.Content(
+            timeline: .init(
+                readings: [],
+                failures: [Run(start: now.addingTimeInterval(-1_500), end: now.addingTimeInterval(-900), kind: .network)],
+                requests: [request(completedAt: -1_500), manual, request(completedAt: -1_260)]),
+            status: nil)
+        let view = ClaudeSourceTimelineView(provider: { content }, timeZone: utc, now: { self.now })
+        view.frame = NSRect(x: 0, y: 0, width: 660, height: ClaudeSourceTimelineLayout.height)
+        let pieces = try XCTUnwrap(view.makeLayout().bands.first?.pieces)
+        XCTAssertEqual(pieces.count, 3)
+        let rows = view.hoverContent(for: .failure(pieces[1])).rows
+        XCTAssertEqual(rows.first?.value, "07:37:00 – 07:39:00 · " + ClaudeSourceTimelineView.durationText(120))
+        XCTAssertEqual(rows.first { $0.label == tr(.keyClaudeTimelineHoverTrigger) }?.value, tr(.keyClaudeTimelineTriggerManualRefresh))
+        XCTAssertEqual(rows.first { $0.label == tr(.keyClaudeTimelineHoverFailureStreak) }?.value, tr(
+            .keyClaudeTimelineHoverFailureAttempt, arguments: ["2", "3", ClaudeSourceTimelineView.durationText(600)]))
+    }
+
+    func testAFailureOlderThanTheRequestHistoryShowsOnlyItsLength() throws {
+        // Two hours offline: the requests from the run's first hour are already pruned.
+        let content = ClaudeSourceTimelineView.Content(
+            timeline: .init(
+                readings: [],
+                failures: [Run(start: now.addingTimeInterval(-7_200), end: nil, kind: .network)],
+                requests: [request(completedAt: -1_800), request(completedAt: -600)]),
+            status: nil)
+        let view = ClaudeSourceTimelineView(provider: { content }, timeZone: utc, now: { self.now })
+        view.frame = NSRect(x: 0, y: 0, width: 660, height: ClaudeSourceTimelineLayout.height)
+        let pieces = try XCTUnwrap(view.makeLayout().bands.first?.pieces)
+        XCTAssertEqual(pieces.count, 3, "the unrecorded start, then one block per recorded request")
+        XCTAssertTrue(pieces.allSatisfy { !$0.attemptsKnown })
+        let total = tr(.keyClaudeTimelineHoverFailureTotal, arguments: [ClaudeSourceTimelineView.durationText(7_200)])
+        for piece in pieces {
+            let streak = view.hoverContent(for: .failure(piece)).rows.first { $0.label == tr(.keyClaudeTimelineHoverFailureStreak) }
+            XCTAssertEqual(streak?.value, total, "a count missing its first hour would be too small")
+        }
+    }
+
+    func testAFailureRunWithoutRecordedRequestsIsOneBlock() {
+        let band = layout(failures: [Run(start: now.addingTimeInterval(-600), end: now.addingTimeInterval(-300), kind: .network)]).bands[0]
+        XCTAssertEqual(band.pieces.count, 1)
+        XCTAssertNil(band.pieces[0].request)
+        XCTAssertEqual(band.pieces[0].rect, band.rect)
+        XCTAssertTrue(band.dividers.isEmpty)
+    }
+
     func testTicksSitOnQuarterHoursOfTheDisplayTimeZone() {
         let layout = layout()
         XCTAssertEqual(layout.ticks.count, 4)
@@ -173,7 +265,7 @@ final class ClaudeSourceTimelineViewTests: XCTestCase {
                   value: "07:59:00 – 08:01:00"),
             "type heading, then just the validity range")
         let band = try! XCTUnwrap(layout.bands.first)
-        let failure = view.hoverContent(for: .band(band))
+        let failure = view.hoverContent(for: .failure(try! XCTUnwrap(band.pieces.first)))
         XCTAssertEqual(failure.title, "OAuth API · " + tr(.keyClaudeTimelineFailureNetwork))
         XCTAssertEqual(failure.rows, [
             .init(label: tr(.keyClaudeTimelineHoverTime),
@@ -238,7 +330,8 @@ final class ClaudeSourceTimelineViewTests: XCTestCase {
                     + [reading(.oauthAPI, -1_100, -500), reading(.oauthAPI, -300, 300)]
                     + stride(from: -1_800.0, to: -1_400, by: 15).map { reading(.mod, $0, $0 + 120) }
                     + stride(from: -400.0, to: -5, by: 10).map { reading(.mod, $0, $0 + 120) },
-                failures: [Run(start: now.addingTimeInterval(-1_400), end: now.addingTimeInterval(-1_100), kind: .network)]),
+                failures: [Run(start: now.addingTimeInterval(-1_400), end: now.addingTimeInterval(-1_100), kind: .network)],
+                requests: [-1_400.0, -1_340, -1_280, -1_220, -1_160].map { request(completedAt: $0) }),
             status: .realtime(.mod, at: now.addingTimeInterval(-5)))
         let cases: [(String, ClaudeSourceTimelineView.Content, CGFloat)] = [
             ("busy", busy, 600), ("narrow", busy, 380), ("empty", .empty, 600),
@@ -287,10 +380,31 @@ final class ClaudeSourceTimelineViewTests: XCTestCase {
             let view = ClaudeSourceTimelineView(provider: { content }, timeZone: utc, now: { self.now })
             view.frame = NSRect(x: 0, y: 0, width: 660, height: ClaudeSourceTimelineLayout.height)
             let band = try XCTUnwrap(view.makeLayout().bands.first)
-            return view.hoverContent(for: .band(band)).rows.map(\.label)
+            return view.hoverContent(for: .failure(try XCTUnwrap(band.pieces.last))).rows.map(\.label)
         }
         XCTAssertFalse(try hover(end: now.addingTimeInterval(-300)).contains(tr(.keyClaudeTimelineEstimateLabel)))
         XCTAssertTrue(try hover(end: nil).contains(tr(.keyClaudeTimelineEstimateLabel)))
+    }
+
+    func testRequestBucketDelayIsNotNamedButFailureBackoffIs() throws {
+        func estimateValue(_ reason: FetchSkipReason) throws -> String {
+            let estimate = FetchAutomaticRequestEstimate(
+                state: .delayed(reason: reason, until: now.addingTimeInterval(240), trigger: .sourceExpiryPrefetch),
+                evaluatedAt: now)
+            let content = ClaudeSourceTimelineView.Content(
+                timeline: .init(readings: [], failures: [Run(start: now.addingTimeInterval(-600), end: nil, kind: .network)],
+                                estimate: estimate),
+                status: nil)
+            let view = ClaudeSourceTimelineView(provider: { content }, timeZone: utc, now: { self.now })
+            view.frame = NSRect(x: 0, y: 0, width: 660, height: ClaudeSourceTimelineLayout.height)
+            let band = try XCTUnwrap(view.makeLayout().bands.first)
+            let row = view.hoverContent(for: .failure(try XCTUnwrap(band.pieces.last))).rows.first { $0.label == tr(.keyClaudeTimelineEstimateLabel) }
+            return try XCTUnwrap(row?.value)
+        }
+        let backoff = tr(.keyClaudeTimelineDelayFailureBackoff)
+        XCTAssertFalse(try estimateValue(.insufficientTokens).contains(backoff))
+        XCTAssertTrue(try estimateValue(.insufficientTokens).hasSuffix(tr(.keyClaudeTimelineTriggerSourceExpiryPrefetch)))
+        XCTAssertTrue(try estimateValue(.failureBackoff).hasSuffix(backoff))
     }
 
     func testTooltipShowsRemainingPercentageNotUsed() throws {
@@ -317,6 +431,8 @@ final class ClaudeSourceTimelineViewTests: XCTestCase {
             (.keyClaudeTimelineEstimateCooldown, ["10:00"]),
             (.keyClaudeTimelineEstimateScheduled, ["10:00", "x"]),
             (.keyClaudeTimelineHoverBeforeExpiry, ["9"]),
+            (.keyClaudeTimelineHoverFailureAttempt, ["2", "4", "12"]),
+            (.keyClaudeTimelineHoverFailureTotal, ["2"]),
             (.keyClaudeTimelineValueRemaining, ["87%"]),
         ]
         for language in AppLanguage.allCases {

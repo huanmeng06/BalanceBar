@@ -10,7 +10,7 @@ images_src="$resources_src/images"
 lang_src="$resources_src/lang"
 usage() {
     cat <<'EOF'
-Usage: build.sh [production|dev|demo-zero|demo-unavailable|demo-five-hour-exhausted|demo-seven-day-exhausted|demo-both-exhausted|demo-banked-reset-10|demo-banked-reset-0|demo-banked-reset-confirmed|demo-banked-reset-countdown|demo-claude-idle|demo-mod-outdated]
+Usage: build.sh [production|dev|demo-zero|demo-unavailable|demo-five-hour-exhausted|demo-seven-day-exhausted|demo-both-exhausted|demo-banked-reset-10|demo-banked-reset-0|demo-banked-reset-confirmed|demo-banked-reset-countdown|demo-claude-idle|demo-claude-failures|demo-mod-outdated]
 
 Build the macOS app without changing the checked-in Info.plist.
 
@@ -35,6 +35,9 @@ Build the macOS app without changing the checked-in Info.plist.
               Build a demo app that counts down to the next local 20:00 deadline.
   demo-claude-idle
               Build a demo app that shows untouched (100%) Claude 5-hour and 7-day quotas.
+  demo-claude-failures
+              Build a demo app that adds simulated official failure runs, each with several
+              failed requests, to the Claude source timeline (Settings › Advanced).
   demo-mod-outdated
               Build a demo app that pins the Mod status to "update required" and simulates
               the Claude CLI, so the one-click update can be tried without touching real plugins.
@@ -176,6 +179,16 @@ case "$variant" in
         bundle_name="BalanceBar Demo · Claude Idle"
         demo_mode="claude-idle"
         claude_idle_demo_mode="claude-idle"
+        module_cache_dir="$build_dir/swift-module-cache"
+        clean_paths=("$build_dir")
+        ;;
+    demo-claude-failures)
+        build_dir="$repo_root/build/demo/claude-failures"
+        app_bundle="$build_dir/BalanceBar-ClaudeFailures.app"
+        bundle_identifier="com.huanmeng06.BalanceBar.demo.claude-failures"
+        bundle_name="BalanceBar Demo · Claude Failures"
+        demo_mode="claude-failures"
+        claude_failures_demo_mode="claude-failures"
         module_cache_dir="$build_dir/swift-module-cache"
         clean_paths=("$build_dir")
         ;;
@@ -344,6 +357,8 @@ if [[ -n "$demo_mode" ]]; then
     plutil -replace CFBundleDisplayName -string "$bundle_name" "$bundle_plist"
     if [[ -n "${mod_outdated_demo_mode:-}" ]]; then
         plutil -replace BalanceBarModOutdatedDemo -string "$mod_outdated_demo_mode" "$bundle_plist"
+    elif [[ -n "${claude_failures_demo_mode:-}" ]]; then
+        plutil -replace BalanceBarClaudeFailuresDemo -string "$claude_failures_demo_mode" "$bundle_plist"
     elif [[ -n "${claude_idle_demo_mode:-}" ]]; then
         plutil -replace BalanceBarClaudeIdleDemo -string "$claude_idle_demo_mode" "$bundle_plist"
     elif [[ -n "${banked_reset_demo_mode:-}" ]]; then

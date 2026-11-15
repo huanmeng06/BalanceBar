@@ -635,6 +635,9 @@
 "claude.timeline.window.five_hour" = "5 h";
 "claude.timeline.window.seven_day" = "7 d";
 "claude.timeline.hover.before_expiry" = "Anticipación %1$@ antes de que venza Mod";
+"claude.timeline.hover.failure_streak" = "Fallos seguidos";
+"claude.timeline.hover.failure_attempt" = "Intento %1$@ de %2$@ · %3$@ en total";
+"claude.timeline.hover.failure_total" = "%1$@ en total";
 "claude.timeline.window.not_included" = "No incluido";
 "claude.timeline.value.remaining" = "%1$@ restante";
 "claude.timeline.value.evidence_within_tolerance" = "La tarjeta muestra el valor oficial";
@@ -650,7 +653,6 @@
 "claude.timeline.trigger.source_expiry_prefetch" = "Anticipación antes de que venza Mod";
 "claude.timeline.trigger.local_expired_or_absent" = "Sondeo periódico";
 "claude.timeline.delay.failure_backoff" = "espera tras fallo";
-"claude.timeline.delay.insufficient_tokens" = "espera de tokens";
 "claude.timeline.estimate.in" = "en unos %1$@";
 "claude.refresh.every_minutes" = "Cada %1$@ min";
 "claude.quota.calibration_detail" = "Consulta la fuente oficial periódicamente como respaldo; intervalos largos evitan límites de uso";

@@ -635,6 +635,9 @@
 "claude.timeline.window.five_hour" = "5 h";
 "claude.timeline.window.seven_day" = "7 g";
 "claude.timeline.hover.before_expiry" = "Prelettura %1$@ prima della scadenza di Mod";
+"claude.timeline.hover.failure_streak" = "Errori consecutivi";
+"claude.timeline.hover.failure_attempt" = "Tentativo %1$@ di %2$@ · %3$@ in totale";
+"claude.timeline.hover.failure_total" = "%1$@ in totale";
 "claude.timeline.window.not_included" = "Non incluso";
 "claude.timeline.value.remaining" = "%1$@ rimanente";
 "claude.timeline.value.evidence_within_tolerance" = "La scheda mostra il valore ufficiale";
@@ -650,7 +653,6 @@
 "claude.timeline.trigger.source_expiry_prefetch" = "Prelettura prima della scadenza di Mod";
 "claude.timeline.trigger.local_expired_or_absent" = "Polling periodico";
 "claude.timeline.delay.failure_backoff" = "attesa dopo errore";
-"claude.timeline.delay.insufficient_tokens" = "attesa di token";
 "claude.timeline.estimate.in" = "tra circa %1$@";
 "claude.refresh.every_minutes" = "Ogni %1$@ min";
 "claude.quota.calibration_detail" = "Interroga la fonte ufficiale a intervalli regolari come ripiego; intervalli più lunghi evitano i limiti di frequenza";

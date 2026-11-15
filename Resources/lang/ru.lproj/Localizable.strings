@@ -635,6 +635,9 @@
 "claude.timeline.window.five_hour" = "5 ч";
 "claude.timeline.window.seven_day" = "7 дн.";
 "claude.timeline.hover.before_expiry" = "Предзагрузка за %1$@ до истечения Mod";
+"claude.timeline.hover.failure_streak" = "Сбои подряд";
+"claude.timeline.hover.failure_attempt" = "Попытка %1$@ из %2$@ · всего %3$@";
+"claude.timeline.hover.failure_total" = "всего %1$@";
 "claude.timeline.window.not_included" = "Не включено";
 "claude.timeline.value.remaining" = "осталось %1$@";
 "claude.timeline.value.evidence_within_tolerance" = "Карточка показывает официальное значение";
@@ -650,7 +653,6 @@
 "claude.timeline.trigger.source_expiry_prefetch" = "Предзагрузка до истечения Mod";
 "claude.timeline.trigger.local_expired_or_absent" = "Периодический опрос";
 "claude.timeline.delay.failure_backoff" = "пауза после сбоя";
-"claude.timeline.delay.insufficient_tokens" = "ожидание токенов";
 "claude.timeline.estimate.in" = "примерно через %1$@";
 "claude.refresh.every_minutes" = "Каждые %1$@ мин";
 "claude.quota.calibration_detail" = "Периодически запрашивает официальный источник как запасной вариант; больший интервал помогает избежать ограничений";
