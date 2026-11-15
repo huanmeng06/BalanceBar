@@ -635,6 +635,8 @@
 "claude.timeline.window.five_hour" = "5 h";
 "claude.timeline.window.seven_day" = "7 g";
 "claude.timeline.hover.before_expiry" = "Prelettura %1$@ prima della scadenza di Mod";
+"claude.timeline.hover.failure_streak" = "Errori consecutivi";
+"claude.timeline.hover.failure_attempt" = "Tentativo %1$@ di %2$@ · %3$@ in totale";
 "claude.timeline.window.not_included" = "Non incluso";
 "claude.timeline.value.remaining" = "%1$@ rimanente";
 "claude.timeline.value.evidence_within_tolerance" = "La scheda mostra il valore ufficiale";

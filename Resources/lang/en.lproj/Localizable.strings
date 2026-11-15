@@ -635,6 +635,8 @@
 "claude.timeline.window.five_hour" = "5 h";
 "claude.timeline.window.seven_day" = "7 d";
 "claude.timeline.hover.before_expiry" = "Prefetch %1$@ before Mod expires";
+"claude.timeline.hover.failure_streak" = "Failure streak";
+"claude.timeline.hover.failure_attempt" = "Attempt %1$@ of %2$@ · %3$@ total";
 "claude.timeline.window.not_included" = "Not included";
 "claude.timeline.value.remaining" = "%1$@ left";
 "claude.timeline.value.evidence_within_tolerance" = "Card shows the official reading";

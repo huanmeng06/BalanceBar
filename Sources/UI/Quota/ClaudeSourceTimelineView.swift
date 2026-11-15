@@ -41,9 +41,24 @@ struct ClaudeSourceTimelineLayout {
     struct Band: Equatable {
         var run: ClaudeSourceTimeline.FailureRun
         var rect: CGRect
-        /// x positions of each later failed request inside the run, like a bar's dividers: the
-        /// box's left edge already marks the first one.
+        /// x positions where a later failed request starts a new block, like a bar's dividers.
         var dividers: [CGFloat] = []
+        /// One block per failed request (what hovering lifts), like a bar's pieces.
+        var pieces: [FailurePiece] = []
+    }
+
+    /// One failed request inside a failure run: from its answer until the next request was
+    /// answered, or until the run ends (`end` is nil while it is still failing).
+    struct FailurePiece: Equatable {
+        var run: ClaudeSourceTimeline.FailureRun
+        var rect: CGRect
+        var start: Date
+        var end: Date?
+        /// The request this block starts with; nil when the run has no recorded request there.
+        var request: ClaudeSourceTimeline.Request?
+        /// 1-based position among the run's failed requests, and how many it has.
+        var attempt: Int
+        var attempts: Int
     }
 
     struct Tick: Equatable {
@@ -143,12 +158,12 @@ struct ClaudeSourceTimelineLayout {
     /// A reading block, failed interval or request interval under the pointer.
     enum HoverTarget: Equatable {
         case piece(Piece)
-        case band(Band)
+        case failure(FailurePiece)
 
         var rect: CGRect {
             switch self {
             case let .piece(piece): return piece.rect
-            case let .band(band): return band.rect
+            case let .failure(piece): return piece.rect
             }
         }
     }
@@ -156,7 +171,9 @@ struct ClaudeSourceTimelineLayout {
     func hoverTarget(at point: CGPoint) -> HoverTarget? {
         let slop: CGFloat = 3
         if let band = bands.last(where: { $0.rect.insetBy(dx: -1, dy: -slop).contains(point) }) {
-            return .band(band)
+            // A box narrower than its pieces (the minimum mark width) still lifts its last block.
+            let piece = band.pieces.first { point.x >= $0.rect.minX - 1 && point.x <= $0.rect.maxX + 1 }
+            if let piece = piece ?? band.pieces.last { return .failure(piece) }
         }
         for bar in bars where bar.rect.insetBy(dx: -1, dy: -slop).contains(point) {
             if let piece = bar.pieces.first(where: { point.x >= $0.rect.minX - 1 && point.x <= $0.rect.maxX + 1 }) {
@@ -174,14 +191,30 @@ struct ClaudeSourceTimelineLayout {
         let minX = x(for: from)
         let exact = barRect(.oauthAPI, from: minX, to: x(for: to))
         let rect = visibleRect(exact, lane: .oauthAPI)
-        // A failure that opens the run is its left edge; the one that ends it opens the next run.
-        let dividers = requests.compactMap { request -> CGFloat? in
+        // The failed requests answered inside the run. The one that opens it is its left edge; the
+        // one that ends it belongs to the next run (or was a success).
+        var attempts: [(at: Date, request: ClaudeSourceTimeline.Request?)] = requests.compactMap { request in
             guard case .failure = request.outcome, let at = request.completedAt,
-                  at > run.start, at < (run.end ?? .distantFuture), at >= start, at <= now else { return nil }
-            let x = x(for: at)
-            return x > rect.minX + 0.5 && x < rect.maxX - 0.5 ? x : nil
+                  at > run.start.addingTimeInterval(-1), at < (run.end ?? .distantFuture) else { return nil }
+            return (max(at, run.start), request)
+        }.sorted { $0.at < $1.at }
+        if attempts.first.map({ $0.at.timeIntervalSince(run.start) >= 1 }) ?? true {
+            attempts.insert((run.start, nil), at: 0)
         }
-        return Band(run: run, rect: rect, dividers: dividers)
+        var pieces: [FailurePiece] = []
+        for (index, attempt) in attempts.enumerated() {
+            let end = index + 1 < attempts.count ? attempts[index + 1].at : run.end
+            let visibleEnd = min(end ?? now, now)
+            guard visibleEnd >= start else { continue }
+            let minX = max(rect.minX, x(for: attempt.at))
+            let maxX = index + 1 < attempts.count ? min(rect.maxX, x(for: visibleEnd)) : rect.maxX
+            pieces.append(FailurePiece(
+                run: run, rect: CGRect(x: minX, y: rect.minY, width: max(0, maxX - minX), height: rect.height),
+                start: attempt.at, end: end, request: attempt.request,
+                attempt: index + 1, attempts: attempts.count))
+        }
+        let dividers = pieces.dropFirst().map(\.rect.minX).filter { $0 > rect.minX + 0.5 && $0 < rect.maxX - 0.5 }
+        return Band(run: run, rect: rect, dividers: dividers, pieces: pieces)
     }
 
     private func visibleRect(_ exact: CGRect, lane source: StatusSlotLiveSource) -> CGRect {
@@ -264,8 +297,6 @@ final class ClaudeSourceTimelineView: NSView {
     /// The failure box's diagonal stripes, so a lifted failure still reads as one.
     private let liftStripes = CAShapeLayer()
     private let liftStripesMask = CAShapeLayer()
-    /// The failure box's per-request lines, drawn over the stripes like `drawBand` does.
-    private let liftDividers = CAShapeLayer()
     private(set) var content: Content = .empty
     private var refreshTimer: Timer?
     private var occlusionObserver: NSObjectProtocol?
@@ -331,7 +362,6 @@ final class ClaudeSourceTimelineView: NSView {
         liftStripes.fillColor = nil
         liftStripes.mask = liftStripesMask
         liftLayer.addSublayer(liftStripes)
-        liftLayer.addSublayer(liftDividers)
         liftHost.layer?.addSublayer(liftLayer)
         addSubview(liftHost)
 
@@ -734,19 +764,25 @@ final class ClaudeSourceTimelineView: NSView {
                 }
             }
             return ClaudeSourceTimelineTooltipContent(title: laneName(piece.source), color: Self.color(for: piece.source), rows: rows)
-        case let .band(band):
-            let end = band.run.end ?? now()
-            let span = time(band.run.start) + " – " + (band.run.end.map(time) ?? tr(.keyClaudeTimelineNow))
-                + " · " + Self.durationText(end.timeIntervalSince(band.run.start))
+        case let .failure(piece):
+            // This block's own range; the whole run's length goes with the attempt count.
+            let span = time(piece.start) + " – " + (piece.end.map(time) ?? tr(.keyClaudeTimelineNow))
+                + " · " + Self.durationText((piece.end ?? now()).timeIntervalSince(piece.start))
             var rows: [ClaudeSourceTimelineTooltipContent.Row] = [.init(label: tr(.keyClaudeTimelineHoverTime), value: span)]
-            if let request = request(completedAt: band.run.start) { rows.append(contentsOf: requestRows(request)) }
-            // The estimate is about what happens next, so only a failure that is still going carries it;
-            // a paused sign-in is already the heading, only a real wait is worth a line.
-            if band.run.end == nil, let estimate = content.timeline.estimate {
+            if let request = piece.request {
+                rows.append(contentsOf: requestRows(request))
+                let total = (piece.run.end ?? now()).timeIntervalSince(piece.run.start)
+                rows.append(.init(label: tr(.keyClaudeTimelineHoverFailureStreak), value: tr(
+                    .keyClaudeTimelineHoverFailureAttempt,
+                    arguments: [String(piece.attempt), String(piece.attempts), Self.durationText(total)])))
+            }
+            // The estimate is about what happens next, so only the last block of a failure that is
+            // still going carries it; a paused sign-in is already the heading, only a real wait is worth a line.
+            if piece.end == nil, let estimate = content.timeline.estimate {
                 rows.append(contentsOf: estimateRows(estimate, skippingAuthStates: true))
             }
             return ClaudeSourceTimelineTooltipContent(
-                title: laneName(.oauthAPI) + " · " + Self.failureText(band.run.kind), color: .systemRed, rows: rows)
+                title: laneName(.oauthAPI) + " · " + Self.failureText(piece.run.kind), color: .systemRed, rows: rows)
         }
     }
 
@@ -858,7 +894,7 @@ final class ClaudeSourceTimelineView: NSView {
         switch (lhs, rhs) {
         case (nil, nil): return true
         case let (.piece(a)?, .piece(b)?): return a.source == b.source && a.readings.first == b.readings.first
-        case let (.band(a)?, .band(b)?): return a.run.start == b.run.start
+        case let (.failure(a)?, .failure(b)?): return a.run.start == b.run.start && a.start == b.start
         default: return false
         }
     }
@@ -868,7 +904,7 @@ final class ClaudeSourceTimelineView: NSView {
             // Same block: follow its geometry (time moves it) without restarting any animation.
             if let target {
                 hovered = target
-                placeLift(on: target)
+                placeLift(on: target.rect)
                 updateTooltipInPlace(.rich(hoverContent(for: target)), rect: liftedRect(target.rect))
             } else if let labelText {
                 if tooltipPayload != .plain(labelText.0) || popover?.isShown != true, tooltipWork == nil {
@@ -885,7 +921,7 @@ final class ClaudeSourceTimelineView: NSView {
         isPressed = false
         if let target {
             styleLift(for: target)
-            placeLift(on: target)
+            placeLift(on: target.rect)
             animateLift(up: true)
             if !wasHovering { setChartReceded(true) }
             scheduleTooltip(.rich(hoverContent(for: target)), rect: liftedRect(target.rect))
@@ -920,10 +956,8 @@ final class ClaudeSourceTimelineView: NSView {
             let inUse = piece.end >= now() && (content.status == nil || piece.source == Self.activeSource(content.status))
             tintAlpha = inUse ? 0.5 : 0.32
             liftStripes.isHidden = true
-            liftDividers.isHidden = true
-        case .band:
+        case .failure:
             liftStripes.isHidden = false
-            liftDividers.isHidden = false
             color = .systemRed
             tintAlpha = 0.18
         }
@@ -936,13 +970,11 @@ final class ClaudeSourceTimelineView: NSView {
             liftTint.strokeColor = color.cgColor
             liftTint.lineWidth = 1.5
             liftStripes.strokeColor = NSColor.systemRed.withAlphaComponent(0.28).cgColor
-            liftDividers.fillColor = NSColor.systemRed.withAlphaComponent(0.7).cgColor
             CATransaction.commit()
         }
     }
 
-    private func placeLift(on target: ClaudeSourceTimelineLayout.HoverTarget) {
-        let rect = target.rect
+    private func placeLift(on rect: CGRect) {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         let radius = min(ClaudeSourceTimelineLayout.cornerRadius, rect.width / 2)
@@ -968,17 +1000,6 @@ final class ClaudeSourceTimelineView: NSView {
         liftStripesMask.path = CGPath(
             roundedRect: local.insetBy(dx: 1.5, dy: 1.5), cornerWidth: max(0, radius - 0.75),
             cornerHeight: max(0, radius - 0.75), transform: nil)
-        // Same per-request lines as drawBand, moved into the lifted box's own coordinates.
-        let dividers = CGMutablePath()
-        if case let .band(band) = target {
-            for x in band.dividers {
-                dividers.addRoundedRect(
-                    in: CGRect(x: x - rect.minX - 0.75, y: local.minY + 5, width: 1.5, height: local.height - 10),
-                    cornerWidth: 0.75, cornerHeight: 0.75)
-            }
-        }
-        liftDividers.frame = local
-        liftDividers.path = dividers
         liftLayer.shadowPath = CGPath(roundedRect: local, cornerWidth: radius, cornerHeight: radius, transform: nil)
         liftLayer.isHidden = false
         CATransaction.commit()

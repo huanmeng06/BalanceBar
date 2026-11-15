@@ -635,6 +635,8 @@
 "claude.timeline.window.five_hour" = "5 時間";
 "claude.timeline.window.seven_day" = "7 日";
 "claude.timeline.hover.before_expiry" = "Mod 期限の %1$@ 前に先行取得";
+"claude.timeline.hover.failure_streak" = "連続失敗";
+"claude.timeline.hover.failure_attempt" = "%2$@ 回中 %1$@ 回目 · 計 %3$@";
 "claude.timeline.window.not_included" = "含まれません";
 "claude.timeline.value.remaining" = "残り %1$@";
 "claude.timeline.value.evidence_within_tolerance" = "カードは公式の値を表示";
