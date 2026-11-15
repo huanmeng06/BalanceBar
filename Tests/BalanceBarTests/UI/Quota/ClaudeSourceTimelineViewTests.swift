@@ -9,16 +9,24 @@ final class ClaudeSourceTimelineViewTests: XCTestCase {
     private typealias Run = ClaudeSourceTimeline.FailureRun
 
     private func layout(
-        readings: [Reading] = [], failures: [Run] = [], width: CGFloat = 660, labelColumn: CGFloat = 60
+        readings: [Reading] = [], failures: [Run] = [], requests: [ClaudeSourceTimeline.Request] = [],
+        width: CGFloat = 660, labelColumn: CGFloat = 60
     ) -> ClaudeSourceTimelineLayout {
         ClaudeSourceTimelineLayout(
-            snapshot: .init(readings: readings, failures: failures), now: now,
+            snapshot: .init(readings: readings, failures: failures, requests: requests), now: now,
             bounds: CGRect(x: 0, y: 0, width: width, height: ClaudeSourceTimelineLayout.height),
             labelColumnWidth: labelColumn, timeZone: utc)
     }
 
     private func reading(_ source: StatusSlotLiveSource, _ from: TimeInterval, _ to: TimeInterval) -> Reading {
         Reading(source: source, observedAt: now.addingTimeInterval(from), expiresAt: now.addingTimeInterval(to))
+    }
+
+    private func request(
+        completedAt offset: TimeInterval, _ outcome: ClaudeSourceTimeline.RequestOutcome = .failure(.network)
+    ) -> ClaudeSourceTimeline.Request {
+        .init(trigger: .localExpiredOrAbsent, startedAt: now.addingTimeInterval(offset - 1),
+              completedAt: now.addingTimeInterval(offset), outcome: outcome)
     }
 
     func testLanesFollowTheSketchOrderAndTheNowLineIsTheRightEdge() {
@@ -134,6 +142,29 @@ final class ClaudeSourceTimelineViewTests: XCTestCase {
         XCTAssertEqual(layout.bands[0].rect.midY, bar.rect.midY, accuracy: 0.01)
     }
 
+    func testEachLaterFailedRequestIsAShortLineInsideItsFailureBox() {
+        let layout = layout(
+            failures: [
+                Run(start: now.addingTimeInterval(-1_500), end: now.addingTimeInterval(-900), kind: .network),
+                Run(start: now.addingTimeInterval(-120), end: nil, kind: .unauthorized),
+            ],
+            requests: [
+                request(completedAt: -1_500), // opens the run: its left edge, not a line
+                request(completedAt: -1_380), request(completedAt: -1_260), request(completedAt: -1_140),
+                request(completedAt: -900, .failure(.unauthorized)), // ends this run, belongs to no box
+                request(completedAt: -600, .success),
+                request(completedAt: -120, .failure(.unauthorized)),
+                request(completedAt: -60, .failure(.unauthorized)),
+                request(completedAt: -30, .interrupted),
+            ])
+        XCTAssertEqual(layout.bands.count, 2)
+        XCTAssertEqual(layout.bands[0].dividers, [-1_380.0, -1_260, -1_140].map { layout.x(for: now.addingTimeInterval($0)) })
+        XCTAssertEqual(layout.bands[1].dividers, [layout.x(for: now.addingTimeInterval(-60))], "an open run counts up to now")
+        for band in layout.bands {
+            XCTAssertTrue(band.dividers.allSatisfy { $0 > band.rect.minX && $0 < band.rect.maxX })
+        }
+    }
+
     func testTicksSitOnQuarterHoursOfTheDisplayTimeZone() {
         let layout = layout()
         XCTAssertEqual(layout.ticks.count, 4)
@@ -238,7 +269,8 @@ final class ClaudeSourceTimelineViewTests: XCTestCase {
                     + [reading(.oauthAPI, -1_100, -500), reading(.oauthAPI, -300, 300)]
                     + stride(from: -1_800.0, to: -1_400, by: 15).map { reading(.mod, $0, $0 + 120) }
                     + stride(from: -400.0, to: -5, by: 10).map { reading(.mod, $0, $0 + 120) },
-                failures: [Run(start: now.addingTimeInterval(-1_400), end: now.addingTimeInterval(-1_100), kind: .network)]),
+                failures: [Run(start: now.addingTimeInterval(-1_400), end: now.addingTimeInterval(-1_100), kind: .network)],
+                requests: [-1_400.0, -1_340, -1_280, -1_220, -1_160].map { request(completedAt: $0) }),
             status: .realtime(.mod, at: now.addingTimeInterval(-5)))
         let cases: [(String, ClaudeSourceTimelineView.Content, CGFloat)] = [
             ("busy", busy, 600), ("narrow", busy, 380), ("empty", .empty, 600),

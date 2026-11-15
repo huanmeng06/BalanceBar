@@ -41,6 +41,9 @@ struct ClaudeSourceTimelineLayout {
     struct Band: Equatable {
         var run: ClaudeSourceTimeline.FailureRun
         var rect: CGRect
+        /// x positions of each later failed request inside the run, like a bar's dividers: the
+        /// box's left edge already marks the first one.
+        var dividers: [CGFloat] = []
     }
 
     struct Tick: Equatable {
@@ -68,7 +71,7 @@ struct ClaudeSourceTimelineLayout {
             x: left, y: bounds.minY + Self.headerHeight,
             width: max(1, bounds.maxX - left), height: Self.laneHeight * CGFloat(Self.lanes.count))
         bars = Self.lanes.flatMap { makeBars(for: $0, readings: snapshot.readings) }
-        bands = snapshot.failures.compactMap(makeBand)
+        bands = snapshot.failures.compactMap { makeBand($0, requests: snapshot.requests) }
         ticks = makeTicks(timeZone: timeZone)
     }
 
@@ -163,14 +166,22 @@ struct ClaudeSourceTimelineLayout {
         return nil
     }
 
-    private func makeBand(_ run: ClaudeSourceTimeline.FailureRun) -> Band? {
+    private func makeBand(_ run: ClaudeSourceTimeline.FailureRun, requests: [ClaudeSourceTimeline.Request]) -> Band? {
         let from = max(run.start, start)
         let to = min(run.end ?? now, now)
         guard to >= from, from < now else { return nil }
         // Same size as a bar so the failure reads as one more box in the OAuth row.
         let minX = x(for: from)
         let exact = barRect(.oauthAPI, from: minX, to: x(for: to))
-        return Band(run: run, rect: visibleRect(exact, lane: .oauthAPI))
+        let rect = visibleRect(exact, lane: .oauthAPI)
+        // A failure that opens the run is its left edge; the one that ends it opens the next run.
+        let dividers = requests.compactMap { request -> CGFloat? in
+            guard case .failure = request.outcome, let at = request.completedAt,
+                  at > run.start, at < (run.end ?? .distantFuture), at >= start, at <= now else { return nil }
+            let x = x(for: at)
+            return x > rect.minX + 0.5 && x < rect.maxX - 0.5 ? x : nil
+        }
+        return Band(run: run, rect: rect, dividers: dividers)
     }
 
     private func visibleRect(_ exact: CGRect, lane source: StatusSlotLiveSource) -> CGRect {
@@ -253,6 +264,8 @@ final class ClaudeSourceTimelineView: NSView {
     /// The failure box's diagonal stripes, so a lifted failure still reads as one.
     private let liftStripes = CAShapeLayer()
     private let liftStripesMask = CAShapeLayer()
+    /// The failure box's per-request lines, drawn over the stripes like `drawBand` does.
+    private let liftDividers = CAShapeLayer()
     private(set) var content: Content = .empty
     private var refreshTimer: Timer?
     private var occlusionObserver: NSObjectProtocol?
@@ -318,6 +331,7 @@ final class ClaudeSourceTimelineView: NSView {
         liftStripes.fillColor = nil
         liftStripes.mask = liftStripesMask
         liftLayer.addSublayer(liftStripes)
+        liftLayer.addSublayer(liftDividers)
         liftHost.layer?.addSublayer(liftLayer)
         addSubview(liftHost)
 
@@ -566,6 +580,13 @@ final class ClaudeSourceTimelineView: NSView {
         NSColor.systemRed.withAlphaComponent(0.28).setStroke()
         stripes.stroke()
         NSGraphicsContext.restoreGraphicsState()
+        // One short line per later failed request, sized like a bar's dividers.
+        NSColor.systemRed.withAlphaComponent(0.7).setFill()
+        for x in band.dividers {
+            NSBezierPath(
+                roundedRect: NSRect(x: x - 0.75, y: rect.minY + 5, width: 1.5, height: rect.height - 10),
+                xRadius: 0.75, yRadius: 0.75).fill()
+        }
         box.lineWidth = 1.5
         NSColor.systemRed.setStroke()
         box.stroke()
@@ -845,7 +866,7 @@ final class ClaudeSourceTimelineView: NSView {
             // Same block: follow its geometry (time moves it) without restarting any animation.
             if let target {
                 hovered = target
-                placeLift(on: target.rect)
+                placeLift(on: target)
                 updateTooltipInPlace(.rich(hoverContent(for: target)), rect: liftedRect(target.rect))
             } else if let labelText {
                 if tooltipPayload != .plain(labelText.0) || popover?.isShown != true, tooltipWork == nil {
@@ -862,7 +883,7 @@ final class ClaudeSourceTimelineView: NSView {
         isPressed = false
         if let target {
             styleLift(for: target)
-            placeLift(on: target.rect)
+            placeLift(on: target)
             animateLift(up: true)
             if !wasHovering { setChartReceded(true) }
             scheduleTooltip(.rich(hoverContent(for: target)), rect: liftedRect(target.rect))
@@ -897,8 +918,10 @@ final class ClaudeSourceTimelineView: NSView {
             let inUse = piece.end >= now() && (content.status == nil || piece.source == Self.activeSource(content.status))
             tintAlpha = inUse ? 0.5 : 0.32
             liftStripes.isHidden = true
+            liftDividers.isHidden = true
         case .band:
             liftStripes.isHidden = false
+            liftDividers.isHidden = false
             color = .systemRed
             tintAlpha = 0.18
         }
@@ -911,11 +934,13 @@ final class ClaudeSourceTimelineView: NSView {
             liftTint.strokeColor = color.cgColor
             liftTint.lineWidth = 1.5
             liftStripes.strokeColor = NSColor.systemRed.withAlphaComponent(0.28).cgColor
+            liftDividers.fillColor = NSColor.systemRed.withAlphaComponent(0.7).cgColor
             CATransaction.commit()
         }
     }
 
-    private func placeLift(on rect: CGRect) {
+    private func placeLift(on target: ClaudeSourceTimelineLayout.HoverTarget) {
+        let rect = target.rect
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         let radius = min(ClaudeSourceTimelineLayout.cornerRadius, rect.width / 2)
@@ -941,6 +966,17 @@ final class ClaudeSourceTimelineView: NSView {
         liftStripesMask.path = CGPath(
             roundedRect: local.insetBy(dx: 1.5, dy: 1.5), cornerWidth: max(0, radius - 0.75),
             cornerHeight: max(0, radius - 0.75), transform: nil)
+        // Same per-request lines as drawBand, moved into the lifted box's own coordinates.
+        let dividers = CGMutablePath()
+        if case let .band(band) = target {
+            for x in band.dividers {
+                dividers.addRoundedRect(
+                    in: CGRect(x: x - rect.minX - 0.75, y: local.minY + 5, width: 1.5, height: local.height - 10),
+                    cornerWidth: 0.75, cornerHeight: 0.75)
+            }
+        }
+        liftDividers.frame = local
+        liftDividers.path = dividers
         liftLayer.shadowPath = CGPath(roundedRect: local, cornerWidth: radius, cornerHeight: radius, transform: nil)
         liftLayer.isHidden = false
         CATransaction.commit()
