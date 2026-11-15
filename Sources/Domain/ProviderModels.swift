@@ -166,6 +166,18 @@ struct OpenAIAccountPresentation: Equatable {
         return Self(email: email, subscription: subscription, unavailableReason: unavailableReason)
     }
 
+    /// Claude's menu email. The credential probe's profile wins; without one
+    /// (Claude Code's Keychain token is gone) the quota pipeline's account email
+    /// is shown only while the displayed reading came from the Mod, whose
+    /// snapshots are accepted only when their email hash matches that account.
+    static func claudeMenuEmail(profileEmail: String?, quotaState: ClaudeQuotaState?) -> String? {
+        if let profileEmail, !profileEmail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return profileEmail
+        }
+        guard let quotaState, quotaState.newestReadingSource == .mod else { return nil }
+        return quotaState.predictionAccountKey
+    }
+
     func text(language: AppLanguage = .selected) -> String {
         switch state {
         case .available(let email):

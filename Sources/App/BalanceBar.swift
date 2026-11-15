@@ -1066,13 +1066,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         // reading it here never launches the Keychain tool.
         let accountProfile = isOfficialOpenAICodex ? currentAccountProfileCache
             : isOfficialClaude ? officialQuotaClient.cachedClaudeAccountProfile() : nil
-        let claudeLoginHint = isOfficialClaude && accountProfile?.email == nil
+        // Without a Keychain profile, the Mod-verified account still names the account.
+        let claudeMenuEmail = isOfficialClaude ? OpenAIAccountPresentation.claudeMenuEmail(
+            profileEmail: accountProfile?.email, quotaState: claudeQuota.latestState) : nil
+        let claudeLoginHint = isOfficialClaude && claudeMenuEmail == nil
             ? claudeQuota.latestState?.failure.flatMap(OpenAIAccountPresentation.UnavailableReason.init(claudeFailure:))
             : nil
         let openAIAccount = OpenAIAccountPresentation.current(
             activeClient: activeClient,
             providerIsOfficial: isOfficialOpenAICodex || isOfficialClaude,
-            email: accountProfile?.email,
+            email: claudeMenuEmail ?? accountProfile?.email,
             subscription: OpenAISubscriptionTier(planType: accountProfile?.planType, client: activeClient),
             unavailableReason: claudeLoginHint
         )
@@ -1100,25 +1103,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             bankedResetDisplayMode: preferences.menuBankedResetDisplayMode,
             showsAvailableUpdateBadge: showsAvailableUpdateBadge,
             modRow: modSyncCoordinator.menuRow(isOfficialDirect: isOfficialClaude),
-            claudeLoginPrompt: isOfficialClaude && Self.showsClaudeLoginPrompt(claudeQuota.latestState),
+            claudeLoginPrompt: isOfficialClaude ? Self.claudeLoginPrompt(claudeQuota.latestState) : nil,
             aggregatedProviders: activeClient == .codex ? aggregationDisplays : [],
             aggregationQuickSwitchBlocked: activeClient == .codex && aggregationQuickSwitchBlocked,
             quickSwitchSafety: quickSwitchSafety
         )
     }
 
-    /// Old Claude data stays on the card while the login failed; the failure reason would otherwise
-    /// only be in the status tooltip. A live realtime source (Mod) keeps the data current, so the
-    /// row stays hidden then. With no data the error card already shows the reason and button.
-    static func showsClaudeLoginPrompt(_ state: ClaudeQuotaState?) -> Bool {
-        guard let state else { return false }
-        return showsClaudeLoginPrompt(hasWindows: !state.windows.isEmpty, failure: state.failure, status: state.status)
+    /// The card still has Claude data while the login failed; the failure reason would otherwise
+    /// only be in the status tooltip. With live realtime (Mod) data the row says only that official
+    /// reads are paused, since the data below is current. With no data the error card already
+    /// shows the reason and button.
+    static func claudeLoginPrompt(_ state: ClaudeQuotaState?) -> ClaudeLoginPrompt? {
+        guard let state else { return nil }
+        return claudeLoginPrompt(hasWindows: !state.windows.isEmpty, failure: state.failure, status: state.status)
     }
 
-    static func showsClaudeLoginPrompt(hasWindows: Bool, failure: ClaudeQuotaFailure?, status: StatusSlotState) -> Bool {
-        guard hasWindows, failure == .missingCredentials || failure == .unauthorized else { return false }
-        if case .realtime = status { return false }
-        return true
+    static func claudeLoginPrompt(hasWindows: Bool, failure: ClaudeQuotaFailure?, status: StatusSlotState) -> ClaudeLoginPrompt? {
+        guard hasWindows, failure == .missingCredentials || failure == .unauthorized else { return nil }
+        if case .realtime = status { return .liveData }
+        return .staleData
     }
 
     private var showsAvailableUpdateBadge: Bool {

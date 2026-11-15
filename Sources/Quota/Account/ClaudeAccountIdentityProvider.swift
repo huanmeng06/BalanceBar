@@ -109,6 +109,14 @@ public final class ClaudeAccountIdentityProvider: AccountIdentityProviding {
     private var pendingReload: DispatchWorkItem?
     private var directorySource: DispatchSourceFileSystemObject?
     private var configFileSource: DispatchSourceFileSystemObject?
+    private var reloadHandler: (() -> Void)?
+
+    /// Called on `workQueue` after every successful re-read of the configuration file, including
+    /// re-reads that keep the same account (Claude Code rewrites the file on a new login).
+    public var onConfigurationReloaded: (() -> Void)? {
+        get { locked { reloadHandler } }
+        set { locked { reloadHandler = newValue } }
+    }
 
     public init(
         configurationURL: URL = FileManager.default.homeDirectoryForCurrentUser
@@ -292,6 +300,7 @@ public final class ClaudeAccountIdentityProvider: AccountIdentityProviding {
             }
         }
         if accountChanged { broadcast(accountChanged: true) }
+        if case .success = result, let handler = locked({ reloadHandler }) { handler() }
     }
 
     private func broadcast(accountChanged: Bool) {

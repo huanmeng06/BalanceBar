@@ -605,6 +605,7 @@
 "claude.refresh.credentials_unreadable" = "无法读取钥匙串中的 Claude Code 登录信息。请点击“立即刷新”，并在弹出的钥匙串对话框中选择“始终允许”。";
 "claude.refresh.no_subscription_account" = "未找到 Claude 订阅账号。用 API Key 登录的 Claude Code 没有订阅额度可显示；否则在终端运行 claude 登录。";
 "claude.login_prompt.title" = "Claude 登录已失效，下面是旧数据";
+"claude.login_prompt.title_live" = "Claude 登录已失效，官方额度暂停";
 "claude.login_prompt.action" = "点此复制 claude 命令，在终端运行即可恢复";
 "claude.login_prompt.copied_title" = "已复制 claude 命令";
 "claude.login_prompt.copied_detail" = "在终端粘贴并运行即可恢复登录";

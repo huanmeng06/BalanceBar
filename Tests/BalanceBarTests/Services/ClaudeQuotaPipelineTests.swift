@@ -166,6 +166,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         realtimeTracker: ClaudeRealtimeTracker? = nil,
         configuration: FetchSchedulerConfiguration? = nil,
         confirmationTimer: SchedulerTimer = DispatchSchedulerTimer(),
+        loginRecheckTimer: SchedulerTimer = DispatchSchedulerTimer(),
         withTracker: Bool = false,
         withInbox: Bool = false,
         sourceValidity: @escaping () -> ClaudeSourceValidity = { .defaults }
@@ -190,7 +191,8 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         let pipeline = ClaudeQuotaPipeline(
             client: official, identity: identity, identityQueue: identityQueue,
             stateDirectory: directory.appendingPathComponent("state", isDirectory: true),
-            schedulerClock: clock, confirmationTimer: confirmationTimer, schedulerConfiguration: resolved,
+            schedulerClock: clock, confirmationTimer: confirmationTimer, loginRecheckTimer: loginRecheckTimer,
+            schedulerConfiguration: resolved,
             realtimeTracker: tracker,
             snapshotInbox: inbox,
             sourceValidity: sourceValidity,
@@ -541,6 +543,31 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         clock.advance(by: 180)
         pipeline.requestFetch(reason: .manual)
         XCTAssertNotNil(waitForState(pipeline) { $0.failure == .invalidResponse })
+    }
+
+    func testSigningInAgainIsPickedUpFromTheAccountFileWithoutAManualRefresh() throws {
+        reader.set(nil)
+        let recheck = ManualRetryTimer()
+        let pipeline = makePipeline(configuration: claudeV1TestConfiguration, loginRecheckTimer: recheck)
+        pipeline.requestFetch(reason: .initial)
+        XCTAssertNotNil(waitForState(pipeline) { $0.failure == .missingCredentials })
+        XCTAssertEqual(PipelineStubProtocol.requestCount, 0)
+
+        // `claude auth login` stores a token and rewrites ~/.claude.json for the same account.
+        reader.set("token-1")
+        try writeAccount("account-a", email: "a@example.com")
+        let deadline = Date().addingTimeInterval(3)
+        while recheck.delays.isEmpty, Date() < deadline { pipeline.waitUntilIdle(); Thread.sleep(forTimeInterval: 0.01) }
+        XCTAssertEqual(recheck.delays.first, ClaudeQuotaPipeline.loginRecheckSettleDelay)
+        clock.advance(by: ClaudeQuotaPipeline.loginRecheckSettleDelay + 1) // the settle delay outlives the credential cache
+        recheck.fireFirst()
+        waitForRequests(1)
+        XCTAssertNotNil(waitForState(pipeline) { $0.failure == nil && !$0.windows.isEmpty })
+
+        // Healthy again: later rewrites of the file read nothing.
+        try writeAccount("account-a", email: "a@example.com")
+        quiet(pipeline)
+        XCTAssertEqual(recheck.delays.count, 1)
     }
 
     // MARK: Reset handling

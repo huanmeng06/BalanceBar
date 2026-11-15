@@ -30,6 +30,12 @@ public final class FetchScheduler: FetchScheduling {
     private var lastSuccess: (at: Date, epoch: AccountEpoch)?
     private var consecutiveFailures = 0
     private var lastFailureAt: Date?
+    /// The last result never left the device (no readable credentials). Automatic checks for the
+    /// same account and credential version wait instead of re-dispatching on every wakeup.
+    private var notSentPause: (at: Date, epoch: AccountEpoch, credentialVersion: CredentialVersion?, reason: FetchSkipReason)?
+    /// Credentials changed after a login failure (401 or unsent request): the next request has to
+    /// reach the server to confirm the new login, even when fresh local data would skip it.
+    private var credentialRecoveryPending = false
     private var lastDispatchAt: Date?
     private var lastDispatchTrigger: FetchDispatchTrigger?
     private var demandEnabled = false
@@ -173,6 +179,8 @@ public final class FetchScheduler: FetchScheduling {
                 let trigger = automaticTrigger([], firstRead: currentEpochLastSuccessAt == nil, now: at)
                 if let until = persistent.cooldownUntil, until > now {
                     state = .coolingDown(until: max(until, at))
+                } else if notSentPauseUntil(now: now) != nil, let pause = notSentPause {
+                    state = .delayed(reason: pause.reason, until: at, trigger: trigger)
                 } else if let lastServerAttemptAt, consecutiveFailures > 0,
                           lastServerAttemptAt.addingTimeInterval(failureBackoffInterval) > now {
                     state = .delayed(reason: .failureBackoff, until: at, trigger: trigger)
@@ -232,9 +240,21 @@ public final class FetchScheduler: FetchScheduling {
             persistent.isUnauthorizedPaused = false
             persistent.unauthorizedCredentialVersion = nil
             stateStore.save(persistent)
+            credentialRecoveryPending = true
+        }
+        if let pause = notSentPause, pause.epoch == identity.accountEpoch,
+           identity.credentialVersion != nil, pause.credentialVersion != identity.credentialVersion {
+            notSentPause = nil
+            credentialRecoveryPending = true
         }
         if cooldownRemaining(now: now) > 0 {
             return log(.skipped, reasons: reasons, skip: .cooldown)
+        }
+
+        // Nothing could be sent last time and the credentials have not changed since: an automatic
+        // retry would fail the same way, so only a manual refresh or a new login tries again.
+        if !reasons.contains(.manual), notSentPauseUntil(now: now) != nil, let pause = notSentPause {
+            return log(.skipped, reasons: reasons, skip: pause.reason)
         }
 
         // A plain failure only debounces automatic retries; the user may always try again by hand
@@ -254,6 +274,9 @@ public final class FetchScheduler: FetchScheduling {
     }
 
     private func evaluateManual(_ reasons: [FetchRequestReason], now: Date) {
+        if credentialRecoveryPending {
+            return spendAndDispatch(reasons, cost: configuration.manualTokenCost, trigger: .manualRefresh)
+        }
         let window = configuration.manualRefreshWindow
         if let lastSuccessAt = currentEpochLastSuccessAt, now.timeIntervalSince(lastSuccessAt) < window,
            !manualResultCannotConfirmPendingReset(lastSuccessAt: lastSuccessAt) {
@@ -283,13 +306,13 @@ public final class FetchScheduler: FetchScheduling {
             && currentEpochLastSuccessAt == nil
         // A reset confirmation cannot wait out the minimum interval: the deadline already
         // passed, so only the 401 pause, cooldown, failure backoff and budget may hold it.
-        let bypassMinimum = firstRead || reasons.contains(.resetConfirmation)
+        let bypassMinimum = firstRead || reasons.contains(.resetConfirmation) || credentialRecoveryPending
         if !bypassMinimum,
            let lastSuccessAt = currentEpochLastSuccessAt,
            now.timeIntervalSince(lastSuccessAt) < automaticMinimumInterval {
             return log(.skipped, reasons: reasons, skip: .minimumInterval)
         }
-        if !reasons.contains(.resetConfirmation),
+        if !reasons.contains(.resetConfirmation), !credentialRecoveryPending,
            let freshUntil = realtimeFreshUntil(),
            now < freshUntil.addingTimeInterval(-configuration.sourceExpiryPrefetchLead),
            !calibrationCapExceeded(now: now) {
@@ -354,6 +377,7 @@ public final class FetchScheduler: FetchScheduling {
             return log(.skipped, reasons: reasons, skip: .insufficientTokens)
         }
         tokens -= cost
+        credentialRecoveryPending = false
         isBusy = true
         lastServerAttemptAt = clock.now
         lastDispatchAt = lastServerAttemptAt
@@ -394,6 +418,12 @@ public final class FetchScheduler: FetchScheduling {
         }
         guard !stale else {
             return log(.discardedStaleEpoch, reasons: reasons, outcome: Self.label(result))
+        }
+        if case let .notSent(detail) = result {
+            let reason: FetchSkipReason = detail == Self.credentialsUnreadableDetail ? .credentialsUnreadable : .credentialsUnavailable
+            notSentPause = (now, epoch, credentialVersion, reason)
+        } else {
+            notSentPause = nil
         }
         switch result {
         case .success:
@@ -474,6 +504,18 @@ public final class FetchScheduler: FetchScheduling {
         return max(0, until.timeIntervalSince(now))
     }
 
+    /// `UsageFetchResult.notSent` detail for a Keychain item that exists but could not be read.
+    static let credentialsUnreadableDetail = "credentials_unreadable"
+
+    /// End of the wait after an unsent request, while the account and credentials are unchanged.
+    private func notSentPauseUntil(now: Date) -> Date? {
+        guard let pause = notSentPause, configuration.unauthorizedRecheckInterval > 0,
+              pause.epoch == identity.accountEpoch,
+              pause.credentialVersion == identity.credentialVersion else { return nil }
+        let until = pause.at.addingTimeInterval(configuration.unauthorizedRecheckInterval)
+        return until > now ? until : nil
+    }
+
     private var failureBackoffInterval: TimeInterval {
         guard !configuration.failureBackoff.isEmpty else { return 0 }
         let index = min(max(0, consecutiveFailures - 1), configuration.failureBackoff.count - 1)
@@ -519,6 +561,7 @@ public final class FetchScheduler: FetchScheduling {
             next = max(next, lastServerAttemptAt.addingTimeInterval(failureBackoffInterval))
         }
         if let cooldownUntil = persistent.cooldownUntil { next = max(next, cooldownUntil) }
+        if let notSentUntil = notSentPauseUntil(now: now) { next = max(next, notSentUntil) }
         if tokens < configuration.automaticTokenCost, configuration.tokenRefillInterval > 0 {
             let missing = Double(configuration.automaticTokenCost - tokens)
             next = max(next, tokenRefillAnchor.addingTimeInterval(missing * configuration.tokenRefillInterval))

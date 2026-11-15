@@ -3504,6 +3504,14 @@ extension StatusItemControllerTests {
         loginExpired = false
         _ = controller.validateMenuItem(refresh)
         assertRefresh(subtitle: nil, "the subtitle clears with the expiry")
+
+        // The orange re-login row under the card already says it: no duplicate subtitle.
+        loginExpired = true
+        controller.updateMenu(input: StatusItemController.MenuInput(choices: [], quickSwitchSummaries: [:],
+            activeClient: .claude, openAIAccount: nil, statusLinks: [], showQuickSwitchMenu: false,
+            showOpenChatGPTMenu: false, showOpenCCSwitchMenu: false, showStatusMenu: false,
+            directProviderID: "claude-official", claudeLoginPrompt: .liveData))
+        XCTAssertNil(controller.manualRefreshMenuSubtitle(), "the re-login row carries the hint")
     }
 
     @MainActor
