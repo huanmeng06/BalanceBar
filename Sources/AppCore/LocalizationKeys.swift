@@ -286,6 +286,7 @@
     case keyClaudeTimelineHoverBeforeExpiry = "claude.timeline.hover.before_expiry"
     case keyClaudeTimelineHoverFailureStreak = "claude.timeline.hover.failure_streak"
     case keyClaudeTimelineHoverFailureAttempt = "claude.timeline.hover.failure_attempt"
+    case keyClaudeTimelineHoverFailureTotal = "claude.timeline.hover.failure_total"
     case keyClaudeTimelineValueRemaining = "claude.timeline.value.remaining"
     case keyClaudeTimelineWindowNotIncluded = "claude.timeline.window.not_included"
     case keyClaudeTimelineValueEvidenceWithinTolerance = "claude.timeline.value.evidence_within_tolerance"

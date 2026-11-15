@@ -198,6 +198,26 @@ final class ClaudeSourceTimelineViewTests: XCTestCase {
             .keyClaudeTimelineHoverFailureAttempt, arguments: ["2", "3", ClaudeSourceTimelineView.durationText(600)]))
     }
 
+    func testAFailureOlderThanTheRequestHistoryShowsOnlyItsLength() throws {
+        // Two hours offline: the requests from the run's first hour are already pruned.
+        let content = ClaudeSourceTimelineView.Content(
+            timeline: .init(
+                readings: [],
+                failures: [Run(start: now.addingTimeInterval(-7_200), end: nil, kind: .network)],
+                requests: [request(completedAt: -1_800), request(completedAt: -600)]),
+            status: nil)
+        let view = ClaudeSourceTimelineView(provider: { content }, timeZone: utc, now: { self.now })
+        view.frame = NSRect(x: 0, y: 0, width: 660, height: ClaudeSourceTimelineLayout.height)
+        let pieces = try XCTUnwrap(view.makeLayout().bands.first?.pieces)
+        XCTAssertEqual(pieces.count, 3, "the unrecorded start, then one block per recorded request")
+        XCTAssertTrue(pieces.allSatisfy { !$0.attemptsKnown })
+        let total = tr(.keyClaudeTimelineHoverFailureTotal, arguments: [ClaudeSourceTimelineView.durationText(7_200)])
+        for piece in pieces {
+            let streak = view.hoverContent(for: .failure(piece)).rows.first { $0.label == tr(.keyClaudeTimelineHoverFailureStreak) }
+            XCTAssertEqual(streak?.value, total, "a count missing its first hour would be too small")
+        }
+    }
+
     func testAFailureRunWithoutRecordedRequestsIsOneBlock() {
         let band = layout(failures: [Run(start: now.addingTimeInterval(-600), end: now.addingTimeInterval(-300), kind: .network)]).bands[0]
         XCTAssertEqual(band.pieces.count, 1)
@@ -412,6 +432,7 @@ final class ClaudeSourceTimelineViewTests: XCTestCase {
             (.keyClaudeTimelineEstimateScheduled, ["10:00", "x"]),
             (.keyClaudeTimelineHoverBeforeExpiry, ["9"]),
             (.keyClaudeTimelineHoverFailureAttempt, ["2", "4", "12"]),
+            (.keyClaudeTimelineHoverFailureTotal, ["2"]),
             (.keyClaudeTimelineValueRemaining, ["87%"]),
         ]
         for language in AppLanguage.allCases {

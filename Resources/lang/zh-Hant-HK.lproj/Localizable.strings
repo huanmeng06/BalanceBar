@@ -637,6 +637,7 @@
 "claude.timeline.hover.before_expiry" = "Mod 到期前 %1$@ 預取";
 "claude.timeline.hover.failure_streak" = "連續失敗";
 "claude.timeline.hover.failure_attempt" = "第 %1$@ / %2$@ 次 · 共 %3$@";
+"claude.timeline.hover.failure_total" = "共 %1$@";
 "claude.timeline.window.not_included" = "未包含";
 "claude.timeline.value.remaining" = "剩餘 %1$@";
 "claude.timeline.value.evidence_within_tolerance" = "卡片顯示官方讀數";

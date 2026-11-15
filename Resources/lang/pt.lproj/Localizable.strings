@@ -637,6 +637,7 @@
 "claude.timeline.hover.before_expiry" = "Pré-busca %1$@ antes do vencimento do Mod";
 "claude.timeline.hover.failure_streak" = "Falhas seguidas";
 "claude.timeline.hover.failure_attempt" = "Tentativa %1$@ de %2$@ · %3$@ no total";
+"claude.timeline.hover.failure_total" = "%1$@ no total";
 "claude.timeline.window.not_included" = "Não incluído";
 "claude.timeline.value.remaining" = "%1$@ restante";
 "claude.timeline.value.evidence_within_tolerance" = "O cartão mostra o valor oficial";

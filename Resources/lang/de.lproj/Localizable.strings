@@ -637,6 +637,7 @@
 "claude.timeline.hover.before_expiry" = "Vorabruf %1$@ vor Mod-Ablauf";
 "claude.timeline.hover.failure_streak" = "Fehlerserie";
 "claude.timeline.hover.failure_attempt" = "Versuch %1$@ von %2$@ · insgesamt %3$@";
+"claude.timeline.hover.failure_total" = "insgesamt %1$@";
 "claude.timeline.window.not_included" = "Nicht enthalten";
 "claude.timeline.value.remaining" = "%1$@ übrig";
 "claude.timeline.value.evidence_within_tolerance" = "Karte zeigt den offiziellen Wert";

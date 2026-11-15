@@ -637,6 +637,7 @@
 "claude.timeline.hover.before_expiry" = "Предзагрузка за %1$@ до истечения Mod";
 "claude.timeline.hover.failure_streak" = "Сбои подряд";
 "claude.timeline.hover.failure_attempt" = "Попытка %1$@ из %2$@ · всего %3$@";
+"claude.timeline.hover.failure_total" = "всего %1$@";
 "claude.timeline.window.not_included" = "Не включено";
 "claude.timeline.value.remaining" = "осталось %1$@";
 "claude.timeline.value.evidence_within_tolerance" = "Карточка показывает официальное значение";

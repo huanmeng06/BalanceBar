@@ -59,6 +59,10 @@ struct ClaudeSourceTimelineLayout {
         /// 1-based position among the run's failed requests, and how many it has.
         var attempt: Int
         var attempts: Int
+        /// False when the run's first request is no longer on record: requests are kept for
+        /// `ClaudeSourceTimeline.retention`, an unfinished run for as long as it lasts, so the
+        /// position and count above would be too small.
+        var attemptsKnown: Bool
     }
 
     struct Tick: Equatable {
@@ -193,14 +197,17 @@ struct ClaudeSourceTimelineLayout {
         let rect = visibleRect(exact, lane: .oauthAPI)
         // The failed requests answered inside the run. The one that opens it is its left edge; the
         // one that ends it belongs to the next run (or was a success).
+        // The pipeline stamps the run and its request with the same delivery time; a run restored
+        // from disk may come back a fraction of a second off, so the opening request is matched
+        // within one second (the same tolerance `request(completedAt:)` uses).
         var attempts: [(at: Date, request: ClaudeSourceTimeline.Request?)] = requests.compactMap { request in
             guard case .failure = request.outcome, let at = request.completedAt,
                   at > run.start.addingTimeInterval(-1), at < (run.end ?? .distantFuture) else { return nil }
             return (max(at, run.start), request)
         }.sorted { $0.at < $1.at }
-        if attempts.first.map({ $0.at.timeIntervalSince(run.start) >= 1 }) ?? true {
-            attempts.insert((run.start, nil), at: 0)
-        }
+        // No request at the start: either none was recorded, or it has been pruned already.
+        let attemptsKnown = attempts.first.map { $0.at.timeIntervalSince(run.start) < 1 } ?? false
+        if !attemptsKnown { attempts.insert((run.start, nil), at: 0) }
         var pieces: [FailurePiece] = []
         for (index, attempt) in attempts.enumerated() {
             let end = index + 1 < attempts.count ? attempts[index + 1].at : run.end
@@ -211,7 +218,7 @@ struct ClaudeSourceTimelineLayout {
             pieces.append(FailurePiece(
                 run: run, rect: CGRect(x: minX, y: rect.minY, width: max(0, maxX - minX), height: rect.height),
                 start: attempt.at, end: end, request: attempt.request,
-                attempt: index + 1, attempts: attempts.count))
+                attempt: index + 1, attempts: attempts.count, attemptsKnown: attemptsKnown))
         }
         let dividers = pieces.dropFirst().map(\.rect.minX).filter { $0 > rect.minX + 0.5 && $0 < rect.maxX - 0.5 }
         return Band(run: run, rect: rect, dividers: dividers, pieces: pieces)
@@ -769,12 +776,15 @@ final class ClaudeSourceTimelineView: NSView {
             let span = time(piece.start) + " – " + (piece.end.map(time) ?? tr(.keyClaudeTimelineNow))
                 + " · " + Self.durationText((piece.end ?? now()).timeIntervalSince(piece.start))
             var rows: [ClaudeSourceTimelineTooltipContent.Row] = [.init(label: tr(.keyClaudeTimelineHoverTime), value: span)]
-            if let request = piece.request {
-                rows.append(contentsOf: requestRows(request))
-                let total = (piece.run.end ?? now()).timeIntervalSince(piece.run.start)
+            if let request = piece.request { rows.append(contentsOf: requestRows(request)) }
+            // The run's length is always right; its count only while its first request is on record.
+            let total = Self.durationText((piece.run.end ?? now()).timeIntervalSince(piece.run.start))
+            if piece.attemptsKnown {
                 rows.append(.init(label: tr(.keyClaudeTimelineHoverFailureStreak), value: tr(
-                    .keyClaudeTimelineHoverFailureAttempt,
-                    arguments: [String(piece.attempt), String(piece.attempts), Self.durationText(total)])))
+                    .keyClaudeTimelineHoverFailureAttempt, arguments: [String(piece.attempt), String(piece.attempts), total])))
+            } else if piece.attempts > 1 {
+                rows.append(.init(label: tr(.keyClaudeTimelineHoverFailureStreak), value: tr(
+                    .keyClaudeTimelineHoverFailureTotal, arguments: [total])))
             }
             // The estimate is about what happens next, so only the last block of a failure that is
             // still going carries it; a paused sign-in is already the heading, only a real wait is worth a line.

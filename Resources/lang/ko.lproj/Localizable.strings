@@ -637,6 +637,7 @@
 "claude.timeline.hover.before_expiry" = "Mod 만료 %1$@ 전 사전 가져오기";
 "claude.timeline.hover.failure_streak" = "연속 실패";
 "claude.timeline.hover.failure_attempt" = "%2$@회 중 %1$@번째 · 총 %3$@";
+"claude.timeline.hover.failure_total" = "총 %1$@";
 "claude.timeline.window.not_included" = "포함되지 않음";
 "claude.timeline.value.remaining" = "%1$@ 남음";
 "claude.timeline.value.evidence_within_tolerance" = "카드에 공식 값 표시";

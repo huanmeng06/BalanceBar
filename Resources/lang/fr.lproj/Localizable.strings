@@ -637,6 +637,7 @@
 "claude.timeline.hover.before_expiry" = "Prélecture %1$@ avant l’expiration de Mod";
 "claude.timeline.hover.failure_streak" = "Échecs consécutifs";
 "claude.timeline.hover.failure_attempt" = "Tentative %1$@ sur %2$@ · %3$@ au total";
+"claude.timeline.hover.failure_total" = "%1$@ au total";
 "claude.timeline.window.not_included" = "Non inclus";
 "claude.timeline.value.remaining" = "%1$@ restant";
 "claude.timeline.value.evidence_within_tolerance" = "La carte affiche la valeur officielle";
