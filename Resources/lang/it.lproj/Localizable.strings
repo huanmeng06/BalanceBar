@@ -649,7 +649,6 @@
 "claude.timeline.trigger.source_expiry_prefetch" = "Prelettura prima della scadenza di Mod";
 "claude.timeline.trigger.local_expired_or_absent" = "Polling periodico";
 "claude.timeline.delay.failure_backoff" = "attesa dopo errore";
-"claude.timeline.delay.insufficient_tokens" = "attesa di token";
 "claude.timeline.estimate.in" = "tra circa %1$@";
 "claude.refresh.every_minutes" = "Ogni %1$@ min";
 "claude.quota.calibration_detail" = "Interroga la fonte ufficiale a intervalli regolari come ripiego; intervalli più lunghi evitano i limiti di frequenza";

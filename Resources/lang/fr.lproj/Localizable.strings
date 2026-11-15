@@ -649,7 +649,6 @@
 "claude.timeline.trigger.source_expiry_prefetch" = "Prélecture avant l’expiration de Mod";
 "claude.timeline.trigger.local_expired_or_absent" = "Interrogation périodique";
 "claude.timeline.delay.failure_backoff" = "temporisation après échec";
-"claude.timeline.delay.insufficient_tokens" = "attente de jetons";
 "claude.timeline.estimate.in" = "dans environ %1$@";
 "claude.refresh.every_minutes" = "Toutes les %1$@ min";
 "claude.quota.calibration_detail" = "Interroge la source officielle à intervalles réguliers, en secours ; un intervalle plus long évite les limitations";

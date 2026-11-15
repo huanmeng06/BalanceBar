@@ -642,9 +642,10 @@ final class ClaudeSourceTimelineView: NSView {
         case let .scheduled(at, trigger): return rows(when(at), then: triggerText(trigger))
         case let .coolingDown(until): return rows(tr(.keyClaudeTimelineEstimateCooldown, arguments: [time(until)]))
         case let .delayed(reason, until, trigger):
-            let reasonText = reason == .insufficientTokens
-                ? tr(.keyClaudeTimelineDelayInsufficientTokens) : tr(.keyClaudeTimelineDelayFailureBackoff)
-            return rows(when(until), then: triggerText(trigger) + " · " + reasonText)
+            // The request bucket is already folded into `until`, and usually is not what set it,
+            // so only the failure backoff is worth naming.
+            guard reason == .failureBackoff else { return rows(when(until), then: triggerText(trigger)) }
+            return rows(when(until), then: triggerText(trigger) + " · " + tr(.keyClaudeTimelineDelayFailureBackoff))
         }
     }
 

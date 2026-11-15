@@ -649,7 +649,6 @@
 "claude.timeline.trigger.source_expiry_prefetch" = "Mod 过期前预取";
 "claude.timeline.trigger.local_expired_or_absent" = "定期轮询";
 "claude.timeline.delay.failure_backoff" = "失败退避";
-"claude.timeline.delay.insufficient_tokens" = "等待令牌补充";
 "claude.timeline.estimate.in" = "约 %1$@后";
 "claude.refresh.every_minutes" = "每 %1$@ 分钟";
 "claude.quota.calibration_detail" = "定时向官方查询作为兜底；间隔越长越不容易被限流";

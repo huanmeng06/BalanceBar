@@ -649,7 +649,6 @@
 "claude.timeline.trigger.source_expiry_prefetch" = "Vorabruf vor Mod-Ablauf";
 "claude.timeline.trigger.local_expired_or_absent" = "Regelmäßige Abfrage";
 "claude.timeline.delay.failure_backoff" = "Fehler-Backoff";
-"claude.timeline.delay.insufficient_tokens" = "Warten auf Tokens";
 "claude.timeline.estimate.in" = "in ca. %1$@";
 "claude.refresh.every_minutes" = "Alle %1$@ Min.";
 "claude.quota.calibration_detail" = "Fragt die offizielle Quelle zeitgesteuert als Rückfall ab; längere Intervalle vermeiden Rate-Limits";

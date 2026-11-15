@@ -293,6 +293,27 @@ final class ClaudeSourceTimelineViewTests: XCTestCase {
         XCTAssertTrue(try hover(end: nil).contains(tr(.keyClaudeTimelineEstimateLabel)))
     }
 
+    func testRequestBucketDelayIsNotNamedButFailureBackoffIs() throws {
+        func estimateValue(_ reason: FetchSkipReason) throws -> String {
+            let estimate = FetchAutomaticRequestEstimate(
+                state: .delayed(reason: reason, until: now.addingTimeInterval(240), trigger: .sourceExpiryPrefetch),
+                evaluatedAt: now)
+            let content = ClaudeSourceTimelineView.Content(
+                timeline: .init(readings: [], failures: [Run(start: now.addingTimeInterval(-600), end: nil, kind: .network)],
+                                estimate: estimate),
+                status: nil)
+            let view = ClaudeSourceTimelineView(provider: { content }, timeZone: utc, now: { self.now })
+            view.frame = NSRect(x: 0, y: 0, width: 660, height: ClaudeSourceTimelineLayout.height)
+            let band = try XCTUnwrap(view.makeLayout().bands.first)
+            let row = view.hoverContent(for: .band(band)).rows.first { $0.label == tr(.keyClaudeTimelineEstimateLabel) }
+            return try XCTUnwrap(row?.value)
+        }
+        let backoff = tr(.keyClaudeTimelineDelayFailureBackoff)
+        XCTAssertFalse(try estimateValue(.insufficientTokens).contains(backoff))
+        XCTAssertTrue(try estimateValue(.insufficientTokens).hasSuffix(tr(.keyClaudeTimelineTriggerSourceExpiryPrefetch)))
+        XCTAssertTrue(try estimateValue(.failureBackoff).hasSuffix(backoff))
+    }
+
     func testTooltipShowsRemainingPercentageNotUsed() throws {
         var modReading = reading(.mod, -60, 60)
         modReading.windows = [.fiveHour: .init(usedPercentage: 13, resetAt: nil)]

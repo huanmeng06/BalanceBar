@@ -649,7 +649,6 @@
 "claude.timeline.trigger.source_expiry_prefetch" = "Anticipación antes de que venza Mod";
 "claude.timeline.trigger.local_expired_or_absent" = "Sondeo periódico";
 "claude.timeline.delay.failure_backoff" = "espera tras fallo";
-"claude.timeline.delay.insufficient_tokens" = "espera de tokens";
 "claude.timeline.estimate.in" = "en unos %1$@";
 "claude.refresh.every_minutes" = "Cada %1$@ min";
 "claude.quota.calibration_detail" = "Consulta la fuente oficial periódicamente como respaldo; intervalos largos evitan límites de uso";

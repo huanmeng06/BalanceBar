@@ -299,7 +299,6 @@
     case keyClaudeTimelineTriggerSourceExpiryPrefetch = "claude.timeline.trigger.source_expiry_prefetch"
     case keyClaudeTimelineTriggerLocalExpiredOrAbsent = "claude.timeline.trigger.local_expired_or_absent"
     case keyClaudeTimelineDelayFailureBackoff = "claude.timeline.delay.failure_backoff"
-    case keyClaudeTimelineDelayInsufficientTokens = "claude.timeline.delay.insufficient_tokens"
     case keyClaudeTimelineEstimateIn = "claude.timeline.estimate.in"
     case keyClaudeRefreshEveryMinutes = "claude.refresh.every_minutes"
     case keyClaudeQuotaCalibrationDetail = "claude.quota.calibration_detail"
