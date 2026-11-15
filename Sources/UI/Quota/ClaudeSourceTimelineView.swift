@@ -642,8 +642,13 @@ final class ClaudeSourceTimelineView: NSView {
         case let .scheduled(at, trigger): return rows(when(at), then: triggerText(trigger))
         case let .coolingDown(until): return rows(tr(.keyClaudeTimelineEstimateCooldown, arguments: [time(until)]))
         case let .delayed(reason, until, trigger):
-            let reasonText = reason == .insufficientTokens
-                ? tr(.keyClaudeTimelineDelayInsufficientTokens) : tr(.keyClaudeTimelineDelayFailureBackoff)
+            let reasonText: String
+            switch reason {
+            case .insufficientTokens: reasonText = tr(.keyClaudeTimelineDelayInsufficientTokens)
+            case .credentialsUnavailable: reasonText = tr(.keyClaudeTimelineFailureMissingCredentials)
+            case .credentialsUnreadable: reasonText = tr(.keyClaudeAccountCredentialsUnreadable)
+            default: reasonText = tr(.keyClaudeTimelineDelayFailureBackoff)
+            }
             return rows(when(until), then: triggerText(trigger) + " · " + reasonText)
         }
     }

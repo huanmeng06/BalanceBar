@@ -410,16 +410,18 @@ final class DomainModelsTests: XCTestCase {
             "登录已失效"
         )
         typealias Reason = OpenAIAccountPresentation.UnavailableReason
-        // The re-login row under the card: old data kept while the login failed, and no live Mod data.
+        // The re-login row under the card: shown whenever data stays on the card while the login
+        // failed, worded for old data, or for live Mod data that keeps the card current.
         let stale = StatusSlotState.error(at: nil, source: .oauthAPI)
-        XCTAssertTrue(AppDelegate.showsClaudeLoginPrompt(hasWindows: true, failure: .unauthorized, status: stale))
-        XCTAssertTrue(AppDelegate.showsClaudeLoginPrompt(hasWindows: true, failure: .missingCredentials, status: stale))
-        XCTAssertFalse(AppDelegate.showsClaudeLoginPrompt(hasWindows: false, failure: .unauthorized, status: stale),
-                       "the error card already carries the reason and button")
-        XCTAssertFalse(AppDelegate.showsClaudeLoginPrompt(hasWindows: true, failure: .unauthorized,
-                                                          status: .realtime(.mod, at: nil)), "live Mod data stays primary")
-        XCTAssertFalse(AppDelegate.showsClaudeLoginPrompt(hasWindows: true, failure: .credentialsUnreadable, status: stale))
-        XCTAssertFalse(AppDelegate.showsClaudeLoginPrompt(hasWindows: true, failure: .rateLimited, status: stale))
+        let prompt = AppDelegate.claudeLoginPrompt(hasWindows:failure:status:)
+        XCTAssertEqual(prompt(true, .unauthorized, stale), .staleData)
+        XCTAssertEqual(prompt(true, .missingCredentials, stale), .staleData)
+        XCTAssertNil(prompt(false, .unauthorized, stale), "the error card already carries the reason and button")
+        XCTAssertEqual(prompt(true, .unauthorized, .realtime(.mod, at: nil)), .liveData)
+        XCTAssertEqual(prompt(true, .missingCredentials, .realtime(.mod, at: nil)), .liveData)
+        XCTAssertNil(prompt(true, .credentialsUnreadable, stale))
+        XCTAssertNil(prompt(true, .rateLimited, stale))
+        XCTAssertNil(prompt(true, nil, .realtime(.mod, at: nil)), "no login failure, no row")
         XCTAssertEqual(Reason(claudeFailure: .missingCredentials), .claudeLoginRequired)
         XCTAssertEqual(Reason(claudeFailure: .unauthorized), .claudeLoginRequired)
         XCTAssertEqual(Reason(claudeFailure: .credentialsUnreadable), .claudeCredentialsUnreadable)
@@ -457,6 +459,41 @@ final class DomainModelsTests: XCTestCase {
                 email: "should-not-leak@example.com"
             )
         )
+    }
+
+    func testClaudeMenuEmailFallsBackToModVerifiedAccountOnlyWithoutProfile() {
+        func state(source: StatusSlotLiveSource?, status: StatusSlotState = .refreshing,
+                   email: String? = "claude@example.com") -> ClaudeQuotaState {
+            ClaudeQuotaState(
+                display: QuotaDisplayModel(windows: [], isEstimated: false, state: .inProgress, hoverTextKey: ""),
+                windows: [], accountEpoch: .initial, accountScope: nil,
+                predictionAccountKey: email, predictionEvidenceKey: nil,
+                updatedAt: nil, isRefreshing: false, failure: nil,
+                status: status, newestReadingSource: source)
+        }
+        let email = OpenAIAccountPresentation.claudeMenuEmail
+
+        // A probed profile keeps winning, whatever the displayed source.
+        XCTAssertEqual(email("Person@Example.com", state(source: .oauthAPI)), "Person@Example.com")
+        XCTAssertEqual(email("Person@Example.com", nil), "Person@Example.com")
+
+        // No Keychain token: the Mod-verified account shows, even while refreshing
+        // (the status slot itself drops the source then).
+        XCTAssertEqual(email(nil, state(source: .mod)), "claude@example.com")
+        XCTAssertEqual(email("  ", state(source: .mod, status: .error(at: nil, source: .mod))), "claude@example.com")
+
+        // Without Mod evidence the account stays unavailable.
+        XCTAssertNil(email(nil, state(source: .oauthAPI)))
+        XCTAssertNil(email(nil, state(source: nil)))
+        XCTAssertNil(email(nil, state(source: .mod, email: nil)))
+        XCTAssertNil(email(nil, nil))
+
+        let fallback = OpenAIAccountPresentation.current(
+            activeClient: .claude, providerIsOfficial: true,
+            email: email(nil, state(source: .mod)),
+            subscription: OpenAISubscriptionTier(planType: nil, client: .claude))
+        XCTAssertEqual(fallback?.state, .available("claude@example.com"))
+        XCTAssertNil(fallback?.subscription)
     }
 
     func testOpenAISubscriptionTierMapsOfficialPlanClaimsToTheRequestedBadgeText() {
