@@ -1401,6 +1401,47 @@ enum DevelopmentClaudeIdleDemo {
     }
 }
 
+/// Adds simulated official failure runs, each with several failed requests, to the source
+/// timeline of the explicitly named demo bundle (`scripts/build.sh demo-claude-failures`), so the
+/// per-request lines inside a failure box can be checked without breaking real requests.
+/// Times are anchored to the first time the timeline is read; relaunch to bring them back.
+/// Normal bundles return the snapshot unchanged.
+enum DevelopmentClaudeFailuresDemo {
+    private static let infoPlistKey = "BalanceBarClaudeFailuresDemo"
+    private static let anchor = Date()
+
+    static var isActive: Bool {
+        Bundle.main.bundleIdentifier?.contains(".demo.") == true
+            && Bundle.main.object(forInfoDictionaryKey: infoPlistKey) as? String == "claude-failures"
+    }
+
+    static func decorate(_ snapshot: ClaudeSourceTimeline.Snapshot) -> ClaudeSourceTimeline.Snapshot {
+        guard isActive else { return snapshot }
+        // Each run: (start, end, kind, failed request times), in seconds from the anchor. The first
+        // request opens the run (its left edge); the others are the short lines inside it.
+        let runs: [(TimeInterval, TimeInterval, ClaudeSourceTimeline.FailureKind, [TimeInterval])] = [
+            (-40 * 60, -28 * 60, .network, [-40 * 60, -37 * 60, -34 * 60, -31 * 60]),
+            (-22 * 60, -16 * 60, .serverError, [-22 * 60, -20 * 60, -18 * 60]),
+            (-10 * 60, -7 * 60, .rateLimited, [-10 * 60]),
+        ]
+        var result = snapshot
+        for (start, end, kind, attempts) in runs {
+            let from = anchor.addingTimeInterval(start), to = anchor.addingTimeInterval(end)
+            result.failures.append(.init(start: from, end: to, kind: kind))
+            result.requests += attempts.map { offset in
+                let at = anchor.addingTimeInterval(offset)
+                return .init(trigger: .localExpiredOrAbsent, startedAt: at.addingTimeInterval(-1),
+                             completedAt: at, outcome: .failure(kind))
+            }
+            // Bars are drawn over failure boxes, so real OAuth bars there would hide the demo.
+            result.readings.removeAll { $0.source == .oauthAPI && $0.observedAt < to && $0.expiresAt > from }
+        }
+        result.failures.sort { $0.start < $1.start }
+        result.requests.sort { $0.startedAt < $1.startedAt }
+        return result
+    }
+}
+
 /// Makes the Claude usage request answer 401 for manual testing of the login-expired
 /// states. Only the development bundle honours `BALANCEBAR_SIMULATE_CLAUDE_401=1`.
 /// The resulting pause is persisted; delete the dev bundle's `claude-fetch-scheduler.json` to clear it.
