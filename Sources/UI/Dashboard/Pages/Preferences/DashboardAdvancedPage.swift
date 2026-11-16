@@ -255,28 +255,26 @@ final class DashboardAdvancedPage {
 /// Callbacks for the Claude egress guard section (Issue #686). The switch itself goes through
 /// the shared toggle relay; these cover the allowed-IP list and the detect button.
 struct ClaudeEgressGuardPageActions {
-    /// Persists the edited allowed-IP list (already validated and de-duplicated).
+    /// Persists the edited allowlist (already validated and de-duplicated).
     var setAllowedIPs: ([String]) -> Void = { _ in }
     /// Probes the current egress IP through the Claude proxy route; completes on any queue.
     var detectEgressIP: (@escaping (Result<String, OfficialQuotaTransportError>) -> Void) -> Void = {
         $0(.failure(.unknown))
     }
+    /// Country code already known for an allowlisted IP, without any network request.
+    var cachedCountry: (String) -> String? = { _ in nil }
+    /// Looks the country up on ipinfo.io (once per address); completes on any queue.
+    var lookupCountry: (String, @escaping (String?) -> Void) -> Void = { $1(nil) }
 }
 
-/// Owns the egress guard section: the switch, the detect row, then the allowed-IP list. The list is
-/// a native bordered table with +/− controls, the same pattern as the status links editor. Every
-/// row is a direct section row, so settings search shows and hides them like any other.
+/// Owns the IP allowlist section: the switch, then the allowlist table whose bottom bar carries
+/// the current-egress check. Both are direct section rows, so settings search shows and hides them
+/// like any other. With the switch off the table stays visible but dimmed, like System Settings.
 final class ClaudeEgressGuardSectionController: NSObject {
-    static let detectButtonIdentifier = NSUserInterfaceItemIdentifier("dashboard.advanced.egressGuard.detect")
-    static let addDetectedButtonIdentifier = NSUserInterfaceItemIdentifier("dashboard.advanced.egressGuard.addDetected")
-
     private let actions: ClaudeEgressGuardPageActions
     private var allowedIPs: [String]
     private let toggle: NSSwitch
     private(set) var listEditor: EgressIPListEditorView!
-    private(set) var detectRow: SettingsRowView!
-    let detectButton = NSButton(title: "", target: nil, action: nil)
-    let addDetectedButton = NSButton(title: "", target: nil, action: nil)
     private var detectedIP: String?
     private var detectGeneration = 0
 
@@ -298,46 +296,40 @@ final class ClaudeEgressGuardSectionController: NSObject {
             titleAccessory: DashboardRefreshPage.agentIconStrip(["Claude"]),
             accessoryView: toggle)
 
-        detectButton.title = tr(.keyDashboardAdvancedPageEgressGuardDetect)
-        detectButton.bezelStyle = .push
-        detectButton.identifier = Self.detectButtonIdentifier
-        detectButton.target = self
-        detectButton.action = #selector(detect)
-        addDetectedButton.title = tr(.keyDashboardAdvancedPageEgressGuardAddDetected)
-        addDetectedButton.bezelStyle = .push
-        addDetectedButton.identifier = Self.addDetectedButtonIdentifier
-        addDetectedButton.target = self
-        addDetectedButton.action = #selector(addDetectedIP)
-        addDetectedButton.isHidden = true
-        detectRow = SettingsRowView(
-            title: tr(.keyDashboardAdvancedPageEgressGuardDetectTitle),
-            accessoryView: Self.hStack([addDetectedButton, detectButton]))
-
-        listEditor = EgressIPListEditorView(ips: allowedIPs) { [weak self] ips in
-            self?.save(ips)
-        }
+        let editor = EgressIPListEditorView(
+            ips: allowedIPs,
+            cachedCountry: actions.cachedCountry,
+            lookupCountry: actions.lookupCountry,
+            onSave: { [weak self] ips in self?.save(ips) })
+        editor.detectButton.target = self
+        editor.detectButton.action = #selector(detect)
+        editor.addDetectedButton.target = self
+        editor.addDetectedButton.action = #selector(addDetectedIP)
+        editor.setEnabled(toggle.state == .on)
+        listEditor = editor
 
         return SettingsSectionView(
             title: tr(.keyDashboardAdvancedPageEgressGuard),
-            contentViews: [toggleRow, detectRow, listEditor],
+            contentViews: [toggleRow, editor],
             footnote: tr(.keyDashboardAdvancedPageEgressGuardFootnote))
     }
 
     /// Re-reads the saved settings (after a change from the other page copy or the app).
     func refresh(preferences: AppPreferences) {
         toggle.state = preferences.claudeEgressGuardEnabled ? .on : .off
+        listEditor?.setEnabled(preferences.claudeEgressGuardEnabled)
         let saved = preferences.claudeEgressGuardAllowedIPs
         guard saved != allowedIPs else { return }
         allowedIPs = saved
         listEditor?.updateSavedIPs(saved)
-        updateDetectedRow()
+        updateDetectedStatus()
     }
 
     private func save(_ ips: [String]) {
         let sanitized = EgressIPAddress.sanitizedList(ips)
         guard sanitized != allowedIPs else { return }
         allowedIPs = sanitized
-        updateDetectedRow()
+        updateDetectedStatus()
         actions.setAllowedIPs(sanitized)
     }
 
@@ -350,45 +342,29 @@ final class ClaudeEgressGuardSectionController: NSObject {
         detectGeneration += 1
         let generation = detectGeneration
         detectedIP = nil
-        detectButton.isEnabled = false
-        addDetectedButton.isHidden = true
-        detectRow.updateDetail(tr(.keyDashboardAdvancedPageEgressGuardDetecting))
-        detectRow.detailLabel.textColor = .secondaryLabelColor
+        listEditor.detectButton.isEnabled = false
+        listEditor.addDetectedButton.isHidden = true
+        listEditor.showStatus(.detecting)
         actions.detectEgressIP { [weak self] result in
             DispatchQueue.main.async {
                 guard let self, generation == self.detectGeneration else { return }
-                self.detectButton.isEnabled = true
+                self.listEditor.detectButton.isEnabled = self.listEditor.isEnabled
                 switch result {
                 case let .success(ip):
                     self.detectedIP = ip
-                    self.updateDetectedRow()
+                    self.updateDetectedStatus()
                 case .failure:
-                    self.detectRow.updateDetail(tr(.keyDashboardAdvancedPageEgressGuardDetectFailed))
-                    self.detectRow.detailLabel.textColor = .systemOrange
+                    self.listEditor.showStatus(.failed)
                 }
             }
         }
     }
 
-    private func updateDetectedRow() {
+    private func updateDetectedStatus() {
         guard let detectedIP else { return }
         let listed = EgressIPAddress.contains(allowedIPs, detectedIP)
-        detectRow.updateDetail(tr(
-            listed ? .keyDashboardAdvancedPageEgressGuardDetectedListedValue
-                : .keyDashboardAdvancedPageEgressGuardDetectedUnlistedValue,
-            arguments: [detectedIP]))
-        detectRow.detailLabel.textColor = listed ? .secondaryLabelColor : .systemOrange
-        addDetectedButton.isHidden = listed
-    }
-
-    private static func hStack(_ views: [NSView]) -> NSStackView {
-        let stack = NSStackView(views: views)
-        stack.orientation = .horizontal
-        stack.spacing = 8
-        stack.setContentHuggingPriority(.required, for: .horizontal)
-        stack.setContentCompressionResistancePriority(.required, for: .horizontal)
-        stack.setContentHuggingPriority(.required, for: .vertical)
-        return stack
+        listEditor.showStatus(listed ? .listed(detectedIP) : .unlisted(detectedIP))
+        listEditor.addDetectedButton.isHidden = listed
     }
 
     // MARK: Testing
@@ -396,31 +372,67 @@ final class ClaudeEgressGuardSectionController: NSObject {
     func detectForTesting() { detect() }
     func addDetectedForTesting() { addDetectedIP() }
     var allowedIPsForTesting: [String] { allowedIPs }
-    var detectDetailForTesting: String { detectRow.detailLabel.stringValue }
+    var detectButton: NSButton { listEditor.detectButton }
+    var addDetectedButton: NSButton { listEditor.addDetectedButton }
+    var detectDetailForTesting: String { listEditor.statusLabel.stringValue }
 }
 
-/// Native editor for the allowed egress IPs: a bordered, single-column `NSTableView` whose rows are
-/// edited in place, with a +/− `NSSegmentedControl` below it (the status links editor's pattern).
-/// Rows that are not valid addresses stay in the table, tinted orange, and are never saved.
+/// Native editor for the IP allowlist, following the status links editor: a title, a bordered
+/// two-column `NSTableView` (IP address, country/region) whose addresses are edited in place, and a
+/// bottom bar with +/− and the current-egress check. The table grows with its rows (2…6, then
+/// scrolls). Text that is not a valid address stays in the table, tinted orange, and is never saved.
 final class EgressIPListEditorView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextFieldDelegate {
-    static let tableViewportHeight: CGFloat = 112
-    static let rowHeight: CGFloat = 22
-    static let cornerRadius: CGFloat = 12
-    static let fixedHeight: CGFloat = 12 + tableViewportHeight + 8 + 24 + 12
+    enum Status: Equatable {
+        case none
+        case detecting
+        case listed(String)
+        case unlisted(String)
+        case failed
+    }
 
+    static let rowHeight: CGFloat = 24
+    static let minimumVisibleRows = 2
+    static let maximumVisibleRows = 6
+    static let cornerRadius: CGFloat = 10
+    static let titleTopInset: CGFloat = 12
+    static let tableTopSpacing: CGFloat = 8
+    static let barTopSpacing: CGFloat = 8
+    static let barHeight: CGFloat = 24
+    static let bottomInset: CGFloat = 14
+
+    private let cachedCountry: (String) -> String?
+    private let lookupCountry: (String, @escaping (String?) -> Void) -> Void
     private let onSave: ([String]) -> Void
     /// What the table shows: saved addresses plus any invalid text still being fixed.
     private(set) var rows: [String]
+    private(set) var isEnabled = true
+    private var requestedCountries: Set<String> = []
+    private var status: Status = .none
 
+    let titleLabel = NSTextField(labelWithString: tr(.keyDashboardAdvancedPageEgressGuardAllowed))
     let tableView = NSTableView()
     let scrollView = NSScrollView()
     let tableContainer = NSBox()
+    let emptyLabel = NSTextField(labelWithString: tr(.keyDashboardAdvancedPageEgressGuardAllowedEmpty))
     let actionsControl = NSSegmentedControl()
-    let messageLabel = NSTextField(labelWithString: "")
-    private let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("egressGuard.ip.column"))
+    let statusIcon = NSImageView()
+    let statusLabel = NSTextField(labelWithString: "")
+    let addDetectedButton = NSButton(title: tr(.keyDashboardAdvancedPageEgressGuardAddDetected), target: nil, action: nil)
+    let detectButton = NSButton(title: tr(.keyDashboardAdvancedPageEgressGuardDetect), target: nil, action: nil)
+    private let ipColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("egressGuard.ip.column"))
+    private let countryColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("egressGuard.country.column"))
+    private var tableHeightConstraint: NSLayoutConstraint!
+    private var heightConstraint: NSLayoutConstraint!
 
-    init(ips: [String], onSave: @escaping ([String]) -> Void) {
+    init(
+        ips: [String],
+        cachedCountry: @escaping (String) -> String? = { _ in nil },
+        lookupCountry: @escaping (String, @escaping (String?) -> Void) -> Void = { $1(nil) },
+        onSave: @escaping ([String]) -> Void
+    ) {
         rows = ips
+        self.cachedCountry = cachedCountry
+        self.lookupCountry = lookupCountry
         self.onSave = onSave
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
@@ -428,34 +440,49 @@ final class EgressIPListEditorView: NSView, NSTableViewDataSource, NSTableViewDe
         setContentHuggingPriority(.required, for: .vertical)
         setContentCompressionResistancePriority(.required, for: .vertical)
 
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        titleLabel.font = .systemFont(ofSize: 14, weight: .semibold)
         configureTable()
         configureScrollView()
         configureContainer()
+        configureEmptyLabel()
         configureActions()
-        messageLabel.translatesAutoresizingMaskIntoConstraints = false
-        messageLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-        messageLabel.lineBreakMode = .byTruncatingTail
-        messageLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        configureBar()
 
+        let bar = NSStackView(views: [actionsControl, statusIcon, statusLabel, addDetectedButton, detectButton])
+        bar.translatesAutoresizingMaskIntoConstraints = false
+        bar.orientation = .horizontal
+        bar.alignment = .centerY
+        bar.spacing = 6
+        bar.setCustomSpacing(12, after: actionsControl)
+        bar.setCustomSpacing(12, after: statusLabel)
+        bar.setCustomSpacing(8, after: addDetectedButton)
+        bar.setHuggingPriority(.defaultLow, for: .horizontal)
+
+        addSubview(titleLabel)
         addSubview(tableContainer)
-        addSubview(actionsControl)
-        addSubview(messageLabel)
+        addSubview(bar)
+        tableHeightConstraint = tableContainer.heightAnchor.constraint(equalToConstant: 0)
+        heightConstraint = heightAnchor.constraint(equalToConstant: 0)
         NSLayoutConstraint.activate([
+            titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 20),
+            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -20),
+            titleLabel.topAnchor.constraint(equalTo: topAnchor, constant: Self.titleTopInset),
+
             tableContainer.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 20),
             tableContainer.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -20),
-            tableContainer.topAnchor.constraint(equalTo: topAnchor, constant: 12),
-            tableContainer.heightAnchor.constraint(equalToConstant: Self.tableViewportHeight),
+            tableContainer.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: Self.tableTopSpacing),
+            tableHeightConstraint,
 
-            actionsControl.leadingAnchor.constraint(equalTo: tableContainer.leadingAnchor),
-            actionsControl.topAnchor.constraint(equalTo: tableContainer.bottomAnchor, constant: 8),
-            actionsControl.heightAnchor.constraint(equalToConstant: 24),
+            bar.leadingAnchor.constraint(equalTo: tableContainer.leadingAnchor),
+            bar.trailingAnchor.constraint(equalTo: tableContainer.trailingAnchor),
+            bar.topAnchor.constraint(equalTo: tableContainer.bottomAnchor, constant: Self.barTopSpacing),
+            bar.heightAnchor.constraint(equalToConstant: Self.barHeight),
+            actionsControl.heightAnchor.constraint(equalToConstant: Self.barHeight),
 
-            messageLabel.leadingAnchor.constraint(equalTo: actionsControl.trailingAnchor, constant: 12),
-            messageLabel.trailingAnchor.constraint(lessThanOrEqualTo: tableContainer.trailingAnchor),
-            messageLabel.centerYAnchor.constraint(equalTo: actionsControl.centerYAnchor),
-
-            heightAnchor.constraint(equalToConstant: Self.fixedHeight),
+            heightConstraint,
         ])
+        updateHeights()
         updateState()
     }
 
@@ -464,8 +491,17 @@ final class EgressIPListEditorView: NSView, NSTableViewDataSource, NSTableViewDe
     }
 
     override var intrinsicContentSize: NSSize {
-        NSSize(width: NSView.noIntrinsicMetric, height: Self.fixedHeight)
+        NSSize(width: NSView.noIntrinsicMetric, height: heightConstraint.constant)
     }
+
+    var headerHeight: CGFloat { tableView.headerView?.frame.height ?? 0 }
+
+    /// Rows the table is tall enough to show without scrolling.
+    var visibleRowCount: Int {
+        min(max(rows.count, Self.minimumVisibleRows), Self.maximumVisibleRows)
+    }
+
+    // MARK: Public updates
 
     /// The saved list changed elsewhere (the other page copy); keep invalid rows the user is still
     /// fixing only when the saved list already matches what the table holds.
@@ -473,19 +509,39 @@ final class EgressIPListEditorView: NSView, NSTableViewDataSource, NSTableViewDe
         guard EgressIPAddress.sanitizedList(rows) != saved else { return }
         finishEditing()
         rows = saved
+        reloadRows()
+    }
+
+    /// Appends an address (from the detected egress) and saves it.
+    func append(_ ip: String) {
+        finishEditing()
+        guard !EgressIPAddress.contains(rows.filter { !isInvalid($0) && !$0.isEmpty }, ip) else { return }
+        rows.append(ip)
+        reloadRows()
+        applySelection(rows.count - 1)
+        save()
+    }
+
+    /// With the switch off everything below it stays visible but dimmed and inert.
+    func setEnabled(_ enabled: Bool) {
+        guard enabled != isEnabled else { return }
+        if !enabled { finishEditing() }
+        isEnabled = enabled
+        tableView.isEnabled = enabled
         tableView.reloadData()
+        titleLabel.textColor = enabled ? .labelColor : .disabledControlTextColor
+        detectButton.isEnabled = enabled
+        addDetectedButton.isEnabled = enabled
+        actionsControl.isEnabled = enabled
+        statusLabel.textColor = enabled ? statusColor : .disabledControlTextColor
+        statusIcon.alphaValue = enabled ? 1 : 0.4
+        emptyLabel.textColor = enabled ? .secondaryLabelColor : .disabledControlTextColor
         updateState()
     }
 
-    /// Appends an address (from "Add to list") and saves it.
-    func append(_ ip: String) {
-        finishEditing()
-        guard !EgressIPAddress.contains(rows, ip) else { return }
-        rows.append(ip)
-        tableView.reloadData()
-        applySelection(rows.count - 1)
-        save()
-        updateState()
+    func showStatus(_ status: Status) {
+        self.status = status
+        updateStatusLine()
     }
 
     // MARK: Table
@@ -493,15 +549,24 @@ final class EgressIPListEditorView: NSView, NSTableViewDataSource, NSTableViewDe
     func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        guard rows.indices.contains(row) else { return nil }
-        let cellIdentifier = NSUserInterfaceItemIdentifier("egressGuard.ip.cell")
+        guard rows.indices.contains(row), let tableColumn else { return nil }
+        let isIP = tableColumn.identifier == ipColumn.identifier
+        let cellIdentifier = NSUserInterfaceItemIdentifier(isIP ? "egressGuard.ip.cell" : "egressGuard.country.cell")
         let cell = (tableView.makeView(withIdentifier: cellIdentifier, owner: self) as? NSTableCellView)
-            ?? makeCell(identifier: cellIdentifier)
+            ?? makeCell(identifier: cellIdentifier, editable: isIP)
         guard let field = cell.textField else { return cell }
-        field.identifier = NSUserInterfaceItemIdentifier("egressGuard.ip.\(row)")
-        field.stringValue = rows[row]
-        field.textColor = isInvalid(rows[row]) ? .systemOrange : .labelColor
-        field.setAccessibilityLabel("\(tr(.keyDashboardAdvancedPageEgressGuardAllowed)) \(row + 1)")
+        let value = rows[row]
+        if isIP {
+            field.identifier = NSUserInterfaceItemIdentifier("egressGuard.ip.\(row)")
+            field.stringValue = value
+            field.isEnabled = isEnabled
+            field.isEditable = isEnabled
+            field.textColor = !isEnabled ? .disabledControlTextColor : isInvalid(value) ? .systemOrange : .labelColor
+            field.setAccessibilityLabel("\(tr(.keyDashboardAdvancedPageEgressGuardColumnIp)) \(row + 1)")
+        } else {
+            field.stringValue = countryTitle(for: value)
+            field.textColor = isEnabled ? .secondaryLabelColor : .disabledControlTextColor
+        }
         return cell
     }
 
@@ -523,13 +588,14 @@ final class EgressIPListEditorView: NSView, NSTableViewDataSource, NSTableViewDe
     }
 
     private func performAction(segment: Int) {
+        guard isEnabled else { return }
         switch segment {
         case 0:
             finishEditing()
             // Reuse a blank row left at the end instead of stacking another one.
             if rows.last?.isEmpty != true {
                 rows.append("")
-                tableView.insertRows(at: IndexSet(integer: rows.count - 1), withAnimation: [])
+                reloadRows()
             }
             let row = rows.count - 1
             applySelection(row)
@@ -542,7 +608,7 @@ final class EgressIPListEditorView: NSView, NSTableViewDataSource, NSTableViewDe
             // Ending the edit may already have dropped a blank row.
             guard rows.indices.contains(row) else { break }
             rows.remove(at: row)
-            tableView.removeRows(at: IndexSet(integer: row), withAnimation: .effectFade)
+            reloadRows()
             applySelection(rows.isEmpty ? nil : min(row, rows.count - 1))
             save()
         default:
@@ -562,11 +628,11 @@ final class EgressIPListEditorView: NSView, NSTableViewDataSource, NSTableViewDe
         if value.isEmpty || duplicate != nil {
             // A blank row or an address that is already listed is dropped.
             rows.remove(at: row)
-            tableView.removeRows(at: IndexSet(integer: row), withAnimation: [])
+            reloadRows()
             if let duplicate { applySelection(duplicate < row ? duplicate : duplicate - 1) }
         } else {
             rows[row] = value
-            tableView.reloadData(forRowIndexes: IndexSet(integer: row), columnIndexes: IndexSet(integer: 0))
+            tableView.reloadData(forRowIndexes: IndexSet(integer: row), columnIndexes: IndexSet(integersIn: 0..<2))
         }
         save()
         updateState()
@@ -580,17 +646,93 @@ final class EgressIPListEditorView: NSView, NSTableViewDataSource, NSTableViewDe
         !text.isEmpty && !EgressIPAddress.isValid(text)
     }
 
-    private func updateState() {
-        actionsControl.setEnabled(rows.indices.contains(tableView.selectedRow), forSegment: 1)
-        if rows.contains(where: isInvalid) {
-            messageLabel.stringValue = tr(.keyDashboardAdvancedPageEgressGuardInvalidIp)
-            messageLabel.textColor = .systemOrange
-        } else if rows.isEmpty {
-            messageLabel.stringValue = tr(.keyDashboardAdvancedPageEgressGuardAllowedEmpty)
-            messageLabel.textColor = .secondaryLabelColor
-        } else {
-            messageLabel.stringValue = ""
+    /// "🇺🇸 United States", or "—" until ipinfo.io answers (asked once per address per page).
+    private func countryTitle(for ip: String) -> String {
+        guard EgressIPAddress.isValid(ip) else { return "" }
+        if let code = cachedCountry(ip) { return IPCountryCode.displayTitle(code) }
+        if let key = EgressIPCountryCache.key(for: ip), requestedCountries.insert(key).inserted {
+            lookupCountry(ip) { [weak self] code in
+                guard code != nil else { return }
+                DispatchQueue.main.async { self?.reloadCountry(of: ip) }
+            }
         }
+        return "—"
+    }
+
+    private func reloadCountry(of ip: String) {
+        let key = EgressIPCountryCache.key(for: ip)
+        let indexes = IndexSet(rows.indices.filter { EgressIPCountryCache.key(for: rows[$0]) == key })
+        guard !indexes.isEmpty else { return }
+        tableView.reloadData(forRowIndexes: indexes, columnIndexes: IndexSet(integer: 1))
+    }
+
+    private func reloadRows() {
+        tableView.reloadData()
+        updateHeights()
+        updateState()
+    }
+
+    private func updateState() {
+        actionsControl.setEnabled(isEnabled, forSegment: 0)
+        actionsControl.setEnabled(isEnabled && rows.indices.contains(tableView.selectedRow), forSegment: 1)
+        emptyLabel.isHidden = !rows.isEmpty
+        updateStatusLine()
+    }
+
+    /// The bar line: an invalid entry wins over the detected egress, which wins over nothing.
+    private func updateStatusLine() {
+        let symbol: String?
+        let text: String
+        if rows.contains(where: isInvalid) {
+            symbol = "exclamationmark.triangle.fill"
+            text = tr(.keyDashboardAdvancedPageEgressGuardInvalidIp)
+        } else {
+            switch status {
+            case .none:
+                symbol = nil
+                text = ""
+            case .detecting:
+                symbol = nil
+                text = tr(.keyDashboardAdvancedPageEgressGuardDetecting)
+            case let .listed(ip):
+                symbol = "checkmark.circle.fill"
+                text = tr(.keyDashboardAdvancedPageEgressGuardDetectedListedValue, arguments: [ip])
+            case let .unlisted(ip):
+                symbol = "exclamationmark.triangle.fill"
+                text = tr(.keyDashboardAdvancedPageEgressGuardDetectedUnlistedValue, arguments: [ip])
+            case .failed:
+                symbol = "exclamationmark.triangle.fill"
+                text = tr(.keyDashboardAdvancedPageEgressGuardDetectFailed)
+            }
+        }
+        statusLabel.stringValue = text
+        statusLabel.textColor = isEnabled ? statusColor : .disabledControlTextColor
+        statusIcon.image = symbol.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: nil) }
+        statusIcon.contentTintColor = symbol == "checkmark.circle.fill" ? .systemGreen : .systemOrange
+        statusIcon.isHidden = symbol == nil
+    }
+
+    private var statusColor: NSColor {
+        if rows.contains(where: isInvalid) { return .systemOrange }
+        switch status {
+        case .unlisted, .failed: return .systemOrange
+        default: return .secondaryLabelColor
+        }
+    }
+
+    private func updateHeights() {
+        let tableHeight = headerHeight + CGFloat(visibleRowCount) * Self.rowHeight + 2
+        let total = Self.titleTopInset + ceil(titleLabel.intrinsicContentSize.height) + Self.tableTopSpacing
+            + tableHeight + Self.barTopSpacing + Self.barHeight + Self.bottomInset
+        guard abs(tableHeightConstraint.constant - tableHeight) > 0.5 || abs(heightConstraint.constant - total) > 0.5 else {
+            return
+        }
+        tableHeightConstraint.constant = tableHeight
+        heightConstraint.constant = total
+        scrollView.hasVerticalScroller = rows.count > Self.maximumVisibleRows
+        invalidateIntrinsicContentSize()
+        needsLayout = true
+        SettingsSectionView.enclosing(self)?.cardView.invalidateHostedSettingsRowHeight()
     }
 
     private func applySelection(_ row: Int?) {
@@ -610,41 +752,52 @@ final class EgressIPListEditorView: NSView, NSTableViewDataSource, NSTableViewDe
 
     // MARK: Configuration
 
-    private func makeCell(identifier: NSUserInterfaceItemIdentifier) -> NSTableCellView {
+    private func makeCell(identifier: NSUserInterfaceItemIdentifier, editable: Bool) -> NSTableCellView {
         let cell = NSTableCellView()
         cell.identifier = identifier
         let field = NSTextField()
         field.translatesAutoresizingMaskIntoConstraints = false
-        field.font = .systemFont(ofSize: 13)
-        field.isEditable = true
-        field.isSelectable = true
+        field.font = editable ? .monospacedDigitSystemFont(ofSize: 13, weight: .regular) : .systemFont(ofSize: 13)
+        field.isEditable = editable
+        field.isSelectable = editable
         field.isBordered = false
         field.drawsBackground = false
         field.usesSingleLineMode = true
         field.lineBreakMode = .byTruncatingTail
-        field.placeholderString = tr(.keyDashboardAdvancedPageEgressGuardAddPlaceholder)
-        field.delegate = self
+        if editable {
+            field.placeholderString = tr(.keyDashboardAdvancedPageEgressGuardAddPlaceholder)
+            field.delegate = self
+        }
         cell.textField = field
         cell.addSubview(field)
         NSLayoutConstraint.activate([
-            field.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 12),
-            field.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -12),
+            field.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 8),
+            field.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -8),
             field.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
         ])
         return cell
     }
 
     private func configureTable() {
-        column.resizingMask = .autoresizingMask
-        tableView.addTableColumn(column)
-        tableView.headerView = nil
+        ipColumn.title = tr(.keyDashboardAdvancedPageEgressGuardColumnIp)
+        ipColumn.minWidth = 160
+        ipColumn.resizingMask = .autoresizingMask
+        countryColumn.title = tr(.keyDashboardAdvancedPageEgressGuardColumnRegion)
+        countryColumn.minWidth = 120
+        countryColumn.width = 180
+        countryColumn.resizingMask = .autoresizingMask
+        tableView.addTableColumn(ipColumn)
+        tableView.addTableColumn(countryColumn)
+        tableView.headerView = NSTableHeaderView(frame: NSRect(x: 0, y: 0, width: 0, height: 28))
         tableView.dataSource = self
         tableView.delegate = self
         tableView.identifier = NSUserInterfaceItemIdentifier("egressGuard.ip.table")
         tableView.allowsEmptySelection = true
         tableView.allowsMultipleSelection = false
-        tableView.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
-        tableView.rowSizeStyle = .medium
+        tableView.allowsColumnReordering = false
+        tableView.allowsColumnResizing = true
+        tableView.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
+        tableView.rowSizeStyle = .custom
         tableView.rowHeight = Self.rowHeight
         tableView.intercellSpacing = .zero
         tableView.style = .fullWidth
@@ -657,15 +810,11 @@ final class EgressIPListEditorView: NSView, NSTableViewDataSource, NSTableViewDe
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.documentView = tableView
         scrollView.borderType = .noBorder
-        scrollView.hasVerticalScroller = true
+        scrollView.hasVerticalScroller = false
         scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
         scrollView.scrollerStyle = .overlay
         scrollView.drawsBackground = false
-        scrollView.wantsLayer = true
-        scrollView.layer?.cornerRadius = Self.cornerRadius
-        scrollView.layer?.cornerCurve = .continuous
-        scrollView.layer?.masksToBounds = true
     }
 
     private func configureContainer() {
@@ -686,6 +835,21 @@ final class EgressIPListEditorView: NSView, NSTableViewDataSource, NSTableViewDe
             scrollView.trailingAnchor.constraint(equalTo: tableContainer.trailingAnchor, constant: -1),
             scrollView.topAnchor.constraint(equalTo: tableContainer.topAnchor, constant: 1),
             scrollView.bottomAnchor.constraint(equalTo: tableContainer.bottomAnchor, constant: -1),
+        ])
+    }
+
+    private func configureEmptyLabel() {
+        emptyLabel.translatesAutoresizingMaskIntoConstraints = false
+        emptyLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        emptyLabel.textColor = .secondaryLabelColor
+        emptyLabel.alignment = .center
+        emptyLabel.lineBreakMode = .byTruncatingTail
+        tableContainer.addSubview(emptyLabel)
+        NSLayoutConstraint.activate([
+            emptyLabel.centerXAnchor.constraint(equalTo: tableContainer.centerXAnchor),
+            emptyLabel.centerYAnchor.constraint(equalTo: tableContainer.centerYAnchor, constant: headerHeight / 2),
+            emptyLabel.leadingAnchor.constraint(greaterThanOrEqualTo: tableContainer.leadingAnchor, constant: 12),
+            emptyLabel.trailingAnchor.constraint(lessThanOrEqualTo: tableContainer.trailingAnchor, constant: -12),
         ])
     }
 
@@ -713,6 +877,28 @@ final class EgressIPListEditorView: NSView, NSTableViewDataSource, NSTableViewDe
         actionsControl.target = self
         actionsControl.action = #selector(performAction(_:))
         actionsControl.identifier = NSUserInterfaceItemIdentifier("egressGuard.ip.actions")
+        actionsControl.setContentHuggingPriority(.required, for: .horizontal)
+    }
+
+    private func configureBar() {
+        statusIcon.translatesAutoresizingMaskIntoConstraints = false
+        statusIcon.symbolConfiguration = .init(pointSize: 12, weight: .regular)
+        statusIcon.isHidden = true
+        statusIcon.setContentHuggingPriority(.required, for: .horizontal)
+        statusLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        statusLabel.lineBreakMode = .byTruncatingTail
+        statusLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        statusLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        for button in [addDetectedButton, detectButton] {
+            button.bezelStyle = .push
+            button.controlSize = .small
+            button.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+            button.setContentHuggingPriority(.required, for: .horizontal)
+            button.setContentCompressionResistancePriority(.required, for: .horizontal)
+        }
+        detectButton.identifier = NSUserInterfaceItemIdentifier("dashboard.advanced.egressGuard.detect")
+        addDetectedButton.identifier = NSUserInterfaceItemIdentifier("dashboard.advanced.egressGuard.addDetected")
+        addDetectedButton.isHidden = true
     }
 
     // MARK: Testing
@@ -730,5 +916,9 @@ final class EgressIPListEditorView: NSView, NSTableViewDataSource, NSTableViewDe
     func selectForTesting(row: Int) {
         applySelection(row)
         updateState()
+    }
+
+    func countryTextForTesting(row: Int) -> String? {
+        (tableView.view(atColumn: 1, row: row, makeIfNecessary: true) as? NSTableCellView)?.textField?.stringValue
     }
 }

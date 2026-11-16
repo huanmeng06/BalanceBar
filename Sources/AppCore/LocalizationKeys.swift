@@ -805,13 +805,14 @@
     case keyDashboardAdvancedPageEgressGuardAddPlaceholder = "dashboard.advanced.page.egress_guard_add_placeholder"
     case keyDashboardAdvancedPageEgressGuardInvalidIp = "dashboard.advanced.page.egress_guard_invalid_ip"
     case keyDashboardAdvancedPageEgressGuardDetect = "dashboard.advanced.page.egress_guard_detect"
-    case keyDashboardAdvancedPageEgressGuardDetectTitle = "dashboard.advanced.page.egress_guard_detect_title"
     case keyDashboardAdvancedPageEgressGuardDetecting = "dashboard.advanced.page.egress_guard_detecting"
     case keyDashboardAdvancedPageEgressGuardDetectedListedValue = "dashboard.advanced.page.egress_guard_detected_listed"
     case keyDashboardAdvancedPageEgressGuardDetectedUnlistedValue = "dashboard.advanced.page.egress_guard_detected_unlisted"
     case keyDashboardAdvancedPageEgressGuardDetectFailed = "dashboard.advanced.page.egress_guard_detect_failed"
     case keyDashboardAdvancedPageEgressGuardAddDetected = "dashboard.advanced.page.egress_guard_add_detected"
     case keyDashboardAdvancedPageEgressGuardFootnote = "dashboard.advanced.page.egress_guard_footnote"
+    case keyDashboardAdvancedPageEgressGuardColumnIp = "dashboard.advanced.page.egress_guard_column_ip"
+    case keyDashboardAdvancedPageEgressGuardColumnRegion = "dashboard.advanced.page.egress_guard_column_region"
 
     var rawKey: String { rawValue }
 }

@@ -597,6 +597,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 detectEgressIP: { [weak self] completion in
                     guard let self else { return completion(.failure(.unknown)) }
                     self.claudeEgressGuard.currentEgressIP(completion: completion)
+                },
+                cachedCountry: { [weak self] ip in self?.claudeEgressIPCountries.cachedCode(for: ip) },
+                lookupCountry: { [weak self] ip, completion in
+                    guard let self else { return completion(nil) }
+                    self.claudeEgressIPCountries.code(for: ip, completion: completion)
                 })
         ),
         launchAtLoginController: launchAtLoginController
@@ -656,6 +661,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private let claudeQuota: ClaudeQuotaPipeline
     /// Also used by the Advanced page's "detect current egress" button.
     private let claudeEgressGuard: ClaudeEgressGuard
+    /// Country per allowlisted IP for the settings table (ipinfo.io, once per address).
+    private let claudeEgressIPCountries: EgressIPCountryCache
     /// Owns the Claude Code Mod realtime sync settings entry: detection, panel, status.
     private lazy var modSyncCoordinator: ModSyncCoordinator = {
         let activity: () -> Bool = { [weak self] in self?.isClaudeProcessAvailable ?? false }
@@ -778,6 +785,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             settings: { AppPreferences().claudeEgressGuardSettings },
             probe: { [officialQuotaClient] completion in officialQuotaClient.probeClaudeEgressIP(completion: completion) })
         self.claudeEgressGuard = egressGuard
+        self.claudeEgressIPCountries = EgressIPCountryCache(
+            load: { AppPreferences().claudeEgressGuardIPCountries },
+            store: { AppPreferences().claudeEgressGuardIPCountries = $0 },
+            lookup: { [officialQuotaClient] ip, completion in
+                officialQuotaClient.lookupIPCountry(ip) { code in
+                    // The outcome only: IP addresses never enter the log.
+                    SwitchLog.write("ip country lookup; result=\(code == nil ? "failed" : "ok")", category: "configuration")
+                    completion(code)
+                }
+            })
         self.claudeQuota = claudeQuota ?? ClaudeQuotaPipeline.makeProduction(
             client: officialQuotaClient,
             calibrationIntervalCap: { nil },
@@ -2106,6 +2123,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
 
     private func setClaudeEgressGuardAllowedIPs(_ ips: [String]) {
         preferences.claudeEgressGuardAllowedIPs = ips
+        claudeEgressIPCountries.prune(keeping: preferences.claudeEgressGuardAllowedIPs)
         // The count only: IP addresses never enter the log.
         SwitchLog.write(
             "preference changed; key=\(AppPreferences.claudeEgressGuardAllowedIPsKey); count=\(preferences.claudeEgressGuardAllowedIPs.count)",

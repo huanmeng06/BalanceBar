@@ -603,6 +603,37 @@ final class OfficialQuotaClient {
         }.resume()
     }
 
+    static func ipCountryURL(for ip: String) -> URL? {
+        // A validated address is only digits, hex letters, dots and colons: safe in a path as-is.
+        let trimmed = ip.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard EgressIPAddress.isValid(trimmed) else { return nil }
+        return URL(string: "https://ipinfo.io/\(trimmed)/country")
+    }
+
+    /// Looks up the country code of an allowlisted IP on ipinfo.io, for display only. Carries no
+    /// token, cookie or account data, and never takes part in the guard's pass/block decision.
+    func lookupIPCountry(_ ip: String, completion: @escaping (String?) -> Void) {
+        guard let url = Self.ipCountryURL(for: ip) else {
+            completion(nil)
+            return
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 8
+        request.httpShouldHandleCookies = false
+        request.setValue("text/plain", forHTTPHeaderField: "Accept")
+        request.setValue("BalanceBar/1.0 (+https://github.com/huanmeng06/BalanceBar)", forHTTPHeaderField: "User-Agent")
+        claudeSession().dataTask(with: request) { data, response, error in
+            guard error == nil,
+                  let status = (response as? HTTPURLResponse)?.statusCode, (200..<300).contains(status),
+                  let data else {
+                completion(nil)
+                return
+            }
+            completion(IPCountryCode.parse(data))
+        }.resume()
+    }
+
     /// Read-only list of banked Codex reset credits. Used only when the
     /// usage payload has a positive available count but no usable `credits[]`.
     /// Never POSTs consume and never changes the usage request.

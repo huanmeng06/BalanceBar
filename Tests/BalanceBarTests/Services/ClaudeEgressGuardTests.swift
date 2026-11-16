@@ -165,7 +165,13 @@ final class ClaudeEgressGuardTests: XCTestCase {
         _ = section.makeSection()
         let editor = section.listEditor!
         XCTAssertEqual(editor.tableView.numberOfRows, 0)
-        XCTAssertEqual(editor.messageLabel.stringValue, tr(.keyDashboardAdvancedPageEgressGuardAllowedEmpty))
+        XCTAssertFalse(editor.emptyLabel.isHidden)
+        XCTAssertEqual(editor.visibleRowCount, EgressIPListEditorView.minimumVisibleRows)
+        XCTAssertEqual(editor.tableView.tableColumns.map(\.title), [
+            tr(.keyDashboardAdvancedPageEgressGuardColumnIp), tr(.keyDashboardAdvancedPageEgressGuardColumnRegion)])
+        XCTAssertFalse(editor.isEnabled, "the guard is off by default, so the list is dimmed")
+        XCTAssertFalse(section.detectButton.isEnabled)
+        editor.setEnabled(true)
         XCTAssertFalse(editor.actionsControl.isEnabled(forSegment: 1), "nothing selected, nothing to remove")
 
         // "+" adds a blank row; leaving it blank drops it again.
@@ -180,13 +186,14 @@ final class ClaudeEgressGuardTests: XCTestCase {
         editor.editForTesting(row: 0, text: "example.com")
         XCTAssertEqual(editor.rows, ["example.com"])
         XCTAssertTrue(saved.isEmpty, "an invalid address is never saved")
-        XCTAssertEqual(editor.messageLabel.stringValue, tr(.keyDashboardAdvancedPageEgressGuardInvalidIp))
+        XCTAssertEqual(editor.statusLabel.stringValue, tr(.keyDashboardAdvancedPageEgressGuardInvalidIp))
+        XCTAssertTrue(editor.emptyLabel.isHidden)
 
         // Fixing it in place saves it.
         editor.editForTesting(row: 0, text: " 203.0.113.7 ")
         XCTAssertEqual(editor.rows, ["203.0.113.7"])
         XCTAssertEqual(saved.last, ["203.0.113.7"])
-        XCTAssertEqual(editor.messageLabel.stringValue, "")
+        XCTAssertEqual(editor.statusLabel.stringValue, "")
 
         // A second spelling of a listed address is dropped instead of duplicated.
         editor.performActionForTesting(segment: 0)
@@ -216,9 +223,11 @@ final class ClaudeEgressGuardTests: XCTestCase {
 
         // A change saved from the other page copy replaces the table.
         preferences.claudeEgressGuardAllowedIPs = ["2001:db8::1"]
+        preferences.claudeEgressGuardEnabled = true
         section.refresh(preferences: preferences)
         XCTAssertEqual(editor.rows, ["2001:db8::1"])
         XCTAssertEqual(section.allowedIPsForTesting, ["2001:db8::1"])
+        XCTAssertTrue(editor.isEnabled)
 
         section.detectForTesting()
         detectCompletion?(.failure(.urlError(.timedOut)))
@@ -226,6 +235,92 @@ final class ClaudeEgressGuardTests: XCTestCase {
             section.detectDetailForTesting == tr(.keyDashboardAdvancedPageEgressGuardDetectFailed)
         })
         XCTAssertTrue(section.detectButton.isEnabled)
+
+        // Turning the guard off dims the list and its controls.
+        preferences.claudeEgressGuardEnabled = false
+        section.refresh(preferences: preferences)
+        XCTAssertFalse(editor.isEnabled)
+        XCTAssertFalse(section.detectButton.isEnabled)
+        XCTAssertFalse(editor.actionsControl.isEnabled(forSegment: 0))
+        editor.performActionForTesting(segment: 0)
+        XCTAssertEqual(editor.rows, ["2001:db8::1"], "+ does nothing while dimmed")
+    }
+
+    func testTableGrowsWithRowsUpToSixThenScrolls() {
+        let editor = EgressIPListEditorView(ips: [], onSave: { _ in })
+        let empty = editor.intrinsicContentSize.height
+        editor.updateSavedIPs((1...4).map { "198.51.100.\($0)" })
+        XCTAssertEqual(editor.visibleRowCount, 4)
+        XCTAssertEqual(editor.intrinsicContentSize.height, empty + 2 * EgressIPListEditorView.rowHeight, accuracy: 0.5)
+        editor.updateSavedIPs((1...9).map { "198.51.100.\($0)" })
+        XCTAssertEqual(editor.visibleRowCount, EgressIPListEditorView.maximumVisibleRows)
+        XCTAssertTrue(editor.scrollView.hasVerticalScroller)
+    }
+
+    func testCountryColumnShowsCachedCountryAndLooksUpUnknownOnce() {
+        var lookups: [String] = []
+        var pending: ((String?) -> Void)?
+        var cache: [String: String] = [:]
+        let editor = EgressIPListEditorView(
+            ips: ["203.0.113.7"],
+            cachedCountry: { ip in EgressIPCountryCache.key(for: ip).flatMap { cache[$0] } },
+            lookupCountry: { ip, completion in lookups.append(ip); pending = completion },
+            onSave: { _ in })
+        XCTAssertEqual(editor.countryTextForTesting(row: 0), "—")
+        _ = editor.countryTextForTesting(row: 0)
+        editor.tableView.reloadData()
+        _ = editor.countryTextForTesting(row: 0)
+        XCTAssertEqual(lookups, ["203.0.113.7"], "asked once per address")
+        cache[EgressIPCountryCache.key(for: "203.0.113.7")!] = "JP"
+        pending?("JP")
+        XCTAssertTrue(waitUntil { editor.countryTextForTesting(row: 0) == IPCountryCode.displayTitle("JP") })
+    }
+
+    // MARK: Country lookup
+
+    func testCountryCodeParsingAndDisplay() {
+        XCTAssertEqual(IPCountryCode.parse(Data("US\n".utf8)), "US")
+        XCTAssertEqual(IPCountryCode.parse(Data("jp".utf8)), "JP")
+        XCTAssertNil(IPCountryCode.parse(Data(#"{"ip":"10.0.0.1","bogon":true}"#.utf8)))
+        XCTAssertNil(IPCountryCode.parse(Data("U1".utf8)))
+        let english = Locale(identifier: "en_US")
+        XCTAssertEqual(IPCountryCode.displayTitle("US", locale: english), "🇺🇸 United States")
+        XCTAssertEqual(IPCountryCode.displayTitle("HK", locale: Locale(identifier: "zh_CN")), "🇭🇰 中国香港")
+        XCTAssertEqual(IPCountryCode.displayTitle("TW", locale: Locale(identifier: "zh_CN")), "中国台湾")
+    }
+
+    func testCountryCacheLooksUpOncePersistsAndPrunes() {
+        var stored: [String: String] = [:]
+        var lookups = 0
+        var pending: [(String?) -> Void] = []
+        let cache = EgressIPCountryCache(
+            load: { stored },
+            store: { stored = $0 },
+            lookup: { _, completion in lookups += 1; pending.append(completion) })
+        var results: [String?] = []
+        cache.code(for: "2001:db8::1") { results.append($0) }
+        cache.code(for: "2001:DB8:0::1") { results.append($0) }
+        XCTAssertEqual(lookups, 1, "two spellings of one address share a lookup")
+        pending.removeFirst()(nil)
+        XCTAssertEqual(results, [nil, nil])
+        XCTAssertTrue(stored.isEmpty, "a failed lookup is not remembered")
+
+        cache.code(for: "2001:db8::1") { results.append($0) }
+        XCTAssertEqual(lookups, 2, "a failed lookup is retried")
+        pending.removeFirst()("DE")
+        XCTAssertEqual(cache.cachedCode(for: "2001:db8:0:0::1"), "DE")
+        cache.code(for: "2001:db8::1") { results.append($0) }
+        XCTAssertEqual(lookups, 2, "a known address is never looked up again")
+        XCTAssertEqual(results.suffix(2), ["DE", "DE"])
+
+        cache.prune(keeping: ["203.0.113.7"])
+        XCTAssertTrue(stored.isEmpty)
+    }
+
+    func testCountryLookupURL() {
+        XCTAssertEqual(OfficialQuotaClient.ipCountryURL(for: "203.0.113.7")?.absoluteString, "https://ipinfo.io/203.0.113.7/country")
+        XCTAssertEqual(OfficialQuotaClient.ipCountryURL(for: "2001:db8::1")?.absoluteString, "https://ipinfo.io/2001:db8::1/country")
+        XCTAssertNil(OfficialQuotaClient.ipCountryURL(for: "example.com/../x"))
     }
 
     private func waitUntil(_ condition: () -> Bool) -> Bool {

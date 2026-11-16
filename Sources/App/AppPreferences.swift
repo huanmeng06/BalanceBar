@@ -561,6 +561,12 @@ final class AppPreferences {
         get { EgressIPAddress.sanitizedList(defaults.stringArray(forKey: Self.claudeEgressGuardAllowedIPsKey) ?? []) }
         set { defaults.set(EgressIPAddress.sanitizedList(newValue), forKey: Self.claudeEgressGuardAllowedIPsKey) }
     }
+    /// Country code per allowlisted IP (keyed by `EgressIPCountryCache.key(for:)`), for display only.
+    static let claudeEgressGuardIPCountriesKey = "claudeEgressGuardIPCountries"
+    var claudeEgressGuardIPCountries: [String: String] {
+        get { (defaults.dictionary(forKey: Self.claudeEgressGuardIPCountriesKey) as? [String: String]) ?? [:] }
+        set { defaults.set(newValue, forKey: Self.claudeEgressGuardIPCountriesKey) }
+    }
     var claudeEgressGuardSettings: ClaudeEgressGuardSettings {
         ClaudeEgressGuardSettings(enabled: claudeEgressGuardEnabled, allowedIPs: claudeEgressGuardAllowedIPs)
     }
@@ -1162,6 +1168,32 @@ enum TimeZoneCityCatalog {
         return title(for: selection.resolved().identifier)
     }
 
+    /// The country/region title used across the app, in `locale`'s language, with the app's
+    /// naming for CN, HK, MO and TW.
+    static func countryTitle(for code: String, locale: Locale) -> String {
+        let language = locale.language.languageCode?.identifier ?? "en"
+        let localized = locale.localizedString(forRegionCode: code) ?? code
+        guard ["CN", "HK", "MO", "TW"].contains(code) else { return localized }
+        let china = ["zh": "中国", "ja": "中国", "ko": "중국", "ru": "Китай", "de": "China", "fr": "Chine", "es": "China", "pt": "China", "it": "Cina"][language] ?? "China"
+        if language == "zh" {
+            let traditional = locale.identifier == "zh_TW" || locale.identifier == "zh_HK" || locale.identifier.contains("Hant")
+            switch code {
+            case "CN": return traditional ? "中國大陸" : "中国大陆"
+            case "HK": return traditional ? "中國香港" : "中国香港"
+            case "MO": return traditional ? "中國澳門" : "中国澳门"
+            case "TW": return traditional ? "中國台灣" : "中国台湾"
+            default: break
+            }
+        }
+        let qualifier: String
+        switch code {
+        case "CN": qualifier = language == "ja" ? "本土" : language == "ko" ? "본토" : language == "ru" ? "материковый Китай" : language == "de" ? "Festland" : language == "fr" ? "continentale" : language == "es" ? "continental" : language == "pt" ? "continental" : language == "it" ? "continentale" : "Mainland"
+        default:
+            qualifier = localized.components(separatedBy: " - ").last ?? localized
+        }
+        return code == "CN" ? "\(china) - \(qualifier)" : "\(china) - \(qualifier)"
+    }
+
     static func load(zoneTab: String?, locale: Locale) -> [TimeZoneCity] {
         let formatter = DateFormatter()
         formatter.locale = locale
@@ -1180,29 +1212,7 @@ enum TimeZoneCityCatalog {
             let english = identifier.split(separator: "/").last.map(String.init)?.replacingOccurrences(of: "_", with: " ") ?? identifier
             let localized = formatter.string(from: Date())
             let city = localized.isEmpty || localized == unknown ? english : localized
-            let country = countryCode.map { code -> String in
-                let language = locale.language.languageCode?.identifier ?? "en"
-                let localized = locale.localizedString(forRegionCode: code) ?? code
-                guard ["CN", "HK", "MO", "TW"].contains(code) else { return localized }
-                let china = ["zh": "中国", "ja": "中国", "ko": "중국", "ru": "Китай", "de": "China", "fr": "Chine", "es": "China", "pt": "China", "it": "Cina"][language] ?? "China"
-                if language == "zh" {
-                    let traditional = locale.identifier == "zh_TW" || locale.identifier == "zh_HK" || locale.identifier.contains("Hant")
-                    switch code {
-                    case "CN": return traditional ? "中國大陸" : "中国大陆"
-                    case "HK": return traditional ? "中國香港" : "中国香港"
-                    case "MO": return traditional ? "中國澳門" : "中国澳门"
-                    case "TW": return traditional ? "中國台灣" : "中国台湾"
-                    default: break
-                    }
-                }
-                let qualifier: String
-                switch code {
-                case "CN": qualifier = language == "ja" ? "本土" : language == "ko" ? "본토" : language == "ru" ? "материковый Китай" : language == "de" ? "Festland" : language == "fr" ? "continentale" : language == "es" ? "continental" : language == "pt" ? "continental" : language == "it" ? "continentale" : "Mainland"
-                default:
-                    qualifier = localized.components(separatedBy: " - ").last ?? localized
-                }
-                return code == "CN" ? "\(china) - \(qualifier)" : "\(china) - \(qualifier)"
-            }
+            let country = countryCode.map { TimeZoneCityCatalog.countryTitle(for: $0, locale: locale) }
             let countryTitle = country ?? ""
             let legacyNames = aliases.filter { $0.value == identifier }.map(\.key).joined(separator: " ")
             result.append(TimeZoneCity(identifier: identifier,

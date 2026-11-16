@@ -73,6 +73,91 @@ enum CloudflareTraceParser {
     }
 }
 
+/// ISO 3166 country codes from ipinfo.io, and how the allowlist table shows them.
+enum IPCountryCode {
+    /// ipinfo's `/<ip>/country` body is the bare two-letter code; anything else (a bogon JSON body,
+    /// an error page) is not a country.
+    static func parse(_ data: Data) -> String? {
+        guard let text = String(data: data, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines).uppercased(),
+            text.count == 2, text.unicodeScalars.allSatisfy({ ("A"..."Z").contains($0) }) else { return nil }
+        return text
+    }
+
+    /// "🇺🇸 United States" in the app language, with the app's naming for CN, HK, MO and TW. TW gets
+    /// no flag so the title stays consistent with that naming.
+    static func displayTitle(_ code: String, locale: Locale = TimeZoneCityCatalog.locale) -> String {
+        let name = TimeZoneCityCatalog.countryTitle(for: code, locale: locale)
+        guard code != "TW" else { return name }
+        let flag = code.unicodeScalars
+            .compactMap { Unicode.Scalar(0x1F1E6 + $0.value - 0x41) }
+            .map(String.init).joined()
+        return "\(flag) \(name)"
+    }
+}
+
+/// Remembers the country of each allowlisted IP so ipinfo.io is asked once per address, not on
+/// every page load. Failed lookups are not remembered and are retried the next time they are
+/// asked for. Concurrent asks for one address share one lookup.
+final class EgressIPCountryCache {
+    typealias Lookup = (String, @escaping (String?) -> Void) -> Void
+
+    private let lock = NSLock()
+    private let load: () -> [String: String]
+    private let store: ([String: String]) -> Void
+    private let lookup: Lookup
+    private var waiting: [String: [(String?) -> Void]] = [:]
+
+    init(load: @escaping () -> [String: String], store: @escaping ([String: String]) -> Void, lookup: @escaping Lookup) {
+        self.load = load
+        self.store = store
+        self.lookup = lookup
+    }
+
+    /// Spelling-independent key, so `2001:DB8::1` and `2001:db8::1` share one entry.
+    static func key(for ip: String) -> String? {
+        EgressIPAddress.normalize(ip)?.map { String(format: "%02x", $0) }.joined()
+    }
+
+    func cachedCode(for ip: String) -> String? {
+        guard let key = Self.key(for: ip) else { return nil }
+        return lock.withLock { load()[key] }
+    }
+
+    /// Calls `completion` once, on any queue, with the cached or freshly looked-up code.
+    func code(for ip: String, completion: @escaping (String?) -> Void) {
+        guard let key = Self.key(for: ip) else { return completion(nil) }
+        let (cached, starts) = lock.withLock { () -> (String?, Bool) in
+            if let cached = load()[key] { return (cached, false) }
+            waiting[key, default: []].append(completion)
+            return (nil, waiting[key]?.count == 1)
+        }
+        if let cached { return completion(cached) }
+        guard starts else { return }
+        lookup(ip) { [self] code in
+            let callbacks = lock.withLock { () -> [(String?) -> Void] in
+                if let code {
+                    var saved = load()
+                    saved[key] = code
+                    store(saved)
+                }
+                return waiting.removeValue(forKey: key) ?? []
+            }
+            callbacks.forEach { $0(code) }
+        }
+    }
+
+    /// Forgets addresses that left the allowlist.
+    func prune(keeping ips: [String]) {
+        let keys = Set(ips.compactMap(Self.key(for:)))
+        lock.withLock {
+            let saved = load()
+            let kept = saved.filter { keys.contains($0.key) }
+            if kept.count != saved.count { store(kept) }
+        }
+    }
+}
+
 /// Decides whether a Claude official request may leave this machine.
 ///
 /// The egress IP is probed through the same proxy route as the usage request immediately before
