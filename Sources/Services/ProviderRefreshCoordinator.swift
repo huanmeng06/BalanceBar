@@ -1433,8 +1433,17 @@ final class ProviderRefreshCoordinator {
             official.notificationAccountScope = state.accountScope
             official.quotaStatus = state.status
             // Keep the account's last data visible; the reason rides on the refresh time.
-            official.staleReason = state.failure.map(Self.claudeFailureReason)
+            official.staleReason = state.officialDisabled ? nil : state.failure.map(Self.claudeFailureReason)
             snapshot = official
+        } else if state.officialDisabled {
+            // Official requests are turned off (Issue #686): say so with a way to the settings,
+            // without the failure mark in the menu bar.
+            var off = Snapshot.providerError(
+                target.providerName, reason: tr(.keyClaudeRefreshEgressGuardDisabled), cachedBalance: nil)
+            off.quotaStatus = state.status
+            off.failureRecovery = .openEgressGuardSettings
+            off.officialSourceDisabled = true
+            snapshot = off
         } else if let failure = state.failure {
             var error = Snapshot.providerError(target.providerName, reason: Self.claudeFailureReason(failure), cachedBalance: nil)
             error.quotaStatus = state.status
@@ -1488,6 +1497,7 @@ final class ProviderRefreshCoordinator {
         // (an API key setup is told in the reason text that there is no subscription quota).
         case .missingCredentials, .unauthorized, .noAccount: return .copySignInCommand
         case .credentialsUnreadable: return .none
+        case .egressGuard: return .openEgressGuardSettings
         case .rateLimited, .transport, .http, .invalidResponse: return .openUsagePage
         }
     }
@@ -1511,6 +1521,16 @@ final class ProviderRefreshCoordinator {
                 arguments: ["429"]) + "\n" + tr(.keyDashboardGeneralAndRefreshPagesUpdateCheckFailureSuggestionHttpTooManyRequests)
         case .http, .invalidResponse:
             return tr(.keyProviderRefreshCoordinatorOfficialValueTheQuotaEndpointReturnedAnError, arguments: [name])
+        case .egressGuard(.mismatch):
+            return tr(.keyClaudeRefreshEgressGuardMismatch)
+        case .egressGuard(.checkFailed):
+            return tr(.keyClaudeRefreshEgressGuardCheckFailed)
+        case .egressGuard(.noTargets):
+            return tr(.keyClaudeRefreshEgressGuardNoTargets)
+        case .egressGuard(.unsupportedRegion):
+            return tr(.keyClaudeRefreshEgressGuardUnsupportedRegion)
+        case .egressGuard(.disabled):
+            return tr(.keyClaudeRefreshEgressGuardDisabled)
         }
     }
 

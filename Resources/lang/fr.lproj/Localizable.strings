@@ -656,6 +656,8 @@
 "claude.timeline.estimate.in" = "dans environ %1$@";
 "claude.refresh.every_minutes" = "Toutes les %1$@ min";
 "claude.quota.calibration_detail" = "Interroge la source officielle à intervalles réguliers, en secours ; un intervalle plus long évite les limitations";
+"claude.quota.calibration_off_detail" = "Les requêtes officielles Claude sont désactivées ; cet intervalle est sans effet.";
+"claude.quota.calibration_off_link" = "Configurer les IP autorisées…";
 
 // BalanceBar Mod realtime sync (Issue #597)
 "claude.mod_sync.title" = "BalanceBar Mod boost temps réel";
@@ -815,3 +817,32 @@
 "mod.ui.int2.silent_check_version" = "Claude Code est en v2.1.287 ou ultérieure";
 "mod.ui.int2.silent_check_session" = "C’est une nouvelle session, ou /reload-plugins y a été exécuté";
 "mod.ui.int2.silent_check_policy" = "Si la politique de votre organisation n’autorise que les plugins gérés";
+"claude.refresh.egress_guard_mismatch" = "L’IP de sortie ne figure pas dans la liste d’IP autorisées ; les requêtes officielles Claude sont suspendues.";
+"claude.refresh.egress_guard_check_failed" = "Impossible de confirmer l’IP de sortie ; les requêtes officielles Claude sont suspendues.";
+"claude.refresh.egress_guard_no_targets" = "La liste d’IP autorisées est vide ; les requêtes officielles Claude sont suspendues.";
+"claude.refresh.egress_guard_unsupported_region" = "La région de sortie n’est pas prise en charge par Anthropic ou n’a pas pu être identifiée ; les requêtes officielles Claude sont en pause.";
+"claude.refresh.egress_guard_disabled" = "Les requêtes officielles Claude sont désactivées. Activez la liste d’IP autorisées dans Réglages › Avancé.";
+"claude.timeline.failure.egress_guard" = "Bloqué par la liste d’IP autorisées";
+"quota.failure.open_egress_guard_settings" = "Configurer les IP autorisées";
+"dashboard.advanced.page.egress_guard" = "IP autorisées pour Claude";
+"dashboard.advanced.page.egress_guard_enabled" = "Demander le quota officiel uniquement depuis les IP autorisées";
+"dashboard.advanced.page.egress_guard_enabled_detail" = "Avant chaque requête, votre IP de sortie actuelle (celle que voient les serveurs de Claude) est vérifiée. Si elle n’est pas dans la liste, rien n’est envoyé. Désactivé : le quota officiel n’est jamais demandé et seules les données du Mod sont utilisées.";
+"dashboard.advanced.page.egress_guard_allowed" = "IP autorisées";
+"dashboard.advanced.page.egress_guard_allowed_empty" = "Cliquez sur + pour ajouter une IP, ou détectez d’abord la sortie actuelle";
+"dashboard.advanced.page.egress_guard_remove" = "Retirer";
+"dashboard.advanced.page.egress_guard_add_title" = "Ajouter une IP";
+"dashboard.advanced.page.egress_guard_add_placeholder" = "Adresse IPv4 ou IPv6";
+"dashboard.advanced.page.egress_guard_invalid_ip" = "Adresse IP non valide";
+"dashboard.advanced.page.egress_guard_detect" = "Détecter";
+"dashboard.advanced.page.egress_guard_detecting" = "Détection de la sortie actuelle…";
+"dashboard.advanced.page.egress_guard_detected_listed" = "Sortie actuelle : %1$@ — autorisée";
+"dashboard.advanced.page.egress_guard_detected_unlisted" = "Sortie actuelle : %1$@ — non autorisée";
+"dashboard.advanced.page.egress_guard_detect_failed" = "Impossible de détecter la sortie actuelle";
+"dashboard.advanced.page.egress_guard_add_detected" = "Ajouter";
+"dashboard.advanced.page.egress_guard_footnote" = "La vérification contacte claude.ai, les requêtes de quota vont à api.anthropic.com. Faites passer les deux par la même règle de proxy, sinon la vérification peut différer de la sortie réelle. Le pays/région est obtenu une seule fois par IP via ipinfo.io. La disponibilité suit la politique des régions prises en charge d’Anthropic au 2026-11-12. Si Cloudflare situe la sortie hors de ces régions, les requêtes officielles sont aussi mises en pause.";
+"dashboard.advanced.page.egress_guard_column_ip" = "Adresse IP";
+"dashboard.advanced.page.egress_guard_column_region" = "Pays/région";
+"dashboard.advanced.page.egress_guard_country_loading" = "Recherche…";
+"dashboard.advanced.page.egress_guard_column_available" = "Claude disponible";
+"dashboard.advanced.page.egress_guard_available_yes" = "Dans une région où Anthropic propose Claude";
+"dashboard.advanced.page.egress_guard_available_no" = "Hors des régions où Anthropic propose Claude";

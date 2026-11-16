@@ -169,7 +169,8 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         loginRecheckTimer: SchedulerTimer = DispatchSchedulerTimer(),
         withTracker: Bool = false,
         withInbox: Bool = false,
-        sourceValidity: @escaping () -> ClaudeSourceValidity = { .defaults }
+        sourceValidity: @escaping () -> ClaudeSourceValidity = { .defaults },
+        egressGuard: ClaudeEgressGuard? = nil
     ) -> ClaudeQuotaPipeline {
         let identityQueue = DispatchQueue(label: "test.pipeline.identity")
         let identity = ClaudeAccountIdentityProvider(
@@ -196,6 +197,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
             realtimeTracker: tracker,
             snapshotInbox: inbox,
             sourceValidity: sourceValidity,
+            egressGuard: egressGuard,
             now: { [clock] in clock!.now },
             diagnostics: { [diagnosticLines] message, _ in diagnosticLines.append(message) })
         pipelines.append(pipeline)
@@ -313,6 +315,157 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         XCTAssertNil(state.failure)
         XCTAssertEqual(state.updatedAt, Self.start)
         XCTAssertEqual(state.windows.map(\.label), [tr(.keyResponseParsers5HourQuota), tr(.keyResponseParsers7DayQuota)])
+        XCTAssertEqual(PipelineStubProtocol.requestCount, 1)
+    }
+
+    // MARK: Egress guard (Issue #686)
+
+    /// Settings and probe replies for the egress guard; the probe never touches the network.
+    private final class EgressGuardFixture {
+        private let lock = NSLock()
+        private var settingsValue: ClaudeEgressGuardSettings
+        private var reply: ClaudeEgressGuard.ProbeResult
+        private var probeCount = 0
+        init(_ settings: ClaudeEgressGuardSettings, reply: ClaudeEgressGuard.ProbeResult) {
+            settingsValue = settings
+            self.reply = reply
+        }
+        var settings: ClaudeEgressGuardSettings {
+            get { lock.withLock { settingsValue } }
+            set { lock.withLock { settingsValue = newValue } }
+        }
+        func setReply(_ value: ClaudeEgressGuard.ProbeResult) { lock.withLock { reply = value } }
+        var probes: Int { lock.withLock { probeCount } }
+        func makeGuard() -> ClaudeEgressGuard {
+            ClaudeEgressGuard(
+                settings: { [self] in settings },
+                probe: { [self] completion in
+                    let result = lock.withLock { () -> ClaudeEgressGuard.ProbeResult in probeCount += 1; return reply }
+                    completion(result)
+                },
+                diagnostics: { _ in })
+        }
+    }
+
+    func testEgressGuardSwitchedOffSendsNothingAndShowsNoFailure() throws {
+        let fixture = EgressGuardFixture(.disabled, reply: .success(EgressTrace(ip: "203.0.113.7", country: "US")))
+        let pipeline = makePipeline(egressGuard: fixture.makeGuard())
+        pipeline.requestFetch(reason: .initial)
+        let state = try XCTUnwrap(waitForState(pipeline) { $0.officialDisabled })
+        XCTAssertNil(state.failure, "official requests turned off is not a failure")
+        quiet(pipeline)
+        pipeline.requestFetch(reason: .manual)
+        quiet(pipeline)
+        XCTAssertEqual(PipelineStubProtocol.requestCount, 0, "no request reaches Anthropic while the guard is off")
+        XCTAssertEqual(fixture.probes, 0, "the egress IP is not even probed while the guard is off")
+    }
+
+    func testEgressGuardMismatchKeepsTheRequestLocal() throws {
+        let fixture = EgressGuardFixture(.init(enabled: true, allowedIPs: ["203.0.113.7"]), reply: .success(EgressTrace(ip: "198.51.100.9", country: "US")))
+        let pipeline = makePipeline(egressGuard: fixture.makeGuard())
+        pipeline.requestFetch(reason: .initial)
+        let state = try XCTUnwrap(waitForState(pipeline) { $0.failure == .egressGuard(.mismatch) })
+        XCTAssertFalse(state.officialDisabled)
+        XCTAssertEqual(PipelineStubProtocol.requestCount, 0)
+        XCTAssertEqual(fixture.probes, 1)
+        XCTAssertTrue(diagnosticLines.all.contains { $0.contains("egress_guard; block=mismatch") })
+        XCTAssertFalse(diagnosticLines.all.contains { $0.contains("198.51.100.9") }, "the egress IP never enters the log")
+    }
+
+    func testEgressGuardUnsupportedRegionKeepsTheRequestLocal() throws {
+        let fixture = EgressGuardFixture(.init(enabled: true, allowedIPs: ["203.0.113.7"]),
+                                         reply: .success(EgressTrace(ip: "203.0.113.7", country: "CN")))
+        let pipeline = makePipeline(egressGuard: fixture.makeGuard())
+        pipeline.requestFetch(reason: .initial)
+        XCTAssertNotNil(waitForState(pipeline) { $0.failure == .egressGuard(.unsupportedRegion) })
+        XCTAssertEqual(PipelineStubProtocol.requestCount, 0, "an allowlisted IP in an unsupported region still sends nothing")
+        XCTAssertTrue(diagnosticLines.all.contains { $0.contains("egress_guard; block=unsupported_region") })
+    }
+
+    func testEgressGuardBlocksWhenTheProxyRouteChangedAfterTheCheck() throws {
+        // The probe went through proxy A; the usage request would now go out directly.
+        let checkedRoute = CCSwitchProxyConfiguration(httpsProxy: URL(string: "http://127.0.0.1:7890"))
+        let fixture = EgressGuardFixture(.init(enabled: true, allowedIPs: ["203.0.113.7"]),
+                                         reply: .success(EgressTrace(ip: "203.0.113.7", country: "US", route: checkedRoute)))
+        let pipeline = makePipeline(egressGuard: fixture.makeGuard())
+        pipeline.requestFetch(reason: .initial)
+        XCTAssertNotNil(waitForState(pipeline) { $0.failure == .egressGuard(.checkFailed) })
+        XCTAssertEqual(PipelineStubProtocol.requestCount, 0, "a usage request never takes a route the guard did not check")
+    }
+
+    func testEgressGuardSwitchedOffAfterThePassSendsNothing() throws {
+        // Reads 1–2 are the guard's own check (which passes); from read 3 on — the send-time
+        // re-check, as when the switch is turned off while the token is read — it is off.
+        let lock = NSLock()
+        var reads = 0
+        let egressGuard = ClaudeEgressGuard(
+            settings: {
+                lock.withLock {
+                    reads += 1
+                    return reads <= 2 ? .init(enabled: true, allowedIPs: ["203.0.113.7"]) : .disabled
+                }
+            },
+            probe: { $0(.success(EgressTrace(ip: "203.0.113.7", country: "US"))) },
+            diagnostics: { _ in })
+        let pipeline = makePipeline(egressGuard: egressGuard)
+        pipeline.requestFetch(reason: .initial)
+        let state = try XCTUnwrap(waitForState(pipeline) { $0.officialDisabled })
+        XCTAssertNil(state.failure, "switched off is shown as off, not as a failure")
+        XCTAssertEqual(PipelineStubProtocol.requestCount, 0, "the stale pass never lets the request out")
+    }
+
+    func testEgressGuardCheckFailureAndMissingTargetsBlock() throws {
+        let fixture = EgressGuardFixture(.init(enabled: true, allowedIPs: []), reply: .success(EgressTrace(ip: "203.0.113.7", country: "US")))
+        let pipeline = makePipeline(egressGuard: fixture.makeGuard())
+        pipeline.requestFetch(reason: .initial)
+        XCTAssertNotNil(waitForState(pipeline) { $0.failure == .egressGuard(.noTargets) })
+        XCTAssertEqual(fixture.probes, 0)
+
+        fixture.settings = .init(enabled: true, allowedIPs: ["203.0.113.7"])
+        fixture.setReply(.failure(.urlError(.timedOut)))
+        pipeline.egressGuardSettingsChanged()
+        XCTAssertNotNil(waitForState(pipeline) { $0.failure == .egressGuard(.checkFailed) })
+        XCTAssertEqual(PipelineStubProtocol.requestCount, 0)
+    }
+
+    func testEgressGuardMatchSendsTheUsageRequest() throws {
+        let fixture = EgressGuardFixture(.init(enabled: true, allowedIPs: ["198.51.100.1", "203.0.113.7"]), reply: .success(EgressTrace(ip: "203.0.113.7", country: "US")))
+        let pipeline = makePipeline(egressGuard: fixture.makeGuard())
+        pipeline.requestFetch(reason: .initial)
+        let state = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+        XCTAssertNil(state.failure)
+        XCTAssertEqual(PipelineStubProtocol.requestCount, 1)
+        XCTAssertEqual(fixture.probes, 1)
+    }
+
+    func testEgressGuardSettingsChangeRetriesAtOnceAfterBlocks() throws {
+        let fixture = EgressGuardFixture(.disabled, reply: .success(EgressTrace(ip: "198.51.100.9", country: "US")))
+        let pipeline = makePipeline(configuration: claudeV1TestConfiguration, egressGuard: fixture.makeGuard())
+        pipeline.requestFetch(reason: .initial)
+        XCTAssertNotNil(waitForState(pipeline) { $0.officialDisabled })
+
+        // Turned on with the wrong list: blocked, and the automatic retry waits.
+        fixture.settings = .init(enabled: true, allowedIPs: ["203.0.113.7"])
+        pipeline.egressGuardSettingsChanged()
+        XCTAssertNotNil(waitForState(pipeline) { $0.failure == .egressGuard(.mismatch) && !$0.officialDisabled })
+        pipeline.requestFetch(reason: .scheduled)
+        quiet(pipeline)
+        XCTAssertEqual(fixture.probes, 1, "an automatic retry after a block waits instead of probing again")
+        XCTAssertTrue(diagnosticLines.all.contains { $0.contains("skip=egressGuardBlocked") })
+
+        // The right IP is added: the next request goes out at once.
+        fixture.settings = .init(enabled: true, allowedIPs: ["203.0.113.7", "198.51.100.9"])
+        pipeline.egressGuardSettingsChanged()
+        let state = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+        XCTAssertNil(state.failure)
+        XCTAssertEqual(PipelineStubProtocol.requestCount, 1)
+
+        // Switched off again: official requests are off and the failure-free state is kept.
+        fixture.settings = .disabled
+        pipeline.egressGuardSettingsChanged()
+        let off = try XCTUnwrap(waitForState(pipeline) { $0.officialDisabled })
+        XCTAssertNil(off.failure)
+        XCTAssertFalse(off.windows.isEmpty, "the last values stay visible while official requests are off")
         XCTAssertEqual(PipelineStubProtocol.requestCount, 1)
     }
 
