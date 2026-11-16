@@ -827,7 +827,6 @@
 "dashboard.advanced.page.egress_guard_allowed" = "允許的出口 IP";
 "dashboard.advanced.page.egress_guard_allowed_empty" = "尚未新增允許的出口 IP";
 "dashboard.advanced.page.egress_guard_remove" = "移除";
-"dashboard.advanced.page.egress_guard_add" = "新增";
 "dashboard.advanced.page.egress_guard_add_title" = "新增允許的 IP";
 "dashboard.advanced.page.egress_guard_add_placeholder" = "IPv4 或 IPv6 位址";
 "dashboard.advanced.page.egress_guard_invalid_ip" = "不是有效的 IP 位址";

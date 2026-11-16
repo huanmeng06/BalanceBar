@@ -827,7 +827,6 @@
 "dashboard.advanced.page.egress_guard_allowed" = "허용된 출구 IP";
 "dashboard.advanced.page.egress_guard_allowed_empty" = "아직 허용된 IP가 없습니다";
 "dashboard.advanced.page.egress_guard_remove" = "제거";
-"dashboard.advanced.page.egress_guard_add" = "추가";
 "dashboard.advanced.page.egress_guard_add_title" = "허용 IP 추가";
 "dashboard.advanced.page.egress_guard_add_placeholder" = "IPv4 또는 IPv6 주소";
 "dashboard.advanced.page.egress_guard_invalid_ip" = "유효한 IP 주소가 아닙니다";

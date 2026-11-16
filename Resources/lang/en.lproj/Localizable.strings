@@ -827,7 +827,6 @@
 "dashboard.advanced.page.egress_guard_allowed" = "Allowed egress IP";
 "dashboard.advanced.page.egress_guard_allowed_empty" = "No allowed IP yet";
 "dashboard.advanced.page.egress_guard_remove" = "Remove";
-"dashboard.advanced.page.egress_guard_add" = "Add";
 "dashboard.advanced.page.egress_guard_add_title" = "Add allowed IP";
 "dashboard.advanced.page.egress_guard_add_placeholder" = "IPv4 or IPv6 address";
 "dashboard.advanced.page.egress_guard_invalid_ip" = "Not a valid IP address";

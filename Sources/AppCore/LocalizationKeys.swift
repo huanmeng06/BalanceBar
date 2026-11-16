@@ -801,7 +801,6 @@
     case keyDashboardAdvancedPageEgressGuardAllowed = "dashboard.advanced.page.egress_guard_allowed"
     case keyDashboardAdvancedPageEgressGuardAllowedEmpty = "dashboard.advanced.page.egress_guard_allowed_empty"
     case keyDashboardAdvancedPageEgressGuardRemove = "dashboard.advanced.page.egress_guard_remove"
-    case keyDashboardAdvancedPageEgressGuardAdd = "dashboard.advanced.page.egress_guard_add"
     case keyDashboardAdvancedPageEgressGuardAddTitle = "dashboard.advanced.page.egress_guard_add_title"
     case keyDashboardAdvancedPageEgressGuardAddPlaceholder = "dashboard.advanced.page.egress_guard_add_placeholder"
     case keyDashboardAdvancedPageEgressGuardInvalidIp = "dashboard.advanced.page.egress_guard_invalid_ip"

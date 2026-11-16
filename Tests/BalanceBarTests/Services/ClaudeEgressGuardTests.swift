@@ -163,18 +163,35 @@ final class ClaudeEgressGuardTests: XCTestCase {
                 setAllowedIPs: { saved.append($0) },
                 detectEgressIP: { detectCompletion = $0 }))
         _ = section.makeSection()
-        XCTAssertEqual(section.listDetailForTesting, tr(.keyDashboardAdvancedPageEgressGuardAllowedEmpty))
-        XCTAssertTrue(section.removeMenu.isHidden)
+        let editor = section.listEditor!
+        XCTAssertEqual(editor.tableView.numberOfRows, 0)
+        XCTAssertEqual(editor.messageLabel.stringValue, tr(.keyDashboardAdvancedPageEgressGuardAllowedEmpty))
+        XCTAssertFalse(editor.actionsControl.isEnabled(forSegment: 1), "nothing selected, nothing to remove")
 
-        section.addForTesting("example.com")
+        // "+" adds a blank row; leaving it blank drops it again.
+        editor.performActionForTesting(segment: 0)
+        XCTAssertEqual(editor.rows, [""])
+        editor.editForTesting(row: 0, text: "   ")
+        XCTAssertEqual(editor.rows, [])
+        XCTAssertTrue(saved.isEmpty)
+
+        // An invalid address stays in the table, flagged, and is never saved.
+        editor.performActionForTesting(segment: 0)
+        editor.editForTesting(row: 0, text: "example.com")
+        XCTAssertEqual(editor.rows, ["example.com"])
         XCTAssertTrue(saved.isEmpty, "an invalid address is never saved")
-        XCTAssertEqual(section.addDetailForTesting, tr(.keyDashboardAdvancedPageEgressGuardInvalidIp))
+        XCTAssertEqual(editor.messageLabel.stringValue, tr(.keyDashboardAdvancedPageEgressGuardInvalidIp))
 
-        section.addForTesting(" 203.0.113.7 ")
+        // Fixing it in place saves it.
+        editor.editForTesting(row: 0, text: " 203.0.113.7 ")
+        XCTAssertEqual(editor.rows, ["203.0.113.7"])
         XCTAssertEqual(saved.last, ["203.0.113.7"])
-        XCTAssertEqual(section.addDetailForTesting, "")
-        XCTAssertEqual(section.listDetailForTesting, "203.0.113.7")
-        XCTAssertFalse(section.removeMenu.isHidden)
+        XCTAssertEqual(editor.messageLabel.stringValue, "")
+
+        // A second spelling of a listed address is dropped instead of duplicated.
+        editor.performActionForTesting(segment: 0)
+        editor.editForTesting(row: 1, text: "203.0.113.7")
+        XCTAssertEqual(editor.rows, ["203.0.113.7"])
 
         section.detectForTesting()
         XCTAssertEqual(section.detectDetailForTesting, tr(.keyDashboardAdvancedPageEgressGuardDetecting))
@@ -185,14 +202,23 @@ final class ClaudeEgressGuardTests: XCTestCase {
 
         section.addDetectedForTesting()
         XCTAssertEqual(saved.last, ["203.0.113.7", "198.51.100.9"])
+        XCTAssertEqual(editor.rows, ["203.0.113.7", "198.51.100.9"])
         XCTAssertTrue(section.addDetectedButton.isHidden)
         XCTAssertEqual(section.detectDetailForTesting,
                        tr(.keyDashboardAdvancedPageEgressGuardDetectedListedValue, arguments: ["198.51.100.9"]))
 
-        XCTAssertEqual(section.listDetailForTesting, "203.0.113.7, 198.51.100.9")
-        section.removeForTesting("203.0.113.7")
+        // "−" removes the selected row.
+        editor.selectForTesting(row: 0)
+        XCTAssertTrue(editor.actionsControl.isEnabled(forSegment: 1))
+        editor.performActionForTesting(segment: 1)
+        XCTAssertEqual(editor.rows, ["198.51.100.9"])
         XCTAssertEqual(saved.last, ["198.51.100.9"])
-        XCTAssertEqual(section.listDetailForTesting, "198.51.100.9")
+
+        // A change saved from the other page copy replaces the table.
+        preferences.claudeEgressGuardAllowedIPs = ["2001:db8::1"]
+        section.refresh(preferences: preferences)
+        XCTAssertEqual(editor.rows, ["2001:db8::1"])
+        XCTAssertEqual(section.allowedIPsForTesting, ["2001:db8::1"])
 
         section.detectForTesting()
         detectCompletion?(.failure(.urlError(.timedOut)))

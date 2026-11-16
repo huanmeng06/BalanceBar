@@ -827,7 +827,6 @@
 "dashboard.advanced.page.egress_guard_allowed" = "IP de salida permitida";
 "dashboard.advanced.page.egress_guard_allowed_empty" = "Aún no hay IP permitidas";
 "dashboard.advanced.page.egress_guard_remove" = "Quitar";
-"dashboard.advanced.page.egress_guard_add" = "Añadir";
 "dashboard.advanced.page.egress_guard_add_title" = "Añadir IP permitida";
 "dashboard.advanced.page.egress_guard_add_placeholder" = "Dirección IPv4 o IPv6";
 "dashboard.advanced.page.egress_guard_invalid_ip" = "No es una dirección IP válida";
