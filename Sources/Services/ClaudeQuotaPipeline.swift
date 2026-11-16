@@ -15,7 +15,7 @@ enum ClaudeQuotaFailure: Equatable {
     case transport(possibleProxy: Bool, description: String)
     case http(Int)
     case invalidResponse
-    /// The egress guard kept the request on this machine (`noTargets`, `mismatch` or
+    /// The egress guard kept the request on this machine (`noTargets`, `mismatch`, `unsupportedRegion` or
     /// `checkFailed`). A switched-off guard is `ClaudeQuotaState.officialDisabled`, not a failure.
     case egressGuard(ClaudeEgressGuardBlock)
 }

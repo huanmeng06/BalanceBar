@@ -578,10 +578,10 @@ final class OfficialQuotaClient {
 
     static let claudeEgressTraceURL = URL(string: "https://claude.ai/cdn-cgi/trace")!
 
-    /// Reads the egress IP Cloudflare sees for `claude.ai`, through the same proxy route as
-    /// `fetchClaudeUsage`. Carries no token, cookie or account data. Non-2xx and an unparsable
-    /// body are failures.
-    func probeClaudeEgressIP(completion: @escaping (Result<String, OfficialQuotaTransportError>) -> Void) {
+    /// Reads the egress IP and country Cloudflare sees for `claude.ai`, through the same proxy
+    /// route as `fetchClaudeUsage`. Carries no token, cookie or account data. Non-2xx and a body
+    /// without a valid IP are failures; a missing country is not.
+    func probeClaudeEgressIP(completion: @escaping (Result<EgressTrace, OfficialQuotaTransportError>) -> Void) {
         var request = URLRequest(url: Self.claudeEgressTraceURL)
         request.httpMethod = "GET"
         request.timeoutInterval = 6
@@ -595,11 +595,11 @@ final class OfficialQuotaClient {
                 return
             }
             guard let status = (response as? HTTPURLResponse)?.statusCode, (200..<300).contains(status),
-                  let data, let ip = CloudflareTraceParser.ip(from: data) else {
+                  let data, let trace = CloudflareTraceParser.trace(from: data) else {
                 completion(.failure(.unknown))
                 return
             }
-            completion(.success(ip))
+            completion(.success(trace))
         }.resume()
     }
 
@@ -611,7 +611,8 @@ final class OfficialQuotaClient {
     }
 
     /// Looks up the country code of an allowlisted IP on ipinfo.io, for display only. Carries no
-    /// token, cookie or account data, and never takes part in the guard's pass/block decision.
+    /// token, cookie or account data, and never takes part in the guard's pass/block decision
+    /// (the guard uses the trace's own country).
     func lookupIPCountry(_ ip: String, completion: @escaping (String?) -> Void) {
         guard let url = Self.ipCountryURL(for: ip) else {
             completion(nil)

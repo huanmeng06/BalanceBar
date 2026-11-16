@@ -820,6 +820,7 @@
 "claude.refresh.egress_guard_mismatch" = "L’IP di uscita non è nell’elenco IP consentiti; le richieste ufficiali di Claude sono in pausa.";
 "claude.refresh.egress_guard_check_failed" = "Impossibile verificare l’IP di uscita; le richieste ufficiali di Claude sono in pausa.";
 "claude.refresh.egress_guard_no_targets" = "L’elenco IP consentiti è vuoto; le richieste ufficiali di Claude sono in pausa.";
+"claude.refresh.egress_guard_unsupported_region" = "L’area di uscita non è supportata da Anthropic o non è identificabile; le richieste ufficiali di Claude sono in pausa.";
 "claude.refresh.egress_guard_disabled" = "Le richieste ufficiali di Claude sono disattivate. Attiva l’elenco IP consentiti in Impostazioni › Avanzate.";
 "claude.timeline.failure.egress_guard" = "Bloccato dall’elenco IP consentiti";
 "quota.failure.open_egress_guard_settings" = "Configura IP consentiti";
@@ -838,7 +839,7 @@
 "dashboard.advanced.page.egress_guard_detected_unlisted" = "Uscita attuale: %1$@ — non consentita";
 "dashboard.advanced.page.egress_guard_detect_failed" = "Impossibile rilevare l’uscita attuale";
 "dashboard.advanced.page.egress_guard_add_detected" = "Aggiungi";
-"dashboard.advanced.page.egress_guard_footnote" = "Il controllo contatta claude.ai, le richieste di quota vanno a api.anthropic.com. Instrada entrambi con la stessa regola proxy, altrimenti il controllo potrebbe non corrispondere all’uscita reale. Paese/area viene cercato su ipinfo.io una sola volta per IP. La disponibilità segue la policy sulle aree supportate di Anthropic al 2026-11-12 ed è solo indicativa.";
+"dashboard.advanced.page.egress_guard_footnote" = "Il controllo contatta claude.ai, le richieste di quota vanno a api.anthropic.com. Instrada entrambi con la stessa regola proxy, altrimenti il controllo potrebbe non corrispondere all’uscita reale. Paese/area viene cercato su ipinfo.io una sola volta per IP. La disponibilità segue la policy sulle aree supportate di Anthropic al 2026-11-12. Se Cloudflare colloca l’uscita fuori da queste aree, anche le richieste ufficiali vengono messe in pausa.";
 "dashboard.advanced.page.egress_guard_column_ip" = "Indirizzo IP";
 "dashboard.advanced.page.egress_guard_column_region" = "Paese/area";
 "dashboard.advanced.page.egress_guard_country_loading" = "Ricerca…";

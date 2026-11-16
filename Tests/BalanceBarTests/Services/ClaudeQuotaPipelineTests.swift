@@ -348,7 +348,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
     }
 
     func testEgressGuardSwitchedOffSendsNothingAndShowsNoFailure() throws {
-        let fixture = EgressGuardFixture(.disabled, reply: .success("203.0.113.7"))
+        let fixture = EgressGuardFixture(.disabled, reply: .success(EgressTrace(ip: "203.0.113.7", country: "US")))
         let pipeline = makePipeline(egressGuard: fixture.makeGuard())
         pipeline.requestFetch(reason: .initial)
         let state = try XCTUnwrap(waitForState(pipeline) { $0.officialDisabled })
@@ -361,7 +361,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
     }
 
     func testEgressGuardMismatchKeepsTheRequestLocal() throws {
-        let fixture = EgressGuardFixture(.init(enabled: true, allowedIPs: ["203.0.113.7"]), reply: .success("198.51.100.9"))
+        let fixture = EgressGuardFixture(.init(enabled: true, allowedIPs: ["203.0.113.7"]), reply: .success(EgressTrace(ip: "198.51.100.9", country: "US")))
         let pipeline = makePipeline(egressGuard: fixture.makeGuard())
         pipeline.requestFetch(reason: .initial)
         let state = try XCTUnwrap(waitForState(pipeline) { $0.failure == .egressGuard(.mismatch) })
@@ -372,8 +372,18 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         XCTAssertFalse(diagnosticLines.all.contains { $0.contains("198.51.100.9") }, "the egress IP never enters the log")
     }
 
+    func testEgressGuardUnsupportedRegionKeepsTheRequestLocal() throws {
+        let fixture = EgressGuardFixture(.init(enabled: true, allowedIPs: ["203.0.113.7"]),
+                                         reply: .success(EgressTrace(ip: "203.0.113.7", country: "CN")))
+        let pipeline = makePipeline(egressGuard: fixture.makeGuard())
+        pipeline.requestFetch(reason: .initial)
+        XCTAssertNotNil(waitForState(pipeline) { $0.failure == .egressGuard(.unsupportedRegion) })
+        XCTAssertEqual(PipelineStubProtocol.requestCount, 0, "an allowlisted IP in an unsupported region still sends nothing")
+        XCTAssertTrue(diagnosticLines.all.contains { $0.contains("egress_guard; block=unsupported_region") })
+    }
+
     func testEgressGuardCheckFailureAndMissingTargetsBlock() throws {
-        let fixture = EgressGuardFixture(.init(enabled: true, allowedIPs: []), reply: .success("203.0.113.7"))
+        let fixture = EgressGuardFixture(.init(enabled: true, allowedIPs: []), reply: .success(EgressTrace(ip: "203.0.113.7", country: "US")))
         let pipeline = makePipeline(egressGuard: fixture.makeGuard())
         pipeline.requestFetch(reason: .initial)
         XCTAssertNotNil(waitForState(pipeline) { $0.failure == .egressGuard(.noTargets) })
@@ -387,7 +397,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
     }
 
     func testEgressGuardMatchSendsTheUsageRequest() throws {
-        let fixture = EgressGuardFixture(.init(enabled: true, allowedIPs: ["198.51.100.1", "203.0.113.7"]), reply: .success("203.0.113.7"))
+        let fixture = EgressGuardFixture(.init(enabled: true, allowedIPs: ["198.51.100.1", "203.0.113.7"]), reply: .success(EgressTrace(ip: "203.0.113.7", country: "US")))
         let pipeline = makePipeline(egressGuard: fixture.makeGuard())
         pipeline.requestFetch(reason: .initial)
         let state = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
@@ -397,7 +407,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
     }
 
     func testEgressGuardSettingsChangeRetriesAtOnceAfterBlocks() throws {
-        let fixture = EgressGuardFixture(.disabled, reply: .success("198.51.100.9"))
+        let fixture = EgressGuardFixture(.disabled, reply: .success(EgressTrace(ip: "198.51.100.9", country: "US")))
         let pipeline = makePipeline(configuration: claudeV1TestConfiguration, egressGuard: fixture.makeGuard())
         pipeline.requestFetch(reason: .initial)
         XCTAssertNotNil(waitForState(pipeline) { $0.officialDisabled })

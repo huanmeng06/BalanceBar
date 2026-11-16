@@ -21,6 +21,9 @@ enum ClaudeEgressGuardBlock: String, Equatable {
     case mismatch
     /// The egress IP could not be determined (network error, non-2xx, unparsable trace).
     case checkFailed = "check_failed"
+    /// The egress IP is allowlisted, but Cloudflare places it outside Anthropic's supported regions,
+    /// or names no country at all.
+    case unsupportedRegion = "unsupported_region"
 }
 
 enum ClaudeEgressGuardDecision: Equatable {
@@ -60,17 +63,34 @@ enum EgressIPAddress {
     }
 }
 
+/// What one trace probe saw: the egress IP and the country Cloudflare places it in.
+struct EgressTrace: Equatable {
+    let ip: String
+    /// ISO 3166 code from the trace's `loc`, or nil when Cloudflare names no country (missing,
+    /// `XX`, or a pseudo-code such as `T1` for Tor).
+    let country: String?
+}
+
 /// Parses Cloudflare's `/cdn-cgi/trace` plain-text body (`key=value` lines).
 enum CloudflareTraceParser {
-    static func ip(from data: Data) -> String? {
+    /// Nil unless the body has a valid `ip=` line; `loc` is optional.
+    static func trace(from data: Data) -> EgressTrace? {
         guard let text = String(data: data, encoding: .utf8) else { return nil }
+        var ip: String?
+        var country: String?
         for line in text.split(whereSeparator: \.isNewline) {
-            guard line.hasPrefix("ip=") else { continue }
-            let value = String(line.dropFirst(3)).trimmingCharacters(in: .whitespaces)
-            return EgressIPAddress.isValid(value) ? value : nil
+            if ip == nil, line.hasPrefix("ip=") {
+                let value = String(line.dropFirst(3)).trimmingCharacters(in: .whitespaces)
+                guard EgressIPAddress.isValid(value) else { return nil }
+                ip = value
+            } else if country == nil, line.hasPrefix("loc=") {
+                country = IPCountryCode.parse(Data(line.dropFirst(4).utf8)).flatMap { $0 == "XX" ? nil : $0 }
+            }
         }
-        return nil
+        return ip.map { EgressTrace(ip: $0, country: country) }
     }
+
+    static func ip(from data: Data) -> String? { trace(from: data)?.ip }
 }
 
 /// ISO 3166 country codes from ipinfo.io, and how the allowlist table shows them.
@@ -97,8 +117,8 @@ enum IPCountryCode {
 }
 
 /// Anthropic's Supported Regions Policy (anthropic.com/supported-countries), as ISO 3166 codes.
-/// A snapshot shipped with the app, for display only: it never decides whether a request is sent.
-/// Ukraine is listed with regional exceptions that a country lookup cannot see, so it counts as
+/// A snapshot shipped with the app. The allowlist table shows it per IP (from ipinfo.io), and the
+/// guard blocks an egress whose trace `loc` is not in it. Ukraine is listed with regional exceptions that a country lookup cannot see, so it counts as
 /// supported.
 enum AnthropicSupportedRegions {
     /// The policy's effective date this snapshot was taken from.
@@ -191,7 +211,7 @@ final class EgressIPCountryCache {
 /// each request; nothing is cached across requests. Concurrent evaluations share one probe.
 /// Diagnostics name only the outcome, never an IP address.
 final class ClaudeEgressGuard {
-    typealias ProbeResult = Result<String, OfficialQuotaTransportError>
+    typealias ProbeResult = Result<EgressTrace, OfficialQuotaTransportError>
     typealias Probe = (@escaping (ProbeResult) -> Void) -> Void
 
     let settings: () -> ClaudeEgressGuardSettings
@@ -220,12 +240,20 @@ final class ClaudeEgressGuard {
         guard !allowed.isEmpty else { return finish(.blocked(.noTargets), completion) }
         currentEgressIP { [self] result in
             switch result {
-            case let .success(ip):
+            case let .success(trace):
                 // Re-read: the list may have changed while the probe ran.
                 let latest = settings()
-                let decision: ClaudeEgressGuardDecision = latest.enabled
-                    ? (EgressIPAddress.contains(latest.allowedIPs, ip) ? .allowed : .blocked(.mismatch))
-                    : .blocked(.disabled)
+                let decision: ClaudeEgressGuardDecision
+                if !latest.enabled {
+                    decision = .blocked(.disabled)
+                } else if !EgressIPAddress.contains(latest.allowedIPs, trace.ip) {
+                    decision = .blocked(.mismatch)
+                } else if let country = trace.country, AnthropicSupportedRegions.isSupported(country) {
+                    decision = .allowed
+                } else {
+                    // An unknown region is treated like an unsupported one.
+                    decision = .blocked(.unsupportedRegion)
+                }
                 finish(decision, completion)
             case .failure:
                 finish(.blocked(.checkFailed), completion)
@@ -233,7 +261,7 @@ final class ClaudeEgressGuard {
         }
     }
 
-    /// Probes the current egress IP (shared with concurrent callers); used by the settings
+    /// Probes the current egress IP and region (shared with concurrent callers); used by the settings
     /// "detect" button as well. Calls `completion` exactly once, on any queue.
     func currentEgressIP(completion: @escaping (ProbeResult) -> Void) {
         let starts = lock.withLock { () -> Bool in

@@ -820,6 +820,7 @@
 "claude.refresh.egress_guard_mismatch" = "La IP de salida no está en la lista de IP permitidas; se pausaron las solicitudes oficiales de Claude.";
 "claude.refresh.egress_guard_check_failed" = "No se pudo confirmar la IP de salida; se pausaron las solicitudes oficiales de Claude.";
 "claude.refresh.egress_guard_no_targets" = "La lista de IP permitidas está vacía; se pausaron las solicitudes oficiales de Claude.";
+"claude.refresh.egress_guard_unsupported_region" = "La región de salida no está entre las que Anthropic ofrece Claude o no se pudo identificar; las solicitudes oficiales de Claude están en pausa.";
 "claude.refresh.egress_guard_disabled" = "Las solicitudes oficiales de Claude están desactivadas. Activa la lista de IP permitidas en Ajustes › Avanzado.";
 "claude.timeline.failure.egress_guard" = "Bloqueado por la lista de IP permitidas";
 "quota.failure.open_egress_guard_settings" = "Configurar IP permitidas";
@@ -838,7 +839,7 @@
 "dashboard.advanced.page.egress_guard_detected_unlisted" = "Salida actual: %1$@ — no permitida";
 "dashboard.advanced.page.egress_guard_detect_failed" = "No se pudo detectar la salida actual";
 "dashboard.advanced.page.egress_guard_add_detected" = "Añadir";
-"dashboard.advanced.page.egress_guard_footnote" = "La comprobación visita claude.ai y las solicitudes de cuota van a api.anthropic.com. Usa la misma regla de proxy para ambos o la comprobación podría no coincidir con la salida real. El país o región se consulta en ipinfo.io una sola vez por IP. La disponibilidad sigue la política de regiones admitidas de Anthropic a 2026-11-12 y es solo orientativa.";
+"dashboard.advanced.page.egress_guard_footnote" = "La comprobación visita claude.ai y las solicitudes de cuota van a api.anthropic.com. Usa la misma regla de proxy para ambos o la comprobación podría no coincidir con la salida real. El país o región se consulta en ipinfo.io una sola vez por IP. La disponibilidad sigue la política de regiones admitidas de Anthropic a 2026-11-12. Si Cloudflare sitúa la salida fuera de esas regiones, las solicitudes oficiales también se pausan.";
 "dashboard.advanced.page.egress_guard_column_ip" = "Dirección IP";
 "dashboard.advanced.page.egress_guard_column_region" = "País o región";
 "dashboard.advanced.page.egress_guard_country_loading" = "Consultando…";

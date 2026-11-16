@@ -820,6 +820,7 @@
 "claude.refresh.egress_guard_mismatch" = "Die Ausgangs-IP steht nicht auf der Zulassungsliste; offizielle Claude-Anfragen sind pausiert.";
 "claude.refresh.egress_guard_check_failed" = "Die Ausgangs-IP konnte nicht bestätigt werden; offizielle Claude-Anfragen sind pausiert.";
 "claude.refresh.egress_guard_no_targets" = "Die IP-Zulassungsliste ist leer; offizielle Claude-Anfragen sind pausiert.";
+"claude.refresh.egress_guard_unsupported_region" = "Die Ausgangsregion wird von Anthropic nicht unterstützt oder ist unbekannt; offizielle Claude-Anfragen sind pausiert.";
 "claude.refresh.egress_guard_disabled" = "Offizielle Claude-Anfragen sind aus. Aktiviere die IP-Zulassungsliste unter Einstellungen › Erweitert.";
 "claude.timeline.failure.egress_guard" = "Durch IP-Zulassungsliste blockiert";
 "quota.failure.open_egress_guard_settings" = "IP-Zulassungsliste einrichten";
@@ -838,7 +839,7 @@
 "dashboard.advanced.page.egress_guard_detected_unlisted" = "Aktueller Ausgang: %1$@ – nicht zugelassen";
 "dashboard.advanced.page.egress_guard_detect_failed" = "Aktueller Ausgang konnte nicht ermittelt werden";
 "dashboard.advanced.page.egress_guard_add_detected" = "Hinzufügen";
-"dashboard.advanced.page.egress_guard_footnote" = "Die Prüfung ruft claude.ai auf, Kontingentanfragen gehen an api.anthropic.com. Leite beide über dieselbe Proxy-Regel, sonst kann die Prüfung vom echten Ausgang abweichen. Land/Region wird einmal pro IP bei ipinfo.io abgefragt. Die Verfügbarkeit folgt Anthropics Richtlinie zu unterstützten Regionen (Stand 2026-11-12) und dient nur zur Orientierung.";
+"dashboard.advanced.page.egress_guard_footnote" = "Die Prüfung ruft claude.ai auf, Kontingentanfragen gehen an api.anthropic.com. Leite beide über dieselbe Proxy-Regel, sonst kann die Prüfung vom echten Ausgang abweichen. Land/Region wird einmal pro IP bei ipinfo.io abgefragt. Die Verfügbarkeit folgt Anthropics Richtlinie zu unterstützten Regionen (Stand 2026-11-12). Liegt der Ausgang laut Cloudflare außerhalb dieser Regionen, werden offizielle Anfragen ebenfalls pausiert.";
 "dashboard.advanced.page.egress_guard_column_ip" = "IP-Adresse";
 "dashboard.advanced.page.egress_guard_column_region" = "Land/Region";
 "dashboard.advanced.page.egress_guard_country_loading" = "Wird abgefragt …";

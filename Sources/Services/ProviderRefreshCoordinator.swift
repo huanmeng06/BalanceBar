@@ -1527,6 +1527,8 @@ final class ProviderRefreshCoordinator {
             return tr(.keyClaudeRefreshEgressGuardCheckFailed)
         case .egressGuard(.noTargets):
             return tr(.keyClaudeRefreshEgressGuardNoTargets)
+        case .egressGuard(.unsupportedRegion):
+            return tr(.keyClaudeRefreshEgressGuardUnsupportedRegion)
         case .egressGuard(.disabled):
             return tr(.keyClaudeRefreshEgressGuardDisabled)
         }

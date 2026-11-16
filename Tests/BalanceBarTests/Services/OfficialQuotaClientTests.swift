@@ -676,9 +676,9 @@ final class OfficialQuotaClientTests: XCTestCase {
 
     // MARK: Egress probe (Issue #686)
 
-    private func probe(_ client: OfficialQuotaClient) -> Result<String, OfficialQuotaTransportError>? {
+    private func probe(_ client: OfficialQuotaClient) -> Result<EgressTrace, OfficialQuotaTransportError>? {
         let done = expectation(description: "egress probe")
-        var result: Result<String, OfficialQuotaTransportError>?
+        var result: Result<EgressTrace, OfficialQuotaTransportError>?
         client.probeClaudeEgressIP { result = $0; done.fulfill() }
         wait(for: [done], timeout: 3)
         return result
@@ -689,7 +689,9 @@ final class OfficialQuotaClientTests: XCTestCase {
             StubResult(data: Data("fl=1\nh=claude.ai\nip=203.0.113.7\nloc=JP\n".utf8))
         }
         let client = makeClient(claudeToken: "fixture-claude-value")
-        guard case .success("203.0.113.7")? = probe(client) else { return XCTFail("expected the trace IP") }
+        guard case .success(EgressTrace(ip: "203.0.113.7", country: "JP"))? = probe(client) else {
+            return XCTFail("expected the trace IP and country")
+        }
         let request = try XCTUnwrap(StubURLProtocol.lastRequest)
         XCTAssertEqual(request.url, URL(string: "https://claude.ai/cdn-cgi/trace"))
         XCTAssertEqual(request.httpMethod, "GET")

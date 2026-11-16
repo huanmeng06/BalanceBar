@@ -794,6 +794,7 @@
     case keyClaudeRefreshEgressGuardMismatch = "claude.refresh.egress_guard_mismatch"
     case keyClaudeRefreshEgressGuardCheckFailed = "claude.refresh.egress_guard_check_failed"
     case keyClaudeRefreshEgressGuardNoTargets = "claude.refresh.egress_guard_no_targets"
+    case keyClaudeRefreshEgressGuardUnsupportedRegion = "claude.refresh.egress_guard_unsupported_region"
     case keyClaudeRefreshEgressGuardDisabled = "claude.refresh.egress_guard_disabled"
     case keyClaudeTimelineFailureEgressGuard = "claude.timeline.failure.egress_guard"
     case keyQuotaFailureOpenEgressGuardSettings = "quota.failure.open_egress_guard_settings"

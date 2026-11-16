@@ -96,9 +96,11 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
                        tr(.keyClaudeRefreshEgressGuardCheckFailed))
         XCTAssertEqual(ProviderRefreshCoordinator.claudeFailureReason(.egressGuard(.noTargets)),
                        tr(.keyClaudeRefreshEgressGuardNoTargets))
-        let reasons = [ClaudeEgressGuardBlock.mismatch, .checkFailed, .noTargets]
+        XCTAssertEqual(ProviderRefreshCoordinator.claudeFailureReason(.egressGuard(.unsupportedRegion)),
+                       tr(.keyClaudeRefreshEgressGuardUnsupportedRegion))
+        let reasons = [ClaudeEgressGuardBlock.mismatch, .checkFailed, .noTargets, .unsupportedRegion]
             .map { ProviderRefreshCoordinator.claudeFailureReason(.egressGuard($0)) }
-        XCTAssertEqual(Set(reasons).count, 3, "each block has its own reason, distinct from network errors")
+        XCTAssertEqual(Set(reasons).count, 4, "each block has its own reason, distinct from network errors")
         XCTAssertFalse(reasons.contains(ProviderRefreshCoordinator.claudeFailureReason(
             .transport(possibleProxy: true, description: "x"))))
     }

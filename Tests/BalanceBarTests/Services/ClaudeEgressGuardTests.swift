@@ -39,6 +39,17 @@ final class ClaudeEgressGuardTests: XCTestCase {
         XCTAssertEqual(CloudflareTraceParser.ip(from: Data("h=claude.ai\r\nip=2001:db8::5\r\n".utf8)), "2001:db8::5")
     }
 
+    func testTraceParserReadsTheCountry() {
+        let trace = CloudflareTraceParser.trace(from: Data("h=claude.ai\nip=198.51.100.23\nloc=jp\n".utf8))
+        XCTAssertEqual(trace, EgressTrace(ip: "198.51.100.23", country: "JP"))
+        for loc in ["", "loc=XX\n", "loc=T1\n", "loc=USA\n"] {
+            let body = "ip=198.51.100.23\n" + loc
+            XCTAssertEqual(CloudflareTraceParser.trace(from: Data(body.utf8))?.country, nil, loc)
+            XCTAssertEqual(CloudflareTraceParser.trace(from: Data(body.utf8))?.ip, "198.51.100.23",
+                           "a missing country never hides the IP")
+        }
+    }
+
     func testTraceParserRejectsMissingOrInvalidIP() {
         XCTAssertNil(CloudflareTraceParser.ip(from: Data("h=claude.ai\nloc=JP\n".utf8)))
         XCTAssertNil(CloudflareTraceParser.ip(from: Data("ip=not-an-ip\n".utf8)))
@@ -74,27 +85,42 @@ final class ClaudeEgressGuardTests: XCTestCase {
 
     func testDisabledBlocksWithoutProbing() {
         let box = Box(.init(enabled: false, allowedIPs: ["203.0.113.7"]))
-        XCTAssertEqual(decide(makeGuard(box, reply: .success("203.0.113.7"))), .blocked(.disabled))
+        XCTAssertEqual(decide(makeGuard(box, reply: .success(EgressTrace(ip: "203.0.113.7", country: "US")))), .blocked(.disabled))
         XCTAssertEqual(box.probes, 0)
     }
 
     func testEnabledWithoutTargetsBlocksWithoutProbing() {
         let box = Box(.init(enabled: true, allowedIPs: ["not-an-ip"]))
-        XCTAssertEqual(decide(makeGuard(box, reply: .success("203.0.113.7"))), .blocked(.noTargets))
+        XCTAssertEqual(decide(makeGuard(box, reply: .success(EgressTrace(ip: "203.0.113.7", country: "US")))), .blocked(.noTargets))
         XCTAssertEqual(box.probes, 0)
     }
 
     func testMatchingAnyAllowedIPPasses() {
         let box = Box(.init(enabled: true, allowedIPs: ["198.51.100.1", "2001:db8::1", "203.0.113.7"]))
-        XCTAssertEqual(decide(makeGuard(box, reply: .success("203.0.113.7"))), .allowed)
-        XCTAssertEqual(decide(makeGuard(box, reply: .success("2001:0db8::0001"))), .allowed)
+        XCTAssertEqual(decide(makeGuard(box, reply: .success(EgressTrace(ip: "203.0.113.7", country: "US")))), .allowed)
+        XCTAssertEqual(decide(makeGuard(box, reply: .success(EgressTrace(ip: "2001:0db8::0001", country: "US")))), .allowed)
     }
 
     func testMismatchAndProbeFailureBlock() {
         let box = Box(.init(enabled: true, allowedIPs: ["203.0.113.7"]))
-        XCTAssertEqual(decide(makeGuard(box, reply: .success("198.51.100.9"))), .blocked(.mismatch))
+        XCTAssertEqual(decide(makeGuard(box, reply: .success(EgressTrace(ip: "198.51.100.9", country: "US")))), .blocked(.mismatch))
         XCTAssertEqual(decide(makeGuard(box, reply: .failure(.urlError(.timedOut)))), .blocked(.checkFailed))
         XCTAssertEqual(decide(makeGuard(box, reply: .failure(.unknown))), .blocked(.checkFailed))
+    }
+
+    func testAllowlistedIPOutsideSupportedRegionsBlocks() {
+        let box = Box(.init(enabled: true, allowedIPs: ["203.0.113.7"]))
+        XCTAssertEqual(decide(makeGuard(box, reply: .success(EgressTrace(ip: "203.0.113.7", country: "HK")))),
+                       .blocked(.unsupportedRegion))
+        XCTAssertEqual(decide(makeGuard(box, reply: .success(EgressTrace(ip: "203.0.113.7", country: nil)))),
+                       .blocked(.unsupportedRegion), "an unknown region is blocked too")
+        XCTAssertEqual(decide(makeGuard(box, reply: .success(EgressTrace(ip: "203.0.113.7", country: "JP")))),
+                       .allowed)
+        // The IP check comes first: an unlisted IP is a mismatch whatever its region.
+        XCTAssertEqual(decide(makeGuard(box, reply: .success(EgressTrace(ip: "198.51.100.9", country: "CN")))),
+                       .blocked(.mismatch))
+        XCTAssertTrue(box.diagnostics.contains("egress guard; result=unsupported_region"))
+        XCTAssertFalse(box.diagnostics.joined().contains("203.0.113.7"), "diagnostics never name the IP")
     }
 
     func testSettingsChangedDuringProbeAreHonored() {
@@ -103,7 +129,7 @@ final class ClaudeEgressGuardTests: XCTestCase {
         var decision: ClaudeEgressGuardDecision?
         egressGuard.evaluate { decision = $0 }
         box.lock.withLock { box.settings.enabled = false }
-        box.pending.removeFirst()(.success("203.0.113.7"))
+        box.pending.removeFirst()(.success(EgressTrace(ip: "203.0.113.7", country: "US")))
         XCTAssertEqual(decision, .blocked(.disabled), "switching the guard off mid-check never lets the request out")
     }
 
@@ -114,9 +140,9 @@ final class ClaudeEgressGuardTests: XCTestCase {
         egressGuard.evaluate { decisions.append($0) }
         egressGuard.evaluate { decisions.append($0) }
         var detected: String?
-        egressGuard.currentEgressIP { detected = try? $0.get() }
+        egressGuard.currentEgressIP { detected = try? $0.get().ip }
         XCTAssertEqual(box.probes, 1)
-        box.pending.removeFirst()(.success("203.0.113.7"))
+        box.pending.removeFirst()(.success(EgressTrace(ip: "203.0.113.7", country: "US")))
         XCTAssertEqual(decisions, [.allowed, .allowed])
         XCTAssertEqual(detected, "203.0.113.7")
         // A later evaluation probes again: results are never cached across requests.
@@ -126,8 +152,8 @@ final class ClaudeEgressGuardTests: XCTestCase {
 
     func testDiagnosticsNeverContainTheAddress() {
         let box = Box(.init(enabled: true, allowedIPs: ["203.0.113.7"]))
-        _ = decide(makeGuard(box, reply: .success("198.51.100.9")))
-        _ = decide(makeGuard(box, reply: .success("203.0.113.7")))
+        _ = decide(makeGuard(box, reply: .success(EgressTrace(ip: "198.51.100.9", country: "US"))))
+        _ = decide(makeGuard(box, reply: .success(EgressTrace(ip: "203.0.113.7", country: "US"))))
         XCTAssertEqual(box.diagnostics, ["egress guard; result=mismatch", "egress guard; result=passed"])
         XCTAssertFalse(box.diagnostics.joined().contains("198.51.100.9"))
         XCTAssertFalse(box.diagnostics.joined().contains("203.0.113.7"))

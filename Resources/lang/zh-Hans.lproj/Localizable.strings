@@ -820,6 +820,7 @@
 "claude.refresh.egress_guard_mismatch" = "出口 IP 不在白名单中，已暂停 Claude 官方请求。";
 "claude.refresh.egress_guard_check_failed" = "无法确认出口 IP，已暂停 Claude 官方请求。";
 "claude.refresh.egress_guard_no_targets" = "IP 白名单为空，已暂停 Claude 官方请求。";
+"claude.refresh.egress_guard_unsupported_region" = "出口地区不在 Claude 可用地区内或无法识别，已暂停 Claude 官方请求。";
 "claude.refresh.egress_guard_disabled" = "Claude 官方请求已关闭。可在 设置 › 高级 中开启 IP 白名单。";
 "claude.timeline.failure.egress_guard" = "被 IP 白名单拦截";
 "quota.failure.open_egress_guard_settings" = "设置 IP 白名单";
@@ -838,7 +839,7 @@
 "dashboard.advanced.page.egress_guard_detected_unlisted" = "当前出口：%1$@，不在白名单中";
 "dashboard.advanced.page.egress_guard_detect_failed" = "无法检测当前出口";
 "dashboard.advanced.page.egress_guard_add_detected" = "添加";
-"dashboard.advanced.page.egress_guard_footnote" = "检测访问的是 claude.ai，额度请求访问的是 api.anthropic.com。请让两者走同一条代理规则，否则检测结果可能与实际出口不一致。国家/地区由 ipinfo.io 查询，每个 IP 只查一次。可用性依据 Anthropic 支持地区政策（截至 2026-11-12），仅供参考。";
+"dashboard.advanced.page.egress_guard_footnote" = "检测访问的是 claude.ai，额度请求访问的是 api.anthropic.com。请让两者走同一条代理规则，否则检测结果可能与实际出口不一致。国家/地区由 ipinfo.io 查询，每个 IP 只查一次。可用性依据 Anthropic 支持地区政策（截至 2026-11-12）；Cloudflare 判定的出口地区不在其中时，同样会暂停官方请求。";
 "dashboard.advanced.page.egress_guard_column_ip" = "IP 地址";
 "dashboard.advanced.page.egress_guard_column_region" = "国家/地区";
 "dashboard.advanced.page.egress_guard_country_loading" = "查询中…";

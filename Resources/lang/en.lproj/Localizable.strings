@@ -820,6 +820,7 @@
 "claude.refresh.egress_guard_mismatch" = "The egress IP isn't on the allowlist, so Claude official requests are paused.";
 "claude.refresh.egress_guard_check_failed" = "Couldn't confirm the egress IP, so Claude official requests are paused.";
 "claude.refresh.egress_guard_no_targets" = "The IP allowlist is empty, so Claude official requests are paused.";
+"claude.refresh.egress_guard_unsupported_region" = "The egress region isn't one where Anthropic offers Claude, or couldn't be identified, so Claude official requests are paused.";
 "claude.refresh.egress_guard_disabled" = "Claude official requests are off. Turn on the IP allowlist in Settings › Advanced.";
 "claude.timeline.failure.egress_guard" = "Blocked by IP allowlist";
 "quota.failure.open_egress_guard_settings" = "Set Up IP Allowlist";
@@ -838,7 +839,7 @@
 "dashboard.advanced.page.egress_guard_detected_unlisted" = "Current egress: %1$@ — not on the allowlist";
 "dashboard.advanced.page.egress_guard_detect_failed" = "Couldn’t detect the current egress";
 "dashboard.advanced.page.egress_guard_add_detected" = "Add";
-"dashboard.advanced.page.egress_guard_footnote" = "The check visits claude.ai; quota requests go to api.anthropic.com. Route both through the same proxy rule, or the check may not match the real egress. Country/region comes from ipinfo.io and is looked up once per IP. Availability follows Anthropic’s Supported Regions Policy as of 2026-11-12 and is for reference only.";
+"dashboard.advanced.page.egress_guard_footnote" = "The check visits claude.ai; quota requests go to api.anthropic.com. Route both through the same proxy rule, or the check may not match the real egress. Country/region comes from ipinfo.io and is looked up once per IP. Availability follows Anthropic’s Supported Regions Policy as of 2026-11-12. Requests are also paused when Cloudflare places the egress outside those regions.";
 "dashboard.advanced.page.egress_guard_column_ip" = "IP Address";
 "dashboard.advanced.page.egress_guard_column_region" = "Country/Region";
 "dashboard.advanced.page.egress_guard_country_loading" = "Looking up…";

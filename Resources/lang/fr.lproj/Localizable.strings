@@ -820,6 +820,7 @@
 "claude.refresh.egress_guard_mismatch" = "L’IP de sortie ne figure pas dans la liste d’IP autorisées ; les requêtes officielles Claude sont suspendues.";
 "claude.refresh.egress_guard_check_failed" = "Impossible de confirmer l’IP de sortie ; les requêtes officielles Claude sont suspendues.";
 "claude.refresh.egress_guard_no_targets" = "La liste d’IP autorisées est vide ; les requêtes officielles Claude sont suspendues.";
+"claude.refresh.egress_guard_unsupported_region" = "La région de sortie n’est pas prise en charge par Anthropic ou n’a pas pu être identifiée ; les requêtes officielles Claude sont en pause.";
 "claude.refresh.egress_guard_disabled" = "Les requêtes officielles Claude sont désactivées. Activez la liste d’IP autorisées dans Réglages › Avancé.";
 "claude.timeline.failure.egress_guard" = "Bloqué par la liste d’IP autorisées";
 "quota.failure.open_egress_guard_settings" = "Configurer les IP autorisées";
@@ -838,7 +839,7 @@
 "dashboard.advanced.page.egress_guard_detected_unlisted" = "Sortie actuelle : %1$@ — non autorisée";
 "dashboard.advanced.page.egress_guard_detect_failed" = "Impossible de détecter la sortie actuelle";
 "dashboard.advanced.page.egress_guard_add_detected" = "Ajouter";
-"dashboard.advanced.page.egress_guard_footnote" = "La vérification contacte claude.ai, les requêtes de quota vont à api.anthropic.com. Faites passer les deux par la même règle de proxy, sinon la vérification peut différer de la sortie réelle. Le pays/région est obtenu une seule fois par IP via ipinfo.io. La disponibilité suit la politique des régions prises en charge d’Anthropic au 2026-11-12, à titre indicatif.";
+"dashboard.advanced.page.egress_guard_footnote" = "La vérification contacte claude.ai, les requêtes de quota vont à api.anthropic.com. Faites passer les deux par la même règle de proxy, sinon la vérification peut différer de la sortie réelle. Le pays/région est obtenu une seule fois par IP via ipinfo.io. La disponibilité suit la politique des régions prises en charge d’Anthropic au 2026-11-12. Si Cloudflare situe la sortie hors de ces régions, les requêtes officielles sont aussi mises en pause.";
 "dashboard.advanced.page.egress_guard_column_ip" = "Adresse IP";
 "dashboard.advanced.page.egress_guard_column_region" = "Pays/région";
 "dashboard.advanced.page.egress_guard_country_loading" = "Recherche…";

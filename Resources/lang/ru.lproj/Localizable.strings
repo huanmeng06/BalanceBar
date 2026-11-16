@@ -820,6 +820,7 @@
 "claude.refresh.egress_guard_mismatch" = "Исходящий IP не входит в белый список, официальные запросы Claude приостановлены.";
 "claude.refresh.egress_guard_check_failed" = "Не удалось проверить исходящий IP, официальные запросы Claude приостановлены.";
 "claude.refresh.egress_guard_no_targets" = "Белый список IP пуст, официальные запросы Claude приостановлены.";
+"claude.refresh.egress_guard_unsupported_region" = "Регион выхода не поддерживается Anthropic или не определён, поэтому официальные запросы Claude приостановлены.";
 "claude.refresh.egress_guard_disabled" = "Официальные запросы Claude выключены. Включите белый список IP в разделе Настройки › Дополнительно.";
 "claude.timeline.failure.egress_guard" = "Заблокировано белым списком IP";
 "quota.failure.open_egress_guard_settings" = "Настроить белый список IP";
@@ -838,7 +839,7 @@
 "dashboard.advanced.page.egress_guard_detected_unlisted" = "Текущий выход: %1$@ — не в белом списке";
 "dashboard.advanced.page.egress_guard_detect_failed" = "Не удалось определить текущий выход";
 "dashboard.advanced.page.egress_guard_add_detected" = "Добавить";
-"dashboard.advanced.page.egress_guard_footnote" = "Проверка обращается к claude.ai, а запросы квоты — к api.anthropic.com. Направьте оба через одно правило прокси, иначе результат проверки может не совпасть с реальным выходом. Страна/регион запрашивается у ipinfo.io один раз для каждого IP. Доступность указана по политике поддерживаемых регионов Anthropic на 2026-11-12 и носит справочный характер.";
+"dashboard.advanced.page.egress_guard_footnote" = "Проверка обращается к claude.ai, а запросы квоты — к api.anthropic.com. Направьте оба через одно правило прокси, иначе результат проверки может не совпасть с реальным выходом. Страна/регион запрашивается у ipinfo.io один раз для каждого IP. Доступность указана по политике поддерживаемых регионов Anthropic на 2026-11-12. Если Cloudflare определяет выход вне этих регионов, официальные запросы тоже приостанавливаются.";
 "dashboard.advanced.page.egress_guard_column_ip" = "IP-адрес";
 "dashboard.advanced.page.egress_guard_column_region" = "Страна/регион";
 "dashboard.advanced.page.egress_guard_country_loading" = "Поиск…";

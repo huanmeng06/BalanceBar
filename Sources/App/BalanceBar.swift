@@ -596,7 +596,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 setAllowedIPs: { [weak self] ips in self?.setClaudeEgressGuardAllowedIPs(ips) },
                 detectEgressIP: { [weak self] completion in
                     guard let self else { return completion(.failure(.unknown)) }
-                    self.claudeEgressGuard.currentEgressIP(completion: completion)
+                    self.claudeEgressGuard.currentEgressIP { completion($0.map(\.ip)) }
                 },
                 cachedCountry: { [weak self] ip in self?.claudeEgressIPCountries.cachedCode(for: ip) },
                 lookupCountry: { [weak self] ip, completion in
