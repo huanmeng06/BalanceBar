@@ -382,6 +382,38 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         XCTAssertTrue(diagnosticLines.all.contains { $0.contains("egress_guard; block=unsupported_region") })
     }
 
+    func testEgressGuardBlocksWhenTheProxyRouteChangedAfterTheCheck() throws {
+        // The probe went through proxy A; the usage request would now go out directly.
+        let checkedRoute = CCSwitchProxyConfiguration(httpsProxy: URL(string: "http://127.0.0.1:7890"))
+        let fixture = EgressGuardFixture(.init(enabled: true, allowedIPs: ["203.0.113.7"]),
+                                         reply: .success(EgressTrace(ip: "203.0.113.7", country: "US", route: checkedRoute)))
+        let pipeline = makePipeline(egressGuard: fixture.makeGuard())
+        pipeline.requestFetch(reason: .initial)
+        XCTAssertNotNil(waitForState(pipeline) { $0.failure == .egressGuard(.checkFailed) })
+        XCTAssertEqual(PipelineStubProtocol.requestCount, 0, "a usage request never takes a route the guard did not check")
+    }
+
+    func testEgressGuardSwitchedOffAfterThePassSendsNothing() throws {
+        // Reads 1–2 are the guard's own check (which passes); from read 3 on — the send-time
+        // re-check, as when the switch is turned off while the token is read — it is off.
+        let lock = NSLock()
+        var reads = 0
+        let egressGuard = ClaudeEgressGuard(
+            settings: {
+                lock.withLock {
+                    reads += 1
+                    return reads <= 2 ? .init(enabled: true, allowedIPs: ["203.0.113.7"]) : .disabled
+                }
+            },
+            probe: { $0(.success(EgressTrace(ip: "203.0.113.7", country: "US"))) },
+            diagnostics: { _ in })
+        let pipeline = makePipeline(egressGuard: egressGuard)
+        pipeline.requestFetch(reason: .initial)
+        let state = try XCTUnwrap(waitForState(pipeline) { $0.officialDisabled })
+        XCTAssertNil(state.failure, "switched off is shown as off, not as a failure")
+        XCTAssertEqual(PipelineStubProtocol.requestCount, 0, "the stale pass never lets the request out")
+    }
+
     func testEgressGuardCheckFailureAndMissingTargetsBlock() throws {
         let fixture = EgressGuardFixture(.init(enabled: true, allowedIPs: []), reply: .success(EgressTrace(ip: "203.0.113.7", country: "US")))
         let pipeline = makePipeline(egressGuard: fixture.makeGuard())

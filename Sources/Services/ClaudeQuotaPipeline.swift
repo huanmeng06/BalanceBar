@@ -929,6 +929,11 @@ final class ClaudeQuotaPipeline {
         case .failure, .notSent:
             newFailure = Self.failure(from: lock.withLock { lastClientError })
         }
+        // A result that lands after the guard was switched off never re-labels the source as
+        // failing: official requests are off, whatever the in-flight check concluded.
+        if newFailure != nil, let egressGuard, !egressGuard.isEnabled {
+            newFailure = .egressGuard(.disabled)
+        }
         // Switched off while the request was being checked: official requests are off, not failing.
         if case .egressGuard(.disabled)? = newFailure {
             lock.withLock { refreshing = false }
@@ -1394,11 +1399,18 @@ private final class ClaudeUsageTransport: UsageFetchTransport {
             completion(.unauthorized)
             return
         }
-        guard let egressGuard = pipeline.egressGuard else { return send(pipeline, completion) }
-        egressGuard.evaluate { decision in
+        guard let egressGuard = pipeline.egressGuard else { return send(pipeline, sendCheck: { _ in nil }, completion) }
+        egressGuard.evaluateTrace { decision, trace in
             switch decision {
             case .allowed:
-                self.send(pipeline, completion)
+                // Reading the token may wait on the Keychain, and the settings or the proxy may
+                // change meanwhile: the pass is checked again at the moment the request leaves.
+                self.send(pipeline, sendCheck: { route in
+                    guard let trace else { return .checkFailed }
+                    if let checked = trace.route, checked != route { return .checkFailed }
+                    if case let .blocked(block) = egressGuard.decision(for: trace) { return block }
+                    return nil
+                }, completion)
             case let .blocked(block):
                 // Nothing reached Anthropic: the scheduler refunds the request and waits for a
                 // manual refresh or a settings change instead of backing off.
@@ -1408,9 +1420,14 @@ private final class ClaudeUsageTransport: UsageFetchTransport {
         }
     }
 
-    private func send(_ pipeline: ClaudeQuotaPipeline, _ completion: @escaping (UsageFetchResult) -> Void) {
+    private func send(
+        _ pipeline: ClaudeQuotaPipeline,
+        sendCheck: @escaping (CCSwitchProxyConfiguration) -> ClaudeEgressGuardBlock?,
+        _ completion: @escaping (UsageFetchResult) -> Void
+    ) {
         let epoch = pipeline.currentEpoch
         pipeline.transportClient.fetchClaudeUsage(
+            sendCheck: sendCheck,
             didReadToken: { pipeline.recordCredentialRead($0, epoch: epoch) },
             completion: { result, error in
                 pipeline.recordClientError(error)

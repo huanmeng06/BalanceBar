@@ -63,12 +63,22 @@ enum EgressIPAddress {
     }
 }
 
-/// What one trace probe saw: the egress IP and the country Cloudflare places it in.
+/// What one trace probe saw: the egress IP, the country Cloudflare places it in, and the proxy
+/// route the probe went through.
 struct EgressTrace: Equatable {
     let ip: String
     /// ISO 3166 code from the trace's `loc`, or nil when Cloudflare names no country (missing,
     /// `XX`, or a pseudo-code such as `T1` for Tor).
     let country: String?
+    /// The proxy configuration the probe used. A usage request may only go out on this same
+    /// route; nil when the prober does not report one (tests).
+    let route: CCSwitchProxyConfiguration?
+
+    init(ip: String, country: String?, route: CCSwitchProxyConfiguration? = nil) {
+        self.ip = ip
+        self.country = country
+        self.route = route
+    }
 }
 
 /// Parses Cloudflare's `/cdn-cgi/trace` plain-text body (`key=value` lines).
@@ -138,8 +148,33 @@ enum AnthropicSupportedRegions {
         "GB", "US", "UY", "UZ", "VU", "VA", "VN", "ZM", "ZW",
     ]
 
+    /// "Territories and dependencies of a listed country are also supported" (the policy's own
+    /// example is Puerto Rico). ISO 3166 gives these their own codes, so they are listed here with
+    /// the country they belong to.
+    static let territories: Set<String> = [
+        // United States
+        "PR", "GU", "VI", "AS", "MP", "UM",
+        // France
+        "GF", "GP", "MQ", "RE", "YT", "PM", "BL", "MF", "WF", "PF", "NC", "TF",
+        // United Kingdom
+        "GI", "IM", "JE", "GG", "BM", "KY", "VG", "AI", "MS", "TC", "FK", "SH", "IO", "PN", "GS",
+        // Netherlands
+        "AW", "CW", "SX", "BQ",
+        // Denmark
+        "GL", "FO",
+        // Norway
+        "SJ", "BV",
+        // Australia
+        "CX", "CC", "NF", "HM",
+        // New Zealand
+        "CK", "NU", "TK",
+        // Finland
+        "AX",
+    ]
+
     static func isSupported(_ countryCode: String) -> Bool {
-        codes.contains(countryCode.uppercased())
+        let code = countryCode.uppercased()
+        return codes.contains(code) || territories.contains(code)
     }
 }
 
@@ -234,31 +269,44 @@ final class ClaudeEgressGuard {
 
     /// Calls `completion` exactly once, on any queue.
     func evaluate(completion: @escaping (ClaudeEgressGuardDecision) -> Void) {
-        let current = settings()
-        guard current.enabled else { return finish(.blocked(.disabled), completion) }
-        let allowed = EgressIPAddress.sanitizedList(current.allowedIPs)
-        guard !allowed.isEmpty else { return finish(.blocked(.noTargets), completion) }
+        evaluateTrace { decision, _ in completion(decision) }
+    }
+
+    /// Like `evaluate`, and also hands back the trace an `.allowed` decision rests on, so the
+    /// caller can re-check it with `decision(for:)` right before sending.
+    func evaluateTrace(completion: @escaping (ClaudeEgressGuardDecision, EgressTrace?) -> Void) {
+        if let block = Self.settingsBlock(settings()) {
+            return finish(.blocked(block), nil, completion)
+        }
         currentEgressIP { [self] result in
+            // Always judged against the latest settings: they may have changed while the probe ran.
             switch result {
             case let .success(trace):
-                // Re-read: the list may have changed while the probe ran.
-                let latest = settings()
-                let decision: ClaudeEgressGuardDecision
-                if !latest.enabled {
-                    decision = .blocked(.disabled)
-                } else if !EgressIPAddress.contains(latest.allowedIPs, trace.ip) {
-                    decision = .blocked(.mismatch)
-                } else if let country = trace.country, AnthropicSupportedRegions.isSupported(country) {
-                    decision = .allowed
-                } else {
-                    // An unknown region is treated like an unsupported one.
-                    decision = .blocked(.unsupportedRegion)
-                }
-                finish(decision, completion)
+                finish(decision(for: trace), trace, completion)
             case .failure:
-                finish(.blocked(.checkFailed), completion)
+                finish(.blocked(Self.settingsBlock(settings()) ?? .checkFailed), nil, completion)
             }
         }
+    }
+
+    /// The decision for `trace` under the current settings. Pure apart from reading settings, so
+    /// it can be asked again at the moment a request is about to leave.
+    func decision(for trace: EgressTrace) -> ClaudeEgressGuardDecision {
+        let current = settings()
+        if let block = Self.settingsBlock(current) { return .blocked(block) }
+        guard EgressIPAddress.contains(current.allowedIPs, trace.ip) else { return .blocked(.mismatch) }
+        // An unknown region is treated like an unsupported one.
+        guard let country = trace.country, AnthropicSupportedRegions.isSupported(country) else {
+            return .blocked(.unsupportedRegion)
+        }
+        return .allowed
+    }
+
+    /// Blocks that follow from the settings alone, before any probe.
+    private static func settingsBlock(_ settings: ClaudeEgressGuardSettings) -> ClaudeEgressGuardBlock? {
+        guard settings.enabled else { return .disabled }
+        guard !EgressIPAddress.sanitizedList(settings.allowedIPs).isEmpty else { return .noTargets }
+        return nil
     }
 
     /// Probes the current egress IP and region (shared with concurrent callers); used by the settings
@@ -278,11 +326,14 @@ final class ClaudeEgressGuard {
         }
     }
 
-    private func finish(_ decision: ClaudeEgressGuardDecision, _ completion: (ClaudeEgressGuardDecision) -> Void) {
+    private func finish(
+        _ decision: ClaudeEgressGuardDecision, _ trace: EgressTrace?,
+        _ completion: (ClaudeEgressGuardDecision, EgressTrace?) -> Void
+    ) {
         switch decision {
         case .allowed: diagnostics("egress guard; result=passed")
         case let .blocked(block): diagnostics("egress guard; result=\(block.rawValue)")
         }
-        completion(decision)
+        completion(decision, decision == .allowed ? trace : nil)
     }
 }

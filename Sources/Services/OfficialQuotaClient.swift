@@ -323,12 +323,16 @@ final class OfficialQuotaClient {
         return .hostPort(host: NWEndpoint.Host(host), port: nwPort)
     }
 
-    private func claudeSession() -> URLSession {
+    private func claudeSession() -> URLSession { claudeRoute().session }
+
+    /// The session for the current proxy configuration, together with that configuration, read
+    /// once so a caller can tell which route a request actually took.
+    private func claudeRoute() -> (session: URLSession, configuration: CCSwitchProxyConfiguration) {
         let configuration = claudeProxyConfigurationProvider?() ?? CCSwitchProxyConfiguration()
         claudeSessionLock.lock()
         defer { claudeSessionLock.unlock() }
         if let claudeSessionStorage, claudeSessionConfiguration == configuration {
-            return claudeSessionStorage
+            return (claudeSessionStorage, configuration)
         }
         if configuration.isEmpty {
             claudeSessionStorage = session
@@ -339,7 +343,7 @@ final class OfficialQuotaClient {
             )
         }
         claudeSessionConfiguration = configuration
-        return claudeSessionStorage!
+        return (claudeSessionStorage!, configuration)
     }
 
     /// Reads the same Codex auth source used by official quota requests. The
@@ -537,7 +541,12 @@ final class OfficialQuotaClient {
     /// off, nor shares requests, because the scheduler alone decides whether a
     /// request may be sent. The token is read once and `didReadToken` receives
     /// it before the request starts so the caller can record its version.
+    ///
+    /// `sendCheck` runs after the token is read (which may wait on the Keychain) and immediately
+    /// before the request is created, with the proxy route the request would take. A non-nil
+    /// result keeps the request on this machine.
     func fetchClaudeUsage(
+        sendCheck: (CCSwitchProxyConfiguration) -> ClaudeEgressGuardBlock? = { _ in nil },
         didReadToken: (String) -> Void = { _ in },
         completion: @escaping (UsageFetchResult, OfficialQuotaClientError?) -> Void
     ) {
@@ -551,8 +560,13 @@ final class OfficialQuotaClient {
             return
         }
         didReadToken(token)
+        let route = claudeRoute()
+        if let block = sendCheck(route.configuration) {
+            completion(.notSent("\(FetchScheduler.egressGuardDetailPrefix)_\(block.rawValue)"), .egressGuard(block))
+            return
+        }
         SwitchLog.write("official-quota transport started; client=claude; scope_omitted=true", level: .debug, category: "refresh.transport")
-        claudeSession().dataTask(with: request) { data, response, error in
+        route.session.dataTask(with: request) { data, response, error in
             if let error {
                 let failure = OfficialQuotaClientError.transport(Self.transportError(from: error, client: .claude))
                 completion(.failure("transport"), failure)
@@ -589,7 +603,8 @@ final class OfficialQuotaClient {
         request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
         request.setValue("text/plain", forHTTPHeaderField: "Accept")
         request.setValue("BalanceBar/1.0 (+https://github.com/huanmeng06/BalanceBar)", forHTTPHeaderField: "User-Agent")
-        claudeSession().dataTask(with: request) { data, response, error in
+        let route = claudeRoute()
+        route.session.dataTask(with: request) { data, response, error in
             if let error {
                 completion(.failure(Self.transportError(from: error, client: .claude)))
                 return
@@ -599,7 +614,7 @@ final class OfficialQuotaClient {
                 completion(.failure(.unknown))
                 return
             }
-            completion(.success(trace))
+            completion(.success(EgressTrace(ip: trace.ip, country: trace.country, route: route.configuration)))
         }.resume()
     }
 

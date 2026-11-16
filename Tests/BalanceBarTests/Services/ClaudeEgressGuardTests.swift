@@ -123,6 +123,41 @@ final class ClaudeEgressGuardTests: XCTestCase {
         XCTAssertFalse(box.diagnostics.joined().contains("203.0.113.7"), "diagnostics never name the IP")
     }
 
+    func testProbeOutcomeIsJudgedAgainstTheLatestSettings() {
+        // Switched off while the probe ran, then the probe fails: off, not a failed check.
+        let box = Box(.init(enabled: true, allowedIPs: ["203.0.113.7"]))
+        let egressGuard = makeGuard(box, reply: nil)
+        var decision: ClaudeEgressGuardDecision?
+        egressGuard.evaluate { decision = $0 }
+        box.lock.withLock { box.settings.enabled = false }
+        box.pending.removeFirst()(.failure(.urlError(.timedOut)))
+        XCTAssertEqual(decision, .blocked(.disabled))
+
+        // The list emptied while the probe ran: no targets, not a mismatch.
+        box.lock.withLock { box.settings = .init(enabled: true, allowedIPs: ["203.0.113.7"]) }
+        egressGuard.evaluate { decision = $0 }
+        box.lock.withLock { box.settings.allowedIPs = [] }
+        box.pending.removeFirst()(.success(EgressTrace(ip: "203.0.113.7", country: "US")))
+        XCTAssertEqual(decision, .blocked(.noTargets))
+        box.lock.withLock { box.settings.allowedIPs = ["203.0.113.7"] }
+        egressGuard.evaluate { decision = $0 }
+        box.lock.withLock { box.settings.allowedIPs = [] }
+        box.pending.removeFirst()(.failure(.unknown))
+        XCTAssertEqual(decision, .blocked(.noTargets))
+    }
+
+    func testAllowedDecisionHandsBackItsTraceForTheSendCheck() {
+        let box = Box(.init(enabled: true, allowedIPs: ["203.0.113.7"]))
+        let trace = EgressTrace(ip: "203.0.113.7", country: "US")
+        let egressGuard = makeGuard(box, reply: .success(trace))
+        var handed: EgressTrace?
+        egressGuard.evaluateTrace { _, value in handed = value }
+        XCTAssertEqual(handed, trace)
+        XCTAssertEqual(egressGuard.decision(for: trace), .allowed)
+        box.lock.withLock { box.settings.enabled = false }
+        XCTAssertEqual(egressGuard.decision(for: trace), .blocked(.disabled), "a pass is re-judged at send time")
+    }
+
     func testSettingsChangedDuringProbeAreHonored() {
         let box = Box(.init(enabled: true, allowedIPs: ["203.0.113.7"]))
         let egressGuard = makeGuard(box, reply: nil)
@@ -360,6 +395,10 @@ final class ClaudeEgressGuardTests: XCTestCase {
     func testSupportedRegionsSnapshot() {
         XCTAssertEqual(AnthropicSupportedRegions.codes.count, 185)
         for code in ["US", "JP", "SG", "TW", "GB", "UA", "kr"] {
+            XCTAssertTrue(AnthropicSupportedRegions.isSupported(code), code)
+        }
+        // "Territories and dependencies of a listed country are also supported."
+        for code in ["PR", "GU", "VI", "RE", "GF", "GI", "AW", "GL", "AX", "CX"] {
             XCTAssertTrue(AnthropicSupportedRegions.isSupported(code), code)
         }
         for code in ["CN", "HK", "MO", "RU", "IR", "KP"] {
