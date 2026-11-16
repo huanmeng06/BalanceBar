@@ -570,7 +570,9 @@ final class EgressIPListEditorView: NSView, NSTableViewDataSource, NSTableViewDe
             field.setAccessibilityLabel("\(tr(.keyDashboardAdvancedPageEgressGuardColumnIp)) \(row + 1)")
         } else {
             field.stringValue = countryTitle(for: value)
-            field.textColor = isEnabled ? .secondaryLabelColor : .disabledControlTextColor
+            // A known country reads like the address; "Looking up…" and "—" are placeholders.
+            let known = cachedCountry(value) != nil
+            field.textColor = !isEnabled ? .disabledControlTextColor : known ? .labelColor : .secondaryLabelColor
         }
         return cell
     }
