@@ -1280,7 +1280,7 @@ final class LocalizationTests: XCTestCase {
     func testAllTypedKeysExistInEveryBundledLanguage() throws {
         let expectedKeys = Set(LocalizationKey.allCases.map(\.rawKey))
         XCTAssertEqual(expectedKeys.count, LocalizationKey.allCases.count)
-        XCTAssertEqual(expectedKeys.count, 785)
+        XCTAssertEqual(expectedKeys.count, 790)
         let newLanguages: Set<AppLanguage> = [.portuguese, .russian, .italian]
 
         func keySequence(from text: String) -> [String] {
@@ -1856,7 +1856,7 @@ final class LocalizationTests: XCTestCase {
             (
                 .keyAppTheCurrentCcSwitchValueProviderWasNotFound,
                 ["Codex"],
-                "현재 CC Switch Codex 서비스 제공자를 찾을 수 없습니다"
+                "현재 CC Switch Codex 서비스 제공자를 찾을 수 없습니다. CC Switch에서 서비스 제공자를 선택하세요"
             ),
             (.keySnapshotLoadingTheCurrentProvider, [], "현재 서비스 제공자를 불러오는 중…"),
             (.keyCCSwitchRepositoryProviderDoesNotExist, [], "서비스 제공자가 존재하지 않습니다"),

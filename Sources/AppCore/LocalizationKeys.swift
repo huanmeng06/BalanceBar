@@ -23,6 +23,11 @@
     case keyAggregationStale = "aggregation.stale"
     case keyAggregationUnavailable = "aggregation.unavailable"
     case keyAggregationManageInCCSwitch = "aggregation.manage_in_cc_switch"
+    case keyAggregationNotConfigured = "aggregation.not_configured"
+    case keyCCSwitchDatabaseUnavailable = "ccswitch.database_unavailable"
+    case keyCCSwitchDatabaseUnreadable = "ccswitch.database_unreadable"
+    case keyCCSwitchDatabaseBusy = "ccswitch.database_busy"
+    case keyQuotaFailureOpenCCSwitch = "quota.failure.open_cc_switch"
 
     case keyTimeZoneLookupLoading = "timezone.lookup_loading"
     case keyTimeZoneLookupFailed = "timezone.lookup_failed"

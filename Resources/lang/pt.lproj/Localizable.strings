@@ -2,7 +2,7 @@
 "app.preferences.openai_status" = "Status da OpenAI";
 "app.not_found" = "Não encontrado";
 "app.not_found.2" = "Não encontrado";
-"app.the_current_cc_switch_value_provider_was_not_found" = "O provedor %1$@ da configuração atual do CC Switch não foi encontrado";
+"app.the_current_cc_switch_value_provider_was_not_found" = "O provedor %1$@ da configuração atual do CC Switch não foi encontrado. Selecione um provedor no CC Switch";
 "app.about_balancebar" = "Sobre o BalanceBar";
 "app.hide_balancebar" = "Ocultar o BalanceBar";
 "app.hide_others" = "Ocultar outros";
@@ -815,3 +815,8 @@
 "mod.ui.int2.silent_check_version" = "O Claude Code é v2.1.287 ou posterior";
 "mod.ui.int2.silent_check_session" = "É uma sessão nova, ou foi executado /reload-plugins nela";
 "mod.ui.int2.silent_check_policy" = "Se a política da organização só permite plugins geridos";
+"quota.failure.open_cc_switch" = "Abrir o CC Switch";
+"ccswitch.database_unavailable" = "O banco de dados do CC Switch não foi encontrado ou não pode ser aberto. Verifique se o CC Switch está instalado e já foi executado";
+"ccswitch.database_unreadable" = "Não foi possível ler o banco de dados do CC Switch. Reabra o CC Switch e tente novamente";
+"ccswitch.database_busy" = "O banco de dados do CC Switch está ocupado. O BalanceBar continuará tentando";
+"aggregation.not_configured" = "Este provedor não tem consulta de uso configurada. Configure um script de uso no CC Switch";

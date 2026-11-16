@@ -7632,7 +7632,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let message = snapshot.overviewReset(refreshDate: nil, formatter: AppDisplayTime.formatter(timeZone: settings.displayTimeZone))
         // Claude official failures add the BB-07 failure view: reason plus a button
         // that opens the official usage page, in extra height below the detail.
-        let showsUsagePageButton = snapshot.quotaStatus != nil
+        let showsUsagePageButton = snapshot.quotaStatus != nil || snapshot.failureRecovery == .openCCSwitch
         let buttonShift = showsUsagePageButton && snapshot.failureRecovery != .none
             ? ErrorCardLayout.usagePageButtonHeight : 0
         let baseFrames = ErrorCardLayout.errorFrames(
@@ -7686,7 +7686,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 // The detail frame was measured with this font; a smaller one leaves a blank gap.
                 font: ErrorCardLayout.detailFont,
                 localize: StatusSlotText.appLocalize,
-                onOpenUsagePage: { [weak self] in self?.actions.openStatusLink(FailureStateView.officialUsageURL) })
+                onOpenUsagePage: { [weak self] in self?.actions.openStatusLink(FailureStateView.officialUsageURL) },
+                onOpenCCSwitch: { [weak self] in self?.actions.openCCSwitch() })
             failure.identifier = NSUserInterfaceItemIdentifier("overview.failureState")
             failure.frame = NSRect(x: frames.detail.minX, y: frames.detail.minY - buttonShift,
                                    width: frames.detail.width, height: frames.detail.height + buttonShift)

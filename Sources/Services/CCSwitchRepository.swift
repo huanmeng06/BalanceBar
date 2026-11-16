@@ -79,6 +79,53 @@ enum CCSwitchReadError: Error {
     var sqliteCode: Int32 { switch self { case .sqlite(let code): return code } }
 }
 
+/// Turns CC Switch database read failures into card states. Transient
+/// `SQLITE_BUSY`/`SQLITE_LOCKED` reads stay silent (the next refresh retries) until
+/// they repeat `busyThreshold` times in a row; every other failure is reported at once.
+final class CCSwitchReadFailureTracker {
+    enum Outcome: Equatable {
+        /// Keep the current card and retry on the next refresh.
+        case silent
+        /// The database is missing or cannot be opened (`SQLITE_CANTOPEN`).
+        case unavailable
+        /// The database exists but cannot be read (corrupt, not a database, permission...).
+        case unreadable
+        /// The database stayed locked for `busyThreshold` consecutive reads.
+        case busy
+    }
+
+    static let busyThreshold = 3
+    private static let sqliteBusy: Int32 = 5
+    private static let sqliteLocked: Int32 = 6
+    private static let sqliteCantOpen: Int32 = 14
+
+    private let lock = NSLock()
+    private var busyStreak = 0
+
+    func recordFailure(sqliteCode: Int32) -> Outcome {
+        lock.lock()
+        defer { lock.unlock() }
+        // Extended result codes keep the primary code in the low byte.
+        switch sqliteCode & 0xFF {
+        case Self.sqliteBusy, Self.sqliteLocked:
+            busyStreak += 1
+            return busyStreak >= Self.busyThreshold ? .busy : .silent
+        case Self.sqliteCantOpen:
+            busyStreak = 0
+            return .unavailable
+        default:
+            busyStreak = 0
+            return .unreadable
+        }
+    }
+
+    func recordSuccess() {
+        lock.lock()
+        busyStreak = 0
+        lock.unlock()
+    }
+}
+
 final class CCSwitchRepository {
     static let defaultDatabaseURL = URL(fileURLWithPath: NSString(
         string: "~/.cc-switch/cc-switch.db"

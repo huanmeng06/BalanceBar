@@ -2,7 +2,7 @@
 "app.preferences.openai_status" = "OpenAI 狀態";
 "app.not_found" = "找不到";
 "app.not_found.2" = "找不到";
-"app.the_current_cc_switch_value_provider_was_not_found" = "找不到 CC Switch 目前的 %1$@ 供應商";
+"app.the_current_cc_switch_value_provider_was_not_found" = "找不到 CC Switch 目前的 %1$@ 供應商，請在 CC Switch 中選擇一個供應商";
 "app.about_balancebar" = "關於 BalanceBar";
 "app.hide_balancebar" = "隱藏 BalanceBar";
 "app.hide_others" = "隱藏其他應用程式";
@@ -815,3 +815,8 @@
 "mod.ui.int2.silent_check_version" = "Claude Code 版本是否為 v2.1.287 或更新";
 "mod.ui.int2.silent_check_session" = "是否為新工作階段，或已在其中執行 /reload-plugins";
 "mod.ui.int2.silent_check_policy" = "組織政策是否只允許受管理的外掛程式";
+"quota.failure.open_cc_switch" = "開啟 CC Switch";
+"ccswitch.database_unavailable" = "找不到或無法開啟 CC Switch 資料庫，請確認已安裝並執行過 CC Switch";
+"ccswitch.database_unreadable" = "無法讀取 CC Switch 資料庫，請重新開啟 CC Switch 後再試";
+"ccswitch.database_busy" = "CC Switch 資料庫持續被佔用，BalanceBar 會繼續重試";
+"aggregation.not_configured" = "此供應商未設定用量查詢，請在 CC Switch 中設定用量腳本";

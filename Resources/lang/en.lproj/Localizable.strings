@@ -2,7 +2,7 @@
 "app.preferences.openai_status" = "OpenAI Status";
 "app.not_found" = "Not Found";
 "app.not_found.2" = "Not Found";
-"app.the_current_cc_switch_value_provider_was_not_found" = "The current CC Switch %1$@ Provider was not found";
+"app.the_current_cc_switch_value_provider_was_not_found" = "The current CC Switch %1$@ Provider was not found. Select a Provider in CC Switch.";
 "app.about_balancebar" = "About BalanceBar";
 "app.hide_balancebar" = "Hide BalanceBar";
 "app.hide_others" = "Hide Others";
@@ -815,3 +815,8 @@
 "mod.ui.int2.silent_check_version" = "Claude Code is v2.1.287 or later";
 "mod.ui.int2.silent_check_session" = "This is a new session, or /reload-plugins was run in it";
 "mod.ui.int2.silent_check_policy" = "Your organization policy allows managed plugins only";
+"quota.failure.open_cc_switch" = "Open CC Switch";
+"ccswitch.database_unavailable" = "CC Switch database not found or can't be opened. Make sure CC Switch is installed and has been run once.";
+"ccswitch.database_unreadable" = "Can't read the CC Switch database. Reopen CC Switch and try again.";
+"ccswitch.database_busy" = "The CC Switch database is busy. BalanceBar will keep retrying.";
+"aggregation.not_configured" = "No usage query is set up for this Provider. Configure a usage script in CC Switch.";

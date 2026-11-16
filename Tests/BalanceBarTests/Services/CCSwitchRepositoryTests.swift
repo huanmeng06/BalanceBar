@@ -1156,6 +1156,60 @@ extension CCSwitchRepositoryTests {
         XCTAssertNil(try repository.loadCurrentChecked(appType: "missing-app"))
     }
 
+    // MARK: - #673 unavailable CC Switch states
+
+    func testMissingDatabaseFailsWithCantOpenAndShowsOpenCCSwitchCard() throws {
+        let missing = CCSwitchRepository(databaseURL: temporaryDirectoryURL.appendingPathComponent("absent.db"))
+        var code: Int32?
+        XCTAssertThrowsError(try missing.loadCurrentChecked(appType: "codex")) { error in
+            code = (error as? CCSwitchReadError)?.sqliteCode
+        }
+        XCTAssertEqual(code, SQLITE_CANTOPEN)
+        let outcome = CCSwitchReadFailureTracker().recordFailure(sqliteCode: try XCTUnwrap(code))
+        XCTAssertEqual(outcome, .unavailable)
+        let snapshot = try XCTUnwrap(AppDelegate.ccSwitchUnavailableSnapshot(for: outcome))
+        XCTAssertEqual(snapshot.kind, .error)
+        XCTAssertEqual(snapshot.failureRecovery, .openCCSwitch)
+        XCTAssertEqual(snapshot.message, tr(.keyCCSwitchDatabaseUnavailable))
+    }
+
+    func testCorruptDatabaseIsReportedAsUnreadableImmediately() {
+        let tracker = CCSwitchReadFailureTracker()
+        XCTAssertEqual(tracker.recordFailure(sqliteCode: SQLITE_NOTADB), .unreadable)
+        XCTAssertEqual(tracker.recordFailure(sqliteCode: SQLITE_CORRUPT), .unreadable)
+    }
+
+    func testBusyReadsStaySilentUntilThresholdThenSurfaceAndResetOnSuccess() {
+        let tracker = CCSwitchReadFailureTracker()
+        for _ in 1..<CCSwitchReadFailureTracker.busyThreshold {
+            let outcome = tracker.recordFailure(sqliteCode: SQLITE_BUSY)
+            XCTAssertEqual(outcome, .silent)
+            XCTAssertNil(AppDelegate.ccSwitchUnavailableSnapshot(for: outcome))
+        }
+        let outcome = tracker.recordFailure(sqliteCode: SQLITE_LOCKED)
+        XCTAssertEqual(outcome, .busy)
+        XCTAssertEqual(AppDelegate.ccSwitchUnavailableSnapshot(for: outcome)?.message, tr(.keyCCSwitchDatabaseBusy))
+        tracker.recordSuccess()
+        XCTAssertEqual(tracker.recordFailure(sqliteCode: SQLITE_BUSY), .silent)
+    }
+
+    func testNonBusyFailureBreaksTheBusyStreak() {
+        let tracker = CCSwitchReadFailureTracker()
+        _ = tracker.recordFailure(sqliteCode: SQLITE_BUSY)
+        _ = tracker.recordFailure(sqliteCode: SQLITE_BUSY)
+        XCTAssertEqual(tracker.recordFailure(sqliteCode: SQLITE_CANTOPEN), .unavailable)
+        XCTAssertEqual(tracker.recordFailure(sqliteCode: SQLITE_BUSY), .silent)
+    }
+
+    func testNoCurrentProviderCardOffersOpenCCSwitchAndTellsToSelectOne() throws {
+        XCTAssertNil(try repository.loadCurrentChecked(appType: "missing-app"))
+        let snapshot = AppDelegate.ccSwitchNoCurrentProviderSnapshot(clientName: "Codex")
+        XCTAssertEqual(snapshot.kind, .error)
+        XCTAssertEqual(snapshot.failureRecovery, .openCCSwitch)
+        XCTAssertEqual(snapshot.message, tr(.keyAppTheCurrentCcSwitchValueProviderWasNotFound, arguments: ["Codex"]))
+        XCTAssertTrue(snapshot.message?.contains("Codex") == true)
+    }
+
     func testOptionalNotesSupportsOldSchemaAndChangesWithoutInvalidatingRequestIdentity() throws {
         let before = try repository.loadSummarySourcesChecked(appType: "codex")
         XCTAssertTrue(before.allSatisfy { $0.notes == nil })

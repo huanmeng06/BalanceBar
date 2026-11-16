@@ -785,9 +785,11 @@ final class ProviderRefreshCoordinator {
                     }, completion: finish)
             } else {
                 aggregationRequests.removeValue(forKey: identity)
-                display.snapshot = .providerError(source.name, reason: tr(.keyAggregationUnavailable), cachedBalance: nil)
+                var unconfigured = Snapshot.providerError(source.name, reason: tr(.keyAggregationNotConfigured), cachedBalance: nil)
+                unconfigured.failureRecovery = .openCCSwitch
+                display.snapshot = unconfigured
                 display.status = .unavailable
-                display.reason = tr(.keyAggregationUnavailable)
+                display.reason = tr(.keyAggregationNotConfigured)
                 aggregationDisplays[identity] = display
                 publishAggregation()
             }

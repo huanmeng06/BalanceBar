@@ -1029,6 +1029,9 @@ enum FailureRecovery: Equatable {
     case openUsagePage
     /// Claude Code is signed out or its token was rejected: copy the `claude` command.
     case copySignInCommand
+    /// CC Switch is missing, unreadable or needs configuration: open the CC Switch app
+    /// (its download page when it is not installed).
+    case openCCSwitch
     /// Nothing the card can do (for example the keychain prompt must be allowed); no button.
     case none
 }
