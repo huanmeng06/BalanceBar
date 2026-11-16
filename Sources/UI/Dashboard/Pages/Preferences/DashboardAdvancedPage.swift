@@ -399,6 +399,8 @@ final class EgressIPListEditorView: NSView, NSTableViewDataSource, NSTableViewDe
     static let barTopSpacing: CGFloat = 8
     static let barHeight: CGFloat = 24
     static let bottomInset: CGFloat = 14
+    /// Puts cell text where `NSTableHeaderCell` draws the column title.
+    static let cellTextInset: CGFloat = 2
 
     private let cachedCountry: (String) -> String?
     private let lookupCountry: (String, @escaping (String?) -> Void) -> Void
@@ -406,7 +408,9 @@ final class EgressIPListEditorView: NSView, NSTableViewDataSource, NSTableViewDe
     /// What the table shows: saved addresses plus any invalid text still being fixed.
     private(set) var rows: [String]
     private(set) var isEnabled = true
-    private var requestedCountries: Set<String> = []
+    /// Addresses whose country lookup is in flight ("Looking up…") or failed on this page ("—").
+    private var pendingCountries: Set<String> = []
+    private var failedCountries: Set<String> = []
     private var status: Status = .none
 
     let titleLabel = NSTextField(labelWithString: tr(.keyDashboardAdvancedPageEgressGuardAllowed))
@@ -445,7 +449,6 @@ final class EgressIPListEditorView: NSView, NSTableViewDataSource, NSTableViewDe
         configureTable()
         configureScrollView()
         configureContainer()
-        configureEmptyLabel()
         configureActions()
         configureBar()
 
@@ -462,6 +465,7 @@ final class EgressIPListEditorView: NSView, NSTableViewDataSource, NSTableViewDe
         addSubview(titleLabel)
         addSubview(tableContainer)
         addSubview(bar)
+        configureEmptyLabel()
         tableHeightConstraint = tableContainer.heightAnchor.constraint(equalToConstant: 0)
         heightConstraint = heightAnchor.constraint(equalToConstant: 0)
         NSLayoutConstraint.activate([
@@ -516,6 +520,7 @@ final class EgressIPListEditorView: NSView, NSTableViewDataSource, NSTableViewDe
     func append(_ ip: String) {
         finishEditing()
         guard !EgressIPAddress.contains(rows.filter { !isInvalid($0) && !$0.isEmpty }, ip) else { return }
+        forgetFailedCountry(of: ip)
         rows.append(ip)
         reloadRows()
         applySelection(rows.count - 1)
@@ -631,6 +636,7 @@ final class EgressIPListEditorView: NSView, NSTableViewDataSource, NSTableViewDe
             reloadRows()
             if let duplicate { applySelection(duplicate < row ? duplicate : duplicate - 1) }
         } else {
+            if rows[row] != value { forgetFailedCountry(of: value) }
             rows[row] = value
             tableView.reloadData(forRowIndexes: IndexSet(integer: row), columnIndexes: IndexSet(integersIn: 0..<2))
         }
@@ -646,17 +652,28 @@ final class EgressIPListEditorView: NSView, NSTableViewDataSource, NSTableViewDe
         !text.isEmpty && !EgressIPAddress.isValid(text)
     }
 
-    /// "🇺🇸 United States", or "—" until ipinfo.io answers (asked once per address per page).
+    /// "🇺🇸 United States" once known; "Looking up…" while ipinfo.io is asked; "—" if that failed.
+    /// A failed address is asked again when it is added again or the page is rebuilt.
     private func countryTitle(for ip: String) -> String {
-        guard EgressIPAddress.isValid(ip) else { return "" }
+        guard EgressIPAddress.isValid(ip), let key = EgressIPCountryCache.key(for: ip) else { return "" }
         if let code = cachedCountry(ip) { return IPCountryCode.displayTitle(code) }
-        if let key = EgressIPCountryCache.key(for: ip), requestedCountries.insert(key).inserted {
+        if failedCountries.contains(key) { return "—" }
+        if pendingCountries.insert(key).inserted {
             lookupCountry(ip) { [weak self] code in
-                guard code != nil else { return }
-                DispatchQueue.main.async { self?.reloadCountry(of: ip) }
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    self.pendingCountries.remove(key)
+                    if code == nil { self.failedCountries.insert(key) }
+                    self.reloadCountry(of: ip)
+                }
             }
         }
-        return "—"
+        return tr(.keyDashboardAdvancedPageEgressGuardCountryLoading)
+    }
+
+    /// A newly entered address gets a fresh lookup even if an earlier one failed.
+    private func forgetFailedCountry(of ip: String) {
+        if let key = EgressIPCountryCache.key(for: ip) { failedCountries.remove(key) }
     }
 
     private func reloadCountry(of ip: String) {
@@ -771,8 +788,8 @@ final class EgressIPListEditorView: NSView, NSTableViewDataSource, NSTableViewDe
         cell.textField = field
         cell.addSubview(field)
         NSLayoutConstraint.activate([
-            field.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 8),
-            field.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -8),
+            field.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: Self.cellTextInset),
+            field.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -Self.cellTextInset),
             field.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
         ])
         return cell
@@ -844,10 +861,14 @@ final class EgressIPListEditorView: NSView, NSTableViewDataSource, NSTableViewDe
         emptyLabel.textColor = .secondaryLabelColor
         emptyLabel.alignment = .center
         emptyLabel.lineBreakMode = .byTruncatingTail
-        tableContainer.addSubview(emptyLabel)
+        addSubview(emptyLabel, positioned: .above, relativeTo: tableContainer)
+        let rowsArea = NSLayoutGuide()
+        addLayoutGuide(rowsArea)
         NSLayoutConstraint.activate([
+            rowsArea.topAnchor.constraint(equalTo: tableContainer.topAnchor, constant: 1 + headerHeight),
+            rowsArea.bottomAnchor.constraint(equalTo: tableContainer.bottomAnchor, constant: -1),
             emptyLabel.centerXAnchor.constraint(equalTo: tableContainer.centerXAnchor),
-            emptyLabel.centerYAnchor.constraint(equalTo: tableContainer.centerYAnchor, constant: headerHeight / 2),
+            emptyLabel.centerYAnchor.constraint(equalTo: rowsArea.centerYAnchor),
             emptyLabel.leadingAnchor.constraint(greaterThanOrEqualTo: tableContainer.leadingAnchor, constant: 12),
             emptyLabel.trailingAnchor.constraint(lessThanOrEqualTo: tableContainer.trailingAnchor, constant: -12),
         ])
@@ -891,8 +912,7 @@ final class EgressIPListEditorView: NSView, NSTableViewDataSource, NSTableViewDe
         statusLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         for button in [addDetectedButton, detectButton] {
             button.bezelStyle = .push
-            button.controlSize = .small
-            button.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+            button.controlSize = .regular
             button.setContentHuggingPriority(.required, for: .horizontal)
             button.setContentCompressionResistancePriority(.required, for: .horizontal)
         }

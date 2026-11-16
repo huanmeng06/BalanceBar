@@ -813,6 +813,7 @@
     case keyDashboardAdvancedPageEgressGuardFootnote = "dashboard.advanced.page.egress_guard_footnote"
     case keyDashboardAdvancedPageEgressGuardColumnIp = "dashboard.advanced.page.egress_guard_column_ip"
     case keyDashboardAdvancedPageEgressGuardColumnRegion = "dashboard.advanced.page.egress_guard_column_region"
+    case keyDashboardAdvancedPageEgressGuardCountryLoading = "dashboard.advanced.page.egress_guard_country_loading"
 
     var rawKey: String { rawValue }
 }

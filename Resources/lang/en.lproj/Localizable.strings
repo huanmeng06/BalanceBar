@@ -839,3 +839,4 @@
 "dashboard.advanced.page.egress_guard_footnote" = "The check visits claude.ai; quota requests go to api.anthropic.com. Route both through the same proxy rule, or the check may not match the real egress. Country/region comes from ipinfo.io and is looked up once per IP.";
 "dashboard.advanced.page.egress_guard_column_ip" = "IP Address";
 "dashboard.advanced.page.egress_guard_column_region" = "Country/Region";
+"dashboard.advanced.page.egress_guard_country_loading" = "Looking up…";

@@ -839,3 +839,4 @@
 "dashboard.advanced.page.egress_guard_footnote" = "A verificação acessa claude.ai e as solicitações de cota vão para api.anthropic.com. Use a mesma regra de proxy para ambos ou a verificação pode não corresponder à saída real. O país/região é consultado no ipinfo.io uma única vez por IP.";
 "dashboard.advanced.page.egress_guard_column_ip" = "Endereço IP";
 "dashboard.advanced.page.egress_guard_column_region" = "País/região";
+"dashboard.advanced.page.egress_guard_country_loading" = "Consultando…";

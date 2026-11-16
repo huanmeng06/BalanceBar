@@ -839,3 +839,4 @@
 "dashboard.advanced.page.egress_guard_footnote" = "検出は claude.ai に、クォータのリクエストは api.anthropic.com に接続します。両方を同じプロキシルールに通さないと、検出結果と実際の出口が一致しないことがあります。国または地域は ipinfo.io で IP ごとに 1 回だけ調べます。";
 "dashboard.advanced.page.egress_guard_column_ip" = "IP アドレス";
 "dashboard.advanced.page.egress_guard_column_region" = "国または地域";
+"dashboard.advanced.page.egress_guard_country_loading" = "照会中…";

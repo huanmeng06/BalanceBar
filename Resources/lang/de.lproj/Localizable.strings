@@ -839,3 +839,4 @@
 "dashboard.advanced.page.egress_guard_footnote" = "Die Prüfung ruft claude.ai auf, Kontingentanfragen gehen an api.anthropic.com. Leite beide über dieselbe Proxy-Regel, sonst kann die Prüfung vom echten Ausgang abweichen. Land/Region wird einmal pro IP bei ipinfo.io abgefragt.";
 "dashboard.advanced.page.egress_guard_column_ip" = "IP-Adresse";
 "dashboard.advanced.page.egress_guard_column_region" = "Land/Region";
+"dashboard.advanced.page.egress_guard_country_loading" = "Wird abgefragt …";

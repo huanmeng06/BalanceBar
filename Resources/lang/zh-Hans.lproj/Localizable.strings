@@ -825,7 +825,7 @@
 "dashboard.advanced.page.egress_guard_enabled" = "仅允许白名单 IP 请求官方额度";
 "dashboard.advanced.page.egress_guard_enabled_detail" = "每次请求前先检查当前出口 IP（即 Claude 服务器看到的你的 IP），不在白名单中就不发送。关闭后不请求官方额度，只使用 Mod 数据。";
 "dashboard.advanced.page.egress_guard_allowed" = "IP 白名单";
-"dashboard.advanced.page.egress_guard_allowed_empty" = "点「+」添加 IP，或先检测当前出口";
+"dashboard.advanced.page.egress_guard_allowed_empty" = "点“+”添加 IP，或先检测当前出口";
 "dashboard.advanced.page.egress_guard_remove" = "移除";
 "dashboard.advanced.page.egress_guard_add_title" = "添加 IP";
 "dashboard.advanced.page.egress_guard_add_placeholder" = "IPv4 或 IPv6 地址";
@@ -839,3 +839,4 @@
 "dashboard.advanced.page.egress_guard_footnote" = "检测访问的是 claude.ai，额度请求访问的是 api.anthropic.com。请让两者走同一条代理规则，否则检测结果可能与实际出口不一致。国家/地区由 ipinfo.io 查询，每个 IP 只查一次。";
 "dashboard.advanced.page.egress_guard_column_ip" = "IP 地址";
 "dashboard.advanced.page.egress_guard_column_region" = "国家/地区";
+"dashboard.advanced.page.egress_guard_country_loading" = "查询中…";

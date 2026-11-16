@@ -839,3 +839,4 @@
 "dashboard.advanced.page.egress_guard_footnote" = "Проверка обращается к claude.ai, а запросы квоты — к api.anthropic.com. Направьте оба через одно правило прокси, иначе результат проверки может не совпасть с реальным выходом. Страна/регион запрашивается у ipinfo.io один раз для каждого IP.";
 "dashboard.advanced.page.egress_guard_column_ip" = "IP-адрес";
 "dashboard.advanced.page.egress_guard_column_region" = "Страна/регион";
+"dashboard.advanced.page.egress_guard_country_loading" = "Поиск…";

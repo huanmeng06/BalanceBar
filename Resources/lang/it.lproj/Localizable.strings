@@ -839,3 +839,4 @@
 "dashboard.advanced.page.egress_guard_footnote" = "Il controllo contatta claude.ai, le richieste di quota vanno a api.anthropic.com. Instrada entrambi con la stessa regola proxy, altrimenti il controllo potrebbe non corrispondere all’uscita reale. Paese/area viene cercato su ipinfo.io una sola volta per IP.";
 "dashboard.advanced.page.egress_guard_column_ip" = "Indirizzo IP";
 "dashboard.advanced.page.egress_guard_column_region" = "Paese/area";
+"dashboard.advanced.page.egress_guard_country_loading" = "Ricerca…";

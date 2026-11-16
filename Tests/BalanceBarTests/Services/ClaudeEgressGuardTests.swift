@@ -266,14 +266,27 @@ final class ClaudeEgressGuardTests: XCTestCase {
             cachedCountry: { ip in EgressIPCountryCache.key(for: ip).flatMap { cache[$0] } },
             lookupCountry: { ip, completion in lookups.append(ip); pending = completion },
             onSave: { _ in })
-        XCTAssertEqual(editor.countryTextForTesting(row: 0), "—")
-        _ = editor.countryTextForTesting(row: 0)
+        let loading = tr(.keyDashboardAdvancedPageEgressGuardCountryLoading)
+        XCTAssertEqual(editor.countryTextForTesting(row: 0), loading)
         editor.tableView.reloadData()
-        _ = editor.countryTextForTesting(row: 0)
-        XCTAssertEqual(lookups, ["203.0.113.7"], "asked once per address")
+        XCTAssertEqual(editor.countryTextForTesting(row: 0), loading)
+        XCTAssertEqual(lookups, ["203.0.113.7"], "asked once while in flight")
         cache[EgressIPCountryCache.key(for: "203.0.113.7")!] = "JP"
         pending?("JP")
         XCTAssertTrue(waitUntil { editor.countryTextForTesting(row: 0) == IPCountryCode.displayTitle("JP") })
+
+        // Removed (the app prunes its cache) and added again: looked up again, not stuck.
+        cache.removeAll()
+        editor.selectForTesting(row: 0)
+        editor.performActionForTesting(segment: 1)
+        editor.append("203.0.113.7")
+        XCTAssertEqual(editor.countryTextForTesting(row: 0), loading)
+        XCTAssertEqual(lookups.count, 2)
+
+        // A failed lookup shows "—" instead of staying on "Looking up…".
+        pending?(nil)
+        XCTAssertTrue(waitUntil { editor.countryTextForTesting(row: 0) == "—" })
+        XCTAssertEqual(lookups.count, 2, "no retry loop after a failure")
     }
 
     // MARK: Country lookup

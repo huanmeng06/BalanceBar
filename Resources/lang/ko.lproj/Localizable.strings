@@ -839,3 +839,4 @@
 "dashboard.advanced.page.egress_guard_footnote" = "감지는 claude.ai에, 할당량 요청은 api.anthropic.com에 접속합니다. 둘 다 같은 프록시 규칙을 거치지 않으면 감지 결과와 실제 출구가 다를 수 있습니다. 국가/지역은 ipinfo.io에서 IP마다 한 번만 조회합니다.";
 "dashboard.advanced.page.egress_guard_column_ip" = "IP 주소";
 "dashboard.advanced.page.egress_guard_column_region" = "국가/지역";
+"dashboard.advanced.page.egress_guard_country_loading" = "조회 중…";
