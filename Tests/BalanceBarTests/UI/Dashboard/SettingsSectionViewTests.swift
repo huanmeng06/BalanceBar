@@ -534,6 +534,35 @@ final class SettingsSectionViewTests: XCTestCase {
         )
     }
 
+    func testLiveResizeSkipsIntrinsicHeightAndKeepsLayoutHeightsMatchingNaturalHeights() throws {
+        let long = String(repeating: "A long wrapping subtitle that needs several lines. ", count: 4)
+        let rows = (0..<6).map { index in
+            SettingsRowView(title: "Row \(index)", detail: long, accessoryView: NSSwitch())
+        }
+        let section = SettingsSectionView(title: "Resize", contentViews: rows, footnote: long)
+        let window = makeTestWindow(width: 640, height: 900)
+        let page = DashboardSettingsComponents.makeSettingsPageContent([section])
+        let host = pinningHost(for: page, in: window, width: 640, height: 900)
+        defer { window.orderOut(nil) }
+
+        let widths: [CGFloat] = [640, 560, 470, 420, 520, 610]
+        for width in widths {
+            section.liveResizeOverrideForTesting = true
+            pin(page, to: host, window: window, width: width, height: 900)
+            window.layoutIfNeeded()
+            XCTAssertEqual(section.intrinsicContentSize.height, NSView.noIntrinsicMetric)
+            let liveHeight = section.frame.height
+
+            section.liveResizeOverrideForTesting = nil
+            section.invalidateIntrinsicContentSize()
+            SettingsRowView.flushPendingWrappingHeightCommits(in: section)
+            window.layoutIfNeeded()
+            XCTAssertEqual(section.intrinsicContentSize.height, section.naturalHeight, accuracy: 0.5)
+            XCTAssertEqual(section.frame.height, section.naturalHeight, accuracy: 1.0, "width \(width)")
+            _ = liveHeight
+        }
+    }
+
     private func pinningHost(
         for section: NSView,
         in window: NSWindow,
