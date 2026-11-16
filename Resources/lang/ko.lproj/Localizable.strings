@@ -656,6 +656,8 @@
 "claude.timeline.estimate.in" = "약 %1$@ 후";
 "claude.refresh.every_minutes" = "%1$@분마다";
 "claude.quota.calibration_detail" = "일정 간격으로 공식 소스를 조회하는 대체 수단이며, 간격이 길수록 호출 제한을 피하기 쉽습니다";
+"claude.quota.calibration_off_detail" = "Claude 공식 요청이 꺼져 있어 이 간격은 적용되지 않습니다.";
+"claude.quota.calibration_off_link" = "IP 허용 목록 설정…";
 
 // BalanceBar Mod realtime sync (Issue #597)
 "claude.mod_sync.title" = "BalanceBar Mod 실시간 부스트";
@@ -836,7 +838,10 @@
 "dashboard.advanced.page.egress_guard_detected_unlisted" = "현재 출구: %1$@ — 허용 목록에 없음";
 "dashboard.advanced.page.egress_guard_detect_failed" = "현재 출구를 감지할 수 없습니다";
 "dashboard.advanced.page.egress_guard_add_detected" = "추가";
-"dashboard.advanced.page.egress_guard_footnote" = "감지는 claude.ai에, 할당량 요청은 api.anthropic.com에 접속합니다. 둘 다 같은 프록시 규칙을 거치지 않으면 감지 결과와 실제 출구가 다를 수 있습니다. 국가/지역은 ipinfo.io에서 IP마다 한 번만 조회합니다.";
+"dashboard.advanced.page.egress_guard_footnote" = "감지는 claude.ai에, 할당량 요청은 api.anthropic.com에 접속합니다. 둘 다 같은 프록시 규칙을 거치지 않으면 감지 결과와 실제 출구가 다를 수 있습니다. 국가/지역은 ipinfo.io에서 IP마다 한 번만 조회합니다. 사용 가능 여부는 Anthropic 지원 지역 정책(2026-11-12 기준)에 따른 참고 정보입니다.";
 "dashboard.advanced.page.egress_guard_column_ip" = "IP 주소";
 "dashboard.advanced.page.egress_guard_column_region" = "국가/지역";
 "dashboard.advanced.page.egress_guard_country_loading" = "조회 중…";
+"dashboard.advanced.page.egress_guard_column_available" = "Claude 사용 가능";
+"dashboard.advanced.page.egress_guard_available_yes" = "Anthropic 제공 지역 안";
+"dashboard.advanced.page.egress_guard_available_no" = "Anthropic 제공 지역 밖";

@@ -602,7 +602,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 lookupCountry: { [weak self] ip, completion in
                     guard let self else { return completion(nil) }
                     self.claudeEgressIPCountries.code(for: ip, completion: completion)
-                })
+                },
+                openSettings: { [weak self] in self?.openEgressGuardSettings() })
         ),
         launchAtLoginController: launchAtLoginController
     )

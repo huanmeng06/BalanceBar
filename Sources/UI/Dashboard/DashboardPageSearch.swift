@@ -497,6 +497,8 @@ enum DashboardSettingsSearchCatalog {
                 .keyClaudeSourceTagAllClients,
                 .keyClaudeSourceTagDesktop,
                 .keyClaudeQuotaCalibrationDetail,
+                .keyClaudeQuotaCalibrationOffDetail,
+                .keyClaudeQuotaCalibrationOffLink,
                 .keyClaudeModSyncTitle,
                 .keyClaudeModSyncManage,
                 .modSyncStatusDetecting,

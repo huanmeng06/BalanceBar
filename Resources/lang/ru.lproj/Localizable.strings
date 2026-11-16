@@ -656,6 +656,8 @@
 "claude.timeline.estimate.in" = "примерно через %1$@";
 "claude.refresh.every_minutes" = "Каждые %1$@ мин";
 "claude.quota.calibration_detail" = "Периодически запрашивает официальный источник как запасной вариант; больший интервал помогает избежать ограничений";
+"claude.quota.calibration_off_detail" = "Официальные запросы Claude выключены, этот интервал не действует.";
+"claude.quota.calibration_off_link" = "Настроить белый список IP…";
 
 // BalanceBar Mod realtime sync (Issue #597)
 "claude.mod_sync.title" = "BalanceBar Mod ускорение реального времени";
@@ -836,7 +838,10 @@
 "dashboard.advanced.page.egress_guard_detected_unlisted" = "Текущий выход: %1$@ — не в белом списке";
 "dashboard.advanced.page.egress_guard_detect_failed" = "Не удалось определить текущий выход";
 "dashboard.advanced.page.egress_guard_add_detected" = "Добавить";
-"dashboard.advanced.page.egress_guard_footnote" = "Проверка обращается к claude.ai, а запросы квоты — к api.anthropic.com. Направьте оба через одно правило прокси, иначе результат проверки может не совпасть с реальным выходом. Страна/регион запрашивается у ipinfo.io один раз для каждого IP.";
+"dashboard.advanced.page.egress_guard_footnote" = "Проверка обращается к claude.ai, а запросы квоты — к api.anthropic.com. Направьте оба через одно правило прокси, иначе результат проверки может не совпасть с реальным выходом. Страна/регион запрашивается у ipinfo.io один раз для каждого IP. Доступность указана по политике поддерживаемых регионов Anthropic на 2026-11-12 и носит справочный характер.";
 "dashboard.advanced.page.egress_guard_column_ip" = "IP-адрес";
 "dashboard.advanced.page.egress_guard_column_region" = "Страна/регион";
 "dashboard.advanced.page.egress_guard_country_loading" = "Поиск…";
+"dashboard.advanced.page.egress_guard_column_available" = "Claude доступен";
+"dashboard.advanced.page.egress_guard_available_yes" = "В регионе, где Anthropic предоставляет Claude";
+"dashboard.advanced.page.egress_guard_available_no" = "Вне регионов, где Anthropic предоставляет Claude";

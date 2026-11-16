@@ -265,6 +265,8 @@ struct ClaudeEgressGuardPageActions {
     var cachedCountry: (String) -> String? = { _ in nil }
     /// Looks the country up on ipinfo.io (once per address); completes on any queue.
     var lookupCountry: (String, @escaping (String?) -> Void) -> Void = { $1(nil) }
+    /// Shows this section (Settings › Advanced); used by links elsewhere in Settings.
+    var openSettings: () -> Void = {}
 }
 
 /// Owns the IP allowlist section: the switch, then the allowlist table whose bottom bar carries
@@ -425,6 +427,7 @@ final class EgressIPListEditorView: NSView, NSTableViewDataSource, NSTableViewDe
     let detectButton = NSButton(title: tr(.keyDashboardAdvancedPageEgressGuardDetect), target: nil, action: nil)
     private let ipColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("egressGuard.ip.column"))
     private let countryColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("egressGuard.country.column"))
+    private let availabilityColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("egressGuard.available.column"))
     private var tableHeightConstraint: NSLayoutConstraint!
     private var heightConstraint: NSLayoutConstraint!
 
@@ -555,6 +558,9 @@ final class EgressIPListEditorView: NSView, NSTableViewDataSource, NSTableViewDe
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         guard rows.indices.contains(row), let tableColumn else { return nil }
+        if tableColumn.identifier == availabilityColumn.identifier {
+            return availabilityCell(for: rows[row])
+        }
         let isIP = tableColumn.identifier == ipColumn.identifier
         let cellIdentifier = NSUserInterfaceItemIdentifier(isIP ? "egressGuard.ip.cell" : "egressGuard.country.cell")
         let cell = (tableView.makeView(withIdentifier: cellIdentifier, owner: self) as? NSTableCellView)
@@ -682,7 +688,44 @@ final class EgressIPListEditorView: NSView, NSTableViewDataSource, NSTableViewDe
         let key = EgressIPCountryCache.key(for: ip)
         let indexes = IndexSet(rows.indices.filter { EgressIPCountryCache.key(for: rows[$0]) == key })
         guard !indexes.isEmpty else { return }
-        tableView.reloadData(forRowIndexes: indexes, columnIndexes: IndexSet(integer: 1))
+        tableView.reloadData(forRowIndexes: indexes, columnIndexes: IndexSet(integersIn: 1..<3))
+    }
+
+    /// Whether Claude is offered where this IP is (Anthropic's supported regions); blank until
+    /// the country is known.
+    func availability(for ip: String) -> Bool? {
+        guard EgressIPAddress.isValid(ip), let code = cachedCountry(ip) else { return nil }
+        return AnthropicSupportedRegions.isSupported(code)
+    }
+
+    private func availabilityCell(for ip: String) -> NSView {
+        let identifier = NSUserInterfaceItemIdentifier("egressGuard.available.cell")
+        let cell = (tableView.makeView(withIdentifier: identifier, owner: self) as? NSTableCellView) ?? {
+            let cell = NSTableCellView()
+            cell.identifier = identifier
+            let image = NSImageView()
+            image.translatesAutoresizingMaskIntoConstraints = false
+            image.symbolConfiguration = .init(pointSize: 13, weight: .regular)
+            cell.imageView = image
+            cell.addSubview(image)
+            NSLayoutConstraint.activate([
+                image.centerXAnchor.constraint(equalTo: cell.centerXAnchor),
+                image.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+            ])
+            return cell
+        }()
+        let available = availability(for: ip)
+        let description = available.map {
+            tr($0 ? .keyDashboardAdvancedPageEgressGuardAvailableYes : .keyDashboardAdvancedPageEgressGuardAvailableNo)
+        }
+        cell.imageView?.image = available.flatMap {
+            NSImage(systemSymbolName: $0 ? "checkmark.circle.fill" : "xmark.circle.fill", accessibilityDescription: description)
+        }
+        cell.imageView?.contentTintColor = !isEnabled ? .disabledControlTextColor
+            : available == true ? .systemGreen : .systemRed
+        cell.toolTip = description
+        cell.setAccessibilityLabel(description)
+        return cell
     }
 
     private func reloadRows() {
@@ -803,10 +846,16 @@ final class EgressIPListEditorView: NSView, NSTableViewDataSource, NSTableViewDe
         ipColumn.resizingMask = .autoresizingMask
         countryColumn.title = tr(.keyDashboardAdvancedPageEgressGuardColumnRegion)
         countryColumn.minWidth = 120
-        countryColumn.width = 180
+        countryColumn.width = 170
         countryColumn.resizingMask = .autoresizingMask
+        availabilityColumn.title = tr(.keyDashboardAdvancedPageEgressGuardColumnAvailable)
+        availabilityColumn.headerCell.alignment = .center
+        availabilityColumn.minWidth = 76
+        availabilityColumn.width = 90
+        availabilityColumn.resizingMask = .userResizingMask
         tableView.addTableColumn(ipColumn)
         tableView.addTableColumn(countryColumn)
+        tableView.addTableColumn(availabilityColumn)
         tableView.headerView = NSTableHeaderView(frame: NSRect(x: 0, y: 0, width: 0, height: 28))
         tableView.dataSource = self
         tableView.delegate = self
@@ -938,6 +987,12 @@ final class EgressIPListEditorView: NSView, NSTableViewDataSource, NSTableViewDe
     func selectForTesting(row: Int) {
         applySelection(row)
         updateState()
+    }
+
+    func availabilitySymbolForTesting(row: Int) -> String? {
+        let cell = tableView.view(atColumn: 2, row: row, makeIfNecessary: true) as? NSTableCellView
+        guard let image = cell?.imageView?.image else { return nil }
+        return image.accessibilityDescription
     }
 
     func countryTextForTesting(row: Int) -> String? {

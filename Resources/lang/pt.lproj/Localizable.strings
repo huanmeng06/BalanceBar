@@ -656,6 +656,8 @@
 "claude.timeline.estimate.in" = "em cerca de %1$@";
 "claude.refresh.every_minutes" = "A cada %1$@ min";
 "claude.quota.calibration_detail" = "Consulta a fonte oficial periodicamente como alternativa; intervalos maiores evitam limites de uso";
+"claude.quota.calibration_off_detail" = "As solicitações oficiais do Claude estão desativadas; este intervalo não tem efeito.";
+"claude.quota.calibration_off_link" = "Configurar IPs permitidos…";
 
 // BalanceBar Mod realtime sync (Issue #597)
 "claude.mod_sync.title" = "BalanceBar Mod impulso em tempo real";
@@ -836,7 +838,10 @@
 "dashboard.advanced.page.egress_guard_detected_unlisted" = "Saída atual: %1$@ — não permitida";
 "dashboard.advanced.page.egress_guard_detect_failed" = "Não foi possível detectar a saída atual";
 "dashboard.advanced.page.egress_guard_add_detected" = "Adicionar";
-"dashboard.advanced.page.egress_guard_footnote" = "A verificação acessa claude.ai e as solicitações de cota vão para api.anthropic.com. Use a mesma regra de proxy para ambos ou a verificação pode não corresponder à saída real. O país/região é consultado no ipinfo.io uma única vez por IP.";
+"dashboard.advanced.page.egress_guard_footnote" = "A verificação acessa claude.ai e as solicitações de cota vão para api.anthropic.com. Use a mesma regra de proxy para ambos ou a verificação pode não corresponder à saída real. O país/região é consultado no ipinfo.io uma única vez por IP. A disponibilidade segue a política de regiões suportadas da Anthropic em 2026-11-12 e é apenas indicativa.";
 "dashboard.advanced.page.egress_guard_column_ip" = "Endereço IP";
 "dashboard.advanced.page.egress_guard_column_region" = "País/região";
 "dashboard.advanced.page.egress_guard_country_loading" = "Consultando…";
+"dashboard.advanced.page.egress_guard_column_available" = "Claude disponível";
+"dashboard.advanced.page.egress_guard_available_yes" = "Numa região onde a Anthropic oferece o Claude";
+"dashboard.advanced.page.egress_guard_available_no" = "Fora das regiões onde a Anthropic oferece o Claude";

@@ -168,7 +168,8 @@ final class ClaudeEgressGuardTests: XCTestCase {
         XCTAssertFalse(editor.emptyLabel.isHidden)
         XCTAssertEqual(editor.visibleRowCount, EgressIPListEditorView.minimumVisibleRows)
         XCTAssertEqual(editor.tableView.tableColumns.map(\.title), [
-            tr(.keyDashboardAdvancedPageEgressGuardColumnIp), tr(.keyDashboardAdvancedPageEgressGuardColumnRegion)])
+            tr(.keyDashboardAdvancedPageEgressGuardColumnIp), tr(.keyDashboardAdvancedPageEgressGuardColumnRegion),
+            tr(.keyDashboardAdvancedPageEgressGuardColumnAvailable)])
         XCTAssertFalse(editor.isEnabled, "the guard is off by default, so the list is dimmed")
         XCTAssertFalse(section.detectButton.isEnabled)
         editor.setEnabled(true)
@@ -328,6 +329,35 @@ final class ClaudeEgressGuardTests: XCTestCase {
 
         cache.prune(keeping: ["203.0.113.7"])
         XCTAssertTrue(stored.isEmpty)
+    }
+
+    func testSupportedRegionsSnapshot() {
+        XCTAssertEqual(AnthropicSupportedRegions.codes.count, 185)
+        for code in ["US", "JP", "SG", "TW", "GB", "UA", "kr"] {
+            XCTAssertTrue(AnthropicSupportedRegions.isSupported(code), code)
+        }
+        for code in ["CN", "HK", "MO", "RU", "IR", "KP"] {
+            XCTAssertFalse(AnthropicSupportedRegions.isSupported(code), code)
+        }
+    }
+
+    func testAvailabilityColumnFollowsKnownCountry() {
+        let countries = [
+            EgressIPCountryCache.key(for: "203.0.113.7")!: "US",
+            EgressIPCountryCache.key(for: "198.51.100.9")!: "HK",
+        ]
+        let editor = EgressIPListEditorView(
+            ips: ["203.0.113.7", "198.51.100.9", "192.0.2.1"],
+            cachedCountry: { ip in EgressIPCountryCache.key(for: ip).flatMap { countries[$0] } },
+            lookupCountry: { _, _ in },
+            onSave: { _ in })
+        XCTAssertEqual(editor.tableView.tableColumns.map(\.title).last, tr(.keyDashboardAdvancedPageEgressGuardColumnAvailable))
+        XCTAssertEqual(editor.availability(for: "203.0.113.7"), true)
+        XCTAssertEqual(editor.availability(for: "198.51.100.9"), false)
+        XCTAssertNil(editor.availability(for: "192.0.2.1"), "unknown until the country is known")
+        XCTAssertEqual(editor.availabilitySymbolForTesting(row: 0), tr(.keyDashboardAdvancedPageEgressGuardAvailableYes))
+        XCTAssertEqual(editor.availabilitySymbolForTesting(row: 1), tr(.keyDashboardAdvancedPageEgressGuardAvailableNo))
+        XCTAssertNil(editor.availabilitySymbolForTesting(row: 2))
     }
 
     func testCountryLookupURL() {

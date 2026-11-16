@@ -107,6 +107,7 @@ final class DashboardPreferencePages {
         relay.onBankedResetDisplayModeChanged = actions.onBankedResetDisplayModeChanged
         relay.onUpdateChannelChanged = actions.onUpdateChannelChanged
         relay.onOpenCCSwitch = actions.onOpenCCSwitch
+        relay.onOpenEgressGuardSettings = actions.claudeEgressGuard.openSettings
         relay.onOpenSystemMenuBarSettings = actions.onOpenSystemMenuBarSettings
         relay.onManualRefresh = actions.onManualRefresh
         relay.onManageModSync = actions.onManageModSync
@@ -246,6 +247,8 @@ final class DashboardPreferencePages {
     func refreshClaudeEgressGuard() {
         advancedPage.refreshEgressGuard(preferences: preferences)
         searchAdvancedPage.refreshEgressGuard(preferences: preferences)
+        generalPage.refreshClaudeOfficialEnabled(preferences.claudeEgressGuardEnabled)
+        searchGeneralPage.refreshClaudeOfficialEnabled(preferences.claudeEgressGuardEnabled)
     }
 
     func refreshClaudeSourceTimeline() {

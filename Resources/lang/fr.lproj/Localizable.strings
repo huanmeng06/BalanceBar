@@ -656,6 +656,8 @@
 "claude.timeline.estimate.in" = "dans environ %1$@";
 "claude.refresh.every_minutes" = "Toutes les %1$@ min";
 "claude.quota.calibration_detail" = "Interroge la source officielle à intervalles réguliers, en secours ; un intervalle plus long évite les limitations";
+"claude.quota.calibration_off_detail" = "Les requêtes officielles Claude sont désactivées ; cet intervalle est sans effet.";
+"claude.quota.calibration_off_link" = "Configurer les IP autorisées…";
 
 // BalanceBar Mod realtime sync (Issue #597)
 "claude.mod_sync.title" = "BalanceBar Mod boost temps réel";
@@ -836,7 +838,10 @@
 "dashboard.advanced.page.egress_guard_detected_unlisted" = "Sortie actuelle : %1$@ — non autorisée";
 "dashboard.advanced.page.egress_guard_detect_failed" = "Impossible de détecter la sortie actuelle";
 "dashboard.advanced.page.egress_guard_add_detected" = "Ajouter";
-"dashboard.advanced.page.egress_guard_footnote" = "La vérification contacte claude.ai, les requêtes de quota vont à api.anthropic.com. Faites passer les deux par la même règle de proxy, sinon la vérification peut différer de la sortie réelle. Le pays/région est obtenu une seule fois par IP via ipinfo.io.";
+"dashboard.advanced.page.egress_guard_footnote" = "La vérification contacte claude.ai, les requêtes de quota vont à api.anthropic.com. Faites passer les deux par la même règle de proxy, sinon la vérification peut différer de la sortie réelle. Le pays/région est obtenu une seule fois par IP via ipinfo.io. La disponibilité suit la politique des régions prises en charge d’Anthropic au 2026-11-12, à titre indicatif.";
 "dashboard.advanced.page.egress_guard_column_ip" = "Adresse IP";
 "dashboard.advanced.page.egress_guard_column_region" = "Pays/région";
 "dashboard.advanced.page.egress_guard_country_loading" = "Recherche…";
+"dashboard.advanced.page.egress_guard_column_available" = "Claude disponible";
+"dashboard.advanced.page.egress_guard_available_yes" = "Dans une région où Anthropic propose Claude";
+"dashboard.advanced.page.egress_guard_available_no" = "Hors des régions où Anthropic propose Claude";

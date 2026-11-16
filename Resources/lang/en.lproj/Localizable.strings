@@ -656,6 +656,8 @@
 "claude.timeline.estimate.in" = "in about %1$@";
 "claude.refresh.every_minutes" = "Every %1$@ min";
 "claude.quota.calibration_detail" = "Polls the official source on a timer as a fallback; longer intervals avoid rate limits";
+"claude.quota.calibration_off_detail" = "Claude official requests are off, so this interval has no effect.";
+"claude.quota.calibration_off_link" = "Set Up IP Allowlist…";
 
 // BalanceBar Mod realtime sync (Issue #597)
 "claude.mod_sync.title" = "BalanceBar Mod realtime boost";
@@ -836,7 +838,10 @@
 "dashboard.advanced.page.egress_guard_detected_unlisted" = "Current egress: %1$@ — not on the allowlist";
 "dashboard.advanced.page.egress_guard_detect_failed" = "Couldn’t detect the current egress";
 "dashboard.advanced.page.egress_guard_add_detected" = "Add";
-"dashboard.advanced.page.egress_guard_footnote" = "The check visits claude.ai; quota requests go to api.anthropic.com. Route both through the same proxy rule, or the check may not match the real egress. Country/region comes from ipinfo.io and is looked up once per IP.";
+"dashboard.advanced.page.egress_guard_footnote" = "The check visits claude.ai; quota requests go to api.anthropic.com. Route both through the same proxy rule, or the check may not match the real egress. Country/region comes from ipinfo.io and is looked up once per IP. Availability follows Anthropic’s Supported Regions Policy as of 2026-11-12 and is for reference only.";
 "dashboard.advanced.page.egress_guard_column_ip" = "IP Address";
 "dashboard.advanced.page.egress_guard_column_region" = "Country/Region";
 "dashboard.advanced.page.egress_guard_country_loading" = "Looking up…";
+"dashboard.advanced.page.egress_guard_column_available" = "Claude Available";
+"dashboard.advanced.page.egress_guard_available_yes" = "In a region where Anthropic offers Claude";
+"dashboard.advanced.page.egress_guard_available_no" = "Not in a region where Anthropic offers Claude";

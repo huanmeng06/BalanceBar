@@ -656,6 +656,8 @@
 "claude.timeline.estimate.in" = "tra circa %1$@";
 "claude.refresh.every_minutes" = "Ogni %1$@ min";
 "claude.quota.calibration_detail" = "Interroga la fonte ufficiale a intervalli regolari come ripiego; intervalli più lunghi evitano i limiti di frequenza";
+"claude.quota.calibration_off_detail" = "Le richieste ufficiali di Claude sono disattivate; questo intervallo non ha effetto.";
+"claude.quota.calibration_off_link" = "Configura IP consentiti…";
 
 // BalanceBar Mod realtime sync (Issue #597)
 "claude.mod_sync.title" = "BalanceBar Mod potenziamento in tempo reale";
@@ -836,7 +838,10 @@
 "dashboard.advanced.page.egress_guard_detected_unlisted" = "Uscita attuale: %1$@ — non consentita";
 "dashboard.advanced.page.egress_guard_detect_failed" = "Impossibile rilevare l’uscita attuale";
 "dashboard.advanced.page.egress_guard_add_detected" = "Aggiungi";
-"dashboard.advanced.page.egress_guard_footnote" = "Il controllo contatta claude.ai, le richieste di quota vanno a api.anthropic.com. Instrada entrambi con la stessa regola proxy, altrimenti il controllo potrebbe non corrispondere all’uscita reale. Paese/area viene cercato su ipinfo.io una sola volta per IP.";
+"dashboard.advanced.page.egress_guard_footnote" = "Il controllo contatta claude.ai, le richieste di quota vanno a api.anthropic.com. Instrada entrambi con la stessa regola proxy, altrimenti il controllo potrebbe non corrispondere all’uscita reale. Paese/area viene cercato su ipinfo.io una sola volta per IP. La disponibilità segue la policy sulle aree supportate di Anthropic al 2026-11-12 ed è solo indicativa.";
 "dashboard.advanced.page.egress_guard_column_ip" = "Indirizzo IP";
 "dashboard.advanced.page.egress_guard_column_region" = "Paese/area";
 "dashboard.advanced.page.egress_guard_country_loading" = "Ricerca…";
+"dashboard.advanced.page.egress_guard_column_available" = "Claude disponibile";
+"dashboard.advanced.page.egress_guard_available_yes" = "In un’area in cui Anthropic offre Claude";
+"dashboard.advanced.page.egress_guard_available_no" = "Fuori dalle aree in cui Anthropic offre Claude";

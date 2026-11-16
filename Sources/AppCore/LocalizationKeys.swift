@@ -305,6 +305,8 @@
     case keyClaudeTimelineEstimateIn = "claude.timeline.estimate.in"
     case keyClaudeRefreshEveryMinutes = "claude.refresh.every_minutes"
     case keyClaudeQuotaCalibrationDetail = "claude.quota.calibration_detail"
+    case keyClaudeQuotaCalibrationOffDetail = "claude.quota.calibration_off_detail"
+    case keyClaudeQuotaCalibrationOffLink = "claude.quota.calibration_off_link"
     case keyDashboardOfficialQuotaRefreshFrequency = "dashboard.refresh.official_quota_frequency"
     case keyDashboardRefreshOfficialScope = "dashboard.refresh.official_scope"
     case keyDashboardRefreshAPIScope = "dashboard.refresh.api_scope"
@@ -814,6 +816,9 @@
     case keyDashboardAdvancedPageEgressGuardColumnIp = "dashboard.advanced.page.egress_guard_column_ip"
     case keyDashboardAdvancedPageEgressGuardColumnRegion = "dashboard.advanced.page.egress_guard_column_region"
     case keyDashboardAdvancedPageEgressGuardCountryLoading = "dashboard.advanced.page.egress_guard_country_loading"
+    case keyDashboardAdvancedPageEgressGuardColumnAvailable = "dashboard.advanced.page.egress_guard_column_available"
+    case keyDashboardAdvancedPageEgressGuardAvailableYes = "dashboard.advanced.page.egress_guard_available_yes"
+    case keyDashboardAdvancedPageEgressGuardAvailableNo = "dashboard.advanced.page.egress_guard_available_no"
 
     var rawKey: String { rawValue }
 }

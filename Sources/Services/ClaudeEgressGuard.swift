@@ -96,6 +96,33 @@ enum IPCountryCode {
     }
 }
 
+/// Anthropic's Supported Regions Policy (anthropic.com/supported-countries), as ISO 3166 codes.
+/// A snapshot shipped with the app, for display only: it never decides whether a request is sent.
+/// Ukraine is listed with regional exceptions that a country lookup cannot see, so it counts as
+/// supported.
+enum AnthropicSupportedRegions {
+    /// The policy's effective date this snapshot was taken from.
+    static let snapshotDate = "2026-11-12"
+    static let codes: Set<String> = [
+        "AL", "DZ", "AD", "AO", "AG", "AR", "AM", "AU", "AT", "AZ", "BS", "BH", "BD", "BB", "BE", "BZ",
+        "BJ", "BT", "BO", "BA", "BW", "BR", "BN", "BG", "BF", "BI", "CV", "KH", "CM", "CA", "CF", "TD",
+        "CL", "CO", "KM", "CG", "CD", "CR", "CI", "HR", "CY", "CZ", "DK", "DJ", "DM", "DO", "EC", "EG",
+        "SV", "GQ", "ER", "EE", "SZ", "ET", "FJ", "FI", "FR", "GA", "GM", "GE", "DE", "GH", "GR", "GD",
+        "GT", "GN", "GW", "GY", "HT", "HN", "HU", "IS", "IN", "ID", "IQ", "IE", "IL", "IT", "JM", "JP",
+        "JO", "KZ", "KE", "KI", "KW", "KG", "LA", "LV", "LB", "LS", "LR", "LY", "LI", "LT", "LU", "MG",
+        "MW", "MY", "MV", "ML", "MT", "MH", "MR", "MU", "MX", "FM", "MD", "MC", "MN", "ME", "MA", "MZ",
+        "NA", "NR", "NP", "NL", "NZ", "NI", "NE", "NG", "MK", "NO", "OM", "PK", "PW", "PS", "PA", "PG",
+        "PY", "PE", "PH", "PL", "PT", "QA", "RO", "RW", "KN", "LC", "VC", "WS", "SM", "ST", "SA", "SN",
+        "RS", "SC", "SL", "SG", "SK", "SI", "SO", "SB", "ZA", "KR", "SS", "ES", "LK", "SD", "SR", "SE",
+        "CH", "TW", "TJ", "TZ", "TH", "TL", "TG", "TO", "TT", "TN", "TR", "TM", "TV", "UG", "UA", "AE",
+        "GB", "US", "UY", "UZ", "VU", "VA", "VN", "ZM", "ZW",
+    ]
+
+    static func isSupported(_ countryCode: String) -> Bool {
+        codes.contains(countryCode.uppercased())
+    }
+}
+
 /// Remembers the country of each allowlisted IP so ipinfo.io is asked once per address, not on
 /// every page load. Failed lookups are not remembered and are retried the next time they are
 /// asked for. Concurrent asks for one address share one lookup.

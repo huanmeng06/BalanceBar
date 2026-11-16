@@ -656,6 +656,8 @@
 "claude.timeline.estimate.in" = "in ca. %1$@";
 "claude.refresh.every_minutes" = "Alle %1$@ Min.";
 "claude.quota.calibration_detail" = "Fragt die offizielle Quelle zeitgesteuert als Rückfall ab; längere Intervalle vermeiden Rate-Limits";
+"claude.quota.calibration_off_detail" = "Offizielle Claude-Anfragen sind aus; dieses Intervall ist wirkungslos.";
+"claude.quota.calibration_off_link" = "IP-Zulassungsliste einrichten …";
 
 // BalanceBar Mod realtime sync (Issue #597)
 "claude.mod_sync.title" = "BalanceBar Mod Echtzeit-Boost";
@@ -836,7 +838,10 @@
 "dashboard.advanced.page.egress_guard_detected_unlisted" = "Aktueller Ausgang: %1$@ – nicht zugelassen";
 "dashboard.advanced.page.egress_guard_detect_failed" = "Aktueller Ausgang konnte nicht ermittelt werden";
 "dashboard.advanced.page.egress_guard_add_detected" = "Hinzufügen";
-"dashboard.advanced.page.egress_guard_footnote" = "Die Prüfung ruft claude.ai auf, Kontingentanfragen gehen an api.anthropic.com. Leite beide über dieselbe Proxy-Regel, sonst kann die Prüfung vom echten Ausgang abweichen. Land/Region wird einmal pro IP bei ipinfo.io abgefragt.";
+"dashboard.advanced.page.egress_guard_footnote" = "Die Prüfung ruft claude.ai auf, Kontingentanfragen gehen an api.anthropic.com. Leite beide über dieselbe Proxy-Regel, sonst kann die Prüfung vom echten Ausgang abweichen. Land/Region wird einmal pro IP bei ipinfo.io abgefragt. Die Verfügbarkeit folgt Anthropics Richtlinie zu unterstützten Regionen (Stand 2026-11-12) und dient nur zur Orientierung.";
 "dashboard.advanced.page.egress_guard_column_ip" = "IP-Adresse";
 "dashboard.advanced.page.egress_guard_column_region" = "Land/Region";
 "dashboard.advanced.page.egress_guard_country_loading" = "Wird abgefragt …";
+"dashboard.advanced.page.egress_guard_column_available" = "Claude verfügbar";
+"dashboard.advanced.page.egress_guard_available_yes" = "In einer von Anthropic unterstützten Region";
+"dashboard.advanced.page.egress_guard_available_no" = "Nicht in einer von Anthropic unterstützten Region";

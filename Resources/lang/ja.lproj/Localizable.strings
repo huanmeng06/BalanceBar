@@ -656,6 +656,8 @@
 "claude.timeline.estimate.in" = "約 %1$@後";
 "claude.refresh.every_minutes" = "%1$@ 分ごと";
 "claude.quota.calibration_detail" = "一定間隔で公式に問い合わせるフォールバックです。間隔を長くするとレート制限を避けられます";
+"claude.quota.calibration_off_detail" = "Claude の公式リクエストはオフのため、この間隔は無効です。";
+"claude.quota.calibration_off_link" = "IP 許可リストを設定…";
 
 // BalanceBar Mod realtime sync (Issue #597)
 "claude.mod_sync.title" = "BalanceBar Mod リアルタイム強化";
@@ -836,7 +838,10 @@
 "dashboard.advanced.page.egress_guard_detected_unlisted" = "現在の出口：%1$@（許可リストにありません）";
 "dashboard.advanced.page.egress_guard_detect_failed" = "現在の出口を検出できません";
 "dashboard.advanced.page.egress_guard_add_detected" = "追加";
-"dashboard.advanced.page.egress_guard_footnote" = "検出は claude.ai に、クォータのリクエストは api.anthropic.com に接続します。両方を同じプロキシルールに通さないと、検出結果と実際の出口が一致しないことがあります。国または地域は ipinfo.io で IP ごとに 1 回だけ調べます。";
+"dashboard.advanced.page.egress_guard_footnote" = "検出は claude.ai に、クォータのリクエストは api.anthropic.com に接続します。両方を同じプロキシルールに通さないと、検出結果と実際の出口が一致しないことがあります。国または地域は ipinfo.io で IP ごとに 1 回だけ調べます。利用可否は Anthropic のサポート地域ポリシー（2026-11-12 時点）に基づく参考情報です。";
 "dashboard.advanced.page.egress_guard_column_ip" = "IP アドレス";
 "dashboard.advanced.page.egress_guard_column_region" = "国または地域";
 "dashboard.advanced.page.egress_guard_country_loading" = "照会中…";
+"dashboard.advanced.page.egress_guard_column_available" = "Claude 利用可";
+"dashboard.advanced.page.egress_guard_available_yes" = "Anthropic の提供地域内";
+"dashboard.advanced.page.egress_guard_available_no" = "Anthropic の提供地域外";

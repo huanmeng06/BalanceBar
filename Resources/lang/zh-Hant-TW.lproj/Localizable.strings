@@ -656,6 +656,8 @@
 "claude.timeline.estimate.in" = "約 %1$@後";
 "claude.refresh.every_minutes" = "每 %1$@ 分鐘";
 "claude.quota.calibration_detail" = "定時向官方查詢作為備援；間隔越長越不容易被限流";
+"claude.quota.calibration_off_detail" = "Claude 官方請求已關閉，此間隔暫不生效。";
+"claude.quota.calibration_off_link" = "前往 IP 白名單設定…";
 
 // BalanceBar Mod realtime sync (Issue #597)
 "claude.mod_sync.title" = "BalanceBar Mod 即時增強";
@@ -836,7 +838,10 @@
 "dashboard.advanced.page.egress_guard_detected_unlisted" = "目前出口：%1$@，不在白名單中";
 "dashboard.advanced.page.egress_guard_detect_failed" = "無法偵測目前出口";
 "dashboard.advanced.page.egress_guard_add_detected" = "加入";
-"dashboard.advanced.page.egress_guard_footnote" = "偵測連到的是 claude.ai，額度請求連到的是 api.anthropic.com。請讓兩者走同一條代理規則，否則偵測結果可能與實際出口不一致。國家/地區由 ipinfo.io 查詢，每個 IP 只查一次。";
+"dashboard.advanced.page.egress_guard_footnote" = "偵測連到的是 claude.ai，額度請求連到的是 api.anthropic.com。請讓兩者走同一條代理規則，否則偵測結果可能與實際出口不一致。國家/地區由 ipinfo.io 查詢，每個 IP 只查一次。可用性依據 Anthropic 支援地區政策（截至 2026-11-12），僅供參考。";
 "dashboard.advanced.page.egress_guard_column_ip" = "IP 位址";
 "dashboard.advanced.page.egress_guard_column_region" = "國家/地區";
 "dashboard.advanced.page.egress_guard_country_loading" = "查詢中…";
+"dashboard.advanced.page.egress_guard_column_available" = "Claude 可用";
+"dashboard.advanced.page.egress_guard_available_yes" = "在 Anthropic 可用地區內";
+"dashboard.advanced.page.egress_guard_available_no" = "不在 Anthropic 可用地區內";
