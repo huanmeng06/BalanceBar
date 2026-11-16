@@ -873,6 +873,9 @@ extension OfficialQuotaClientTests {
     func testOfficialContextCancellationStopsResetCreditTransport() throws {
         let started = expectation(description: "credit request started")
         let stopped = expectation(description: "credit transport actually stopped")
+        // URLSession may call stopLoading again (e.g. while invalidating the session); a second
+        // call must not abort the whole test process.
+        stopped.assertForOverFulfill = false
         StubURLProtocol.setHandler { request in
             XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer stored-credit-fixture")
             started.fulfill()
