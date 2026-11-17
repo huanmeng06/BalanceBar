@@ -609,6 +609,15 @@
 "claude.login_prompt.action" = "Cliquez pour copier la commande claude, puis exécutez-la dans un terminal";
 "claude.login_prompt.copied_title" = "Commande claude copiée";
 "claude.login_prompt.copied_detail" = "Collez-la et exécutez-la dans un terminal pour vous reconnecter";
+"quota.failure.copy_codex_login_command" = "Copier la commande codex login";
+"codex.account.login_expired" = "Connexion expirée";
+"codex.account.signed_out" = "Non connecté";
+"codex.refresh.login_expired" = "La connexion à Codex a expiré. Exécutez codex login dans un terminal pour la rétablir";
+"codex.refresh.signed_out" = "Codex n’est pas connecté. Exécutez codex login dans un terminal";
+"codex.login_prompt.title_expired" = "Connexion Codex expirée ; données anciennes";
+"codex.login_prompt.title_signed_out" = "Codex non connecté ; données anciennes";
+"codex.login_prompt.action" = "Cliquez pour copier la commande codex login, puis exécutez-la dans un terminal";
+"codex.login_prompt.copied_title" = "Commande codex login copiée";
 "quota.status.accessibility" = "État du quota : %1$@";
 "claude.refresh.login_expired" = "La connexion à Claude Code a expiré. Exécutez claude une fois dans un terminal pour la rétablir ; BalanceBar ne renouvelle jamais la connexion lui-même.";
 "claude.quota.calibration" = "Recalage du quota officiel Claude";

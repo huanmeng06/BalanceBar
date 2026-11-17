@@ -1945,7 +1945,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         XCTAssertEqual(try observationRefresh(coordinator, fixture: fixture).resetForecast.officialResetObservation, .watching)
         XCTAssertEqual(store.load(providerID: "codex-replacement", accountKey: "a@example.com")?.observation.previousSample, previous)
         fixture.update { $0.quotaStatus = 503 }
-        XCTAssertEqual(try observationRefresh(coordinator, fixture: fixture).kind, .error)
+        XCTAssertNotNil(try observationRefresh(coordinator, fixture: fixture).staleReason, "the failure keeps the earlier data (Issue #674)")
         XCTAssertEqual(store.load(providerID: "codex-replacement", accountKey: "a@example.com")?.observation.previousSample, previous)
         fixture.update { $0.quotaStatus = 200; $0.windows = ObservationFixture.windows(100, 100, cycle: 2) }
         XCTAssertEqual(try observationRefresh(coordinator, fixture: fixture).resetForecast.officialResetObservation, .observed)
@@ -2471,7 +2471,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         coordinator.refreshStandardProvider(current: try XCTUnwrap(repository.loadCurrent(appType: "codex")), client: .codex, forceBalance: true, switched: false)
         waitForEvent(started)
         fixture.update { $0.quotaStatus = 503; $0.needsCreditList = false; $0.creditGate = nil }
-        XCTAssertEqual(try observationRefresh(coordinator, fixture: fixture).kind, .error)
+        XCTAssertNotNil(try observationRefresh(coordinator, fixture: fixture).staleReason, "the failure keeps the earlier data (Issue #674)")
         let trusted = store.load(providerID: "codex-replacement", accountKey: "a@example.com")?.observation
         let journal = store.loadQuotaEvidence(providerID: "codex-replacement", accountKey: "a@example.com")
         let forecastRequests = fixture.forecastRequestCount
@@ -2569,7 +2569,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         XCTAssertNil(refill.quotaPredictionContexts.first { $0.cycle.kind == .fiveHour }?.inferredCycleStart)
         XCTAssertNotNil(refill.quotaPredictionContexts.first { $0.cycle.kind == .sevenDay }?.inferredCycleStart)
         fixture.update { $0.quotaStatus = 503 }
-        XCTAssertEqual(try observationRefresh(coordinator, fixture: fixture).kind, .error)
+        XCTAssertNotNil(try observationRefresh(coordinator, fixture: fixture).staleReason, "the failure keeps the earlier data (Issue #674)")
         fixture.update { $0.quotaStatus = 200; $0.windows = [predictionWindows(now: base, five: 55)[0]] }
         coordinator = try observationCoordinator(fixture, store: store, clock: clock)
         XCTAssertNil(try observationRefresh(coordinator, fixture: fixture).quotaPredictionContexts.first?.inferredCycleStart)
@@ -3125,6 +3125,96 @@ private final class DelayedBalanceURLProtocol: URLProtocol {
 
 /// Uses a real account and asynchronous URLSession transport, with no auth-file
 /// or network dependencies. Locking permits account changes during a response.
+// MARK: Codex official failures (Issue #674)
+
+extension ProviderRefreshCoordinatorTests {
+    func testCodexRejectedTokenWithoutEarlierDataShowsLoginExpiredCardWithCodexLoginButton() throws {
+        let fixture = ObservationFixture()
+        fixture.update { $0.quotaStatus = 401 }
+        let coordinator = try observationCoordinator(fixture, store: try observationStore())
+        let error = try observationRefresh(coordinator, fixture: fixture)
+        XCTAssertEqual(error.kind, .error)
+        XCTAssertEqual(error.message, tr(.keyCodexRefreshLoginExpired))
+        XCTAssertFalse(error.message?.contains(tr(.keyProviderRefreshCoordinatorOfficialValueTheQuotaEndpointReturnedAnError,
+            arguments: ["Codex"])) == true, "a rejected token is not a server error")
+        XCTAssertEqual(error.failureClient, .codex)
+        XCTAssertEqual(error.failureRecovery, .copySignInCommand)
+        XCTAssertEqual(error.accountUnavailableReason, .codexLoginExpired)
+
+        fixture.update { $0.quotaStatus = 403 }
+        XCTAssertEqual(try observationRefresh(coordinator, fixture: fixture).accountUnavailableReason, .codexLoginExpired)
+    }
+
+    func testCodexSignedOutWithoutEarlierDataPointsAtCodexLogin() throws {
+        let fixture = ObservationFixture()
+        fixture.update { $0.signedOut = true }
+        let coordinator = try observationCoordinator(fixture, store: try observationStore())
+        let error = try observationRefresh(coordinator, fixture: fixture)
+        XCTAssertEqual(error.kind, .error)
+        XCTAssertEqual(error.message, tr(.keyCodexRefreshSignedOut))
+        XCTAssertEqual(error.failureClient, .codex)
+        XCTAssertEqual(error.failureRecovery, .copySignInCommand)
+        XCTAssertEqual(error.accountUnavailableReason, .codexSignedOut)
+        XCTAssertEqual(fixture.quotaRequestCount, 0, "a signed-out request never leaves the machine")
+    }
+
+    func testCodexNetworkFailureWithoutEarlierDataShowsCodexErrorCardWithCodexUsagePage() throws {
+        let fixture = ObservationFixture()
+        fixture.update { $0.quotaTransportFailure = true }
+        let coordinator = try observationCoordinator(fixture, store: try observationStore())
+        let error = try observationRefresh(coordinator, fixture: fixture)
+        XCTAssertEqual(error.kind, .error)
+        XCTAssertEqual(error.failureClient, .codex, "the card must not fall back to Claude's usage page")
+        XCTAssertEqual(error.failureRecovery, .openUsagePage)
+        XCTAssertNil(error.accountUnavailableReason, "a network failure says nothing about the account")
+
+        fixture.update { $0.quotaTransportFailure = false; $0.quotaStatus = 503 }
+        let server = try observationRefresh(coordinator, fixture: fixture)
+        XCTAssertEqual(server.kind, .error)
+        XCTAssertEqual(server.failureClient, .codex)
+        XCTAssertEqual(server.failureRecovery, .openUsagePage)
+    }
+
+    func testCodexNetworkFailureKeepsEarlierWindowsAsStaleData() throws {
+        let fixture = ObservationFixture()
+        let clock = TestClock(date: Date(timeIntervalSince1970: 1_800_000_000))
+        let coordinator = try observationCoordinator(fixture, store: try observationStore(), clock: clock)
+        let fresh = try observationRefresh(coordinator, fixture: fixture, renders: 2)
+        XCTAssertEqual(fresh.kind, .official)
+        XCTAssertNil(fresh.staleReason)
+
+        fixture.update { $0.quotaTransportFailure = true }
+        clock.advance(by: 120)
+        let stale = try observationRefresh(coordinator, fixture: fixture)
+        XCTAssertEqual(stale.kind, .official, "one network failure keeps the card's data")
+        XCTAssertEqual(stale.officialQuotaWindows.map(\.remaining), fresh.officialQuotaWindows.map(\.remaining))
+        XCTAssertEqual(stale.date, fresh.date, "the card keeps the last successful refresh time")
+        XCTAssertNotNil(stale.staleReason)
+        XCTAssertEqual(stale.failureClient, .codex)
+        XCTAssertEqual(stale.failureRecovery, .openUsagePage)
+        XCTAssertNil(stale.accountUnavailableReason, "a network failure says nothing about the account")
+
+        // A later login failure still keeps the same account's data, with the codex login guidance.
+        fixture.update { $0.quotaTransportFailure = false; $0.quotaStatus = 401 }
+        let expired = try observationRefresh(coordinator, fixture: fixture)
+        XCTAssertEqual(expired.kind, .official)
+        XCTAssertEqual(expired.staleReason, tr(.keyCodexRefreshLoginExpired))
+        XCTAssertEqual(expired.failureRecovery, .copySignInCommand)
+        XCTAssertEqual(expired.accountUnavailableReason, .codexLoginExpired)
+        XCTAssertEqual(expired.date, fresh.date)
+    }
+
+    func testCodexFailureNeverKeepsAnotherAccountsData() throws {
+        let fixture = ObservationFixture()
+        let coordinator = try observationCoordinator(fixture, store: try observationStore())
+        _ = try observationRefresh(coordinator, fixture: fixture, renders: 2)
+        fixture.update { $0.email = "b@example.com"; $0.quotaStatus = 401 }
+        let error = try observationRefresh(coordinator, fixture: fixture)
+        XCTAssertEqual(error.kind, .error, "account A's windows must not stand in for account B")
+        XCTAssertEqual(error.accountUnavailableReason, .codexLoginExpired)
+    }
+}
+
 private final class ObservationFixture: OfficialQuotaCredentialReading, OfficialQuotaParsing {
     struct State {
         var email = "a@example.com"
@@ -3139,6 +3229,10 @@ private final class ObservationFixture: OfficialQuotaCredentialReading, Official
         var creditGate: (DispatchSemaphore, DispatchSemaphore)?
         var authorization: String?
         var forecastRequests = 0
+        /// `~/.codex/auth.json` has no token (Issue #674).
+        var signedOut = false
+        /// The usage request fails at the transport level.
+        var quotaTransportFailure = false
     }
     private let lock = NSLock()
     private var state = State()
@@ -3153,8 +3247,9 @@ private final class ObservationFixture: OfficialQuotaCredentialReading, Official
     func codexAccountProfile() -> CodexAccountProfile? { CodexAccountProfile(email: read().email, planType: nil) }
     func claudeAccessToken() -> String? { nil }
     func codexRequestCredentials() -> CodexRequestCredentials {
-        let email = read().email
-        return CodexRequestCredentials(accessToken: "token-" + email, accountKey: email)
+        let state = read()
+        if state.signedOut { return CodexRequestCredentials(accessToken: nil, accountKey: nil) }
+        return CodexRequestCredentials(accessToken: "token-" + state.email, accountKey: state.email)
     }
     func parse(data: Data, client: AssistantClient) throws -> OfficialQuotaResponseParser.Output {
         let object = try JSONSerialization.jsonObject(with: data) as! [String: Any]
@@ -3176,6 +3271,7 @@ private final class ObservationFixture: OfficialQuotaCredentialReading, Official
         }
         update { $0.authorization = request.value(forHTTPHeaderField: "Authorization"); $0.quotaRequests += 1 }
         if let gate = state.quotaGate { gate.0.signal() }
+        if state.quotaTransportFailure { return .transportFailure() }
         let windows: [[String: Any]] = state.windows.map {
             var value: [String: Any] = ["kind": $0.kind.rawValue, "remaining": $0.remaining, "label": $0.label]
             value["duration"] = $0.durationSeconds

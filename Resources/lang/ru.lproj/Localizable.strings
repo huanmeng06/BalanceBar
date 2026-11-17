@@ -609,6 +609,15 @@
 "claude.login_prompt.action" = "Нажмите, чтобы скопировать команду claude и запустить её в терминале";
 "claude.login_prompt.copied_title" = "Команда claude скопирована";
 "claude.login_prompt.copied_detail" = "Вставьте и запустите её в терминале, чтобы войти снова";
+"quota.failure.copy_codex_login_command" = "Скопировать команду codex login";
+"codex.account.login_expired" = "Срок входа истёк";
+"codex.account.signed_out" = "Вход не выполнен";
+"codex.refresh.login_expired" = "Срок входа в Codex истёк. Запустите codex login в терминале, чтобы восстановить вход";
+"codex.refresh.signed_out" = "Вход в Codex не выполнен. Запустите codex login в терминале";
+"codex.login_prompt.title_expired" = "Вход в Codex истёк; старые данные";
+"codex.login_prompt.title_signed_out" = "Вход в Codex не выполнен; старые данные";
+"codex.login_prompt.action" = "Нажмите, чтобы скопировать команду codex login и запустить её в терминале";
+"codex.login_prompt.copied_title" = "Команда codex login скопирована";
 "quota.status.accessibility" = "Состояние квоты: %1$@";
 "claude.refresh.login_expired" = "Срок входа в Claude Code истёк. Запустите claude один раз в терминале, чтобы восстановить вход; BalanceBar сам вход не продлевает.";
 "claude.quota.calibration" = "Сверка официальной квоты Claude";

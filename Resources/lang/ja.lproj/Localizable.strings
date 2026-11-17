@@ -609,6 +609,15 @@
 "claude.login_prompt.action" = "クリックで claude コマンドをコピーし、ターミナルで実行";
 "claude.login_prompt.copied_title" = "claude コマンドをコピーしました";
 "claude.login_prompt.copied_detail" = "ターミナルに貼り付けて実行すると再サインインできます";
+"quota.failure.copy_codex_login_command" = "codex login コマンドをコピー";
+"codex.account.login_expired" = "サインイン期限切れ";
+"codex.account.signed_out" = "未サインイン";
+"codex.refresh.login_expired" = "Codex のサインインが期限切れです。ターミナルで codex login を実行すると復旧します";
+"codex.refresh.signed_out" = "Codex にサインインしていません。ターミナルで codex login を実行してください";
+"codex.login_prompt.title_expired" = "Codex のサインインが期限切れ・以前のデータ";
+"codex.login_prompt.title_signed_out" = "Codex 未サインイン・以前のデータ";
+"codex.login_prompt.action" = "クリックで codex login コマンドをコピーし、ターミナルで実行";
+"codex.login_prompt.copied_title" = "codex login コマンドをコピーしました";
 "quota.status.accessibility" = "クォータの状態：%1$@";
 "claude.refresh.login_expired" = "Claude Code のサインインが期限切れです。ターミナルで claude を一度実行すると復旧します。BalanceBar がサインインを自動更新することはありません。";
 "claude.quota.calibration" = "Claude 公式クォータの校正";

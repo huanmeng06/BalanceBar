@@ -609,6 +609,15 @@
 "claude.login_prompt.action" = "點此複製 claude 指令，在終端機執行即可恢復";
 "claude.login_prompt.copied_title" = "已複製 claude 指令";
 "claude.login_prompt.copied_detail" = "在終端機貼上並執行即可恢復登入";
+"quota.failure.copy_codex_login_command" = "複製 codex login 指令";
+"codex.account.login_expired" = "登入已過期";
+"codex.account.signed_out" = "未登入";
+"codex.refresh.login_expired" = "Codex 登入已過期，在終端機執行 codex login 即可恢復";
+"codex.refresh.signed_out" = "Codex 未登入，在終端機執行 codex login";
+"codex.login_prompt.title_expired" = "Codex 登入已過期，下方為舊資料";
+"codex.login_prompt.title_signed_out" = "Codex 未登入，下方為舊資料";
+"codex.login_prompt.action" = "點此複製 codex login 指令，在終端機執行即可恢復";
+"codex.login_prompt.copied_title" = "已複製 codex login 指令";
 "quota.status.accessibility" = "額度狀態：%1$@";
 "claude.refresh.login_expired" = "Claude Code 登入已失效。在終端機執行一次 claude 即可恢復；BalanceBar 不會自行續期登入。";
 "claude.quota.calibration" = "Claude 官方額度校準";

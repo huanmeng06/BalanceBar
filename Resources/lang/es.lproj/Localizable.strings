@@ -609,6 +609,15 @@
 "claude.login_prompt.action" = "Haz clic para copiar el comando claude y ejecútalo en una terminal";
 "claude.login_prompt.copied_title" = "Comando claude copiado";
 "claude.login_prompt.copied_detail" = "Pégalo y ejecútalo en una terminal para volver a iniciar sesión";
+"quota.failure.copy_codex_login_command" = "Copiar el comando codex login";
+"codex.account.login_expired" = "Sesión caducada";
+"codex.account.signed_out" = "Sin sesión";
+"codex.refresh.login_expired" = "La sesión de Codex ha caducado. Ejecuta codex login en una terminal para restaurarla";
+"codex.refresh.signed_out" = "Codex no tiene sesión iniciada. Ejecuta codex login en una terminal";
+"codex.login_prompt.title_expired" = "Sesión de Codex caducada; datos anteriores";
+"codex.login_prompt.title_signed_out" = "Codex sin sesión; datos anteriores";
+"codex.login_prompt.action" = "Haz clic para copiar el comando codex login y ejecútalo en una terminal";
+"codex.login_prompt.copied_title" = "Comando codex login copiado";
 "quota.status.accessibility" = "Estado de la cuota: %1$@";
 "claude.refresh.login_expired" = "El inicio de sesión de Claude Code ha caducado. Ejecuta claude una vez en una terminal para restaurarlo; BalanceBar nunca renueva el inicio de sesión por sí mismo.";
 "claude.quota.calibration" = "Calibración de la cuota oficial de Claude";

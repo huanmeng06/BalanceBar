@@ -609,6 +609,15 @@
 "claude.login_prompt.action" = "Klicken, um den Befehl claude zu kopieren und im Terminal auszuführen";
 "claude.login_prompt.copied_title" = "Befehl claude kopiert";
 "claude.login_prompt.copied_detail" = "Im Terminal einfügen und ausführen, um dich erneut anzumelden";
+"quota.failure.copy_codex_login_command" = "Befehl codex login kopieren";
+"codex.account.login_expired" = "Anmeldung abgelaufen";
+"codex.account.signed_out" = "Nicht angemeldet";
+"codex.refresh.login_expired" = "Codex-Anmeldung abgelaufen. Führe codex login im Terminal aus, um sie wiederherzustellen";
+"codex.refresh.signed_out" = "Codex ist nicht angemeldet. Führe codex login im Terminal aus";
+"codex.login_prompt.title_expired" = "Codex-Anmeldung abgelaufen; ältere Daten";
+"codex.login_prompt.title_signed_out" = "Codex nicht angemeldet; ältere Daten";
+"codex.login_prompt.action" = "Klicken, um den Befehl codex login zu kopieren und im Terminal auszuführen";
+"codex.login_prompt.copied_title" = "Befehl codex login kopiert";
 "quota.status.accessibility" = "Kontingentstatus: %1$@";
 "claude.refresh.login_expired" = "Die Claude-Code-Anmeldung ist abgelaufen. Führe einmal claude im Terminal aus, um sie wiederherzustellen; BalanceBar erneuert die Anmeldung nie selbst.";
 "claude.quota.calibration" = "Abgleich des offiziellen Claude-Kontingents";
