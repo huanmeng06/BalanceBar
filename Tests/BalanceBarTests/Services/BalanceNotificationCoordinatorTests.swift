@@ -691,7 +691,13 @@ final class FakeBalanceNotificationClient: BalanceNotificationClient {
     var onResponse: (([AnyHashable: Any]) -> Void)?
     var status: BalanceNotificationPermissionState
     let requestResult: Bool
-    private(set) var deliveries: [(title: String, body: String, userInfo: [AnyHashable: Any])] = []
+    private let deliveriesLock = NSLock()
+    private var storedDeliveries: [(title: String, body: String, userInfo: [AnyHashable: Any])] = []
+    /// Delivery happens on the notification queue while tests read from another thread.
+    var deliveries: [(title: String, body: String, userInfo: [AnyHashable: Any])] {
+        deliveriesLock.lock(); defer { deliveriesLock.unlock() }
+        return storedDeliveries
+    }
 
     init(status: BalanceNotificationPermissionState, requestResult: Bool) {
         self.status = status
@@ -708,7 +714,8 @@ final class FakeBalanceNotificationClient: BalanceNotificationClient {
     }
 
     func deliver(title: String, body: String, userInfo: [AnyHashable: Any]) {
-        deliveries.append((title, body, userInfo))
+        deliveriesLock.lock(); defer { deliveriesLock.unlock() }
+        storedDeliveries.append((title, body, userInfo))
     }
 
     func openSettings() {}
