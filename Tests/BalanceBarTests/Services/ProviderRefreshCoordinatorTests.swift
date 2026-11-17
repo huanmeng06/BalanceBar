@@ -4460,6 +4460,12 @@ extension ProviderRefreshCoordinatorTests {
         settle(coordinator, harness)
     }
 
+    private func waitUntil(_ description: String, file: StaticString = #filePath, line: UInt = #line, _ condition: () -> Bool) {
+        let deadline = Date().addingTimeInterval(3)
+        while !condition(), Date() < deadline { Thread.sleep(forTimeInterval: 0.01) }
+        XCTAssertTrue(condition(), "timed out waiting: \(description)", file: file, line: line)
+    }
+
     private func settle(_ coordinator: ProviderRefreshCoordinator, _ harness: ClaudePipelineHarness) {
         harness.pipeline.waitUntilIdle()
         waitForCoordinator(coordinator)
@@ -4991,6 +4997,9 @@ extension ProviderRefreshCoordinatorTests {
         try harness.writeAccount("account-b", email: "b@example.com")
         harness.waitForEpoch(after: epoch)
         waitForRequestCount(2)
+        // The request count rises when the request *starts*; wait for the 429 to be applied
+        // (it sets the manual-refresh block) so the account scope has reached the notifier.
+        waitUntil("account B's 429 was applied") { harness.pipeline.manualRefreshBlockedUntil() != nil }
         settle(coordinator, harness)
         notifications.refreshPermission()
         XCTAssertTrue(notificationClient.deliveries.isEmpty, "account A's low sample must not alert for account B")
@@ -5001,6 +5010,11 @@ extension ProviderRefreshCoordinatorTests {
         clock.advance(by: 1_000)
         coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: true, switched: false, userInitiated: true)
         waitForRequestCount(3)
+        // Again the response is still in flight when the request count rises: wait for the alert.
+        waitUntil("account B's alert was delivered") {
+            notifications.refreshPermission()
+            return !notificationClient.deliveries.isEmpty
+        }
         settle(coordinator, harness)
         notifications.refreshPermission()
         XCTAssertEqual(notificationClient.deliveries.count, 1, "account B's real low quota alerts normally")
