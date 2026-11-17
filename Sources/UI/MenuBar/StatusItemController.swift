@@ -2216,6 +2216,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let openStatusLink: (URL) -> Void
         /// Opens the Mod explanation/manage panel from the menu prompt.
         let showModOnboarding: () -> Void
+        /// Opens the Mod panel and starts the update at once (the menu hint for an outdated Mod).
+        let startModUpdate: () -> Void
         /// Opens the Claude egress guard settings from a guarded failure card (Issue #686).
         let openEgressGuardSettings: () -> Void
         let iconChanged: (NSImage?) -> Void
@@ -2251,6 +2253,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             manualRefreshBlockedUntil: @escaping () -> Date? = { nil },
             isClaudeLoginExpired: @escaping () -> Bool = { false },
             showModOnboarding: @escaping () -> Void = {},
+            startModUpdate: @escaping () -> Void = {},
             openEgressGuardSettings: @escaping () -> Void = {}
         ) {
             self.openEgressGuardSettings = openEgressGuardSettings
@@ -2265,6 +2268,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             self.openProviderWebsite = openProviderWebsite
             self.openStatusLink = openStatusLink
             self.showModOnboarding = showModOnboarding
+            self.startModUpdate = startModUpdate
             self.iconChanged = iconChanged
             self.frameImageChanged = frameImageChanged
             self.animationStateChanged = animationStateChanged
@@ -6256,12 +6260,31 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func makeModPromptItem() -> NSMenuItem? {
-        guard menuInput.modRow == .prompt else { return nil }
-        let view = ModPromptRowView(localize: modOnboardingLocalize)
-        view.onClick = { [weak self] in self?.openModOnboarding() }
+        let view: ModPromptRowView
+        switch menuInput.modRow {
+        case .none:
+            return nil
+        case .prompt:
+            view = ModPromptRowView(localize: modOnboardingLocalize)
+            view.onClick = { [weak self] in self?.openModOnboarding() }
+        case let .attention(attention):
+            let copy = ModMenuAttentionCopy.make(attention, localize: realtimeBoostLocalize)
+            view = ModPromptRowView(mainText: copy.mainText, detailText: copy.detailText,
+                                    symbolName: "exclamationmark.triangle.fill", tint: .systemOrange)
+            view.identifier = NSUserInterfaceItemIdentifier("menu.modAttention")
+            if case .updateRequired = attention {
+                view.onClick = { [weak self] in self?.startModUpdateFromMenu() }
+            } else {
+                view.onClick = { [weak self] in self?.openModOnboarding() }
+            }
+        }
         let item = NSMenuItem()
         item.view = view
         return item
+    }
+
+    private func startModUpdateFromMenu() {
+        DispatchQueue.main.async { [weak self] in self?.actions.startModUpdate() }
     }
 
     private func openModOnboarding() {

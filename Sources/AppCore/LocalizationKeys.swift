@@ -782,8 +782,6 @@
     case modSyncStatusInstallationUnknown = "mod.sync.status.installation_unknown"
     case modSyncStatusUpdateRequired = "mod.sync.status.update_required"
     case modCardUpdateTitle = "mod.card.update.title"
-    case modCardUpdateReason = "mod.card.update.reason"
-    case modCardUpdateAction = "mod.card.update.action"
     case modUpdateButton = "mod.update.button"
     case modUpdateTitle = "mod.update.title"
     case modUpdateProgressTitle = "mod.update.progress_title"
