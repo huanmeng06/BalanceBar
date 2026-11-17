@@ -715,8 +715,6 @@
 "mod.sync.status.installation_unknown" = "无法确认 Mod 是否已安装（插件列表读取失败）";
 "mod.sync.status.update_required" = "Mod 版本过旧，需要更新（第三方插件市场默认不自动更新）。\n更新后请重启 Claude Code 会话";
 "mod.card.update.title" = "Mod 需要更新";
-"mod.card.update.reason" = "当前版本：%1$@";
-"mod.card.update.action" = "最新版本：%1$@";
 "mod.update.button" = "一键更新";
 "mod.update.title" = "BalanceBar Mod 需要更新";
 "mod.update.progress_title" = "正在更新 BalanceBar Mod";

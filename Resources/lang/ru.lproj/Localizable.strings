@@ -715,8 +715,6 @@
 "mod.sync.status.installation_unknown" = "Не удаётся подтвердить установку Mod (список плагинов недоступен)";
 "mod.sync.status.update_required" = "Мод устарел и требует обновления (сторонние маркетплейсы плагинов по умолчанию не обновляются автоматически).\nПосле этого перезапустите сессию Claude Code";
 "mod.card.update.title" = "Требуется обновление Mod";
-"mod.card.update.reason" = "Текущая версия: %1$@";
-"mod.card.update.action" = "Последняя версия: %1$@";
 "mod.update.button" = "Обновить";
 "mod.update.title" = "Требуется обновление BalanceBar Mod";
 "mod.update.progress_title" = "Обновление BalanceBar Mod";

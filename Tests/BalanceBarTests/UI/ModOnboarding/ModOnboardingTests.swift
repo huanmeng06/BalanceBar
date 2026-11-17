@@ -175,7 +175,7 @@ final class ModInstallerTests: XCTestCase {
         let outdated = RealtimeBoostSettingsRows.cardCopy(
             status: .updateRequired(installedVersion: "1.0.0"), operation: .intro(dismissChecked: false),
             localize: { realtimeBoostLocalize($0, language: .simplifiedChinese) }, modLocalize: { $0.defaultText })
-        XCTAssertEqual(outdated.detail, "Mod 需要更新 · 当前版本：1.0.0 · 最新版本：\(ModOnboardingConfig.latestModVersion)")
+        XCTAssertEqual(outdated.detail, "Mod 需要更新 · 1.0.0 → \(ModOnboardingConfig.latestModVersion)")
         let restart = RealtimeBoostSettingsRows.cardCopy(
             status: .updateRequired(installedVersion: ModOnboardingConfig.latestModVersion), operation: .intro(dismissChecked: false),
             localize: { $0.defaultText }, modLocalize: { $0.defaultText })
@@ -353,11 +353,49 @@ final class ModMenuRowTests: XCTestCase {
     }
 
     func testInstalledOrUndetectedStatesHaveNoPrompt() {
-        for status: ModSyncStatus in [.detecting, .waitingForData, .disabled, .silent, .active(lastAcceptedAt: Date())] {
+        for status: ModSyncStatus in [.detecting, .waitingForData, .disabled, .active(lastAcceptedAt: Date()),
+                                      .claudeMissing, .inboxNotReady, .installationUnknown,
+                                      .snapshotRejected(ModRejectionEvent(rejection: .unverifiedCycle, at: Date()))] {
             XCTAssertEqual(
                 ModMenuRow.resolve(isOfficialDirect: true, status: status, promptDismissed: false), .none,
                 "\(status) must not show the install prompt")
         }
+    }
+
+    func testAttentionHintsForInstalledButUnhealthyStates() {
+        func row(_ status: ModSyncStatus, official: Bool = true, dismissed: Bool = false) -> ModMenuRow {
+            ModMenuRow.resolve(isOfficialDirect: official, status: status, promptDismissed: dismissed)
+        }
+        let outdated = ModSyncStatus.updateRequired(installedVersion: "1.0.0")
+        let unknownVersion = ModSyncStatus.updateRequired(installedVersion: nil)
+        let restart = ModSyncStatus.updateRequired(installedVersion: ModOnboardingConfig.latestModVersion)
+        let mismatch = ModSyncStatus.snapshotRejected(ModRejectionEvent(rejection: .accountMismatch, at: Date()))
+        XCTAssertEqual(row(outdated), .attention(.updateRequired(installedVersion: "1.0.0")))
+        XCTAssertEqual(row(unknownVersion), .attention(.updateRequired(installedVersion: nil)))
+        XCTAssertEqual(row(restart), .attention(.restartRequired))
+        XCTAssertEqual(row(mismatch), .attention(.accountMismatch))
+        XCTAssertEqual(row(.silent), .attention(.silent))
+        for status in [outdated, restart, mismatch, ModSyncStatus.silent] {
+            XCTAssertEqual(row(status, official: false), .none, "\(status) is official-Claude only")
+            XCTAssertEqual(row(status, dismissed: true), .none, "\(status) honours the dismissed preference")
+        }
+    }
+
+    func testRecoveredStatusClearsTheHint() {
+        let outdated = ModSyncStatus.updateRequired(installedVersion: "1.0.0")
+        XCTAssertNotEqual(ModMenuRow.resolve(isOfficialDirect: true, status: outdated, promptDismissed: false), .none)
+        XCTAssertEqual(
+            ModMenuRow.resolve(isOfficialDirect: true, status: .active(lastAcceptedAt: Date()), promptDismissed: false), .none)
+    }
+
+    func testAttentionCopyReusesSettingsCardWording() {
+        let t = RealtimeBoostText.defaultLocalize
+        XCTAssertEqual(ModMenuAttentionCopy.make(.silent, localize: t).mainText, t(.cardSilentTitle))
+        XCTAssertEqual(ModMenuAttentionCopy.make(.accountMismatch, localize: t).detailText, t(.cardRejectedAccountReason))
+        XCTAssertEqual(ModMenuAttentionCopy.make(.restartRequired, localize: t).mainText, t(.cardUpdateRestart))
+        let update = ModMenuAttentionCopy.make(.updateRequired(installedVersion: "1.0.0"), localize: t)
+        XCTAssertEqual(update.mainText, t(.cardUpdateTitle))
+        XCTAssertEqual(update.detailText, "1.0.0 → \(ModOnboardingConfig.latestModVersion)")
     }
 
     func testPromptRowHoverResetsBetweenPresentations() {

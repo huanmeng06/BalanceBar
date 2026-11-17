@@ -58,23 +58,45 @@ protocol ModHeadlessSignalProviding {
     var isSatisfied: Bool { get }
 }
 
+/// Why an installed, enabled Mod is not delivering realtime data (the menu's one-line hints).
+enum ModMenuAttention: Equatable {
+    /// The installed plugin is older than this build expects; a click starts the update.
+    case updateRequired(installedVersion: String?)
+    /// The plugin is current but an old session still writes the old format.
+    case restartRequired
+    case accountMismatch
+    case silent
+}
+
 /// What the status menu shows for the realtime boost.
 enum ModMenuRow: Equatable {
     case none
     /// The accent-tinted prompt under the quota card; opens the explanation window.
     case prompt
+    /// A compact hint for an installed Mod that is not delivering data; opens the Mod panel.
+    case attention(ModMenuAttention)
 
-    /// The prompt belongs to the official Claude provider and only while the Mod is
-    /// confirmed not installed. An installed-but-waiting Mod is not an install prompt,
-    /// and a dismissed prompt stays hidden for every state.
+    /// Official Claude provider only, and a dismissed prompt stays hidden for every state.
+    /// `.notInstalled` shows the install prompt; the installed-but-unhealthy states show a
+    /// hint. A user-disabled Mod, and every state without a clear action, show nothing.
     static func resolve(
         isOfficialDirect: Bool,
         status: ModSyncStatus,
         promptDismissed: Bool
     ) -> ModMenuRow {
         guard isOfficialDirect, !promptDismissed else { return .none }
-        guard case .notInstalled = status else { return .none }
-        return .prompt
+        switch status {
+        case .notInstalled:
+            return .prompt
+        case let .updateRequired(installed):
+            return .attention(ModVersion.isCurrent(installed) ? .restartRequired : .updateRequired(installedVersion: installed))
+        case let .snapshotRejected(event):
+            return event.rejection == .accountMismatch ? .attention(.accountMismatch) : .none
+        case .silent:
+            return .attention(.silent)
+        default:
+            return .none
+        }
     }
 }
 
