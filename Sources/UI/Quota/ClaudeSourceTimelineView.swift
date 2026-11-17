@@ -475,6 +475,7 @@ final class ClaudeSourceTimelineView: NSView {
         case .serverError: return tr(.keyClaudeTimelineFailureServerError)
         case .missingCredentials: return tr(.keyClaudeTimelineFailureMissingCredentials)
         case .credentialsUnreadable: return tr(.keyClaudeAccountCredentialsUnreadable)
+        case .egressGuard: return tr(.keyClaudeTimelineFailureEgressGuard)
         }
     }
 
@@ -707,6 +708,7 @@ final class ClaudeSourceTimelineView: NSView {
             case .insufficientTokens: return rows(when(until), then: triggerText(trigger))
             case .credentialsUnavailable: reasonText = tr(.keyClaudeTimelineFailureMissingCredentials)
             case .credentialsUnreadable: reasonText = tr(.keyClaudeAccountCredentialsUnreadable)
+            case .egressGuardBlocked: reasonText = tr(.keyClaudeTimelineFailureEgressGuard)
             default: reasonText = tr(.keyClaudeTimelineDelayFailureBackoff)
             }
             return rows(when(until), then: triggerText(trigger) + " · " + reasonText)

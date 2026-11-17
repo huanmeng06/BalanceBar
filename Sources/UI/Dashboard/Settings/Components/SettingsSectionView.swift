@@ -228,10 +228,32 @@ final class SettingsSectionView: NSView {
         }
     }
 
+    /// Test hook: treat the section as being in a live resize.
+    var liveResizeOverrideForTesting: Bool?
+
+    private var isInLiveResize: Bool { liveResizeOverrideForTesting ?? inLiveResize }
+
+    /// While the window is being dragged the pinned `contentStack` constraints decide
+    /// the height; reporting `contentStack.fittingSize` built a temporary layout
+    /// engine every frame (#680). Outside live resize the natural height is reported
+    /// as before, which search filtering relies on to collapse hidden rows.
     override var intrinsicContentSize: NSSize {
+        NSSize(
+            width: NSView.noIntrinsicMetric,
+            height: isInLiveResize ? NSView.noIntrinsicMetric : naturalHeight
+        )
+    }
+
+    /// The height the section would take at its current width, measured on demand.
+    var naturalHeight: CGFloat {
         let stackHeight = contentStack.intrinsicContentSize.height
-        let height = stackHeight > 0 ? stackHeight : contentStack.fittingSize.height
-        return NSSize(width: NSView.noIntrinsicMetric, height: height)
+        return stackHeight > 0 ? stackHeight : contentStack.fittingSize.height
+    }
+
+    override func viewDidEndLiveResize() {
+        super.viewDidEndLiveResize()
+        invalidateIntrinsicContentSize()
+        needsLayout = true
     }
 
     override func layout() {
@@ -281,7 +303,7 @@ final class SettingsSectionView: NSView {
             return
         }
 
-        let naturalHeight = intrinsicContentSize.height
+        let naturalHeight = self.naturalHeight
         if let searchNaturalHeightConstraint {
             if abs(searchNaturalHeightConstraint.constant - naturalHeight) > 0.5 {
                 searchNaturalHeightConstraint.constant = naturalHeight

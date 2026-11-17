@@ -656,6 +656,8 @@
 "claude.timeline.estimate.in" = "примерно через %1$@";
 "claude.refresh.every_minutes" = "Каждые %1$@ мин";
 "claude.quota.calibration_detail" = "Периодически запрашивает официальный источник как запасной вариант; больший интервал помогает избежать ограничений";
+"claude.quota.calibration_off_detail" = "Официальные запросы Claude выключены, этот интервал не действует.";
+"claude.quota.calibration_off_link" = "Настроить белый список IP…";
 
 // BalanceBar Mod realtime sync (Issue #597)
 "claude.mod_sync.title" = "BalanceBar Mod ускорение реального времени";
@@ -813,3 +815,32 @@
 "mod.ui.int2.silent_check_version" = "Claude Code версии 2.1.287 или новее";
 "mod.ui.int2.silent_check_session" = "Это новая сессия или в ней выполнен /reload-plugins";
 "mod.ui.int2.silent_check_policy" = "Не разрешает ли политика организации только управляемые плагины";
+"claude.refresh.egress_guard_mismatch" = "Исходящий IP не входит в белый список, официальные запросы Claude приостановлены.";
+"claude.refresh.egress_guard_check_failed" = "Не удалось проверить исходящий IP, официальные запросы Claude приостановлены.";
+"claude.refresh.egress_guard_no_targets" = "Белый список IP пуст, официальные запросы Claude приостановлены.";
+"claude.refresh.egress_guard_unsupported_region" = "Регион выхода не поддерживается Anthropic или не определён, поэтому официальные запросы Claude приостановлены.";
+"claude.refresh.egress_guard_disabled" = "Официальные запросы Claude выключены. Включите белый список IP в разделе Настройки › Дополнительно.";
+"claude.timeline.failure.egress_guard" = "Заблокировано белым списком IP";
+"quota.failure.open_egress_guard_settings" = "Настроить белый список IP";
+"dashboard.advanced.page.egress_guard" = "Белый список IP для Claude";
+"dashboard.advanced.page.egress_guard_enabled" = "Запрашивать официальную квоту только с IP из белого списка";
+"dashboard.advanced.page.egress_guard_enabled_detail" = "Перед каждым запросом проверяется текущий исходящий IP (тот, который видят серверы Claude). Если его нет в белом списке, ничего не отправляется. Когда выключено, официальная квота не запрашивается и используются только данные Mod.";
+"dashboard.advanced.page.egress_guard_allowed" = "Белый список IP";
+"dashboard.advanced.page.egress_guard_allowed_empty" = "Нажмите +, чтобы добавить IP, или сначала определите текущий выход";
+"dashboard.advanced.page.egress_guard_remove" = "Удалить";
+"dashboard.advanced.page.egress_guard_add_title" = "Добавить IP";
+"dashboard.advanced.page.egress_guard_add_placeholder" = "Адрес IPv4 или IPv6";
+"dashboard.advanced.page.egress_guard_invalid_ip" = "Недопустимый IP-адрес";
+"dashboard.advanced.page.egress_guard_detect" = "Определить";
+"dashboard.advanced.page.egress_guard_detecting" = "Определение текущего выхода…";
+"dashboard.advanced.page.egress_guard_detected_listed" = "Текущий выход: %1$@ — в белом списке";
+"dashboard.advanced.page.egress_guard_detected_unlisted" = "Текущий выход: %1$@ — не в белом списке";
+"dashboard.advanced.page.egress_guard_detect_failed" = "Не удалось определить текущий выход";
+"dashboard.advanced.page.egress_guard_add_detected" = "Добавить";
+"dashboard.advanced.page.egress_guard_footnote" = "Проверка обращается к claude.ai, а запросы квоты — к api.anthropic.com. Направьте оба через одно правило прокси, иначе результат проверки может не совпасть с реальным выходом. Страна/регион запрашивается у ipinfo.io один раз для каждого IP. Доступность указана по политике поддерживаемых регионов Anthropic на 2026-11-12. Если Cloudflare определяет выход вне этих регионов, официальные запросы тоже приостанавливаются.";
+"dashboard.advanced.page.egress_guard_column_ip" = "IP-адрес";
+"dashboard.advanced.page.egress_guard_column_region" = "Страна/регион";
+"dashboard.advanced.page.egress_guard_country_loading" = "Поиск…";
+"dashboard.advanced.page.egress_guard_column_available" = "Claude доступен";
+"dashboard.advanced.page.egress_guard_available_yes" = "В регионе, где Anthropic предоставляет Claude";
+"dashboard.advanced.page.egress_guard_available_no" = "Вне регионов, где Anthropic предоставляет Claude";

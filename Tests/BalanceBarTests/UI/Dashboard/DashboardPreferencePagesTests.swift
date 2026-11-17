@@ -2054,6 +2054,35 @@ final class DashboardPreferencePagesTests: XCTestCase {
         }
     }
 
+    func testCalibrationRowDimsAndLinksToAllowlistWhileOfficialRequestsAreOff() throws {
+        let suite = "CalibrationOff.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        let relay = DashboardPreferencePageRelay()
+        var opened = 0
+        relay.onOpenEgressGuardSettings = { opened += 1 }
+        let generalPage = DashboardGeneralPage()
+        _ = generalPage.make(.init(preferences: preferences, relay: relay,
+            updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6")))))
+        let row = try XCTUnwrap(generalPage.claudeCalibrationRow)
+        let popup = try XCTUnwrap(generalPage.claudeCalibrationPopup)
+
+        XCTAssertFalse(popup.isEnabled)
+        XCTAssertEqual(row.titleLabel.textColor, .disabledControlTextColor)
+        let link = try XCTUnwrap(generalPage.claudeCalibrationLinkForTesting)
+        XCTAssertNotNil(link.displayedLinkRange)
+        link.performClickForTesting()
+        XCTAssertEqual(opened, 1, "the link opens the IP allowlist settings")
+
+        preferences.claudeEgressGuardEnabled = true
+        generalPage.refreshClaudeOfficialEnabled(true)
+        XCTAssertTrue(popup.isEnabled)
+        XCTAssertEqual(row.titleLabel.textColor, .labelColor)
+        XCTAssertEqual(row.detailLabel.stringValue, tr(.keyClaudeQuotaCalibrationDetail))
+        XCTAssertNil(generalPage.claudeCalibrationLinkForTesting)
+    }
+
     func testRefreshCardHasOneSelectorPerSourceAndRefreshNowLivesInItsOwnCard() throws {
         let suite = "RefreshSplit.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
@@ -2095,9 +2124,13 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(claudeSection.contentViews.count, 2)
         let calibrationRow = try XCTUnwrap(claudeSection.contentViews[0] as? SettingsRowView)
         XCTAssertEqual(calibrationRow.titleLabel.stringValue, tr(.keyClaudeQuotaCalibration))
-        XCTAssertEqual(calibrationRow.detailLabel.stringValue, tr(.keyClaudeQuotaCalibrationDetail))
+        // The IP allowlist is off by default, so official requests are off: the row is dimmed and
+        // links to the allowlist settings.
+        XCTAssertEqual(calibrationRow.detailLabel.stringValue,
+                       "\(tr(.keyClaudeQuotaCalibrationOffDetail))\n\(tr(.keyClaudeQuotaCalibrationOffLink))")
         let calibrationPopup = try XCTUnwrap(descendants(of: calibrationRow).compactMap { $0 as? NSPopUpButton }
             .first { $0.identifier?.rawValue == AppPreferences.claudeCalibrationIntervalKey })
+        XCTAssertFalse(calibrationPopup.isEnabled)
         XCTAssertEqual(calibrationPopup.itemTitles.count, AppPreferences.claudeCalibrationIntervals.count)
         XCTAssertEqual(calibrationPopup.titleOfSelectedItem, tr(.keyClaudeRefreshEveryMinutes, arguments: ["5"]))
         let modRow = try XCTUnwrap(claudeSection.contentViews[1] as? SettingsRowView)

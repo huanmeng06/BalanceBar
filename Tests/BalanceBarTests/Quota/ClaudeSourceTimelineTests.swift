@@ -135,6 +135,8 @@ final class ClaudeSourceTimelineTests: XCTestCase {
         XCTAssertEqual(ClaudeSourceTimeline.FailureKind(.http(500)), .serverError)
         XCTAssertEqual(ClaudeSourceTimeline.FailureKind(.invalidResponse), .serverError)
         XCTAssertEqual(ClaudeSourceTimeline.FailureKind(.missingCredentials), .missingCredentials)
+        XCTAssertEqual(ClaudeSourceTimeline.FailureKind(.egressGuard(.mismatch)), .egressGuard)
+        XCTAssertEqual(ClaudeSourceTimeline.FailureKind(.egressGuard(.checkFailed)), .egressGuard)
     }
 
     // MARK: Persistence

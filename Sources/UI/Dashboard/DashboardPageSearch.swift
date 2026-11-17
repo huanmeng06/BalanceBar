@@ -335,6 +335,8 @@ struct DashboardSearchMatchResult: Sendable {
 enum DashboardSettingsSearchCatalog {
     private static let languageKey = LocalizationKey.keyDashboardGeneralAndRefreshPagesLanguage
     private static let keysRequiringArguments: Set<String> = [
+        "dashboard.advanced.page.egress_guard_detected_listed",
+        "dashboard.advanced.page.egress_guard_detected_unlisted",
         "dashboard.refresh.official_every_seconds",
         "dashboard.about.page.version_value",
         "dashboard.general.and.refresh.pages.current_provider_value",
@@ -495,6 +497,8 @@ enum DashboardSettingsSearchCatalog {
                 .keyClaudeSourceTagAllClients,
                 .keyClaudeSourceTagDesktop,
                 .keyClaudeQuotaCalibrationDetail,
+                .keyClaudeQuotaCalibrationOffDetail,
+                .keyClaudeQuotaCalibrationOffLink,
                 .keyClaudeModSyncTitle,
                 .keyClaudeModSyncManage,
                 .modSyncStatusDetecting,
@@ -591,6 +595,10 @@ enum DashboardSettingsSearchCatalog {
                 .keyDashboardAdvancedPageSourceValidity,
                 .keyDashboardAdvancedPageSourceValidityOauth,
                 .keyDashboardAdvancedPageSourceValidityMod,
+                .keyDashboardAdvancedPageEgressGuard,
+                .keyDashboardAdvancedPageEgressGuardEnabled,
+                .keyDashboardAdvancedPageEgressGuardAllowed,
+                .keyDashboardAdvancedPageEgressGuardDetect,
                 .keyDashboardAdvancedPageDiagnostics,
                 .keyDashboardAdvancedPageDebugLog
             ]

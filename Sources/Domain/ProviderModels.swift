@@ -126,7 +126,7 @@ struct OpenAIAccountPresentation: Equatable {
             case .missingCredentials, .unauthorized: self = .claudeLoginRequired
             case .credentialsUnreadable: self = .claudeCredentialsUnreadable
             case .noAccount: self = .claudeNoSubscriptionAccount
-            case .rateLimited, .transport, .http, .invalidResponse: return nil
+            case .rateLimited, .transport, .http, .invalidResponse, .egressGuard: return nil
             }
         }
     }

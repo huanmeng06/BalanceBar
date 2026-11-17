@@ -77,6 +77,7 @@ final class DashboardPreferencePageRelay: NSObject {
     var onBankedResetDisplayModeChanged: ((CodexBankedResetDisplayMode) -> Void)?
     var onUpdateChannelChanged: ((UpdateChannel) -> Void)?
     var onOpenCCSwitch: (() -> Void)?
+    var onOpenEgressGuardSettings: (() -> Void)?
     var onOpenSystemMenuBarSettings: (() -> Void)?
     var onManualRefresh: (() -> Void)?
     var onInstallModSync: ((NSView) -> Void)?
@@ -211,6 +212,10 @@ final class DashboardPreferencePageRelay: NSObject {
 
     @objc func openCCSwitch(_ sender: NSButton) {
         onOpenCCSwitch?()
+    }
+
+    @objc func openEgressGuardSettings(_ sender: Any?) {
+        onOpenEgressGuardSettings?()
     }
 
     @objc func openSystemMenuBarSettings(_ sender: NSButton) {

@@ -220,6 +220,7 @@ struct DashboardCompositionActions {
     let onDidResize: () -> Void
     var onInstallModSync: ((NSView) -> Void)? = nil
     var onModSyncVisibilityChanged: ((Bool) -> Void)? = nil
+    var claudeEgressGuard = ClaudeEgressGuardPageActions()
 }
 
 /// Owns Dashboard shell, page composition, page lifecycle, and Status Links
@@ -298,7 +299,8 @@ final class DashboardCompositionController {
             onClamp: actions.onClamp,
             onInstallModSync: actions.onInstallModSync,
             modPanelStateProvider: state.modPanelState,
-            claudeSourceTimelineProvider: state.claudeSourceTimeline
+            claudeSourceTimelineProvider: state.claudeSourceTimeline,
+            claudeEgressGuard: actions.claudeEgressGuard
         ),
         launchAtLoginController: launchAtLoginController,
         launchWithChatGPTController: launchWithChatGPTController,
@@ -725,6 +727,11 @@ final class DashboardCompositionController {
         guard canUpdateSettingsPage(.general) else { return }
         dashboardPreferencePages.refreshModSync()
         invalidateSearchData()
+    }
+
+    /// Both Advanced page copies re-read the egress guard settings; search text is unchanged.
+    func refreshClaudeEgressGuard() {
+        dashboardPreferencePages.refreshClaudeEgressGuard()
     }
 
     /// The calibration interval bounds the official-validity choices on the Advanced page.

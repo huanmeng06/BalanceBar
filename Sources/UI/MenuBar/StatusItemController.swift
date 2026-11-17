@@ -2218,6 +2218,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let showModOnboarding: () -> Void
         /// Opens the Mod panel and starts the update at once (the menu hint for an outdated Mod).
         let startModUpdate: () -> Void
+        /// Opens the Claude egress guard settings from a guarded failure card (Issue #686).
+        let openEgressGuardSettings: () -> Void
         let iconChanged: (NSImage?) -> Void
         let frameImageChanged: (NSImage?) -> Void
         let animationStateChanged: (Bool) -> Void
@@ -2251,8 +2253,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             manualRefreshBlockedUntil: @escaping () -> Date? = { nil },
             isClaudeLoginExpired: @escaping () -> Bool = { false },
             showModOnboarding: @escaping () -> Void = {},
-            startModUpdate: @escaping () -> Void = {}
+            startModUpdate: @escaping () -> Void = {},
+            openEgressGuardSettings: @escaping () -> Void = {}
         ) {
+            self.openEgressGuardSettings = openEgressGuardSettings
             self.manualRefreshBlockedUntil = manualRefreshBlockedUntil
             self.isClaudeLoginExpired = isClaudeLoginExpired
             self.manualRefresh = manualRefresh
@@ -7709,7 +7713,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 // The detail frame was measured with this font; a smaller one leaves a blank gap.
                 font: ErrorCardLayout.detailFont,
                 localize: StatusSlotText.appLocalize,
-                onOpenUsagePage: { [weak self] in self?.actions.openStatusLink(FailureStateView.officialUsageURL) })
+                onOpenUsagePage: { [weak self] in self?.actions.openStatusLink(FailureStateView.officialUsageURL) },
+                onOpenEgressGuardSettings: { [weak self] in
+                    self?.cancelMenuBarTracking()
+                    // The menu is closing; open the window once it is gone.
+                    DispatchQueue.main.async { self?.actions.openEgressGuardSettings() }
+                })
             failure.identifier = NSUserInterfaceItemIdentifier("overview.failureState")
             failure.frame = NSRect(x: frames.detail.minX, y: frames.detail.minY - buttonShift,
                                    width: frames.detail.width, height: frames.detail.height + buttonShift)
