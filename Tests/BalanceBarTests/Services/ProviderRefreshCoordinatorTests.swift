@@ -3297,6 +3297,80 @@ extension ProviderRefreshCoordinatorTests {
         XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 4)
     }
 
+    // MARK: - #673 aggregation keeps showing why the database is unavailable
+
+    func testAggregationDatabaseMissingShowsOpenCCSwitchCardAndRecovers() throws {
+        let reader = try aggregationFixture()
+        DelayedBalanceURLProtocol.setHandler { _ in DelayedBalanceURLProtocol.success(amount: "4.73") }
+        let lock = NSLock()
+        var latest: [AggregatedProviderDisplay] = []
+        let first = expectation(description: "fresh before the failure")
+        var firstDone = false
+        var awaitingRecovery = false
+        var recoveredExpectation: XCTestExpectation?
+        let coordinator = aggregationCoordinator { displays, _ in
+            lock.lock(); latest = displays; lock.unlock()
+            if displays.contains(where: { $0.status == .fresh }), !firstDone { firstDone = true; first.fulfill() }
+            if awaitingRecovery, displays.contains(where: { $0.status == .fresh }) {
+                awaitingRecovery = false
+                recoveredExpectation?.fulfill()
+            }
+        }
+        coordinator.performAsync { _ = coordinator.refreshAggregation(reader: reader, force: false) }
+        wait(for: [first], timeout: 3)
+
+        let backup = repository.databaseURL.appendingPathExtension("bak")
+        try FileManager.default.moveItem(at: repository.databaseURL, to: backup)
+        for _ in 0..<2 {
+            coordinator.performAsync { _ = coordinator.refreshAggregation(reader: reader, force: true) }
+        }
+        waitForCoordinator(coordinator)
+        lock.lock(); let failed = latest; lock.unlock()
+        XCTAssertFalse(failed.isEmpty)
+        for display in failed {
+            XCTAssertEqual(display.status, .error)
+            XCTAssertEqual(display.snapshot.failureRecovery, .openCCSwitch)
+            XCTAssertEqual(display.snapshot.message, tr(.keyCCSwitchDatabaseUnavailable))
+        }
+
+        let recovered = expectation(description: "fresh again after the database returns")
+        coordinator.performAsync { awaitingRecovery = true }
+        waitForCoordinator(coordinator)
+        recoveredExpectation = recovered
+        try FileManager.default.moveItem(at: backup, to: repository.databaseURL)
+        coordinator.performAsync { _ = coordinator.refreshAggregation(reader: reader, force: true) }
+        wait(for: [recovered], timeout: 3)
+    }
+
+    func testAggregationBusyDatabaseStaysSilentUntilThreshold() throws {
+        let reader = try aggregationFixture()
+        DelayedBalanceURLProtocol.setHandler { _ in DelayedBalanceURLProtocol.success(amount: "4.73") }
+        let lock = NSLock()
+        var latest: [AggregatedProviderDisplay] = []
+        let first = expectation(description: "fresh before the lock")
+        var firstDone = false
+        let coordinator = aggregationCoordinator { displays, _ in
+            lock.lock(); latest = displays; lock.unlock()
+            if displays.contains(where: { $0.status == .fresh }), !firstDone { firstDone = true; first.fulfill() }
+        }
+        coordinator.performAsync { _ = coordinator.refreshAggregation(reader: reader, force: false) }
+        wait(for: [first], timeout: 3)
+        try withDatabase { db in
+            try execute(db, sql: "BEGIN EXCLUSIVE")
+            defer { try? execute(db, sql: "ROLLBACK") }
+            for _ in 1..<CCSwitchReadFailureTracker.busyThreshold {
+                coordinator.performAsync { _ = coordinator.refreshAggregation(reader: reader, force: true) }
+            }
+            waitForCoordinator(coordinator)
+            lock.lock(); let early = latest; lock.unlock()
+            XCTAssertTrue(early.allSatisfy { $0.snapshot.failureRecovery != .openCCSwitch }, "occasional BUSY must not bother the user")
+            coordinator.performAsync { _ = coordinator.refreshAggregation(reader: reader, force: true) }
+            waitForCoordinator(coordinator)
+            lock.lock(); let late = latest; lock.unlock()
+            XCTAssertTrue(late.allSatisfy { $0.snapshot.message == tr(.keyCCSwitchDatabaseBusy) })
+        }
+    }
+
     func testAggregationConfigChangeRejectsInFlightSameIDAndNeverReusesWrongBalance() throws {
         let reader = try aggregationFixture()
         let oldStarted = expectation(description: "old configuration in flight")

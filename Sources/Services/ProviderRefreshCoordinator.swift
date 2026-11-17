@@ -437,6 +437,8 @@ final class ProviderRefreshCoordinator {
     private var providerBalanceSnapshots = ProviderBalanceSnapshotCache()
     private var aggregationEntries: [AggregatedProviderEntry] = []
     private var aggregationDisplays: [AggregationDisplayIdentity: AggregatedProviderDisplay] = [:]
+    private let aggregationReadFailures = CCSwitchReadFailureTracker()
+    private var aggregationShowsDatabaseFailure = false
     private var aggregationAttempts: [AggregationDisplayIdentity: Date] = [:]
     private var aggregationRequests: [AggregationDisplayIdentity: UUID] = [:]
     private var aggregationPending: [AggregationDisplayIdentity] = []
@@ -549,6 +551,22 @@ final class ProviderRefreshCoordinator {
         switch state {
         case .untrusted:
             aggregationBlocked = quickSwitchSafety.isBlocked
+            if let code = reader.lastDatabaseFailureCode,
+               let failure = Snapshot.ccSwitchUnavailable(
+                for: aggregationReadFailures.recordFailure(sqliteCode: code)),
+               !aggregationEntries.isEmpty {
+                // The Provider database itself is unreadable: say why instead of
+                // keeping the old balances "retrying" forever.
+                for identity in aggregationDisplays.keys {
+                    aggregationDisplays[identity]?.snapshot = failure
+                    aggregationDisplays[identity]?.status = .error
+                    aggregationDisplays[identity]?.reason = failure.message
+                }
+                aggregationShowsDatabaseFailure = true
+                publishAggregation()
+                scheduleAggregationRetry(reader)
+                return true
+            }
             // A never-observed missing state file remains compatible with
             // legacy direct mode; only known/indicated aggregation retries.
             guard aggregationBlocked || !aggregationEntries.isEmpty else {
@@ -564,6 +582,17 @@ final class ProviderRefreshCoordinator {
             return !aggregationEntries.isEmpty
         case .inactive: entries = []
         case .active(let active): entries = active
+        }
+        aggregationReadFailures.recordSuccess()
+        if aggregationShowsDatabaseFailure {
+            // Recovered: drop the failure cards so every Provider is fetched again.
+            aggregationShowsDatabaseFailure = false
+            for (identity, display) in aggregationDisplays {
+                cancelAggregationTransport(display)
+                aggregationRequests.removeValue(forKey: identity)
+                aggregationAttempts.removeValue(forKey: identity)
+            }
+            aggregationDisplays.removeAll()
         }
         aggregationRetry?.cancel()
         aggregationRetry = nil

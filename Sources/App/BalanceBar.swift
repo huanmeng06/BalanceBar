@@ -2445,16 +2445,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
 
     /// The card for a CC Switch database read failure; nil keeps the current card.
     static func ccSwitchUnavailableSnapshot(for outcome: CCSwitchReadFailureTracker.Outcome) -> Snapshot? {
-        let key: LocalizationKey
-        switch outcome {
-        case .silent: return nil
-        case .unavailable: key = .keyCCSwitchDatabaseUnavailable
-        case .unreadable: key = .keyCCSwitchDatabaseUnreadable
-        case .busy: key = .keyCCSwitchDatabaseBusy
-        }
-        var snapshot = Snapshot.error(tr(key))
-        snapshot.failureRecovery = .openCCSwitch
-        return snapshot
+        Snapshot.ccSwitchUnavailable(for: outcome)
     }
 
     /// The card for a CC Switch with no current Provider for this app.

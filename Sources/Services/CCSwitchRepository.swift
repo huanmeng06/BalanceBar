@@ -126,6 +126,22 @@ final class CCSwitchReadFailureTracker {
     }
 }
 
+extension Snapshot {
+    /// The card for a CC Switch database read failure; nil keeps the current card.
+    static func ccSwitchUnavailable(for outcome: CCSwitchReadFailureTracker.Outcome) -> Snapshot? {
+        let key: LocalizationKey
+        switch outcome {
+        case .silent: return nil
+        case .unavailable: key = .keyCCSwitchDatabaseUnavailable
+        case .unreadable: key = .keyCCSwitchDatabaseUnreadable
+        case .busy: key = .keyCCSwitchDatabaseBusy
+        }
+        var snapshot = Snapshot.error(tr(key))
+        snapshot.failureRecovery = .openCCSwitch
+        return snapshot
+    }
+}
+
 final class CCSwitchRepository {
     static let defaultDatabaseURL = URL(fileURLWithPath: NSString(
         string: "~/.cc-switch/cc-switch.db"
@@ -962,27 +978,31 @@ final class CCSwitchRepository {
     func loadSummarySourcesChecked(appType: String, providerIDs: [String]? = nil) throws -> [ProviderSummarySource] {
         loadSummarySourcesObserver?(providerIDs)
         var database: OpaquePointer?
-        guard sqlite3_open_v2(
+        let openCode = sqlite3_open_v2(
             databaseURL.path,
             &database,
             SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX,
             nil
-        ) == SQLITE_OK, let database else {
+        )
+        guard openCode == SQLITE_OK, let database else {
             if let database { sqlite3_close(database) }
-            throw CCSwitchAggregationReadError.databaseUnavailable
+            throw CCSwitchAggregationReadError.databaseUnavailable(sqliteCode: openCode)
         }
         defer { sqlite3_close(database) }
         sqlite3_busy_timeout(database, 100)
-        guard sqlite3_exec(database, "BEGIN", nil, nil, nil) == SQLITE_OK else {
-            throw CCSwitchAggregationReadError.databaseUnavailable
+        let beginCode = sqlite3_exec(database, "BEGIN", nil, nil, nil)
+        guard beginCode == SQLITE_OK else {
+            throw CCSwitchAggregationReadError.databaseUnavailable(sqliteCode: beginCode)
         }
         defer { sqlite3_exec(database, "ROLLBACK", nil, nil, nil) }
 
         if providerIDs?.isEmpty == true { return [] }
         let filter = providerIDs.map { " AND id IN (" + Array(repeating: "?", count: $0.count).joined(separator: ",") + ")" } ?? ""
         var columns: OpaquePointer?
-        guard sqlite3_prepare_v2(database, "PRAGMA table_info(providers)", -1, &columns, nil) == SQLITE_OK,
-              let columns else { throw CCSwitchAggregationReadError.databaseUnavailable }
+        let columnsCode = sqlite3_prepare_v2(database, "PRAGMA table_info(providers)", -1, &columns, nil)
+        guard columnsCode == SQLITE_OK, let columns else {
+            throw CCSwitchAggregationReadError.databaseUnavailable(sqliteCode: columnsCode)
+        }
         var hasNotes = false
         var columnStep = sqlite3_step(columns)
         while columnStep == SQLITE_ROW {
@@ -990,12 +1010,14 @@ final class CCSwitchRepository {
             columnStep = sqlite3_step(columns)
         }
         sqlite3_finalize(columns)
-        guard columnStep == SQLITE_DONE else { throw CCSwitchAggregationReadError.databaseUnavailable }
+        guard columnStep == SQLITE_DONE else { throw CCSwitchAggregationReadError.databaseUnavailable(sqliteCode: columnStep) }
         let notesColumn = hasNotes ? "notes" : "NULL"
         let sql = "SELECT id, name, settings_config, meta, category, website_url, created_at, \(notesColumn) FROM providers WHERE app_type = ?" + filter + " ORDER BY COALESCE(sort_index, 999999), created_at, id"
         var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK,
-              let statement else { throw CCSwitchAggregationReadError.databaseUnavailable }
+        let prepareCode = sqlite3_prepare_v2(database, sql, -1, &statement, nil)
+        guard prepareCode == SQLITE_OK, let statement else {
+            throw CCSwitchAggregationReadError.databaseUnavailable(sqliteCode: prepareCode)
+        }
         defer { sqlite3_finalize(statement) }
         bind(appType, to: statement, at: 1)
 
@@ -1065,7 +1087,7 @@ final class CCSwitchRepository {
                 ))
             }
         }
-        guard step == SQLITE_DONE else { throw CCSwitchAggregationReadError.databaseUnavailable }
+        guard step == SQLITE_DONE else { throw CCSwitchAggregationReadError.databaseUnavailable(sqliteCode: step) }
         return result
     }
 
