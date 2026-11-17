@@ -148,6 +148,9 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
             )
         )
         splitController.onSidebarGeometryDidChange = { [weak self] in
+            // Skipped during live window resize (one UserDefaults write per frame);
+            // `windowDidEndLiveResize` persists the final geometry (#680).
+            guard self?.window?.inLiveResize != true else { return }
             self?.persistShellGeometry()
         }
         isApplyingRestoration = true

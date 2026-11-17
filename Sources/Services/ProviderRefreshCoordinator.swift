@@ -437,6 +437,8 @@ final class ProviderRefreshCoordinator {
     private var providerBalanceSnapshots = ProviderBalanceSnapshotCache()
     private var aggregationEntries: [AggregatedProviderEntry] = []
     private var aggregationDisplays: [AggregationDisplayIdentity: AggregatedProviderDisplay] = [:]
+    private let aggregationReadFailures = CCSwitchReadFailureTracker()
+    private var aggregationShowsDatabaseFailure = false
     private var aggregationAttempts: [AggregationDisplayIdentity: Date] = [:]
     private var aggregationRequests: [AggregationDisplayIdentity: UUID] = [:]
     private var aggregationPending: [AggregationDisplayIdentity] = []
@@ -549,6 +551,22 @@ final class ProviderRefreshCoordinator {
         switch state {
         case .untrusted:
             aggregationBlocked = quickSwitchSafety.isBlocked
+            if let code = reader.lastDatabaseFailureCode,
+               let failure = Snapshot.ccSwitchUnavailable(
+                for: aggregationReadFailures.recordFailure(sqliteCode: code)),
+               !aggregationEntries.isEmpty {
+                // The Provider database itself is unreadable: say why instead of
+                // keeping the old balances "retrying" forever.
+                for identity in aggregationDisplays.keys {
+                    aggregationDisplays[identity]?.snapshot = failure
+                    aggregationDisplays[identity]?.status = .error
+                    aggregationDisplays[identity]?.reason = failure.message
+                }
+                aggregationShowsDatabaseFailure = true
+                publishAggregation()
+                scheduleAggregationRetry(reader)
+                return true
+            }
             // A never-observed missing state file remains compatible with
             // legacy direct mode; only known/indicated aggregation retries.
             guard aggregationBlocked || !aggregationEntries.isEmpty else {
@@ -564,6 +582,17 @@ final class ProviderRefreshCoordinator {
             return !aggregationEntries.isEmpty
         case .inactive: entries = []
         case .active(let active): entries = active
+        }
+        aggregationReadFailures.recordSuccess()
+        if aggregationShowsDatabaseFailure {
+            // Recovered: drop the failure cards so every Provider is fetched again.
+            aggregationShowsDatabaseFailure = false
+            for (identity, display) in aggregationDisplays {
+                cancelAggregationTransport(display)
+                aggregationRequests.removeValue(forKey: identity)
+                aggregationAttempts.removeValue(forKey: identity)
+            }
+            aggregationDisplays.removeAll()
         }
         aggregationRetry?.cancel()
         aggregationRetry = nil
@@ -785,9 +814,9 @@ final class ProviderRefreshCoordinator {
                     }, completion: finish)
             } else {
                 aggregationRequests.removeValue(forKey: identity)
-                display.snapshot = .providerError(source.name, reason: tr(.keyAggregationUnavailable), cachedBalance: nil)
+                display.snapshot = .providerError(source.name, reason: tr(.keyAggregationNotConfigured), cachedBalance: nil)
                 display.status = .unavailable
-                display.reason = tr(.keyAggregationUnavailable)
+                display.reason = tr(.keyAggregationNotConfigured)
                 aggregationDisplays[identity] = display
                 publishAggregation()
             }
@@ -1433,8 +1462,17 @@ final class ProviderRefreshCoordinator {
             official.notificationAccountScope = state.accountScope
             official.quotaStatus = state.status
             // Keep the account's last data visible; the reason rides on the refresh time.
-            official.staleReason = state.failure.map(Self.claudeFailureReason)
+            official.staleReason = state.officialDisabled ? nil : state.failure.map(Self.claudeFailureReason)
             snapshot = official
+        } else if state.officialDisabled {
+            // Official requests are turned off (Issue #686): say so with a way to the settings,
+            // without the failure mark in the menu bar.
+            var off = Snapshot.providerError(
+                target.providerName, reason: tr(.keyClaudeRefreshEgressGuardDisabled), cachedBalance: nil)
+            off.quotaStatus = state.status
+            off.failureRecovery = .openEgressGuardSettings
+            off.officialSourceDisabled = true
+            snapshot = off
         } else if let failure = state.failure {
             var error = Snapshot.providerError(target.providerName, reason: Self.claudeFailureReason(failure), cachedBalance: nil)
             error.quotaStatus = state.status
@@ -1488,6 +1526,7 @@ final class ProviderRefreshCoordinator {
         // (an API key setup is told in the reason text that there is no subscription quota).
         case .missingCredentials, .unauthorized, .noAccount: return .copySignInCommand
         case .credentialsUnreadable: return .none
+        case .egressGuard: return .openEgressGuardSettings
         case .rateLimited, .transport, .http, .invalidResponse: return .openUsagePage
         }
     }
@@ -1511,6 +1550,16 @@ final class ProviderRefreshCoordinator {
                 arguments: ["429"]) + "\n" + tr(.keyDashboardGeneralAndRefreshPagesUpdateCheckFailureSuggestionHttpTooManyRequests)
         case .http, .invalidResponse:
             return tr(.keyProviderRefreshCoordinatorOfficialValueTheQuotaEndpointReturnedAnError, arguments: [name])
+        case .egressGuard(.mismatch):
+            return tr(.keyClaudeRefreshEgressGuardMismatch)
+        case .egressGuard(.checkFailed):
+            return tr(.keyClaudeRefreshEgressGuardCheckFailed)
+        case .egressGuard(.noTargets):
+            return tr(.keyClaudeRefreshEgressGuardNoTargets)
+        case .egressGuard(.unsupportedRegion):
+            return tr(.keyClaudeRefreshEgressGuardUnsupportedRegion)
+        case .egressGuard(.disabled):
+            return tr(.keyClaudeRefreshEgressGuardDisabled)
         }
     }
 
