@@ -561,6 +561,86 @@ final class SettingsSectionViewTests: XCTestCase {
         }
     }
 
+    /// #690 前置回归：多行副标题、窄宽度下控件换到文字下方、分组注脚、搜索过滤，
+    /// 在一组宽度上来回缩放并稳定后布局都正确。改行高提交时机前后都必须通过。
+    func testResizeSweepKeepsWrappedRowsFootnoteAndSearchFilterSettled() throws {
+        let long = "This native settings description must wrap onto additional lines when the dashboard content column is narrow so the control stays visible beside or below the complete text."
+        let wrapped = SettingsRowView(title: "Animation rendering", detail: long, accessoryView: NSSwitch())
+        let picker = NSSegmentedControl(
+            labels: ["Efficient mode", "Synchronized mode", "Fallback"],
+            trackingMode: .selectOne,
+            target: nil,
+            action: nil
+        )
+        let narrowControl = SettingsRowView(title: "Frame pacing", detail: "Choose a mode.", accessoryView: picker)
+        let peer = SettingsRowView(title: "Peer", accessoryView: NSSwitch())
+        let footnoteText = String(repeating: "Longer means fewer rate limits but possibly older data. ", count: 4)
+        let section = SettingsSectionView(
+            title: "Menu bar",
+            contentViews: [wrapped, narrowControl, peer],
+            footnote: footnoteText
+        )
+        let window = makeTestWindow(width: 720, height: 900)
+        let page = DashboardSettingsComponents.makeSettingsPageContent([section])
+        let host = pinningHost(for: page, in: window, width: 720, height: 900)
+        defer { window.orderOut(nil) }
+        let footnote = try XCTUnwrap(section.footnoteLabel)
+
+        func wrappedHeight(_ label: NSTextField) -> CGFloat {
+            label.cell?.cellSize(
+                forBounds: NSRect(x: 0, y: 0, width: label.frame.width, height: .greatestFiniteMagnitude)
+            ).height ?? 0
+        }
+        func assertRow(_ row: SettingsRowView, _ context: String) {
+            XCTAssertEqual(row.frame.height, row.hostedCardHeight(), accuracy: 1.0, "row height \(context)")
+            XCTAssertEqual(row.titleLabel.frame.height, wrappedHeight(row.titleLabel), accuracy: 1.0, "title \(context)")
+            if !row.detailLabel.isHidden {
+                XCTAssertEqual(row.detailLabel.frame.height, wrappedHeight(row.detailLabel), accuracy: 1.0, "detail \(context)")
+            }
+            let labels = row.labelsStack.convert(row.labelsStack.bounds, to: row)
+            XCTAssertTrue(row.bounds.insetBy(dx: 0, dy: -0.5).contains(labels), "labels inside row \(context)")
+            if let accessory = row.accessoryView, !accessory.isHidden {
+                let control = accessory.convert(accessory.bounds, to: row)
+                XCTAssertTrue(row.bounds.insetBy(dx: -0.5, dy: -0.5).contains(control), "control inside row \(context)")
+                XCTAssertFalse(labels.insetBy(dx: 0.5, dy: 0.5).intersects(control), "labels overlap control \(context)")
+            }
+        }
+        func assertSettled(_ visibleRows: [SettingsRowView], _ context: String) {
+            XCTAssertEqual(section.frame.height, section.naturalHeight, accuracy: 1.0, "section \(context)")
+            visibleRows.forEach { assertRow($0, context) }
+            XCTAssertEqual(footnote.frame.height, wrappedHeight(footnote), accuracy: 1.0, "footnote \(context)")
+            let footnoteFrame = footnote.convert(footnote.bounds, to: section)
+            XCTAssertTrue(section.bounds.insetBy(dx: 0, dy: -0.5).contains(footnoteFrame), "footnote inside section \(context)")
+        }
+
+        let widths: [CGFloat] = [720, 560, 420, 340, 300, 460, 640, 720]
+        for width in widths {
+            pin(page, to: host, window: window, width: width, height: 900)
+            assertSettled([wrapped, narrowControl, peer], "width \(width)")
+        }
+        // 窄宽度下分段控件放不下，必须换到文字下方。
+        pin(page, to: host, window: window, width: 300, height: 900)
+        let labels = narrowControl.labelsStack.convert(narrowControl.labelsStack.bounds, to: narrowControl)
+        let control = picker.convert(picker.bounds, to: narrowControl)
+        XCTAssertLessThanOrEqual(control.maxY, labels.minY + 0.5, "segmented control stacks below labels at 300pt")
+
+        let filter = DashboardPageSearchFilter()
+        XCTAssertTrue(filter.apply(query: "Animation", to: page, pageTitle: "Menu bar", mode: .titles))
+        for width in widths {
+            pin(page, to: host, window: window, width: width, height: 900)
+            XCTAssertFalse(wrapped.isHidden, "matched row stays visible at \(width)")
+            XCTAssertTrue(narrowControl.isHidden, "unmatched row stays hidden at \(width)")
+            XCTAssertTrue(peer.isHidden, "unmatched row stays hidden at \(width)")
+            assertRow(wrapped, "filtered width \(width)")
+        }
+
+        XCTAssertTrue(filter.apply(query: "", to: page, pageTitle: "Menu bar", mode: .titles))
+        for width in widths {
+            pin(page, to: host, window: window, width: width, height: 900)
+            assertSettled([wrapped, narrowControl, peer], "restored width \(width)")
+        }
+    }
+
     private func pinningHost(
         for section: NSView,
         in window: NSWindow,

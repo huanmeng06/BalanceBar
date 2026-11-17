@@ -230,6 +230,7 @@ final class SettingsSectionView: NSView {
 
     /// Test hook: treat the section as being in a live resize.
     var liveResizeOverrideForTesting: Bool?
+    private var pendingWrappingRows: [SettingsRowView] = []
 
     private var isInLiveResize: Bool { liveResizeOverrideForTesting ?? inLiveResize }
 
@@ -256,10 +257,28 @@ final class SettingsSectionView: NSView {
         needsLayout = true
     }
 
+    /// Rows whose wrapping width changed during `layout()` queue their height
+    /// commit here; the section commits them together in its next layout round
+    /// of the same window update (#690).
+    func enqueueWrappingHeightCommit(for row: SettingsRowView) {
+        if !pendingWrappingRows.contains(where: { $0 === row }) {
+            pendingWrappingRows.append(row)
+        }
+        needsLayout = true
+    }
+
     override func layout() {
         super.layout()
+        commitPendingRowWrapping()
         updateFootnoteWrapWidth()
         updateSearchNaturalHeightConstraintForCurrentVisibility()
+    }
+
+    private func commitPendingRowWrapping() {
+        guard !pendingWrappingRows.isEmpty else { return }
+        let rows = pendingWrappingRows
+        pendingWrappingRows.removeAll()
+        rows.forEach { $0.flushPendingWrappingHeightCommit() }
     }
 
     /// A wrapping `NSTextField` only reports a multi-line intrinsic height once it knows

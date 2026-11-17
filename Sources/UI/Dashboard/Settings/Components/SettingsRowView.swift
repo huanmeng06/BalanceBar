@@ -405,9 +405,23 @@ final class SettingsRowView: NSView {
         // row grows and AppKit would otherwise skip a laid-out subtree.
         contentStack.needsLayout = true
         contentStack.layoutSubtreeIfNeeded()
-        recordSolvedWrappingWidthIfNeeded()
+        let wrappingWidthChanged = recordSolvedWrappingWidthIfNeeded()
         updateSearchNaturalHeightConstraint()
         isPerformingLayout = false
+        if wrappingWidthChanged {
+            // Commit the new wrapped height within this window layout (#690).
+            // Waiting for the next run loop turn let the window draw one frame
+            // with the old height, so rows and the page jumped while resizing.
+            // The enclosing section commits all of its changed rows together in
+            // its next layout round; committing here, row by row, made each
+            // later row's layout re-run the window constraint update.
+            if let section = enclosingSection {
+                section.enqueueWrappingHeightCommit(for: self)
+            } else {
+                performScheduledWrappingHeightCommit()
+            }
+        }
+        // Fallback for rows whose section does not lay out again.
         scheduleWrappingHeightCommitIfNeeded()
     }
 
@@ -474,7 +488,8 @@ final class SettingsRowView: NSView {
 
     /// Commits any wrapping height discovered during the most recent layout.
     /// Page replacement uses this to finish width-dependent intrinsic sizing
-    /// before the page is displayed; callers must invoke it outside layout().
+    /// before the page is displayed, and the enclosing section uses it to commit
+    /// rows queued during layout. Never call it from this row's own layout().
     func flushPendingWrappingHeightCommit() {
         wrappingCommitWorkItem?.cancel()
         performScheduledWrappingHeightCommit()
@@ -553,14 +568,16 @@ final class SettingsRowView: NSView {
         return max(rowMinimumHeight, contentHeight + rowVerticalPadding * 2)
     }
 
-    private func recordSolvedWrappingWidthIfNeeded() {
+    /// Returns true when the solved wrapping width changed in this layout.
+    @discardableResult
+    private func recordSolvedWrappingWidthIfNeeded() -> Bool {
         let labelWidth = wrappingWidthForLabels()
         guard labelWidth > 1 else {
             wrappingHeightIsDirty = true
-            return
+            return false
         }
         let titleWidth = wrappingWidthForTitle(labelWidth: labelWidth)
-        guard wrappingNeedsUpdate(titleWidth: titleWidth, labelWidth: labelWidth) else { return }
+        guard wrappingNeedsUpdate(titleWidth: titleWidth, labelWidth: labelWidth) else { return false }
         wrappingHeightIsDirty = true
         // Assign wrapping now so title and detail share the solved column
         // before the deferred ICS commit. Do not invalidate ICS here:
@@ -570,6 +587,7 @@ final class SettingsRowView: NSView {
             labelWidth: labelWidth,
             invalidateLabels: false
         )
+        return true
     }
 
     private func scheduleWrappingHeightCommitIfNeeded() {
@@ -581,6 +599,15 @@ final class SettingsRowView: NSView {
         }
         wrappingCommitWorkItem = work
         DispatchQueue.main.async(execute: work)
+    }
+
+    private var enclosingSection: SettingsSectionView? {
+        var current: NSView? = superview
+        while let view = current {
+            if let section = view as? SettingsSectionView { return section }
+            current = view.superview
+        }
+        return nil
     }
 
     private func performScheduledWrappingHeightCommit() {

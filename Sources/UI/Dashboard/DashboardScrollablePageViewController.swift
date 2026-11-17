@@ -17,35 +17,16 @@ import AppKit
 final class DashboardScrollablePageViewController: NSViewController {
     static let viewportBottomInset: CGFloat = 0
     static let documentHorizontalInset: CGFloat = 34
-    static let spaciousTopSpacingMultiplier: CGFloat = 1
-    /// Page-local responsive breakpoint. Default 620-pt windows stay compact;
-    /// clearly taller viewports pick up one system-spacing document margin.
-    static let spaciousViewportHeight: CGFloat = 760
     static let documentBottomInset: CGFloat = 34
     static let documentFillIdentifier = NSUserInterfaceItemIdentifier(
         "dashboardPageDocumentFill"
     )
-
-    private struct RootAssembly {
-        let root: NSView
-        let compactContentTopConstraint: NSLayoutConstraint
-        let spaciousContentTopConstraint: NSLayoutConstraint
-    }
 
     let layoutPolicy: DashboardPageScrollLayoutPolicy
     let hostedContent: NSView
     let pageScrollView: NSScrollView
     private let pageClipView: NSClipView
     private let pageDocumentView: DashboardSettingsDocumentView
-    private var compactContentTopConstraint: NSLayoutConstraint?
-    private var spaciousContentTopConstraint: NSLayoutConstraint?
-    private var usesSpaciousTopLayout = false
-    /// `offset - spacing` captured when the breakpoint flips while scrolled.
-    /// Constraint changes take effect on a later layout pass; compensation
-    /// waits until measured spacing matches the new mode. Do not force a
-    /// subtree layout from `viewDidLayout()`.
-    private var pendingScrolledOffsetBase: CGFloat?
-    private var pendingCompensationLayoutPasses = 0
     private var scheduledVisualOffset: CGFloat?
     private var clipViewObserver: NSObjectProtocol?
 
@@ -69,16 +50,13 @@ final class DashboardScrollablePageViewController: NSViewController {
     }
 
     override func loadView() {
-        let assembly = Self.makeRootView(
+        view = Self.makeRootView(
             hosting: hostedContent,
             scrollView: pageScrollView,
             clipView: pageClipView,
             documentView: pageDocumentView,
             layoutPolicy: layoutPolicy
         )
-        compactContentTopConstraint = assembly.compactContentTopConstraint
-        spaciousContentTopConstraint = assembly.spaciousContentTopConstraint
-        view = assembly.root
     }
 
     override func viewDidLoad() {
@@ -89,8 +67,6 @@ final class DashboardScrollablePageViewController: NSViewController {
     override func viewDidLayout() {
         super.viewDidLayout()
         applyScheduledVisualOffsetIfNeeded()
-        applyPendingScrolledOffsetCompensationIfNeeded()
-        updateTopSpacingModeIfNeeded()
     }
 
     var isAtTop: Bool {
@@ -140,49 +116,14 @@ final class DashboardScrollablePageViewController: NSViewController {
     var clipViewForTesting: NSClipView { pageClipView }
     var hostedContentForTesting: NSView { hostedContent }
     var clipViewObserverInstalledForTesting: Bool { clipViewObserver != nil }
-    /// Scroll-document margin above the first section. Chrome insets stay on
-    /// `NSScrollView`; this value is content layout, so it scrolls away.
-    /// Measured in the flipped document, not the unflipped host `frame`.
-    var documentTopSpacingForTesting: CGFloat { documentTopSpacing }
-
-    private var documentTopSpacing: CGFloat {
+    /// Scroll-document margin above the first section, measured in the
+    /// flipped document. It is one fixed system spacing at every viewport
+    /// height, like System Settings, so the first section never moves while
+    /// the window is resized (#690). It scrolls away with the document;
+    /// chrome insets stay on `NSScrollView`.
+    var documentTopSpacingForTesting: CGFloat {
         let contentRect = hostedContent.convert(hostedContent.bounds, to: pageDocumentView)
         return contentRect.minY - pageDocumentView.bounds.minY
-    }
-
-    /// Right-pane visible viewport: the clip view that crops the document.
-    /// `NSScrollView.bounds` is outer chrome and is not this value.
-    private var pageViewportHeight: CGFloat {
-        pageClipView.bounds.height
-    }
-
-    private func updateTopSpacingModeIfNeeded() {
-        let shouldUseSpaciousLayout =
-            pageViewportHeight >= Self.spaciousViewportHeight
-        guard shouldUseSpaciousLayout != usesSpaciousTopLayout else { return }
-
-        let stayAtTop = isAtTop
-        let spacingBefore = documentTopSpacing
-        let offsetBefore = scrollOffset
-
-        usesSpaciousTopLayout = shouldUseSpaciousLayout
-        if shouldUseSpaciousLayout {
-            compactContentTopConstraint?.isActive = false
-            spaciousContentTopConstraint?.isActive = true
-        } else {
-            spaciousContentTopConstraint?.isActive = false
-            compactContentTopConstraint?.isActive = true
-        }
-
-        pendingCompensationLayoutPasses = 0
-        if stayAtTop {
-            pendingScrolledOffsetBase = nil
-        } else {
-            pendingScrolledOffsetBase = offsetBefore - spacingBefore
-        }
-        hostedContent.superview?.needsLayout = true
-        hostedContent.needsLayout = true
-        view.needsLayout = true
     }
 
     private func applyScheduledVisualOffsetIfNeeded() {
@@ -190,24 +131,6 @@ final class DashboardScrollablePageViewController: NSViewController {
         scheduledVisualOffset = nil
         guard abs(scrollOffset - offset) > 1 else { return }
         DashboardPageScrollPosition.restore(visualOffsetY: offset, in: pageScrollView)
-    }
-
-    private func applyPendingScrolledOffsetCompensationIfNeeded() {
-        guard let offsetBase = pendingScrolledOffsetBase else { return }
-        let spacing = documentTopSpacing
-        let spacingMatchesMode = usesSpaciousTopLayout ? spacing > 0.5 : spacing <= 0.5
-        if !spacingMatchesMode, pendingCompensationLayoutPasses < 3 {
-            pendingCompensationLayoutPasses += 1
-            hostedContent.superview?.needsLayout = true
-            view.needsLayout = true
-            return
-        }
-        pendingCompensationLayoutPasses = 0
-        pendingScrolledOffsetBase = nil
-        DashboardPageScrollPosition.restore(
-            visualOffsetY: offsetBase + spacing,
-            in: pageScrollView
-        )
     }
 
     /// Compatibility assembler for tests that still need a complete page view
@@ -223,7 +146,7 @@ final class DashboardScrollablePageViewController: NSViewController {
             clipView: NSClipView(),
             documentView: DashboardSettingsDocumentView(),
             layoutPolicy: layoutPolicy
-        ).root
+        )
     }
 
     private static func makeRootView(
@@ -232,7 +155,7 @@ final class DashboardScrollablePageViewController: NSViewController {
         clipView: NSClipView,
         documentView: DashboardSettingsDocumentView,
         layoutPolicy: DashboardPageScrollLayoutPolicy = .current
-    ) -> RootAssembly {
+    ) -> NSView {
         let root = DashboardSettingsPageView()
         let viewportContainer = NSView()
         viewportContainer.translatesAutoresizingMaskIntoConstraints = false
@@ -289,15 +212,6 @@ final class DashboardScrollablePageViewController: NSViewController {
         root.addSubview(viewportContainer)
         viewportContainer.addSubview(scrollView)
 
-        let compactTopConstraint = contentView.topAnchor.constraint(
-            equalTo: contentHost.topAnchor
-        )
-        let spaciousTopConstraint = contentView.topAnchor.constraint(
-            equalToSystemSpacingBelow: contentHost.topAnchor,
-            multiplier: spaciousTopSpacingMultiplier
-        )
-        spaciousTopConstraint.isActive = false
-
         NSLayoutConstraint.activate([
             viewportContainer.leadingAnchor.constraint(
                 equalTo: root.safeAreaLayoutGuide.leadingAnchor
@@ -332,7 +246,13 @@ final class DashboardScrollablePageViewController: NSViewController {
             documentFill.trailingAnchor.constraint(equalTo: documentView.trailingAnchor),
             documentFill.bottomAnchor.constraint(equalTo: documentView.bottomAnchor),
             documentFill.heightAnchor.constraint(greaterThanOrEqualToConstant: documentBottomInset),
-            compactTopConstraint,
+            // One system spacing above the first section at every viewport
+            // height, like System Settings' grouped form (#690). A height
+            // breakpoint here made the first heading jump while resizing.
+            contentView.topAnchor.constraint(
+                equalToSystemSpacingBelow: contentHost.topAnchor,
+                multiplier: 1
+            ),
             contentView.leadingAnchor.constraint(
                 equalTo: contentHost.leadingAnchor,
                 constant: documentHorizontalInset
@@ -343,11 +263,7 @@ final class DashboardScrollablePageViewController: NSViewController {
             ),
             contentView.bottomAnchor.constraint(equalTo: contentHost.bottomAnchor)
         ])
-        return RootAssembly(
-            root: root,
-            compactContentTopConstraint: compactTopConstraint,
-            spaciousContentTopConstraint: spaciousTopConstraint
-        )
+        return root
     }
 
     private func installLayoutObservers() {
