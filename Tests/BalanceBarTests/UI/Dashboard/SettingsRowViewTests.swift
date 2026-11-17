@@ -377,6 +377,52 @@ final class SettingsRowViewTests: XCTestCase {
         }
     }
 
+    /// #690：缩放窗口时，换行宽度变化的那一次布局里行高就要到位，不能等下一轮
+    /// run loop 的延迟提交；否则拖动时行高晚一帧，长文字行和页面顶部看起来上下闪跳。
+    /// 分组处于 live resize（不报告固有高度）和普通状态两种情况都要满足。
+    func testWidthChangeSettlesWrappingRowHeightInTheSameLayoutPass() throws {
+        let longDetail = "Beta: synchronized mode redraws the menu bar on every display refresh so animations stay smooth, but it costs more CPU than the efficient mode on older Macs."
+        for liveResize in [true, false] {
+            let row = SettingsRowView(
+                title: "Animation rendering mode",
+                detail: longDetail,
+                accessoryView: NSSwitch()
+            )
+            let peer = SettingsRowView(title: "Peer", accessoryView: NSSwitch())
+            let section = SettingsSectionView(title: "Menu bar", contentViews: [row, peer])
+            let window = makeTestWindow(width: 720)
+            let host = pinningHost(for: section, in: window, width: 720)
+            defer { window.orderOut(nil) }
+            section.liveResizeOverrideForTesting = liveResize ? true : nil
+
+            for width in [640, 520, 430, 360, 300, 380, 470, 560, 700, 330] as [CGFloat] {
+                let context = "liveResize=\(liveResize) width=\(width)"
+                window.setContentSize(NSSize(width: width, height: 360))
+                host.setFrameSize(NSSize(width: width, height: 360))
+                window.layoutIfNeeded()
+
+                let rowHeight = row.frame.height
+                let detailHeight = row.detailLabel.frame.height
+                let sectionHeight = section.frame.height
+                XCTAssertEqual(
+                    detailHeight,
+                    measuredLabelHeight(row.detailLabel, width: row.detailLabel.frame.width),
+                    accuracy: 1.0,
+                    "detail height must match its wrapped text in the same pass, \(context)"
+                )
+                XCTAssertEqual(rowHeight, row.hostedCardHeight(), accuracy: 0.5, "row height \(context)")
+
+                // 之后的 run loop / 补提交不能再改高度（再改就是用户看到的跳动）。
+                RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.02))
+                SettingsRowView.flushPendingWrappingHeightCommits(in: section)
+                window.layoutIfNeeded()
+                XCTAssertEqual(row.frame.height, rowHeight, accuracy: 0.5, "row height jumped later, \(context)")
+                XCTAssertEqual(row.detailLabel.frame.height, detailHeight, accuracy: 0.5, "detail jumped later, \(context)")
+                XCTAssertEqual(section.frame.height, sectionHeight, accuracy: 0.5, "section jumped later, \(context)")
+            }
+        }
+    }
+
     private func measuredLabelHeight(_ label: NSTextField, width: CGFloat) -> CGFloat {
         guard let cell = label.cell else { return 0 }
         return cell.cellSize(forBounds: NSRect(x: 0, y: 0, width: width, height: .greatestFiniteMagnitude)).height
