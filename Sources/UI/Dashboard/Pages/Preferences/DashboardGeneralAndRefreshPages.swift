@@ -391,6 +391,11 @@ final class DashboardGeneralPage {
     private weak var systemTimeZoneCheckbox: NSButton?
 
     private var updateSubtitleLabel: NSTextField?
+    /// "Claude official calibration": dimmed while the IP allowlist keeps official requests off.
+    private(set) var claudeCalibrationRow: SettingsRowView?
+    private(set) var claudeCalibrationPopup: NSPopUpButton?
+    private var claudeCalibrationLink: SettingsSubtitleLink?
+    private weak var relay: DashboardPreferencePageRelay?
     private var updateButton: NSButton?
     private var updateNotesButton: NSButton?
     private var updateBadge: NSView?
@@ -563,15 +568,20 @@ final class DashboardGeneralPage {
                 )
             ]
         )
+        let calibrationRow = SettingsRowView(
+            title: tr(.keyClaudeQuotaCalibration),
+            detail: tr(.keyClaudeQuotaCalibrationDetail),
+            titleAccessory: DashboardRefreshPage.agentIconStrip(["Claude"], tag: tr(.keyClaudeSourceTagAllClients)),
+            accessoryView: refreshControls(claudeCalibrationPopup)
+        )
+        claudeCalibrationRow = calibrationRow
+        self.claudeCalibrationPopup = claudeCalibrationPopup
+        relay = input.relay
+        refreshClaudeOfficialEnabled(input.preferences.claudeEgressGuardEnabled)
         let refreshingClaude = SettingsSectionView(
             title: "",
             contentViews: [
-                SettingsRowView(
-                    title: tr(.keyClaudeQuotaCalibration),
-                    detail: tr(.keyClaudeQuotaCalibrationDetail),
-                    titleAccessory: DashboardRefreshPage.agentIconStrip(["Claude"], tag: tr(.keyClaudeSourceTagAllClients)),
-                    accessoryView: refreshControls(claudeCalibrationPopup)
-                ),
+                calibrationRow,
                 modRows.statusRow
             ]
         )
@@ -712,6 +722,30 @@ final class DashboardGeneralPage {
     func refreshModSync(_ status: ModSyncStatus?, operation: ModPanelState?) {
         realtimeBoostRows?.update(status: status ?? .detecting, operation: operation ?? .intro(dismissChecked: false))
     }
+
+    /// With the IP allowlist off no official request is sent, so the calibration interval does
+    /// nothing: the row is dimmed like a dependent System Settings control and says where to turn
+    /// requests back on. The saved interval is kept.
+    func refreshClaudeOfficialEnabled(_ enabled: Bool) {
+        guard let row = claudeCalibrationRow else { return }
+        claudeCalibrationPopup?.isEnabled = enabled
+        row.titleLabel.textColor = enabled ? .labelColor : .disabledControlTextColor
+        row.titleAccessory?.alphaValue = enabled ? 1 : 0.45
+        claudeCalibrationLink?.remove()
+        claudeCalibrationLink = nil
+        guard !enabled else {
+            row.updateDetail(tr(.keyClaudeQuotaCalibrationDetail))
+            return
+        }
+        // The explanation, then on its own line a link to Settings › Advanced.
+        let link = tr(.keyClaudeQuotaCalibrationOffLink)
+        row.updateDetail("\(tr(.keyClaudeQuotaCalibrationOffDetail))\n\(link)")
+        claudeCalibrationLink = SettingsSubtitleLink(label: row.detailLabel, linkText: link) { [weak self] in
+            self?.relay?.openEgressGuardSettings(nil)
+        }
+    }
+
+    var claudeCalibrationLinkForTesting: SettingsSubtitleLink? { claudeCalibrationLink }
 
     func refreshDisplayTimeZone(_ selection: AppTimeZoneSelection) {
         systemTimeZoneCheckbox?.state = selection == .system ? .on : .off
@@ -1404,5 +1438,71 @@ final class AgentIconStripView: NSView {
             }
             x += iconSize.width + Self.spacing
         }
+    }
+}
+
+/// Turns the tail of a settings-row subtitle into an in-app link: link color, pointing-hand
+/// cursor and a click that runs `action` (no URL, so nothing leaves the app). The subtitle keeps
+/// its own wrapping; `remove()` restores a plain label.
+final class SettingsSubtitleLink: NSResponder {
+    private weak var label: NSTextField?
+    private let linkText: String
+    private let action: () -> Void
+    private var recognizer: NSClickGestureRecognizer?
+    private var trackingArea: NSTrackingArea?
+
+    init(label: NSTextField, linkText: String, action: @escaping () -> Void) {
+        self.label = label
+        self.linkText = linkText
+        self.action = action
+        super.init()
+        let recognizer = NSClickGestureRecognizer(target: self, action: #selector(clicked))
+        label.addGestureRecognizer(recognizer)
+        self.recognizer = recognizer
+        let area = NSTrackingArea(
+            rect: .zero, options: [.cursorUpdate, .activeInKeyWindow, .inVisibleRect], owner: self, userInfo: nil)
+        label.addTrackingArea(area)
+        trackingArea = area
+        label.setAccessibilityRole(.link)
+        applyStyle()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    var displayedLinkRange: NSRange? {
+        guard let text = label?.stringValue else { return nil }
+        let range = (text as NSString).range(of: linkText.replacingOccurrences(of: "\n", with: ""))
+        return range.location == NSNotFound ? nil : range
+    }
+
+    /// Re-applies the link color after the row rewraps its subtitle.
+    func applyStyle() {
+        guard let label, let range = displayedLinkRange else { return }
+        let attributed = NSMutableAttributedString(string: label.stringValue, attributes: [
+            .font: label.font ?? NSFont.systemFont(ofSize: 12),
+            .foregroundColor: label.textColor ?? NSColor.secondaryLabelColor,
+        ])
+        attributed.addAttribute(.foregroundColor, value: NSColor.linkColor, range: range)
+        label.attributedStringValue = attributed
+    }
+
+    override func cursorUpdate(with event: NSEvent) {
+        NSCursor.pointingHand.set()
+    }
+
+    @objc private func clicked() {
+        action()
+    }
+
+    func performClickForTesting() { clicked() }
+
+    func remove() {
+        guard let label else { return }
+        if let recognizer { label.removeGestureRecognizer(recognizer) }
+        if let trackingArea { label.removeTrackingArea(trackingArea) }
+        label.setAccessibilityRole(.staticText)
+        label.attributedStringValue = NSAttributedString(string: label.stringValue)
     }
 }

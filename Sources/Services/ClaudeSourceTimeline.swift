@@ -15,6 +15,8 @@ final class ClaudeSourceTimeline {
         case serverError
         case missingCredentials
         case credentialsUnreadable
+        /// The egress guard kept the request on this machine (Issue #686).
+        case egressGuard
 
         init(_ failure: ClaudeQuotaFailure) {
             switch failure {
@@ -24,6 +26,7 @@ final class ClaudeSourceTimeline {
             case .http, .invalidResponse: self = .serverError
             case .missingCredentials, .noAccount: self = .missingCredentials
             case .credentialsUnreadable: self = .credentialsUnreadable
+            case .egressGuard: self = .egressGuard
             }
         }
     }
@@ -462,7 +465,7 @@ private struct StoredHistory: Codable {
         private static let kinds: [(String, ClaudeSourceTimeline.FailureKind)] = [
             ("network", .network), ("rateLimited", .rateLimited), ("unauthorized", .unauthorized),
             ("serverError", .serverError), ("missingCredentials", .missingCredentials),
-            ("credentialsUnreadable", .credentialsUnreadable),
+            ("credentialsUnreadable", .credentialsUnreadable), ("egressGuard", .egressGuard),
         ]
 
         init(_ run: ClaudeSourceTimeline.FailureRun) {
@@ -535,6 +538,7 @@ private struct StoredHistory: Codable {
             case "serverError": return .serverError
             case "missingCredentials": return .missingCredentials
             case "credentialsUnreadable": return .credentialsUnreadable
+            case "egressGuard": return .egressGuard
             default: return nil
             }
         }

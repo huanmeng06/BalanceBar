@@ -656,6 +656,8 @@
 "claude.timeline.estimate.in" = "em cerca de %1$@";
 "claude.refresh.every_minutes" = "A cada %1$@ min";
 "claude.quota.calibration_detail" = "Consulta a fonte oficial periodicamente como alternativa; intervalos maiores evitam limites de uso";
+"claude.quota.calibration_off_detail" = "As solicitações oficiais do Claude estão desativadas; este intervalo não tem efeito.";
+"claude.quota.calibration_off_link" = "Configurar IPs permitidos…";
 
 // BalanceBar Mod realtime sync (Issue #597)
 "claude.mod_sync.title" = "BalanceBar Mod impulso em tempo real";
@@ -815,3 +817,32 @@
 "mod.ui.int2.silent_check_version" = "O Claude Code é v2.1.287 ou posterior";
 "mod.ui.int2.silent_check_session" = "É uma sessão nova, ou foi executado /reload-plugins nela";
 "mod.ui.int2.silent_check_policy" = "Se a política da organização só permite plugins geridos";
+"claude.refresh.egress_guard_mismatch" = "O IP de saída não está na lista de IPs permitidos; as solicitações oficiais do Claude foram pausadas.";
+"claude.refresh.egress_guard_check_failed" = "Não foi possível confirmar o IP de saída; as solicitações oficiais do Claude foram pausadas.";
+"claude.refresh.egress_guard_no_targets" = "A lista de IPs permitidos está vazia; as solicitações oficiais do Claude foram pausadas.";
+"claude.refresh.egress_guard_unsupported_region" = "A região de saída não é suportada pela Anthropic ou não pôde ser identificada; as solicitações oficiais do Claude estão em pausa.";
+"claude.refresh.egress_guard_disabled" = "As solicitações oficiais do Claude estão desativadas. Ative a lista de IPs permitidos em Ajustes › Avançado.";
+"claude.timeline.failure.egress_guard" = "Bloqueado pela lista de IPs permitidos";
+"quota.failure.open_egress_guard_settings" = "Configurar IPs permitidos";
+"dashboard.advanced.page.egress_guard" = "IPs permitidos do Claude";
+"dashboard.advanced.page.egress_guard_enabled" = "Solicitar a cota oficial apenas de IPs permitidos";
+"dashboard.advanced.page.egress_guard_enabled_detail" = "Antes de cada solicitação, seu IP de saída atual (o IP que os servidores do Claude veem) é verificado. Se não estiver na lista, nada é enviado. Desativado: a cota oficial nunca é solicitada e só os dados do Mod são usados.";
+"dashboard.advanced.page.egress_guard_allowed" = "IPs permitidos";
+"dashboard.advanced.page.egress_guard_allowed_empty" = "Clique em + para adicionar um IP ou detecte antes a saída atual";
+"dashboard.advanced.page.egress_guard_remove" = "Remover";
+"dashboard.advanced.page.egress_guard_add_title" = "Adicionar IP";
+"dashboard.advanced.page.egress_guard_add_placeholder" = "Endereço IPv4 ou IPv6";
+"dashboard.advanced.page.egress_guard_invalid_ip" = "Endereço IP inválido";
+"dashboard.advanced.page.egress_guard_detect" = "Detectar";
+"dashboard.advanced.page.egress_guard_detecting" = "Detectando a saída atual…";
+"dashboard.advanced.page.egress_guard_detected_listed" = "Saída atual: %1$@ — permitida";
+"dashboard.advanced.page.egress_guard_detected_unlisted" = "Saída atual: %1$@ — não permitida";
+"dashboard.advanced.page.egress_guard_detect_failed" = "Não foi possível detectar a saída atual";
+"dashboard.advanced.page.egress_guard_add_detected" = "Adicionar";
+"dashboard.advanced.page.egress_guard_footnote" = "A verificação acessa claude.ai e as solicitações de cota vão para api.anthropic.com. Use a mesma regra de proxy para ambos ou a verificação pode não corresponder à saída real. O país/região é consultado no ipinfo.io uma única vez por IP. A disponibilidade segue a política de regiões suportadas da Anthropic em 2026-11-12. Se a Cloudflare situar a saída fora dessas regiões, as solicitações oficiais também são pausadas.";
+"dashboard.advanced.page.egress_guard_column_ip" = "Endereço IP";
+"dashboard.advanced.page.egress_guard_column_region" = "País/região";
+"dashboard.advanced.page.egress_guard_country_loading" = "Consultando…";
+"dashboard.advanced.page.egress_guard_column_available" = "Claude disponível";
+"dashboard.advanced.page.egress_guard_available_yes" = "Numa região onde a Anthropic oferece o Claude";
+"dashboard.advanced.page.egress_guard_available_no" = "Fora das regiões onde a Anthropic oferece o Claude";
