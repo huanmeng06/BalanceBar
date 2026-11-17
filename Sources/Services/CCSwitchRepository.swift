@@ -776,7 +776,23 @@ final class CCSwitchRepository {
         return route
     }
 
+    /// Development-build-only failure simulation (never active in the release app):
+    /// `BALANCEBAR_SIM_CCSWITCH=missing|broken|busy|nocurrent` makes the current-provider
+    /// read fail that way without touching the real database.
+    private static func simulatedCurrentReadResult() throws -> CCSwitchProvider?? {
+        guard Bundle.main.bundleIdentifier?.hasSuffix(".dev") == true,
+              let mode = ProcessInfo.processInfo.environment["BALANCEBAR_SIM_CCSWITCH"] else { return nil }
+        switch mode {
+        case "missing": throw CCSwitchReadError.sqlite(SQLITE_CANTOPEN)
+        case "broken": throw CCSwitchReadError.sqlite(SQLITE_NOTADB)
+        case "busy": throw CCSwitchReadError.sqlite(SQLITE_BUSY)
+        case "nocurrent": return .some(nil)
+        default: return nil
+        }
+    }
+
     func loadCurrentChecked(appType: String) throws -> CCSwitchProvider? {
+        if let simulated = try Self.simulatedCurrentReadResult() { return simulated }
         var database: OpaquePointer?
         let openCode = sqlite3_open_v2(databaseURL.path, &database, SQLITE_OPEN_READONLY, nil)
         guard openCode == SQLITE_OK, let database else {
