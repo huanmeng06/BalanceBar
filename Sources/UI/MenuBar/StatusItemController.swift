@@ -3132,7 +3132,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             || self.menuInput.activeClient != menuInput.activeClient
         let overviewChanged = statusMenu.items.isEmpty || self.snapshot != snapshot
             || self.menuInput != menuInput || self.settings != settings
+        // The Codex re-login row follows the snapshot, so its appearance is a native-item change too.
         let nativeItemsChanged = !self.menuInput.hasSameNativeItems(as: menuInput)
+            || Self.codexLoginPromptReason(snapshot: self.snapshot, input: self.menuInput)
+                != Self.codexLoginPromptReason(snapshot: snapshot, input: menuInput)
         let iconSizeChanged = self.settings.iconSize != settings.iconSize
         self.snapshot = snapshot
         self.refreshDate = refreshDate
@@ -3264,6 +3267,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         // hierarchy when that read produces the same semantic input.
         guard menuInput != input else { return }
         let nativeItemsChanged = !menuInput.hasSameNativeItems(as: input)
+            || Self.codexLoginPromptReason(snapshot: snapshot, input: menuInput)
+                != Self.codexLoginPromptReason(snapshot: snapshot, input: input)
         let overviewUnchanged = menuInput.aggregatedProviders == input.aggregatedProviders
             && menuInput.directProviderNotes == input.directProviderNotes
             && menuInput.directProviderID == input.directProviderID
@@ -6237,20 +6242,51 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     /// The accent-tinted realtime-boost prompt row under the quota card.
     private func makeClaudeLoginPromptItem() -> NSMenuItem? {
-        guard let prompt = menuInput.claudeLoginPrompt else { return nil }
-        let view = ModPromptRowView(
+        guard let prompt = menuInput.claudeLoginPrompt else { return makeCodexLoginPromptItem() }
+        return makeLoginPromptItem(
             mainText: tr(prompt == .liveData ? .keyClaudeLoginPromptTitleLive : .keyClaudeLoginPromptTitle),
             detailText: tr(.keyClaudeLoginPromptAction),
+            command: FailureStateView.signInCommand,
+            copiedTitle: tr(.keyClaudeLoginPromptCopiedTitle),
+            identifier: "menu.claudeLoginPrompt")
+    }
+
+    /// The direct Codex card keeps older data after a login failure; this row carries the
+    /// reason and the `codex login` command that would otherwise only be in the ⚠︎ tooltip.
+    private func makeCodexLoginPromptItem() -> NSMenuItem? {
+        guard let reason = Self.codexLoginPromptReason(snapshot: snapshot, input: menuInput) else { return nil }
+        return makeLoginPromptItem(
+            mainText: tr(reason == .codexSignedOut ? .keyCodexLoginPromptTitleSignedOut : .keyCodexLoginPromptTitleExpired),
+            detailText: tr(.keyCodexLoginPromptAction),
+            command: FailureStateView.codexSignInCommand,
+            copiedTitle: tr(.keyCodexLoginPromptCopiedTitle),
+            identifier: "menu.codexLoginPrompt")
+    }
+
+    /// Shown only while the direct Codex card shows kept data after a login failure; with no
+    /// data the error card already shows the reason and the button.
+    static func codexLoginPromptReason(snapshot: Snapshot, input: MenuInput) -> OpenAIAccountPresentation.UnavailableReason? {
+        guard input.activeClient == .codex, input.aggregatedProviders.isEmpty,
+              snapshot.kind == .official, snapshot.staleReason != nil,
+              snapshot.failureClient == .codex, snapshot.failureRecovery == .copySignInCommand else { return nil }
+        return snapshot.accountUnavailableReason ?? .codexLoginExpired
+    }
+
+    private func makeLoginPromptItem(mainText: String, detailText: String, command: String,
+                                     copiedTitle: String, identifier: String) -> NSMenuItem {
+        let view = ModPromptRowView(
+            mainText: mainText,
+            detailText: detailText,
             symbolName: "exclamationmark.triangle.fill",
             tint: .systemOrange
         )
-        view.identifier = NSUserInterfaceItemIdentifier("menu.claudeLoginPrompt")
+        view.identifier = NSUserInterfaceItemIdentifier(identifier)
         // Stay open and confirm in place, so the user sees the copy succeeded.
         view.closesMenuOnClick = false
         view.onClick = { [weak view] in
             NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(FailureStateView.signInCommand, forType: .string)
-            view?.showConfirmation(mainText: tr(.keyClaudeLoginPromptCopiedTitle),
+            NSPasteboard.general.setString(command, forType: .string)
+            view?.showConfirmation(mainText: copiedTitle,
                                    detailText: tr(.keyClaudeLoginPromptCopiedDetail),
                                    symbolName: "checkmark.circle.fill", tint: .systemOrange)
         }
@@ -6582,8 +6618,18 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private func directCardContext(for snapshot: Snapshot) -> OverviewCardContext {
         OverviewCardContext(snapshot: snapshot,
             identity: menuInput.directProviderID.map { menuInput.activeClient.rawValue + "|" + $0 } ?? snapshot.provider,
-            account: menuInput.openAIAccount, date: refreshDate, noteTags: menuInput.directProviderNotes,
+            account: Self.directAccount(menuInput.openAIAccount, snapshot: snapshot, activeClient: menuInput.activeClient),
+            date: refreshDate, noteTags: menuInput.directProviderNotes,
             paceClient: menuInput.activeClient)
+    }
+
+    /// A login failure of the shown client replaces the cached email with its short status, so
+    /// the account row never looks signed in while the official request was rejected (Issue #674).
+    static func directAccount(_ account: OpenAIAccountPresentation?, snapshot: Snapshot,
+                              activeClient: AssistantClient) -> OpenAIAccountPresentation? {
+        guard let account, let reason = snapshot.accountUnavailableReason,
+              snapshot.failureClient == activeClient else { return account }
+        return OpenAIAccountPresentation(email: nil, unavailableReason: reason)
     }
 
     private func cardContext(_ display: AggregatedProviderDisplay) -> OverviewCardContext {
@@ -7657,9 +7703,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let item = NSMenuItem()
         item.isEnabled = false
         let message = snapshot.overviewReset(refreshDate: nil, formatter: AppDisplayTime.formatter(timeZone: settings.displayTimeZone))
-        // Claude official failures add the BB-07 failure view: reason plus a button
-        // that opens the official usage page, in extra height below the detail.
-        let showsUsagePageButton = snapshot.quotaStatus != nil
+        // Official Claude and Codex failures add the BB-07 failure view: reason plus a
+        // recovery button for that client, in extra height below the detail.
+        let showsUsagePageButton = snapshot.quotaStatus != nil || snapshot.failureClient != nil
+        let failureClient = snapshot.failureClient ?? .claude
         let buttonShift = showsUsagePageButton && snapshot.failureRecovery != .none
             ? ErrorCardLayout.usagePageButtonHeight : 0
         let baseFrames = ErrorCardLayout.errorFrames(
@@ -7710,10 +7757,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             let failure = FailureStateView(
                 reason: frames.detailText,
                 action: snapshot.failureRecovery,
+                client: failureClient,
                 // The detail frame was measured with this font; a smaller one leaves a blank gap.
                 font: ErrorCardLayout.detailFont,
                 localize: StatusSlotText.appLocalize,
-                onOpenUsagePage: { [weak self] in self?.actions.openStatusLink(FailureStateView.officialUsageURL) },
+                onOpenUsagePage: { [weak self] in self?.actions.openStatusLink(FailureStateView.usageURL(for: failureClient)) },
                 onOpenEgressGuardSettings: { [weak self] in
                     self?.cancelMenuBarTracking()
                     // The menu is closing; open the window once it is gone.
@@ -7890,7 +7938,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             // also match the account its snapshot was fetched for.
             let ownerMatches = aggregated
                 ? host.quotaPaceAccount == context.account && host.quotaPaceClient == context.paceClient
-                : host.quotaPaceAccount == menuInput.openAIAccount && host.quotaPaceClient == menuInput.activeClient
+                : host.quotaPaceAccount == Self.directAccount(menuInput.openAIAccount, snapshot: snapshot,
+                        activeClient: menuInput.activeClient) && host.quotaPaceClient == menuInput.activeClient
                     && quotaPaceSnapshotAccount == menuInput.openAIAccount && quotaPaceSnapshotClient == menuInput.activeClient
             let identityMatches = snapshot.kind == .official && ownerMatches
                 && settings.showQuotaProgressBar && settings.showQuotaPaceIndicator

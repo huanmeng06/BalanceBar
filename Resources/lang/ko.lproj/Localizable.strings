@@ -609,6 +609,15 @@
 "claude.login_prompt.action" = "클릭하여 claude 명령을 복사한 뒤 터미널에서 실행";
 "claude.login_prompt.copied_title" = "claude 명령을 복사했습니다";
 "claude.login_prompt.copied_detail" = "터미널에 붙여넣고 실행하면 다시 로그인됩니다";
+"quota.failure.copy_codex_login_command" = "codex login 명령 복사";
+"codex.account.login_expired" = "로그인 만료";
+"codex.account.signed_out" = "로그인 안 됨";
+"codex.refresh.login_expired" = "Codex 로그인이 만료되었습니다. 터미널에서 codex login을 실행하면 복구됩니다";
+"codex.refresh.signed_out" = "Codex에 로그인되어 있지 않습니다. 터미널에서 codex login을 실행하세요";
+"codex.login_prompt.title_expired" = "Codex 로그인 만료, 이전 데이터 표시 중";
+"codex.login_prompt.title_signed_out" = "Codex 로그인 안 됨, 이전 데이터 표시 중";
+"codex.login_prompt.action" = "클릭하여 codex login 명령을 복사한 뒤 터미널에서 실행";
+"codex.login_prompt.copied_title" = "codex login 명령을 복사했습니다";
 "quota.status.accessibility" = "할당량 상태: %1$@";
 "claude.refresh.login_expired" = "Claude Code 로그인이 만료되었습니다. 터미널에서 claude를 한 번 실행하면 복구됩니다. BalanceBar는 로그인을 직접 갱신하지 않습니다.";
 "status.item.controller.refresh_now_login_expired" = "로그인 자격 증명이 만료되었습니다. 터미널에서 Claude Code CLI를 다시 실행하세요";

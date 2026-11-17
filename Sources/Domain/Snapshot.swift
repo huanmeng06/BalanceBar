@@ -1055,8 +1055,15 @@ struct Snapshot: Equatable {
     /// reset pending, ...); nil for every other source, which keeps the
     /// plain refresh-time label.
     var quotaStatus: StatusSlotState? = nil
-    /// Which recovery button a Claude official failure card offers.
+    /// Which recovery button an official failure card offers.
     var failureRecovery: FailureRecovery = .openUsagePage
+    /// The official client a failure belongs to (error card or kept stale data); selects the
+    /// failure view's copied command and usage page. Claude error cards without it still
+    /// show the failure view through `quotaStatus`.
+    var failureClient: AssistantClient? = nil
+    /// Short account-row status that replaces the cached email after an official login
+    /// failure (Codex token expired or signed out, Issue #674).
+    var accountUnavailableReason: OpenAIAccountPresentation.UnavailableReason? = nil
     /// Claude official requests are turned off by the egress guard (Issue #686): the card
     /// explains it, but the menu bar shows a neutral dash instead of the "!" failure mark.
     var officialSourceDisabled = false

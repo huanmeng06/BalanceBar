@@ -609,6 +609,15 @@
 "claude.login_prompt.action" = "Fai clic per copiare il comando claude ed eseguilo nel terminale";
 "claude.login_prompt.copied_title" = "Comando claude copiato";
 "claude.login_prompt.copied_detail" = "Incollalo ed eseguilo nel terminale per accedere di nuovo";
+"quota.failure.copy_codex_login_command" = "Copia il comando codex login";
+"codex.account.login_expired" = "Accesso scaduto";
+"codex.account.signed_out" = "Accesso non effettuato";
+"codex.refresh.login_expired" = "L'accesso a Codex è scaduto. Esegui codex login nel terminale per ripristinarlo";
+"codex.refresh.signed_out" = "Codex non ha effettuato l'accesso. Esegui codex login nel terminale";
+"codex.login_prompt.title_expired" = "Accesso a Codex scaduto; dati precedenti";
+"codex.login_prompt.title_signed_out" = "Codex senza accesso; dati precedenti";
+"codex.login_prompt.action" = "Fai clic per copiare il comando codex login ed eseguilo nel terminale";
+"codex.login_prompt.copied_title" = "Comando codex login copiato";
 "quota.status.accessibility" = "Stato della quota: %1$@";
 "claude.refresh.login_expired" = "L'accesso a Claude Code è scaduto. Esegui claude una volta nel terminale per ripristinarlo; BalanceBar non rinnova mai l'accesso da solo.";
 "status.item.controller.refresh_now_login_expired" = "Credenziali scadute; esegui di nuovo Claude Code CLI nel terminale";

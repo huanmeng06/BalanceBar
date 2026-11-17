@@ -609,6 +609,15 @@
 "claude.login_prompt.action" = "Clique para copiar o comando claude e execute-o no terminal";
 "claude.login_prompt.copied_title" = "Comando claude copiado";
 "claude.login_prompt.copied_detail" = "Cole e execute no terminal para entrar novamente";
+"quota.failure.copy_codex_login_command" = "Copiar o comando codex login";
+"codex.account.login_expired" = "Login expirado";
+"codex.account.signed_out" = "Sem login";
+"codex.refresh.login_expired" = "O login do Codex expirou. Execute codex login no terminal para restaurá-lo";
+"codex.refresh.signed_out" = "O Codex não está conectado. Execute codex login no terminal";
+"codex.login_prompt.title_expired" = "Login do Codex expirado; dados anteriores";
+"codex.login_prompt.title_signed_out" = "Codex sem login; dados anteriores";
+"codex.login_prompt.action" = "Clique para copiar o comando codex login e execute-o no terminal";
+"codex.login_prompt.copied_title" = "Comando codex login copiado";
 "quota.status.accessibility" = "Estado da cota: %1$@";
 "claude.refresh.login_expired" = "O login do Claude Code expirou. Execute claude uma vez no terminal para restaurá-lo; o BalanceBar nunca renova o login por conta própria.";
 "status.item.controller.refresh_now_login_expired" = "As credenciais expiraram; execute o Claude Code CLI novamente no terminal";

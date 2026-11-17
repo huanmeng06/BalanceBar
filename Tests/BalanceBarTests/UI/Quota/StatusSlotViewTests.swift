@@ -413,6 +413,18 @@ final class StatusSlotViewTests: XCTestCase {
         XCTAssertEqual(view.actionButton.title, "已复制")
     }
 
+    func testFailureStateUsesCodexCommandAndUsagePageForCodex() {
+        var copied: [String] = []
+        let copy = FailureStateView(reason: "Codex 登录已过期，在终端运行 codex login 即可恢复",
+            action: .copySignInCommand, client: .codex, copyToPasteboard: { copied.append($0) })
+        XCTAssertEqual(copy.actionButton.title, "复制 codex login 命令")
+        copy.actionButton.performClick(nil)
+        XCTAssertEqual(copied, ["codex login"])
+        XCTAssertEqual(FailureStateView.signInCommand(for: .claude), "claude")
+        XCTAssertEqual(FailureStateView.usageURL(for: .claude), FailureStateView.officialUsageURL)
+        XCTAssertEqual(FailureStateView.usageURL(for: .codex).host, "chatgpt.com", "Codex never opens claude.ai")
+    }
+
     func testFailureStateWithoutRecoveryShowsReasonOnly() {
         let view = FailureStateView(reason: "无法读取钥匙串", action: .none)
         view.frame = NSRect(x: 0, y: 0, width: 240, height: 40)

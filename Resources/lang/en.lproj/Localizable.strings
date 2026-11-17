@@ -609,6 +609,15 @@
 "claude.login_prompt.action" = "Click to copy the claude command, then run it in a terminal";
 "claude.login_prompt.copied_title" = "Copied the claude command";
 "claude.login_prompt.copied_detail" = "Paste and run it in a terminal to sign in again";
+"quota.failure.copy_codex_login_command" = "Copy codex login command";
+"codex.account.login_expired" = "Sign-in expired";
+"codex.account.signed_out" = "Not signed in";
+"codex.refresh.login_expired" = "Codex sign-in expired. Run codex login in a terminal to restore it";
+"codex.refresh.signed_out" = "Codex is not signed in. Run codex login in a terminal";
+"codex.login_prompt.title_expired" = "Codex sign-in expired; showing older data";
+"codex.login_prompt.title_signed_out" = "Codex not signed in; showing older data";
+"codex.login_prompt.action" = "Click to copy the codex login command, then run it in a terminal";
+"codex.login_prompt.copied_title" = "Copied the codex login command";
 "quota.status.accessibility" = "Quota status: %1$@";
 "claude.refresh.login_expired" = "Claude Code sign-in has expired. Run claude once in a terminal to restore it; BalanceBar never renews the login itself.";
 "status.item.controller.refresh_now_login_expired" = "Claude Code sign-in expired; run claude in a terminal";
