@@ -543,6 +543,7 @@ final class ClaudeQuotaPipeline {
 
     private func prepareAndRequest(_ reason: FetchRequestReason) {
         let epoch = identity.accountEpoch
+        if reason == .manual { client.allowClaudeKeychainRetry() }
         let token = client.claudeRequestCredentials(cacheFor: 2).accessToken
         identity.ingestCredential(accessToken: token, expectedEpoch: epoch)
         identityQueue.sync {}
