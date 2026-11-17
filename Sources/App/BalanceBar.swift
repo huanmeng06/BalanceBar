@@ -601,7 +601,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             },
             onModSyncVisibilityChanged: { [weak self] visible in
                 self?.modSyncCoordinator.setAdvancedStatusCardVisible(visible)
-            }
+            },
+            claudeEgressGuard: ClaudeEgressGuardPageActions(
+                setAllowedIPs: { [weak self] ips in self?.setClaudeEgressGuardAllowedIPs(ips) },
+                detectEgressIP: { [weak self] completion in
+                    guard let self else { return completion(.failure(.unknown)) }
+                    self.claudeEgressGuard.currentEgressIP { completion($0.map(\.ip)) }
+                },
+                cachedCountry: { [weak self] ip in self?.claudeEgressIPCountries.cachedCode(for: ip) },
+                lookupCountry: { [weak self] ip, completion in
+                    guard let self else { return completion(nil) }
+                    self.claudeEgressIPCountries.code(for: ip, completion: completion)
+                },
+                openSettings: { [weak self] in self?.openEgressGuardSettings() })
         ),
         launchAtLoginController: launchAtLoginController
     )
@@ -658,6 +670,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private let ccSwitchRepository: CCSwitchRepository
     private let officialQuotaClient: OfficialQuotaClient
     private let claudeQuota: ClaudeQuotaPipeline
+    /// Also used by the Advanced page's "detect current egress" button.
+    private let claudeEgressGuard: ClaudeEgressGuard
+    /// Country per allowlisted IP for the settings table (ipinfo.io, once per address).
+    private let claudeEgressIPCountries: EgressIPCountryCache
     /// Owns the Claude Code Mod realtime sync settings entry: detection, panel, status.
     private lazy var modSyncCoordinator: ModSyncCoordinator = {
         let activity: () -> Bool = { [weak self] in self?.isClaudeProcessAvailable ?? false }
@@ -776,11 +792,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     ) {
         self.ccSwitchRepository = repository
         self.officialQuotaClient = officialQuotaClient
+        let egressGuard = ClaudeEgressGuard(
+            settings: { AppPreferences().claudeEgressGuardSettings },
+            probe: { [officialQuotaClient] completion in officialQuotaClient.probeClaudeEgressIP(completion: completion) })
+        self.claudeEgressGuard = egressGuard
+        self.claudeEgressIPCountries = EgressIPCountryCache(
+            load: { AppPreferences().claudeEgressGuardIPCountries },
+            store: { AppPreferences().claudeEgressGuardIPCountries = $0 },
+            lookup: { [officialQuotaClient] ip, completion in
+                officialQuotaClient.lookupIPCountry(ip) { code in
+                    // The outcome only: IP addresses never enter the log.
+                    SwitchLog.write("ip country lookup; result=\(code == nil ? "failed" : "ok")", category: "configuration")
+                    completion(code)
+                }
+            })
         self.claudeQuota = claudeQuota ?? ClaudeQuotaPipeline.makeProduction(
             client: officialQuotaClient,
             calibrationIntervalCap: { nil },
             automaticInterval: { AppPreferences().claudeCalibrationInterval },
-            sourceValidity: { AppPreferences().claudeSourceValidity })
+            sourceValidity: { AppPreferences().claudeSourceValidity },
+            egressGuard: egressGuard)
         self.launchAtLoginController = LaunchAtLoginController(service: launchAtLoginService)
         self.launchWithChatGPTController = LaunchWithChatGPTController(service: launchWithChatGPTService)
         self.updateService = updateService ?? UpdateService(
@@ -1060,6 +1091,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 },
                 showModOnboarding: { [weak self] in
                     self?.showModOnboardingFromMenu()
+                },
+                startModUpdate: { [weak self] in
+                    self?.modSyncCoordinator.presentPanelStandalone()
+                    self?.modSyncCoordinator.controller.startUpdate()
+                },
+                openEgressGuardSettings: { [weak self] in
+                    self?.openEgressGuardSettings()
                 }
             ),
             codexAnimationBackend: MenuBarCodexAnimationBackend(
@@ -1535,8 +1573,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         }
     }
 
+    static let ccSwitchDownloadURL = URL(string: "https://github.com/farion1231/cc-switch/releases")!
+
     @objc private func openCCSwitch() {
-        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.ccswitch.desktop") else { return }
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.ccswitch.desktop") else {
+            // Not installed: send the user to the download page instead of doing nothing.
+            NSWorkspace.shared.open(Self.ccSwitchDownloadURL)
+            return
+        }
         if let app = NSRunningApplication.runningApplications(
             withBundleIdentifier: "com.ccswitch.desktop"
         ).first {
@@ -1601,6 +1645,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             category: "configuration"
         )
         switch identifier {
+        case AppPreferences.claudeEgressGuardEnabledKey:
+            preferences.claudeEgressGuardEnabled = enabled
+            claudeEgressGuardSettingsChanged()
         case "showMenuBarIcon":
             if !enabled && !showMenuBarAmount {
                 dashboardComposition.restoreRequiredMenuBarToggle(identifier: identifier)
@@ -2095,6 +2142,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         modSyncCoordinator.presentPanelStandalone()
     }
 
+    private func setClaudeEgressGuardAllowedIPs(_ ips: [String]) {
+        preferences.claudeEgressGuardAllowedIPs = ips
+        claudeEgressIPCountries.prune(keeping: preferences.claudeEgressGuardAllowedIPs)
+        // The count only: IP addresses never enter the log.
+        SwitchLog.write(
+            "preference changed; key=\(AppPreferences.claudeEgressGuardAllowedIPsKey); count=\(preferences.claudeEgressGuardAllowedIPs.count)",
+            category: "configuration")
+        claudeEgressGuardSettingsChanged()
+    }
+
+    /// Both Advanced page copies follow the new settings and Claude re-evaluates at once.
+    private func claudeEgressGuardSettingsChanged() {
+        dashboardComposition.refreshClaudeEgressGuard()
+        claudeQuota.egressGuardSettingsChanged()
+    }
+
+    /// The Claude egress guard lives on the Advanced page (Issue #686).
+    private func openEgressGuardSettings() {
+        openDashboard()
+        dashboardComposition.showSection(.advanced)
+    }
+
     private func clampDashboardScrollViewBounds() {
         dashboardComposition.clampScrollBounds()
     }
@@ -2435,6 +2504,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         )
     }
 
+    private let ccSwitchReadFailureLock = NSLock()
+    private var ccSwitchReadFailureTrackers: [AssistantClient: CCSwitchReadFailureTracker] = [:]
+
+    private func ccSwitchReadFailures(for client: AssistantClient) -> CCSwitchReadFailureTracker {
+        ccSwitchReadFailureLock.lock()
+        defer { ccSwitchReadFailureLock.unlock() }
+        if let tracker = ccSwitchReadFailureTrackers[client] { return tracker }
+        let tracker = CCSwitchReadFailureTracker()
+        ccSwitchReadFailureTrackers[client] = tracker
+        return tracker
+    }
+
+    /// The card for a CC Switch database read failure; nil keeps the current card.
+    static func ccSwitchUnavailableSnapshot(for outcome: CCSwitchReadFailureTracker.Outcome) -> Snapshot? {
+        Snapshot.ccSwitchUnavailable(for: outcome)
+    }
+
+    /// The card for a CC Switch with no current Provider for this app.
+    static func ccSwitchNoCurrentProviderSnapshot(clientName: String) -> Snapshot {
+        var snapshot = Snapshot.error(tr(.keyAppTheCurrentCcSwitchValueProviderWasNotFound, arguments: [clientName]))
+        return snapshot
+    }
+
     private func refresh(reason: BalanceRefreshReason) {
         let client = activeClient
         let apiTrailing = activityRefreshLifecycle(for: client).trailingRefreshAnchor.map {
@@ -2460,10 +2552,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             let current: CCSwitchProvider?
             do { current = try self.ccSwitchRepository.loadCurrentChecked(appType: client.appType) }
             catch {
-                SwitchLog.write("provider refresh deferred; reason=database_read_failed; sqlite_code=\((error as? CCSwitchReadError)?.sqliteCode ?? -1); client=\(client.rawValue)",
+                let code = (error as? CCSwitchReadError)?.sqliteCode ?? -1
+                let outcome = self.ccSwitchReadFailures(for: client).recordFailure(sqliteCode: code)
+                SwitchLog.write("provider refresh deferred; reason=database_read_failed; sqlite_code=\(code); client=\(client.rawValue); outcome=\(outcome)",
                     level: .warning, category: "provider.read")
+                if let failure = Self.ccSwitchUnavailableSnapshot(for: outcome) { self.render(failure) }
                 return
             }
+            self.ccSwitchReadFailures(for: client).recordSuccess()
             self.reloadCurrentProviderNameCache(appType: client.appType)
             guard let current else {
                 SwitchLog.write(
@@ -2471,7 +2567,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                     level: .error,
                     category: "provider"
                 )
-                self.render(.error(tr(.keyAppTheCurrentCcSwitchValueProviderWasNotFound, arguments: [String(describing: client.displayName)])))
+                self.render(Self.ccSwitchNoCurrentProviderSnapshot(clientName: String(describing: client.displayName)))
                 return
             }
 

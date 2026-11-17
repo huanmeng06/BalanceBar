@@ -420,7 +420,14 @@ public final class FetchScheduler: FetchScheduling {
             return log(.discardedStaleEpoch, reasons: reasons, outcome: Self.label(result))
         }
         if case let .notSent(detail) = result {
-            let reason: FetchSkipReason = detail == Self.credentialsUnreadableDetail ? .credentialsUnreadable : .credentialsUnavailable
+            let reason: FetchSkipReason
+            if detail == Self.credentialsUnreadableDetail {
+                reason = .credentialsUnreadable
+            } else if detail.hasPrefix(Self.egressGuardDetailPrefix) {
+                reason = .egressGuardBlocked
+            } else {
+                reason = .credentialsUnavailable
+            }
             notSentPause = (now, epoch, credentialVersion, reason)
         } else {
             notSentPause = nil
@@ -506,6 +513,9 @@ public final class FetchScheduler: FetchScheduling {
 
     /// `UsageFetchResult.notSent` detail for a Keychain item that exists but could not be read.
     static let credentialsUnreadableDetail = "credentials_unreadable"
+
+    /// Prefix of `UsageFetchResult.notSent` details for requests the egress guard kept local.
+    static let egressGuardDetailPrefix = "egress_guard"
 
     /// End of the wait after an unsent request, while the account and credentials are unchanged.
     private func notSentPauseUntil(now: Date) -> Date? {

@@ -26,7 +26,13 @@ struct DefaultCredentialProcessRunner: CredentialProcessRunning {
     let executableURL: URL
     let timeout: TimeInterval
 
-    init(executableURL: URL = URL(fileURLWithPath: "/usr/bin/security"), timeout: TimeInterval = 2) {
+    /// `security` blocks on the keychain access prompt until the user answers, so the wait has to
+    /// cover reading it and choosing "Always Allow" (possibly typing a password). Ending the child
+    /// earlier dismisses the prompt. An already authorized read returns in milliseconds and is
+    /// unaffected; only an unanswered prompt waits this long, and then a cooldown stops repeats.
+    static let interactiveTimeout: TimeInterval = 60
+
+    init(executableURL: URL = URL(fileURLWithPath: "/usr/bin/security"), timeout: TimeInterval = DefaultCredentialProcessRunner.interactiveTimeout) {
         self.executableURL = executableURL
         self.timeout = timeout
     }
@@ -51,7 +57,40 @@ struct DefaultCredentialProcessRunner: CredentialProcessRunning {
     }
 }
 
+/// Remembers that the keychain just refused or timed out so automatic refreshes stay quiet
+/// instead of raising the access prompt again. A manual refresh clears it.
+final class KeychainPromptCooldown {
+    static let defaultDuration: TimeInterval = 5 * 60
+
+    private let lock = NSLock()
+    private let duration: TimeInterval
+    private let now: () -> Date
+    private var blockedUntil: Date?
+
+    init(duration: TimeInterval = KeychainPromptCooldown.defaultDuration, now: @escaping () -> Date = Date.init) {
+        self.duration = duration
+        self.now = now
+    }
+
+    var isActive: Bool {
+        lock.lock(); defer { lock.unlock() }
+        guard let blockedUntil else { return false }
+        return now() < blockedUntil
+    }
+
+    func start() {
+        lock.lock(); defer { lock.unlock() }
+        blockedUntil = now().addingTimeInterval(duration)
+    }
+
+    func clear() {
+        lock.lock(); defer { lock.unlock() }
+        blockedUntil = nil
+    }
+}
+
 struct CredentialReader {
+    private let keychainCooldown: KeychainPromptCooldown
     private let homeDirectoryURL: URL
     private let fileReader: CredentialFileReading
     private let processRunner: CredentialProcessRunning
@@ -59,8 +98,10 @@ struct CredentialReader {
     init(
         homeDirectoryURL: URL = FileManager.default.homeDirectoryForCurrentUser,
         fileReader: CredentialFileReading = DefaultCredentialFileReader(),
-        processRunner: CredentialProcessRunning = DefaultCredentialProcessRunner()
+        processRunner: CredentialProcessRunning = DefaultCredentialProcessRunner(),
+        keychainCooldown: KeychainPromptCooldown = KeychainPromptCooldown()
     ) {
+        self.keychainCooldown = keychainCooldown
         self.homeDirectoryURL = homeDirectoryURL
         self.fileReader = fileReader
         self.processRunner = processRunner
@@ -101,12 +142,19 @@ struct CredentialReader {
     /// `security` exit status for "the specified item could not be found in the keychain".
     static let keychainItemNotFoundStatus: Int32 = 44
 
+    /// A user-initiated refresh may raise the keychain prompt again.
+    func allowClaudeKeychainRetry() {
+        keychainCooldown.clear()
+    }
+
     func claudeCredentials() -> ClaudeStoredCredentials {
-        let result = try? processRunner.run(arguments: [
+        // Right after a refusal or timeout, skip `security` so automatic refreshes do not re-prompt.
+        let result: CredentialProcessResult? = keychainCooldown.isActive ? nil : try? processRunner.run(arguments: [
             "find-generic-password", "-s", "Claude Code-credentials", "-w"
         ])
         if let result, result.terminationStatus == 0,
            let token = Self.claudeAccessToken(from: result.standardOutput) {
+            keychainCooldown.clear()
             return ClaudeStoredCredentials(accessToken: token, planType: Self.claudePlanType(from: result.standardOutput))
         }
         // Read succeeded (empty token = signed out) or the item does not exist: not a keychain problem.
@@ -115,6 +163,7 @@ struct CredentialReader {
         let keychainUnreadable = result.map {
             $0.terminationStatus != 0 && $0.terminationStatus != Self.keychainItemNotFoundStatus
         } ?? true
+        if keychainUnreadable, result != nil { keychainCooldown.start() }
 
         let credentialsURL = homeDirectoryURL.appendingPathComponent(".claude/.credentials.json")
         guard let data = try? fileReader.readData(from: credentialsURL) else {

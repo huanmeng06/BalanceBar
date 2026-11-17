@@ -10,6 +10,8 @@ enum OfficialQuotaClientError: Error {
     case credentialsUnreadable
     /// Claude only: `~/.claude.json` has no signed-in subscription account (for example an API key setup).
     case missingAccount
+    /// Claude only: the egress guard kept the request on this machine (Issue #686).
+    case egressGuard(ClaudeEgressGuardBlock)
     case transport(OfficialQuotaTransportError)
     case httpStatus(statusCode: Int, dataSize: Int)
     case invalidJSON(dataSize: Int)
@@ -57,6 +59,8 @@ protocol OfficialQuotaCredentialReading {
     /// Display-only account email; never token material.
     func claudeAccountEmail() -> String?
     func codexRequestCredentials() -> CodexRequestCredentials
+    /// A manual refresh may show the keychain prompt again after a refusal.
+    func allowClaudeKeychainRetry()
 }
 
 struct ClaudeStoredCredentials: Equatable {
@@ -71,6 +75,7 @@ extension OfficialQuotaCredentialReading {
         ClaudeStoredCredentials(accessToken: claudeAccessToken(), planType: nil)
     }
     func claudeAccountEmail() -> String? { nil }
+    func allowClaudeKeychainRetry() {}
 }
 
 struct CodexRequestCredentials: Equatable {
@@ -321,12 +326,16 @@ final class OfficialQuotaClient {
         return .hostPort(host: NWEndpoint.Host(host), port: nwPort)
     }
 
-    private func claudeSession() -> URLSession {
+    private func claudeSession() -> URLSession { claudeRoute().session }
+
+    /// The session for the current proxy configuration, together with that configuration, read
+    /// once so a caller can tell which route a request actually took.
+    private func claudeRoute() -> (session: URLSession, configuration: CCSwitchProxyConfiguration) {
         let configuration = claudeProxyConfigurationProvider?() ?? CCSwitchProxyConfiguration()
         claudeSessionLock.lock()
         defer { claudeSessionLock.unlock() }
         if let claudeSessionStorage, claudeSessionConfiguration == configuration {
-            return claudeSessionStorage
+            return (claudeSessionStorage, configuration)
         }
         if configuration.isEmpty {
             claudeSessionStorage = session
@@ -337,7 +346,7 @@ final class OfficialQuotaClient {
             )
         }
         claudeSessionConfiguration = configuration
-        return claudeSessionStorage!
+        return (claudeSessionStorage!, configuration)
     }
 
     /// Reads the same Codex auth source used by official quota requests. The
@@ -389,6 +398,11 @@ final class OfficialQuotaClient {
         claudeProbeCondition.broadcast()
         claudeProbeCondition.unlock()
         return credentials
+    }
+
+    /// Lets the next Claude credential read raise the keychain prompt again (manual refresh only).
+    func allowClaudeKeychainRetry() {
+        credentialReader.allowClaudeKeychainRetry()
     }
 
     /// Whether the last probe found no token because the keychain could not be read.
@@ -535,7 +549,12 @@ final class OfficialQuotaClient {
     /// off, nor shares requests, because the scheduler alone decides whether a
     /// request may be sent. The token is read once and `didReadToken` receives
     /// it before the request starts so the caller can record its version.
+    ///
+    /// `sendCheck` runs after the token is read (which may wait on the Keychain) and immediately
+    /// before the request is created, with the proxy route the request would take. A non-nil
+    /// result keeps the request on this machine.
     func fetchClaudeUsage(
+        sendCheck: (CCSwitchProxyConfiguration) -> ClaudeEgressGuardBlock? = { _ in nil },
         didReadToken: (String) -> Void = { _ in },
         completion: @escaping (UsageFetchResult, OfficialQuotaClientError?) -> Void
     ) {
@@ -549,8 +568,13 @@ final class OfficialQuotaClient {
             return
         }
         didReadToken(token)
+        let route = claudeRoute()
+        if let block = sendCheck(route.configuration) {
+            completion(.notSent("\(FetchScheduler.egressGuardDetailPrefix)_\(block.rawValue)"), .egressGuard(block))
+            return
+        }
         SwitchLog.write("official-quota transport started; client=claude; scope_omitted=true", level: .debug, category: "refresh.transport")
-        claudeSession().dataTask(with: request) { data, response, error in
+        route.session.dataTask(with: request) { data, response, error in
             if let error {
                 let failure = OfficialQuotaClientError.transport(Self.transportError(from: error, client: .claude))
                 completion(.failure("transport"), failure)
@@ -571,6 +595,66 @@ final class OfficialQuotaClient {
                 SwitchLog.write("official quota request failed; client=claude; http_status=\(status)", level: .warning, category: "refresh.transport")
                 completion(.failure("http_\(status)"), .httpStatus(statusCode: status, dataSize: data?.count ?? 0))
             }
+        }.resume()
+    }
+
+    static let claudeEgressTraceURL = URL(string: "https://claude.ai/cdn-cgi/trace")!
+
+    /// Reads the egress IP and country Cloudflare sees for `claude.ai`, through the same proxy
+    /// route as `fetchClaudeUsage`. Carries no token, cookie or account data. Non-2xx and a body
+    /// without a valid IP are failures; a missing country is not.
+    func probeClaudeEgressIP(completion: @escaping (Result<EgressTrace, OfficialQuotaTransportError>) -> Void) {
+        var request = URLRequest(url: Self.claudeEgressTraceURL)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 6
+        request.httpShouldHandleCookies = false
+        request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        request.setValue("text/plain", forHTTPHeaderField: "Accept")
+        request.setValue("BalanceBar/1.0 (+https://github.com/huanmeng06/BalanceBar)", forHTTPHeaderField: "User-Agent")
+        let route = claudeRoute()
+        route.session.dataTask(with: request) { data, response, error in
+            if let error {
+                completion(.failure(Self.transportError(from: error, client: .claude)))
+                return
+            }
+            guard let status = (response as? HTTPURLResponse)?.statusCode, (200..<300).contains(status),
+                  let data, let trace = CloudflareTraceParser.trace(from: data) else {
+                completion(.failure(.unknown))
+                return
+            }
+            completion(.success(EgressTrace(ip: trace.ip, country: trace.country, route: route.configuration)))
+        }.resume()
+    }
+
+    static func ipCountryURL(for ip: String) -> URL? {
+        // A validated address is only digits, hex letters, dots and colons: safe in a path as-is.
+        let trimmed = ip.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard EgressIPAddress.isValid(trimmed) else { return nil }
+        return URL(string: "https://ipinfo.io/\(trimmed)/country")
+    }
+
+    /// Looks up the country code of an allowlisted IP on ipinfo.io, for display only. Carries no
+    /// token, cookie or account data, and never takes part in the guard's pass/block decision
+    /// (the guard uses the trace's own country).
+    func lookupIPCountry(_ ip: String, completion: @escaping (String?) -> Void) {
+        guard let url = Self.ipCountryURL(for: ip) else {
+            completion(nil)
+            return
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 8
+        request.httpShouldHandleCookies = false
+        request.setValue("text/plain", forHTTPHeaderField: "Accept")
+        request.setValue("BalanceBar/1.0 (+https://github.com/huanmeng06/BalanceBar)", forHTTPHeaderField: "User-Agent")
+        claudeSession().dataTask(with: request) { data, response, error in
+            guard error == nil,
+                  let status = (response as? HTTPURLResponse)?.statusCode, (200..<300).contains(status),
+                  let data else {
+                completion(nil)
+                return
+            }
+            completion(IPCountryCode.parse(data))
         }.resume()
     }
 

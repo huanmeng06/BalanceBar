@@ -2,7 +2,7 @@
 "app.preferences.openai_status" = "OpenAI ステータス";
 "app.not_found" = "見つかりません";
 "app.not_found.2" = "見つかりません";
-"app.the_current_cc_switch_value_provider_was_not_found" = "現在の CC Switch %1$@ プロバイダーが見つかりません";
+"app.the_current_cc_switch_value_provider_was_not_found" = "現在の CC Switch %1$@ プロバイダーが見つかりません。CC Switch でプロバイダーを選択してください";
 "app.about_balancebar" = "BalanceBar について";
 "app.hide_balancebar" = "BalanceBar を隠す";
 "app.hide_others" = "ほかのアプリを隠す";
@@ -656,6 +656,8 @@
 "claude.timeline.estimate.in" = "約 %1$@後";
 "claude.refresh.every_minutes" = "%1$@ 分ごと";
 "claude.quota.calibration_detail" = "一定間隔で公式に問い合わせるフォールバックです。間隔を長くするとレート制限を避けられます";
+"claude.quota.calibration_off_detail" = "Claude の公式リクエストはオフのため、この間隔は無効です。";
+"claude.quota.calibration_off_link" = "IP 許可リストを設定…";
 
 // BalanceBar Mod realtime sync (Issue #597)
 "claude.mod_sync.title" = "BalanceBar Mod リアルタイム強化";
@@ -713,8 +715,6 @@
 "mod.sync.status.installation_unknown" = "Mod がインストール済みか確認できません（プラグイン一覧の取得に失敗）";
 "mod.sync.status.update_required" = "Mod が古いため更新が必要です（サードパーティのプラグインマーケットプレイスは既定では自動更新されません）。\n更新後に Claude Code のセッションを再起動してください";
 "mod.card.update.title" = "Mod の更新が必要";
-"mod.card.update.reason" = "現在のバージョン：%1$@";
-"mod.card.update.action" = "最新バージョン：%1$@";
 "mod.update.button" = "今すぐ更新";
 "mod.update.title" = "BalanceBar Mod の更新が必要です";
 "mod.update.progress_title" = "BalanceBar Mod を更新中";
@@ -815,3 +815,36 @@
 "mod.ui.int2.silent_check_version" = "Claude Code が v2.1.287 以降であること";
 "mod.ui.int2.silent_check_session" = "新しいセッションであること、またはその中で /reload-plugins を実行したこと";
 "mod.ui.int2.silent_check_policy" = "組織のポリシーが管理対象プラグインのみを許可していないか";
+"ccswitch.database_unavailable" = "CC Switch のデータベースが見つからないか開けません。CC Switch をインストールして一度起動したか確認してください";
+"ccswitch.database_unreadable" = "CC Switch のデータベースを読み取れません。CC Switch を開き直してからもう一度お試しください";
+"ccswitch.database_busy" = "CC Switch のデータベースが使用中です。BalanceBar は再試行を続けます";
+"aggregation.not_configured" = "このプロバイダーには使用量クエリが設定されていません。CC Switch で使用量スクリプトを設定してください";
+"claude.refresh.egress_guard_mismatch" = "出口 IP が許可リストにないため、Claude の公式リクエストを一時停止しました。";
+"claude.refresh.egress_guard_check_failed" = "出口 IP を確認できないため、Claude の公式リクエストを一時停止しました。";
+"claude.refresh.egress_guard_no_targets" = "IP 許可リストが空のため、Claude の公式リクエストを一時停止しました。";
+"claude.refresh.egress_guard_unsupported_region" = "出口の地域が Claude の提供地域外か特定できないため、Claude の公式リクエストを停止しています。";
+"claude.refresh.egress_guard_disabled" = "Claude の公式リクエストはオフです。設定 › 詳細 で IP 許可リストをオンにできます。";
+"claude.timeline.failure.egress_guard" = "IP 許可リストでブロック";
+"quota.failure.open_egress_guard_settings" = "IP 許可リストを設定";
+"dashboard.advanced.page.egress_guard" = "Claude IP 許可リスト";
+"dashboard.advanced.page.egress_guard_enabled" = "許可リストの IP からのみ公式クォータを取得";
+"dashboard.advanced.page.egress_guard_enabled_detail" = "リクエストの前に、現在の出口 IP（Claude のサーバーから見えるあなたの IP）を確認し、許可リストになければ送信しません。オフのときは公式クォータを取得せず、Mod のデータだけを使います。";
+"dashboard.advanced.page.egress_guard_allowed" = "IP 許可リスト";
+"dashboard.advanced.page.egress_guard_allowed_empty" = "「+」で IP を追加するか、先に現在の出口を検出してください";
+"dashboard.advanced.page.egress_guard_remove" = "削除";
+"dashboard.advanced.page.egress_guard_add_title" = "IP を追加";
+"dashboard.advanced.page.egress_guard_add_placeholder" = "IPv4 または IPv6 アドレス";
+"dashboard.advanced.page.egress_guard_invalid_ip" = "有効な IP アドレスではありません";
+"dashboard.advanced.page.egress_guard_detect" = "検出";
+"dashboard.advanced.page.egress_guard_detecting" = "現在の出口を検出中…";
+"dashboard.advanced.page.egress_guard_detected_listed" = "現在の出口：%1$@（許可リストにあります）";
+"dashboard.advanced.page.egress_guard_detected_unlisted" = "現在の出口：%1$@（許可リストにありません）";
+"dashboard.advanced.page.egress_guard_detect_failed" = "現在の出口を検出できません";
+"dashboard.advanced.page.egress_guard_add_detected" = "追加";
+"dashboard.advanced.page.egress_guard_footnote" = "検出は claude.ai に、クォータのリクエストは api.anthropic.com に接続します。両方を同じプロキシルールに通さないと、検出結果と実際の出口が一致しないことがあります。国または地域は ipinfo.io で IP ごとに 1 回だけ調べます。利用可否は Anthropic のサポート地域ポリシー（2026-11-12 時点）に基づきます。Cloudflare が判定した出口の地域が対象外の場合も、公式リクエストを停止します。";
+"dashboard.advanced.page.egress_guard_column_ip" = "IP アドレス";
+"dashboard.advanced.page.egress_guard_column_region" = "国または地域";
+"dashboard.advanced.page.egress_guard_country_loading" = "照会中…";
+"dashboard.advanced.page.egress_guard_column_available" = "Claude 利用可";
+"dashboard.advanced.page.egress_guard_available_yes" = "Anthropic の提供地域内";
+"dashboard.advanced.page.egress_guard_available_no" = "Anthropic の提供地域外";

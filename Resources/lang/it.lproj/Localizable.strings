@@ -2,7 +2,7 @@
 "app.preferences.openai_status" = "Stato di OpenAI";
 "app.not_found" = "Non trovato";
 "app.not_found.2" = "Non trovato";
-"app.the_current_cc_switch_value_provider_was_not_found" = "Il provider %1$@ della configurazione corrente di CC Switch non è stato trovato";
+"app.the_current_cc_switch_value_provider_was_not_found" = "Il provider %1$@ della configurazione corrente di CC Switch non è stato trovato. Seleziona un provider in CC Switch";
 "app.about_balancebar" = "Informazioni su BalanceBar";
 "app.hide_balancebar" = "Nascondi BalanceBar";
 "app.hide_others" = "Nascondi le altre";
@@ -656,6 +656,8 @@
 "claude.timeline.estimate.in" = "tra circa %1$@";
 "claude.refresh.every_minutes" = "Ogni %1$@ min";
 "claude.quota.calibration_detail" = "Interroga la fonte ufficiale a intervalli regolari come ripiego; intervalli più lunghi evitano i limiti di frequenza";
+"claude.quota.calibration_off_detail" = "Le richieste ufficiali di Claude sono disattivate; questo intervallo non ha effetto.";
+"claude.quota.calibration_off_link" = "Configura IP consentiti…";
 
 // BalanceBar Mod realtime sync (Issue #597)
 "claude.mod_sync.title" = "BalanceBar Mod potenziamento in tempo reale";
@@ -713,8 +715,6 @@
 "mod.sync.status.installation_unknown" = "Impossibile confermare se il Mod è installato (elenco plugin non riuscito)";
 "mod.sync.status.update_required" = "Il Mod è obsoleto e va aggiornato (i marketplace di plugin di terze parti per impostazione predefinita non si aggiornano automaticamente).\nRiavvia poi la sessione di Claude Code";
 "mod.card.update.title" = "Aggiornamento del Mod necessario";
-"mod.card.update.reason" = "Versione attuale: %1$@";
-"mod.card.update.action" = "Ultima versione: %1$@";
 "mod.update.button" = "Aggiorna ora";
 "mod.update.title" = "BalanceBar Mod va aggiornato";
 "mod.update.progress_title" = "Aggiornamento di BalanceBar Mod";
@@ -815,3 +815,36 @@
 "mod.ui.int2.silent_check_version" = "Claude Code è v2.1.287 o successivo";
 "mod.ui.int2.silent_check_session" = "È una sessione nuova, oppure vi è stato eseguito /reload-plugins";
 "mod.ui.int2.silent_check_policy" = "Se la policy dell’organizzazione consente solo plugin gestiti";
+"ccswitch.database_unavailable" = "Il database di CC Switch non è stato trovato o non può essere aperto. Verifica che CC Switch sia installato e sia stato avviato almeno una volta";
+"ccswitch.database_unreadable" = "Impossibile leggere il database di CC Switch. Riapri CC Switch e riprova";
+"ccswitch.database_busy" = "Il database di CC Switch è occupato. BalanceBar continuerà a riprovare";
+"aggregation.not_configured" = "Per questo provider non è configurata alcuna query di utilizzo. Configura uno script di utilizzo in CC Switch";
+"claude.refresh.egress_guard_mismatch" = "L’IP di uscita non è nell’elenco IP consentiti; le richieste ufficiali di Claude sono in pausa.";
+"claude.refresh.egress_guard_check_failed" = "Impossibile verificare l’IP di uscita; le richieste ufficiali di Claude sono in pausa.";
+"claude.refresh.egress_guard_no_targets" = "L’elenco IP consentiti è vuoto; le richieste ufficiali di Claude sono in pausa.";
+"claude.refresh.egress_guard_unsupported_region" = "L’area di uscita non è supportata da Anthropic o non è identificabile; le richieste ufficiali di Claude sono in pausa.";
+"claude.refresh.egress_guard_disabled" = "Le richieste ufficiali di Claude sono disattivate. Attiva l’elenco IP consentiti in Impostazioni › Avanzate.";
+"claude.timeline.failure.egress_guard" = "Bloccato dall’elenco IP consentiti";
+"quota.failure.open_egress_guard_settings" = "Configura IP consentiti";
+"dashboard.advanced.page.egress_guard" = "IP consentiti di Claude";
+"dashboard.advanced.page.egress_guard_enabled" = "Richiedi la quota ufficiale solo dagli IP consentiti";
+"dashboard.advanced.page.egress_guard_enabled_detail" = "Prima di ogni richiesta viene controllato l’IP di uscita attuale (quello che vedono i server di Claude). Se non è nell’elenco, non viene inviato nulla. Disattivato: la quota ufficiale non viene mai richiesta e si usano solo i dati del Mod.";
+"dashboard.advanced.page.egress_guard_allowed" = "IP consentiti";
+"dashboard.advanced.page.egress_guard_allowed_empty" = "Fai clic su + per aggiungere un IP o rileva prima l’uscita attuale";
+"dashboard.advanced.page.egress_guard_remove" = "Rimuovi";
+"dashboard.advanced.page.egress_guard_add_title" = "Aggiungi IP";
+"dashboard.advanced.page.egress_guard_add_placeholder" = "Indirizzo IPv4 o IPv6";
+"dashboard.advanced.page.egress_guard_invalid_ip" = "Indirizzo IP non valido";
+"dashboard.advanced.page.egress_guard_detect" = "Rileva";
+"dashboard.advanced.page.egress_guard_detecting" = "Rilevamento dell’uscita attuale…";
+"dashboard.advanced.page.egress_guard_detected_listed" = "Uscita attuale: %1$@ — consentita";
+"dashboard.advanced.page.egress_guard_detected_unlisted" = "Uscita attuale: %1$@ — non consentita";
+"dashboard.advanced.page.egress_guard_detect_failed" = "Impossibile rilevare l’uscita attuale";
+"dashboard.advanced.page.egress_guard_add_detected" = "Aggiungi";
+"dashboard.advanced.page.egress_guard_footnote" = "Il controllo contatta claude.ai, le richieste di quota vanno a api.anthropic.com. Instrada entrambi con la stessa regola proxy, altrimenti il controllo potrebbe non corrispondere all’uscita reale. Paese/area viene cercato su ipinfo.io una sola volta per IP. La disponibilità segue la policy sulle aree supportate di Anthropic al 2026-11-12. Se Cloudflare colloca l’uscita fuori da queste aree, anche le richieste ufficiali vengono messe in pausa.";
+"dashboard.advanced.page.egress_guard_column_ip" = "Indirizzo IP";
+"dashboard.advanced.page.egress_guard_column_region" = "Paese/area";
+"dashboard.advanced.page.egress_guard_country_loading" = "Ricerca…";
+"dashboard.advanced.page.egress_guard_column_available" = "Claude disponibile";
+"dashboard.advanced.page.egress_guard_available_yes" = "In un’area in cui Anthropic offre Claude";
+"dashboard.advanced.page.egress_guard_available_no" = "Fuori dalle aree in cui Anthropic offre Claude";

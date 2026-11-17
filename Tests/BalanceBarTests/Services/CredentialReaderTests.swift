@@ -9,6 +9,86 @@ final class CredentialReaderTests: XCTestCase {
         XCTAssertEqual(result.terminationStatus, -1)
     }
 
+    func testDefaultKeychainWaitCoversAnInteractivePrompt() {
+        XCTAssertGreaterThanOrEqual(DefaultCredentialProcessRunner().timeout, 30)
+    }
+
+    func testAuthorizedKeychainReadDoesNotUseCooldown() {
+        let runner = CountingRunner(results: [Self.keychainJSON, Self.keychainJSON])
+        let reader = Self.cooldownReader(runner)
+        XCTAssertEqual(reader.claudeCredentials().accessToken, "keychain-value")
+        XCTAssertEqual(reader.claudeCredentials().accessToken, "keychain-value")
+        XCTAssertEqual(runner.calls, 2)
+    }
+
+    func testRefusedKeychainSilencesAutomaticReadsUntilCooldownEnds() {
+        let clock = MutableClock()
+        let runner = CountingRunner(results: [
+            CredentialProcessResult(terminationStatus: 128, standardOutput: Data()),
+            Self.keychainJSON
+        ])
+        let reader = Self.cooldownReader(runner, clock: clock)
+        XCTAssertTrue(reader.claudeCredentials().keychainUnreadable)
+        XCTAssertEqual(runner.calls, 1)
+        // Automatic refreshes inside the cooldown must not run `security` (no prompt).
+        let during = reader.claudeCredentials()
+        XCTAssertTrue(during.keychainUnreadable)
+        XCTAssertNil(during.accessToken)
+        XCTAssertEqual(runner.calls, 1)
+        clock.now = clock.now.addingTimeInterval(KeychainPromptCooldown.defaultDuration + 1)
+        XCTAssertEqual(reader.claudeCredentials().accessToken, "keychain-value")
+        XCTAssertEqual(runner.calls, 2)
+    }
+
+    func testTimeoutStartsCooldownAndManualRefreshBypassesIt() {
+        let runner = CountingRunner(results: [
+            CredentialProcessResult(terminationStatus: -1, standardOutput: Data()),
+            Self.keychainJSON
+        ])
+        let reader = Self.cooldownReader(runner)
+        XCTAssertTrue(reader.claudeCredentials().keychainUnreadable)
+        XCTAssertTrue(reader.claudeCredentials().keychainUnreadable)
+        XCTAssertEqual(runner.calls, 1)
+        reader.allowClaudeKeychainRetry()
+        XCTAssertEqual(reader.claudeCredentials().accessToken, "keychain-value")
+        XCTAssertEqual(runner.calls, 2)
+    }
+
+    func testMissingKeychainItemDoesNotStartCooldown() {
+        let runner = CountingRunner(results: [
+            CredentialProcessResult(terminationStatus: CredentialReader.keychainItemNotFoundStatus, standardOutput: Data()),
+            CredentialProcessResult(terminationStatus: CredentialReader.keychainItemNotFoundStatus, standardOutput: Data())
+        ])
+        let reader = Self.cooldownReader(runner)
+        XCTAssertFalse(reader.claudeCredentials().keychainUnreadable)
+        XCTAssertFalse(reader.claudeCredentials().keychainUnreadable)
+        XCTAssertEqual(runner.calls, 2)
+    }
+
+    private static let keychainJSON = CredentialProcessResult(
+        terminationStatus: 0,
+        standardOutput: Data(#"{"claudeAiOauth":{"accessToken":"keychain-value"}}"#.utf8))
+
+    private final class MutableClock { var now = Date(timeIntervalSince1970: 1_000_000) }
+
+    private static func cooldownReader(_ runner: CountingRunner, clock: MutableClock = MutableClock()) -> CredentialReader {
+        CredentialReader(
+            homeDirectoryURL: URL(fileURLWithPath: "/fixture-home"),
+            fileReader: FixtureFileReader(dataByPath: [:]),
+            processRunner: runner,
+            keychainCooldown: KeychainPromptCooldown(now: { clock.now }))
+    }
+
+    private final class CountingRunner: CredentialProcessRunning {
+        private var results: [CredentialProcessResult]
+        private(set) var calls = 0
+        init(results: [CredentialProcessResult]) { self.results = results }
+        func run(arguments: [String]) throws -> CredentialProcessResult {
+            calls += 1
+            return results.isEmpty ? CredentialProcessResult(terminationStatus: 1, standardOutput: Data()) : results.removeFirst()
+        }
+    }
+
     func testCodexReaderExtractsAccessValueAndRejectsInvalidOrMissingData() {
         XCTAssertEqual(
             CredentialReader.codexAccessToken(from: Data(#"{"tokens":{"access_token":"fixture-access-value"}}"#.utf8)),
