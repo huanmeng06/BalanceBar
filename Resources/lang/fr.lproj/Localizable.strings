@@ -2,7 +2,7 @@
 "app.preferences.openai_status" = "État d’OpenAI";
 "app.not_found" = "Introuvable";
 "app.not_found.2" = "Introuvable";
-"app.the_current_cc_switch_value_provider_was_not_found" = "Le fournisseur %1$@ actuel de CC Switch est introuvable";
+"app.the_current_cc_switch_value_provider_was_not_found" = "Le fournisseur %1$@ actuel de CC Switch est introuvable. Sélectionnez un fournisseur dans CC Switch";
 "app.about_balancebar" = "À propos de BalanceBar";
 "app.hide_balancebar" = "Masquer BalanceBar";
 "app.hide_others" = "Masquer les autres";
@@ -815,6 +815,10 @@
 "mod.ui.int2.silent_check_version" = "Claude Code est en v2.1.287 ou ultérieure";
 "mod.ui.int2.silent_check_session" = "C’est une nouvelle session, ou /reload-plugins y a été exécuté";
 "mod.ui.int2.silent_check_policy" = "Si la politique de votre organisation n’autorise que les plugins gérés";
+"ccswitch.database_unavailable" = "La base de données de CC Switch est introuvable ou impossible à ouvrir. Vérifiez que CC Switch est installé et a été lancé au moins une fois";
+"ccswitch.database_unreadable" = "Impossible de lire la base de données de CC Switch. Rouvrez CC Switch puis réessayez";
+"ccswitch.database_busy" = "La base de données de CC Switch est occupée. BalanceBar continue de réessayer";
+"aggregation.not_configured" = "Aucune requête d'utilisation n'est configurée pour ce fournisseur. Configurez un script d'utilisation dans CC Switch";
 "claude.refresh.egress_guard_mismatch" = "L’IP de sortie ne figure pas dans la liste d’IP autorisées ; les requêtes officielles Claude sont suspendues.";
 "claude.refresh.egress_guard_check_failed" = "Impossible de confirmer l’IP de sortie ; les requêtes officielles Claude sont suspendues.";
 "claude.refresh.egress_guard_no_targets" = "La liste d’IP autorisées est vide ; les requêtes officielles Claude sont suspendues.";

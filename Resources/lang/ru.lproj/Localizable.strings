@@ -2,7 +2,7 @@
 "app.preferences.openai_status" = "Статус OpenAI";
 "app.not_found" = "Не найдено";
 "app.not_found.2" = "Не найдено";
-"app.the_current_cc_switch_value_provider_was_not_found" = "Провайдер %1$@ текущей конфигурации CC Switch не найден";
+"app.the_current_cc_switch_value_provider_was_not_found" = "Провайдер %1$@ текущей конфигурации CC Switch не найден. Выберите провайдера в CC Switch";
 "app.about_balancebar" = "О BalanceBar";
 "app.hide_balancebar" = "Скрыть BalanceBar";
 "app.hide_others" = "Скрыть остальные";
@@ -815,6 +815,10 @@
 "mod.ui.int2.silent_check_version" = "Claude Code версии 2.1.287 или новее";
 "mod.ui.int2.silent_check_session" = "Это новая сессия или в ней выполнен /reload-plugins";
 "mod.ui.int2.silent_check_policy" = "Не разрешает ли политика организации только управляемые плагины";
+"ccswitch.database_unavailable" = "База данных CC Switch не найдена или не открывается. Убедитесь, что CC Switch установлен и хотя бы раз запускался";
+"ccswitch.database_unreadable" = "Не удаётся прочитать базу данных CC Switch. Откройте CC Switch заново и повторите попытку";
+"ccswitch.database_busy" = "База данных CC Switch занята. BalanceBar продолжит попытки";
+"aggregation.not_configured" = "Для этого провайдера не настроен запрос использования. Настройте скрипт использования в CC Switch";
 "claude.refresh.egress_guard_mismatch" = "Исходящий IP не входит в белый список, официальные запросы Claude приостановлены.";
 "claude.refresh.egress_guard_check_failed" = "Не удалось проверить исходящий IP, официальные запросы Claude приостановлены.";
 "claude.refresh.egress_guard_no_targets" = "Белый список IP пуст, официальные запросы Claude приостановлены.";

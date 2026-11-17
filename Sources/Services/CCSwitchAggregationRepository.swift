@@ -1,7 +1,10 @@
 import AppKit
 import Foundation
 
-enum CCSwitchAggregationReadError: Error { case databaseUnavailable }
+enum CCSwitchAggregationReadError: Error {
+    case databaseUnavailable(sqliteCode: Int32)
+    var sqliteCode: Int32 { switch self { case .databaseUnavailable(let code): return code } }
+}
 
 struct AggregatedProviderEntry {
     enum Role: String { case `default`, member }
@@ -276,6 +279,16 @@ final class CCSwitchAggregationRepository {
     private var quickSwitchProtectionActive = false
     private var absenceBegan: Date?
     private var absenceConfirmed = false
+    private var databaseFailureCodeStorage: Int32?
+    /// SQLite result code of the latest Provider-database read that made `load()`
+    /// report `.untrusted`; nil when the last read succeeded or the cause was elsewhere
+    /// (state file, CC Switch not running, ...).
+    var lastDatabaseFailureCode: Int32? {
+        stateLock.lock(); defer { stateLock.unlock() }; return databaseFailureCodeStorage
+    }
+    private func recordDatabaseFailure(_ code: Int32?) {
+        stateLock.lock(); databaseFailureCodeStorage = code; stateLock.unlock()
+    }
     private func rememberAggregation(_ active: Bool) {
         stateLock.lock()
         wasAggregating = active
@@ -307,6 +320,7 @@ final class CCSwitchAggregationRepository {
     private func deviceState() throws -> DeviceState { try JSONDecoder().decode(DeviceState.self, from: read(stateURL)) }
 
     func load() -> State {
+        recordDatabaseFailure(nil)
         for _ in 0..<2 {
             do {
                 let before = try deviceState()
@@ -319,7 +333,11 @@ final class CCSwitchAggregationRepository {
                 var seen: Set<String> = []
                 var ids = (codex.stack?.members ?? []).filter { !$0.isEmpty && seen.insert($0).inserted }
                 if seen.insert(route).inserted { ids.append(route) }
-                let rows = try sources(ids)
+                let rows: [ProviderSummarySource]
+                do { rows = try sources(ids) } catch {
+                    recordDatabaseFailure(Self.sqliteCode(of: error))
+                    throw error
+                }
                 let after = try deviceState()
                 guard before.version == after.version, codex == after.apps.codex else { continue }
                 let byID = Dictionary(uniqueKeysWithValues: rows.map { ($0.id, $0) })
@@ -340,6 +358,10 @@ final class CCSwitchAggregationRepository {
             } catch { return .untrusted }
         }
         return .untrusted
+    }
+
+    private static func sqliteCode(of error: Error) -> Int32 {
+        (error as? CCSwitchAggregationReadError)?.sqliteCode ?? (error as? CCSwitchReadError)?.sqliteCode ?? -1
     }
 
     private func confirmedAbsenceOrUntrusted() -> State {

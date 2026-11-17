@@ -1563,8 +1563,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         }
     }
 
+    static let ccSwitchDownloadURL = URL(string: "https://github.com/farion1231/cc-switch/releases")!
+
     @objc private func openCCSwitch() {
-        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.ccswitch.desktop") else { return }
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.ccswitch.desktop") else {
+            // Not installed: send the user to the download page instead of doing nothing.
+            NSWorkspace.shared.open(Self.ccSwitchDownloadURL)
+            return
+        }
         if let app = NSRunningApplication.runningApplications(
             withBundleIdentifier: "com.ccswitch.desktop"
         ).first {
@@ -2488,6 +2494,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         )
     }
 
+    private let ccSwitchReadFailureLock = NSLock()
+    private var ccSwitchReadFailureTrackers: [AssistantClient: CCSwitchReadFailureTracker] = [:]
+
+    private func ccSwitchReadFailures(for client: AssistantClient) -> CCSwitchReadFailureTracker {
+        ccSwitchReadFailureLock.lock()
+        defer { ccSwitchReadFailureLock.unlock() }
+        if let tracker = ccSwitchReadFailureTrackers[client] { return tracker }
+        let tracker = CCSwitchReadFailureTracker()
+        ccSwitchReadFailureTrackers[client] = tracker
+        return tracker
+    }
+
+    /// The card for a CC Switch database read failure; nil keeps the current card.
+    static func ccSwitchUnavailableSnapshot(for outcome: CCSwitchReadFailureTracker.Outcome) -> Snapshot? {
+        Snapshot.ccSwitchUnavailable(for: outcome)
+    }
+
+    /// The card for a CC Switch with no current Provider for this app.
+    static func ccSwitchNoCurrentProviderSnapshot(clientName: String) -> Snapshot {
+        var snapshot = Snapshot.error(tr(.keyAppTheCurrentCcSwitchValueProviderWasNotFound, arguments: [clientName]))
+        return snapshot
+    }
+
     private func refresh(reason: BalanceRefreshReason) {
         let client = activeClient
         let apiTrailing = activityRefreshLifecycle(for: client).trailingRefreshAnchor.map {
@@ -2513,10 +2542,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             let current: CCSwitchProvider?
             do { current = try self.ccSwitchRepository.loadCurrentChecked(appType: client.appType) }
             catch {
-                SwitchLog.write("provider refresh deferred; reason=database_read_failed; sqlite_code=\((error as? CCSwitchReadError)?.sqliteCode ?? -1); client=\(client.rawValue)",
+                let code = (error as? CCSwitchReadError)?.sqliteCode ?? -1
+                let outcome = self.ccSwitchReadFailures(for: client).recordFailure(sqliteCode: code)
+                SwitchLog.write("provider refresh deferred; reason=database_read_failed; sqlite_code=\(code); client=\(client.rawValue); outcome=\(outcome)",
                     level: .warning, category: "provider.read")
+                if let failure = Self.ccSwitchUnavailableSnapshot(for: outcome) { self.render(failure) }
                 return
             }
+            self.ccSwitchReadFailures(for: client).recordSuccess()
             self.reloadCurrentProviderNameCache(appType: client.appType)
             guard let current else {
                 SwitchLog.write(
@@ -2524,7 +2557,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                     level: .error,
                     category: "provider"
                 )
-                self.render(.error(tr(.keyAppTheCurrentCcSwitchValueProviderWasNotFound, arguments: [String(describing: client.displayName)])))
+                self.render(Self.ccSwitchNoCurrentProviderSnapshot(clientName: String(describing: client.displayName)))
                 return
             }
 

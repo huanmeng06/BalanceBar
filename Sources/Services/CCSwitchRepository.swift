@@ -79,6 +79,67 @@ enum CCSwitchReadError: Error {
     var sqliteCode: Int32 { switch self { case .sqlite(let code): return code } }
 }
 
+/// Turns CC Switch database read failures into card states. Transient
+/// `SQLITE_BUSY`/`SQLITE_LOCKED` reads stay silent (the next refresh retries) until
+/// they repeat `busyThreshold` times in a row; every other failure is reported at once.
+final class CCSwitchReadFailureTracker {
+    enum Outcome: Equatable {
+        /// Keep the current card and retry on the next refresh.
+        case silent
+        /// The database is missing or cannot be opened (`SQLITE_CANTOPEN`).
+        case unavailable
+        /// The database exists but cannot be read (corrupt, not a database, permission...).
+        case unreadable
+        /// The database stayed locked for `busyThreshold` consecutive reads.
+        case busy
+    }
+
+    static let busyThreshold = 3
+    private static let sqliteBusy: Int32 = 5
+    private static let sqliteLocked: Int32 = 6
+    private static let sqliteCantOpen: Int32 = 14
+
+    private let lock = NSLock()
+    private var busyStreak = 0
+
+    func recordFailure(sqliteCode: Int32) -> Outcome {
+        lock.lock()
+        defer { lock.unlock() }
+        // Extended result codes keep the primary code in the low byte.
+        switch sqliteCode & 0xFF {
+        case Self.sqliteBusy, Self.sqliteLocked:
+            busyStreak += 1
+            return busyStreak >= Self.busyThreshold ? .busy : .silent
+        case Self.sqliteCantOpen:
+            busyStreak = 0
+            return .unavailable
+        default:
+            busyStreak = 0
+            return .unreadable
+        }
+    }
+
+    func recordSuccess() {
+        lock.lock()
+        busyStreak = 0
+        lock.unlock()
+    }
+}
+
+extension Snapshot {
+    /// The card for a CC Switch database read failure; nil keeps the current card.
+    static func ccSwitchUnavailable(for outcome: CCSwitchReadFailureTracker.Outcome) -> Snapshot? {
+        let key: LocalizationKey
+        switch outcome {
+        case .silent: return nil
+        case .unavailable: key = .keyCCSwitchDatabaseUnavailable
+        case .unreadable: key = .keyCCSwitchDatabaseUnreadable
+        case .busy: key = .keyCCSwitchDatabaseBusy
+        }
+        return Snapshot.error(tr(key))
+    }
+}
+
 final class CCSwitchRepository {
     static let defaultDatabaseURL = URL(fileURLWithPath: NSString(
         string: "~/.cc-switch/cc-switch.db"
@@ -715,7 +776,23 @@ final class CCSwitchRepository {
         return route
     }
 
+    /// Development-build-only failure simulation (never active in the release app):
+    /// `BALANCEBAR_SIM_CCSWITCH=missing|broken|busy|nocurrent` makes the current-provider
+    /// read fail that way without touching the real database.
+    private static func simulatedCurrentReadResult() throws -> CCSwitchProvider?? {
+        guard Bundle.main.bundleIdentifier?.hasSuffix(".dev") == true,
+              let mode = ProcessInfo.processInfo.environment["BALANCEBAR_SIM_CCSWITCH"] else { return nil }
+        switch mode {
+        case "missing": throw CCSwitchReadError.sqlite(SQLITE_CANTOPEN)
+        case "broken": throw CCSwitchReadError.sqlite(SQLITE_NOTADB)
+        case "busy": throw CCSwitchReadError.sqlite(SQLITE_BUSY)
+        case "nocurrent": return .some(nil)
+        default: return nil
+        }
+    }
+
     func loadCurrentChecked(appType: String) throws -> CCSwitchProvider? {
+        if let simulated = try Self.simulatedCurrentReadResult() { return simulated }
         var database: OpaquePointer?
         let openCode = sqlite3_open_v2(databaseURL.path, &database, SQLITE_OPEN_READONLY, nil)
         guard openCode == SQLITE_OK, let database else {
@@ -915,27 +992,31 @@ final class CCSwitchRepository {
     func loadSummarySourcesChecked(appType: String, providerIDs: [String]? = nil) throws -> [ProviderSummarySource] {
         loadSummarySourcesObserver?(providerIDs)
         var database: OpaquePointer?
-        guard sqlite3_open_v2(
+        let openCode = sqlite3_open_v2(
             databaseURL.path,
             &database,
             SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX,
             nil
-        ) == SQLITE_OK, let database else {
+        )
+        guard openCode == SQLITE_OK, let database else {
             if let database { sqlite3_close(database) }
-            throw CCSwitchAggregationReadError.databaseUnavailable
+            throw CCSwitchAggregationReadError.databaseUnavailable(sqliteCode: openCode)
         }
         defer { sqlite3_close(database) }
         sqlite3_busy_timeout(database, 100)
-        guard sqlite3_exec(database, "BEGIN", nil, nil, nil) == SQLITE_OK else {
-            throw CCSwitchAggregationReadError.databaseUnavailable
+        let beginCode = sqlite3_exec(database, "BEGIN", nil, nil, nil)
+        guard beginCode == SQLITE_OK else {
+            throw CCSwitchAggregationReadError.databaseUnavailable(sqliteCode: beginCode)
         }
         defer { sqlite3_exec(database, "ROLLBACK", nil, nil, nil) }
 
         if providerIDs?.isEmpty == true { return [] }
         let filter = providerIDs.map { " AND id IN (" + Array(repeating: "?", count: $0.count).joined(separator: ",") + ")" } ?? ""
         var columns: OpaquePointer?
-        guard sqlite3_prepare_v2(database, "PRAGMA table_info(providers)", -1, &columns, nil) == SQLITE_OK,
-              let columns else { throw CCSwitchAggregationReadError.databaseUnavailable }
+        let columnsCode = sqlite3_prepare_v2(database, "PRAGMA table_info(providers)", -1, &columns, nil)
+        guard columnsCode == SQLITE_OK, let columns else {
+            throw CCSwitchAggregationReadError.databaseUnavailable(sqliteCode: columnsCode)
+        }
         var hasNotes = false
         var columnStep = sqlite3_step(columns)
         while columnStep == SQLITE_ROW {
@@ -943,12 +1024,14 @@ final class CCSwitchRepository {
             columnStep = sqlite3_step(columns)
         }
         sqlite3_finalize(columns)
-        guard columnStep == SQLITE_DONE else { throw CCSwitchAggregationReadError.databaseUnavailable }
+        guard columnStep == SQLITE_DONE else { throw CCSwitchAggregationReadError.databaseUnavailable(sqliteCode: columnStep) }
         let notesColumn = hasNotes ? "notes" : "NULL"
         let sql = "SELECT id, name, settings_config, meta, category, website_url, created_at, \(notesColumn) FROM providers WHERE app_type = ?" + filter + " ORDER BY COALESCE(sort_index, 999999), created_at, id"
         var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK,
-              let statement else { throw CCSwitchAggregationReadError.databaseUnavailable }
+        let prepareCode = sqlite3_prepare_v2(database, sql, -1, &statement, nil)
+        guard prepareCode == SQLITE_OK, let statement else {
+            throw CCSwitchAggregationReadError.databaseUnavailable(sqliteCode: prepareCode)
+        }
         defer { sqlite3_finalize(statement) }
         bind(appType, to: statement, at: 1)
 
@@ -1018,7 +1101,7 @@ final class CCSwitchRepository {
                 ))
             }
         }
-        guard step == SQLITE_DONE else { throw CCSwitchAggregationReadError.databaseUnavailable }
+        guard step == SQLITE_DONE else { throw CCSwitchAggregationReadError.databaseUnavailable(sqliteCode: step) }
         return result
     }
 
