@@ -611,7 +611,6 @@
 "claude.login_prompt.copied_detail" = "Incollalo ed eseguilo nel terminale per accedere di nuovo";
 "quota.status.accessibility" = "Stato della quota: %1$@";
 "claude.refresh.login_expired" = "L'accesso a Claude Code è scaduto. Esegui claude una volta nel terminale per ripristinarlo; BalanceBar non rinnova mai l'accesso da solo.";
-"status.item.controller.refresh_now_login_expired" = "Credenziali scadute; esegui di nuovo Claude Code CLI nel terminale";
 "claude.quota.calibration" = "Calibrazione della quota ufficiale Claude";
 "claude.source_tag.all_clients" = "Tutti i client";
 "claude.source_tag.desktop" = "Desktop prima";

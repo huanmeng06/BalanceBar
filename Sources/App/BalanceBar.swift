@@ -1084,11 +1084,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                     guard let self, self.activeClient == .claude, self.currentProviderIsOfficialCache else { return nil }
                     return self.claudeQuota.manualRefreshBlockedUntil()
                 },
-                isClaudeLoginExpired: { [weak self] in
-                    guard let self, self.activeClient == .claude, self.currentProviderIsOfficialCache else { return false }
-                    // A rejected token (401 pause) or a signed-out CLI: both need `claude` run again.
-                    return self.claudeQuota.isLoginExpired() || self.claudeQuota.latestState?.failure == .missingCredentials
-                },
                 showModOnboarding: { [weak self] in
                     self?.showModOnboardingFromMenu()
                 },

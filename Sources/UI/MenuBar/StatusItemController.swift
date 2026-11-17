@@ -2230,9 +2230,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         /// Date until which the visible official quota is rate-limited, read
         /// when the menu validates its items; nil when refresh is available.
         let manualRefreshBlockedUntil: () -> Date?
-        /// Whether the visible official quota is paused on a rejected login (401);
-        /// read when the menu validates its items.
-        let isClaudeLoginExpired: () -> Bool
 
         init(
             manualRefresh: @escaping () -> Void,
@@ -2251,15 +2248,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             animationFallbackChanged: @escaping (Bool) -> Void = { _ in },
             visibilityChanged: @escaping (StatusItemVisibility) -> Void = { _ in },
             manualRefreshBlockedUntil: @escaping () -> Date? = { nil },
-            isClaudeLoginExpired: @escaping () -> Bool = { false },
             showModOnboarding: @escaping () -> Void = {},
             startModUpdate: @escaping () -> Void = {},
             openEgressGuardSettings: @escaping () -> Void = {}
         ) {
             self.openEgressGuardSettings = openEgressGuardSettings
             self.manualRefreshBlockedUntil = manualRefreshBlockedUntil
-            self.isClaudeLoginExpired = isClaudeLoginExpired
-            self.manualRefresh = manualRefresh
+                self.manualRefresh = manualRefresh
             self.openDashboard = openDashboard
             self.openChatGPT = openChatGPT
             self.openCCSwitch = openCCSwitch
@@ -6146,58 +6141,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         actions.manualRefreshBlockedUntil().map { Date() >= $0 } ?? true
     }
 
-    /// The refresh item only says something when the login has expired: that is the one state the user
-    /// must act on (the menu closes on click). The action title stays fixed; the hint is the subtitle.
-    /// The orange re-login row under the card already says it (and copies the command), so the
-    /// subtitle stays empty while that row is shown.
-    func manualRefreshMenuSubtitle() -> String? {
-        guard menuInput.claudeLoginPrompt == nil else { return nil }
-        return actions.isClaudeLoginExpired() ? tr(.keyStatusItemControllerRefreshNowLoginExpired) : nil
-    }
-
-    private func applyManualRefreshContent(to item: NSMenuItem) {
-        let title = tr(.keyStatusItemControllerRefreshNow)
-        let subtitle = manualRefreshMenuSubtitle()
-        item.title = title
-        let font = NSFont.menuFont(ofSize: NSFont.smallSystemFontSize)
-        // Menu rows never wrap, so a long subtitle is broken manually to fit the menu width.
-        // Leave room for the menu's side padding and the ⌘R column.
-        let maxWidth = max(160, (item.menu?.size.width ?? 300) - 80)
-        let lines = subtitle.map { Self.wrapMenuSubtitle($0, font: font, maxWidth: maxWidth) } ?? []
-        let needsManualLayout = lines.count > 1
-        if #available(macOS 14.4, *), !needsManualLayout {
-            item.attributedTitle = nil
-            item.subtitle = subtitle
-        } else if subtitle != nil {
-            if #available(macOS 14.4, *) { item.subtitle = nil }
-            let text = NSMutableAttributedString(
-                string: title, attributes: [.font: NSFont.menuFont(ofSize: 0)])
-            text.append(NSAttributedString(string: "\n" + lines.joined(separator: "\n"), attributes: [
-                .font: font,
-                .foregroundColor: NSColor.secondaryLabelColor
-            ]))
-            item.attributedTitle = text
-        } else {
-            item.attributedTitle = nil
-        }
-    }
-
-    /// Wraps at word boundaries (Latin words stay whole; CJK breaks at line-break opportunities).
-    static func wrapMenuSubtitle(_ text: String, font: NSFont, maxWidth: CGFloat) -> [String] {
-        let attributed = NSAttributedString(string: text, attributes: [.font: font])
-        let typesetter = CTTypesetterCreateWithAttributedString(attributed)
-        let ns = text as NSString
-        var lines: [String] = []
-        var start = 0
-        while start < ns.length {
-            let count = max(1, CTTypesetterSuggestLineBreak(typesetter, start, Double(maxWidth)))
-            lines.append(ns.substring(with: NSRange(location: start, length: count))
-                .trimmingCharacters(in: .whitespaces))
-            start += count
-        }
-        return lines
-    }
-
     @objc private func manualRefresh() {
         guard isManualRefreshAvailable else { return }
         actions.manualRefresh()
@@ -6376,7 +6319,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             keyEquivalent: "r"
         )
         refreshItem.target = self
-        applyManualRefreshContent(to: refreshItem)
         menu.addItem(.separator())
         menu.addItem(makeOpenDashboardMenuItem())
         if menuInput.showOpenChatGPTMenu {
@@ -8864,7 +8806,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 extension StatusItemController: NSMenuItemValidation {
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         guard menuItem.action == #selector(manualRefresh) else { return true }
-        applyManualRefreshContent(to: menuItem)
         return isManualRefreshAvailable
     }
 }

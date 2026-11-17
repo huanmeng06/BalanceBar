@@ -611,7 +611,6 @@
 "claude.login_prompt.copied_detail" = "在终端粘贴并运行即可恢复登录";
 "quota.status.accessibility" = "额度状态：%1$@";
 "claude.refresh.login_expired" = "Claude Code 登录已失效。在终端运行一次 claude 即可恢复；BalanceBar 不会自行续期登录。";
-"status.item.controller.refresh_now_login_expired" = "Claude Code 登录已失效，请在终端运行 claude";
 "claude.quota.calibration" = "Claude 官方额度校准";
 "claude.source_tag.all_clients" = "全端通用";
 "claude.source_tag.desktop" = "桌面端优先";

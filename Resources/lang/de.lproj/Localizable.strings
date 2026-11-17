@@ -611,7 +611,6 @@
 "claude.login_prompt.copied_detail" = "Im Terminal einfügen und ausführen, um dich erneut anzumelden";
 "quota.status.accessibility" = "Kontingentstatus: %1$@";
 "claude.refresh.login_expired" = "Die Claude-Code-Anmeldung ist abgelaufen. Führe einmal claude im Terminal aus, um sie wiederherzustellen; BalanceBar erneuert die Anmeldung nie selbst.";
-"status.item.controller.refresh_now_login_expired" = "Anmeldedaten abgelaufen; führe die Claude Code CLI erneut im Terminal aus";
 "claude.quota.calibration" = "Abgleich des offiziellen Claude-Kontingents";
 "claude.source_tag.all_clients" = "Alle Clients";
 "claude.source_tag.desktop" = "Desktop zuerst";
