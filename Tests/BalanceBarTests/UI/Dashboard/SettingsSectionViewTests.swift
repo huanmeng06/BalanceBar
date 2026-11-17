@@ -551,7 +551,6 @@ final class SettingsSectionViewTests: XCTestCase {
             pin(page, to: host, window: window, width: width, height: 900)
             window.layoutIfNeeded()
             XCTAssertEqual(section.intrinsicContentSize.height, NSView.noIntrinsicMetric)
-            let liveHeight = section.frame.height
 
             section.liveResizeOverrideForTesting = nil
             section.invalidateIntrinsicContentSize()
@@ -559,7 +558,6 @@ final class SettingsSectionViewTests: XCTestCase {
             window.layoutIfNeeded()
             XCTAssertEqual(section.intrinsicContentSize.height, section.naturalHeight, accuracy: 0.5)
             XCTAssertEqual(section.frame.height, section.naturalHeight, accuracy: 1.0, "width \(width)")
-            _ = liveHeight
         }
     }
 
