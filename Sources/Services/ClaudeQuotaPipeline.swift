@@ -531,7 +531,9 @@ final class ClaudeQuotaPipeline {
         sourceTimeline.restore(accountKey: ClaudeSourceTimeline.accountKey(forStableID: identity.accountIdentity?.stableID))
         let adapter = QuotaNotificationAdapter(processor: notificationRouter, providerID: "claude")
         self.adapter = adapter
-        engine = QuotaMergeEngine(scheduler: scheduler, notifications: adapter, store: restoring, now: now)
+        let engine = QuotaMergeEngine(scheduler: scheduler, notifications: adapter, store: restoring, now: now)
+        self.engine = engine
+        reportRestoredLiveModReadings(engine)
         snapshotInbox?.start { [weak self] observation in
             self?.queue.async { self?.receiveInbox(observation) }
         }
@@ -539,6 +541,25 @@ final class ClaudeQuotaPipeline {
         let reasons = pendingReasons
         pendingReasons.removeAll()
         if let reason = reasons.min(by: { $0.rawValue < $1.rawValue }) { prepareAndRequest(reason) }
+    }
+
+    /// The restored merge state can already display Mod readings that are still within the Mod's
+    /// validity; the card then shows them as live. The settings entry must agree instead of waiting
+    /// for the next snapshot (and calling the Mod silent meanwhile), so each such reading is
+    /// reported as accepted, with its own production time.
+    private func reportRestoredLiveModReadings(_ engine: QuotaMergeEngine) {
+        guard let sink = modSnapshotEventSink else { return }
+        let date = now()
+        let validity = sourceValidity().seconds(for: .mod)
+        for window in [QuotaWindowKind.fiveHour, .sevenDay] {
+            guard let reading = engine.currentState.windows[window.rawValue]?.displayed,
+                  reading.epoch == identity.accountEpoch,
+                  reading.source == SnapshotInbox.modSourceID,
+                  date.timeIntervalSince(reading.effectiveTime) <= validity else { continue }
+            sink(ModSnapshotEvent(
+                kind: .processed(accepted: true), window: window,
+                observedAt: reading.effectiveTime, receivedAt: reading.receivedAt))
+        }
     }
 
     private func prepareAndRequest(_ reason: FetchRequestReason) {

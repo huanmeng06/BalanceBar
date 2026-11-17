@@ -73,6 +73,7 @@ final class ModSyncCoordinator {
         self.localizeSync = localizeSync
         self.now = now
         self.schedule = schedule
+        evidence.collectingSince = now()
         controller.onPresentationChange = { [weak self] in
             self?.onPresentationChange?()
         }
@@ -244,7 +245,7 @@ final class ModSyncCoordinator {
 
     /// Drops all accepted/rejected snapshot evidence and recomputes the status.
     private func resetSnapshotEvidence() {
-        evidence = ModSnapshotEvidence()
+        evidence = ModSnapshotEvidence(collectingSince: now())
         recomputeStatus()
     }
 
@@ -281,7 +282,8 @@ final class ModSyncCoordinator {
         case let .active(lastAcceptedAt):
             return lastAcceptedAt.addingTimeInterval(ModOnboardingConfig.noDataWithActivityGrace)
         case .waitingForData:
-            return environment.installation?.installedAt?
+            return environment.installation
+                .flatMap { ModSyncStatus.silenceStart(installation: $0, evidence: evidence) }?
                 .addingTimeInterval(ModOnboardingConfig.noDataWithActivityGrace)
         default:
             return nil

@@ -50,6 +50,10 @@ struct ModSnapshotEvidence: Equatable {
     var lastRejection: ModRejectionEvent?
     /// The latest attributed snapshot lacked the organization hash: the installed Mod is outdated.
     var modOutdated = false
+    /// Since when this evidence has been collected (app launch, account switch, reinstall).
+    /// Evidence starts empty then, so silence is only reported once the Mod has had the
+    /// whole grace period to deliver a snapshot here, however long ago it was installed.
+    var collectingSince: Date?
 }
 
 /// The settings entry's honest state. Installed is never conflated with collecting:
@@ -116,10 +120,17 @@ enum ModSyncStatus: Equatable {
             return .active(lastAcceptedAt: accepted)
         }
         if environment.claudeProcessRunning,
-           let installedAt = installation.installedAt,
-           now.timeIntervalSince(installedAt) >= ModOnboardingConfig.noDataWithActivityGrace {
+           let silentSince = silenceStart(installation: installation, evidence: evidence),
+           now.timeIntervalSince(silentSince) >= ModOnboardingConfig.noDataWithActivityGrace {
             return .silent
         }
         return .waitingForData
+    }
+
+    /// When the wait for a first accepted snapshot began: the later of the install and the
+    /// start of evidence collection. `nil` without an install time.
+    static func silenceStart(installation: ModPluginInstallation, evidence: ModSnapshotEvidence) -> Date? {
+        guard let installedAt = installation.installedAt else { return nil }
+        return max(installedAt, evidence.collectingSince ?? installedAt)
     }
 }
