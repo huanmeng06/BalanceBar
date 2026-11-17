@@ -175,7 +175,7 @@ final class ModInstallerTests: XCTestCase {
         let outdated = RealtimeBoostSettingsRows.cardCopy(
             status: .updateRequired(installedVersion: "1.0.0"), operation: .intro(dismissChecked: false),
             localize: { realtimeBoostLocalize($0, language: .simplifiedChinese) }, modLocalize: { $0.defaultText })
-        XCTAssertEqual(outdated.detail, "Mod 需要更新 · 当前版本：1.0.0 · 最新版本：\(ModOnboardingConfig.latestModVersion)")
+        XCTAssertEqual(outdated.detail, "Mod 需要更新 · 1.0.0 → \(ModOnboardingConfig.latestModVersion)")
         let restart = RealtimeBoostSettingsRows.cardCopy(
             status: .updateRequired(installedVersion: ModOnboardingConfig.latestModVersion), operation: .intro(dismissChecked: false),
             localize: { $0.defaultText }, modLocalize: { $0.defaultText })
@@ -393,7 +393,9 @@ final class ModMenuRowTests: XCTestCase {
         XCTAssertEqual(ModMenuAttentionCopy.make(.silent, localize: t).mainText, t(.cardSilentTitle))
         XCTAssertEqual(ModMenuAttentionCopy.make(.accountMismatch, localize: t).detailText, t(.cardRejectedAccountReason))
         XCTAssertEqual(ModMenuAttentionCopy.make(.restartRequired, localize: t).mainText, t(.cardUpdateRestart))
-        XCTAssertEqual(ModMenuAttentionCopy.make(.updateRequired(installedVersion: "1.0.0"), localize: t).mainText, t(.cardUpdateTitle))
+        let update = ModMenuAttentionCopy.make(.updateRequired(installedVersion: "1.0.0"), localize: t)
+        XCTAssertEqual(update.mainText, t(.cardUpdateTitle))
+        XCTAssertEqual(update.detailText, "1.0.0 → \(ModOnboardingConfig.latestModVersion)")
     }
 
     func testPromptRowHoverResetsBetweenPresentations() {

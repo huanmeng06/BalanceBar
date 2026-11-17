@@ -713,8 +713,6 @@
 "mod.sync.status.installation_unknown" = "Mod がインストール済みか確認できません（プラグイン一覧の取得に失敗）";
 "mod.sync.status.update_required" = "Mod が古いため更新が必要です（サードパーティのプラグインマーケットプレイスは既定では自動更新されません）。\n更新後に Claude Code のセッションを再起動してください";
 "mod.card.update.title" = "Mod の更新が必要";
-"mod.card.update.reason" = "現在のバージョン：%1$@";
-"mod.card.update.action" = "最新バージョン：%1$@";
 "mod.update.button" = "今すぐ更新";
 "mod.update.title" = "BalanceBar Mod の更新が必要です";
 "mod.update.progress_title" = "BalanceBar Mod を更新中";

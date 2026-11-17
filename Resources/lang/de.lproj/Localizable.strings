@@ -713,8 +713,6 @@
 "mod.sync.status.installation_unknown" = "Mod-Installation kann nicht bestätigt werden (Plugin-Liste fehlgeschlagen)";
 "mod.sync.status.update_required" = "Die Mod ist veraltet und muss aktualisiert werden (Plugin-Marktplätze von Drittanbietern aktualisieren sich standardmäßig nicht automatisch).\nStarte danach die Claude-Code-Sitzung neu";
 "mod.card.update.title" = "Mod-Update nötig";
-"mod.card.update.reason" = "Aktuelle Version: %1$@";
-"mod.card.update.action" = "Neueste Version: %1$@";
 "mod.update.button" = "Jetzt aktualisieren";
 "mod.update.title" = "BalanceBar Mod muss aktualisiert werden";
 "mod.update.progress_title" = "BalanceBar Mod wird aktualisiert";

@@ -314,7 +314,7 @@ func realtimeBoostLocalize(_ text: RealtimeBoostText, language: AppLanguage) -> 
     switch text {
     case .statusActive, .statusUnsupported, .statusVersionTooOld, .lastData,
          .cardOtherScopeAction, .cardDisabledAction, .cardVersionTooOldReason,
-         .cardInboxAction, .cardViewErrorAction, .cardUpdateReason, .cardUpdateAction:
+         .cardInboxAction, .cardViewErrorAction:
         return tr(LocalizationKey.key(for: text), arguments: ["%@"], language: language)
     default:
         return tr(LocalizationKey.key(for: text), language: language)
@@ -471,8 +471,6 @@ extension LocalizationKey {
         case .statusInstallationUnknown: return .modSyncStatusInstallationUnknown
         case .statusUpdateRequired: return .modSyncStatusUpdateRequired
         case .cardUpdateTitle: return .modCardUpdateTitle
-        case .cardUpdateReason: return .modCardUpdateReason
-        case .cardUpdateAction: return .modCardUpdateAction
         case .cardUpdateButton: return .modCardUpdateButton
         case .cardUpdateRestart: return .modCardUpdateRestart
         case .statusRestartRequired: return .modSyncStatusRestartRequired

@@ -713,8 +713,6 @@
 "mod.sync.status.installation_unknown" = "無法確認 Mod 是否已安裝（外掛清單讀取失敗）";
 "mod.sync.status.update_required" = "Mod 版本過舊，需要更新（第三方外掛市集預設不自動更新）。\n更新後請重啟 Claude Code 會話";
 "mod.card.update.title" = "Mod 需要更新";
-"mod.card.update.reason" = "目前版本：%1$@";
-"mod.card.update.action" = "最新版本：%1$@";
 "mod.update.button" = "一鍵更新";
 "mod.update.title" = "BalanceBar Mod 需要更新";
 "mod.update.progress_title" = "正在更新 BalanceBar Mod";

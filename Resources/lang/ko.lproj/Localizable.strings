@@ -713,8 +713,6 @@
 "mod.sync.status.installation_unknown" = "Mod 설치 여부를 확인할 수 없습니다(플러그인 목록 실패)";
 "mod.sync.status.update_required" = "Mod가 오래되어 업데이트가 필요합니다(서드파티 플러그인 마켓플레이스는 기본적으로 자동 업데이트되지 않습니다).\n업데이트 후 Claude Code 세션을 다시 시작하세요";
 "mod.card.update.title" = "Mod 업데이트 필요";
-"mod.card.update.reason" = "현재 버전: %1$@";
-"mod.card.update.action" = "최신 버전: %1$@";
 "mod.update.button" = "지금 업데이트";
 "mod.update.title" = "BalanceBar Mod 업데이트 필요";
 "mod.update.progress_title" = "BalanceBar Mod 업데이트 중";

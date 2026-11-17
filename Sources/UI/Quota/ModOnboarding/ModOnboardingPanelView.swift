@@ -319,12 +319,17 @@ struct ModMenuAttentionCopy: Equatable {
     let mainText: String
     let detailText: String
 
+    /// "1.0.0 → 1.1.1"; nil when the installed version is unknown.
+    static func versionTransition(_ installed: String?) -> String? {
+        installed.map { "\($0) → \(ModOnboardingConfig.latestModVersion)" }
+    }
+
     static func make(_ attention: ModMenuAttention,
                      localize: (RealtimeBoostText) -> String) -> ModMenuAttentionCopy {
         switch attention {
-        case .updateRequired:
+        case let .updateRequired(installed):
             return .init(mainText: localize(.cardUpdateTitle),
-                         detailText: String(format: localize(.cardUpdateAction), ModOnboardingConfig.latestModVersion))
+                         detailText: versionTransition(installed) ?? localize(.viewNote))
         case .restartRequired:
             return .init(mainText: localize(.cardUpdateRestart), detailText: localize(.viewNote))
         case .accountMismatch:
