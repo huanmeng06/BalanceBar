@@ -57,6 +57,8 @@ protocol OfficialQuotaCredentialReading {
     /// Display-only account email; never token material.
     func claudeAccountEmail() -> String?
     func codexRequestCredentials() -> CodexRequestCredentials
+    /// A manual refresh may show the keychain prompt again after a refusal.
+    func allowClaudeKeychainRetry()
 }
 
 struct ClaudeStoredCredentials: Equatable {
@@ -71,6 +73,7 @@ extension OfficialQuotaCredentialReading {
         ClaudeStoredCredentials(accessToken: claudeAccessToken(), planType: nil)
     }
     func claudeAccountEmail() -> String? { nil }
+    func allowClaudeKeychainRetry() {}
 }
 
 struct CodexRequestCredentials: Equatable {
@@ -389,6 +392,11 @@ final class OfficialQuotaClient {
         claudeProbeCondition.broadcast()
         claudeProbeCondition.unlock()
         return credentials
+    }
+
+    /// Lets the next Claude credential read raise the keychain prompt again (manual refresh only).
+    func allowClaudeKeychainRetry() {
+        credentialReader.allowClaudeKeychainRetry()
     }
 
     /// Whether the last probe found no token because the keychain could not be read.
