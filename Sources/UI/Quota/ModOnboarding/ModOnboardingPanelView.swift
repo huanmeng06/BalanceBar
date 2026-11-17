@@ -314,6 +314,27 @@ enum ModPanelContent {
 
 }
 
+/// Copy for the menu's Mod hint rows; reuses the settings card wording.
+struct ModMenuAttentionCopy: Equatable {
+    let mainText: String
+    let detailText: String
+
+    static func make(_ attention: ModMenuAttention,
+                     localize: (RealtimeBoostText) -> String) -> ModMenuAttentionCopy {
+        switch attention {
+        case .updateRequired:
+            return .init(mainText: localize(.cardUpdateTitle),
+                         detailText: String(format: localize(.cardUpdateAction), ModOnboardingConfig.latestModVersion))
+        case .restartRequired:
+            return .init(mainText: localize(.cardUpdateRestart), detailText: localize(.viewNote))
+        case .accountMismatch:
+            return .init(mainText: localize(.cardRejectedTitle), detailText: localize(.cardRejectedAccountReason))
+        case .silent:
+            return .init(mainText: localize(.cardSilentTitle), detailText: localize(.cardSilentAction))
+        }
+    }
+}
+
 /// Menu prompt row: the INT-2 accent-tinted block with a bolt icon, the main copy and
 /// the "why" line. It sits in a menu item's custom view; a click anywhere closes the
 /// menu and opens the explanation panel.

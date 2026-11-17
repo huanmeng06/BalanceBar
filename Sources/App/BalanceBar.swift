@@ -1050,6 +1050,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 },
                 showModOnboarding: { [weak self] in
                     self?.showModOnboardingFromMenu()
+                },
+                startModUpdate: { [weak self] in
+                    self?.modSyncCoordinator.presentPanelStandalone()
+                    self?.modSyncCoordinator.controller.startUpdate()
                 }
             ),
             codexAnimationBackend: MenuBarCodexAnimationBackend(
