@@ -252,6 +252,14 @@ enum DevelopmentBankedResetDemo {
     }
 }
 
+/// A direct Codex official login failure: the card reason, its recovery button and the
+/// short account-row status (Issue #674).
+struct CodexOfficialFailure: Equatable {
+    let reason: String
+    let action: FailureRecovery
+    let accountReason: OpenAIAccountPresentation.UnavailableReason
+}
+
 struct ProviderRefreshActions {
     let currentProvider: (AssistantClient) -> CCSwitchProvider?
     let isActiveClient: (AssistantClient) -> Bool
@@ -447,6 +455,9 @@ final class ProviderRefreshCoordinator {
     private var quickSwitchSafety: CCSwitchQuickSwitchSafety = .blockedUntrusted
     private var lastQuickSwitchSafety: CCSwitchQuickSwitchSafety?
     private var standardOfficialRequests: [AssistantClient: OfficialQuotaRequestContext] = [:]
+    /// Last successful direct Codex official snapshot per Provider. A later failed refresh of
+    /// the same Provider revision and account keeps it on screen as stale data (Issue #674).
+    private var lastCodexOfficialSuccess: [String: (revision: String, accountKey: String?, snapshot: Snapshot)] = [:]
     private var aggregationOfficialRequests: [AggregationDisplayIdentity: OfficialQuotaRequestContext] = [:]
     private var lastAggregationPublication: (displays: [AggregatedProviderDisplay], blocked: Bool)?
     private let lifetime = OfficialResponseGeneration()
@@ -1620,9 +1631,16 @@ final class ProviderRefreshCoordinator {
             }
         }
         func fail(providerID: String, providerName: String, reason: String, client: AssistantClient,
+                  recovery: CodexOfficialFailure? = nil,
                   isCurrentRequest: @escaping () -> Bool) {
             if isValid(), isCurrentRequest() { officialSampleUnavailable(client: client, providerID: providerID) }
-            publish(.providerError(providerName, reason: reason, cachedBalance: nil), providerID: providerID, client: client, isCurrentRequest: isCurrentRequest)
+            var error = Snapshot.providerError(providerName, reason: reason, cachedBalance: nil)
+            if let recovery {
+                error.failureClient = .codex
+                error.failureRecovery = recovery.action
+                error.accountUnavailableReason = recovery.accountReason
+            }
+            publish(error, providerID: providerID, client: client, isCurrentRequest: isCurrentRequest)
         }
         // Demo bundles bypass real transport for both the direct provider and
         // aggregated provider rows, so the fixture stays visible regardless of
@@ -1751,39 +1769,72 @@ final class ProviderRefreshCoordinator {
                     } else {
                         finishOfficial(response.output.bankedReset)
                     }
-                case .failure(.missingCredentials):
-                    fail(
-                        providerID: providerID,
-                        providerName: providerName,
-                        reason: tr(.keyProviderRefreshCoordinatorOfficialValueLocalSignInCredentialsWereNotFound, arguments: [String(describing: client.displayName)]),
-                        client: client,
-                        isCurrentRequest: { isCurrentQuota() && credentialsMatch(false) }
-                    )
-                case .failure(.transport(let error)):
-                    fail(
-                        providerID: providerID,
-                        providerName: providerName,
-                        reason: tr(.keyProviderRefreshCoordinatorOfficialValueValue, arguments: [String(describing: client.displayName), String(describing: error.localizedDescription)]),
-                        client: client,
-                        isCurrentRequest: { isCurrentQuota() && credentialsMatch(false) }
-                    )
-                case .failure(.httpStatus(let status, _)) where status == 429:
-                    let reason = tr(.keyDashboardGeneralAndRefreshPagesUpdateCheckFailureReasonHttpTooManyRequestsValue,
-                        arguments: [String(status)]) + "\n" + tr(.keyDashboardGeneralAndRefreshPagesUpdateCheckFailureSuggestionHttpTooManyRequests)
-                    fail(providerID: providerID, providerName: providerName, reason: reason, client: client,
-                        isCurrentRequest: { isCurrentQuota() && credentialsMatch(false) })
-                case .failure:
-                    fail(
-                        providerID: providerID,
-                        providerName: providerName,
-                        reason: tr(.keyProviderRefreshCoordinatorOfficialValueTheQuotaEndpointReturnedAnError, arguments: [String(describing: client.displayName)]),
-                        client: client,
-                        isCurrentRequest: { isCurrentQuota() && credentialsMatch(false) }
-                    )
+                case .failure(let error):
+                    let isCurrentRequest = { isCurrentQuota() && credentialsMatch(false) }
+                    // Only the direct Codex card (no aggregation/quick-switch source) gets the
+                    // login guidance, the recovery button and the kept data (Issue #674).
+                    let direct = client == .codex && source == nil
+                    let recovery = direct ? Self.codexOfficialFailure(error) : nil
+                    let reason = recovery?.reason ?? self.officialFailureReason(error, client: client)
+                    if direct, let kept = self.keptCodexOfficialSnapshot(providerID: providerID,
+                        revision: configurationRevision, accountKey: accountKey, error: error) {
+                        if isValid(), isCurrentRequest() { self.officialSampleUnavailable(client: client, providerID: providerID) }
+                        var stale = Self.staleOfficialSnapshot(kept, reason: reason, now: self.now())
+                        stale.failureClient = .codex
+                        stale.failureRecovery = recovery?.action ?? .openUsagePage
+                        stale.accountUnavailableReason = recovery?.accountReason
+                        publish(stale, providerID: providerID, client: client, isCurrentRequest: isCurrentRequest)
+                    } else {
+                        fail(providerID: providerID, providerName: providerName, reason: reason, client: client,
+                            recovery: recovery, isCurrentRequest: isCurrentRequest)
+                    }
                 }
             }
         }
         return context
+    }
+
+    /// The failure text every official quota client shares (Codex direct login failures
+    /// replace it with `codexOfficialFailure`).
+    private func officialFailureReason(_ error: OfficialQuotaClientError, client: AssistantClient) -> String {
+        switch error {
+        case .missingCredentials:
+            return tr(.keyProviderRefreshCoordinatorOfficialValueLocalSignInCredentialsWereNotFound, arguments: [String(describing: client.displayName)])
+        case .transport(let transport):
+            return tr(.keyProviderRefreshCoordinatorOfficialValueValue, arguments: [String(describing: client.displayName), String(describing: transport.localizedDescription)])
+        case .httpStatus(let status, _) where status == 429:
+            return tr(.keyDashboardGeneralAndRefreshPagesUpdateCheckFailureReasonHttpTooManyRequestsValue,
+                arguments: [String(status)]) + "\n" + tr(.keyDashboardGeneralAndRefreshPagesUpdateCheckFailureSuggestionHttpTooManyRequests)
+        default:
+            return tr(.keyProviderRefreshCoordinatorOfficialValueTheQuotaEndpointReturnedAnError, arguments: [String(describing: client.displayName)])
+        }
+    }
+
+    /// How a direct Codex official failure is explained and recovered from. Login failures
+    /// (signed out, token rejected) point at `codex login`; everything else keeps the shared
+    /// reason with the Codex usage page.
+    static func codexOfficialFailure(_ error: OfficialQuotaClientError) -> CodexOfficialFailure? {
+        switch error {
+        case .missingCredentials:
+            return CodexOfficialFailure(reason: tr(.keyCodexRefreshSignedOut), action: .copySignInCommand,
+                accountReason: .codexSignedOut)
+        case .httpStatus(let status, _) where status == 401 || status == 403:
+            return CodexOfficialFailure(reason: tr(.keyCodexRefreshLoginExpired), action: .copySignInCommand,
+                accountReason: .codexLoginExpired)
+        default:
+            return nil
+        }
+    }
+
+    /// The last successful direct Codex snapshot that a failure of this request may keep: same
+    /// Provider revision and same account. A signed-out request has no account to compare, so
+    /// the last account's data stays with the sign-in prompt, as Claude does.
+    private func keptCodexOfficialSnapshot(providerID: String, revision: String, accountKey: String?,
+                                           error: OfficialQuotaClientError) -> Snapshot? {
+        guard let last = lastCodexOfficialSuccess[providerID], last.revision == revision else { return nil }
+        if last.accountKey == accountKey { return last.snapshot }
+        if case .missingCredentials = error, accountKey == nil { return last.snapshot }
+        return nil
     }
 
     /// Recomputes countdowns from each window's absolute reset time so a kept
@@ -1988,6 +2039,9 @@ final class ProviderRefreshCoordinator {
                   self.standardRequestIsCurrent(client: client, providerID: providerID, revision: configurationRevision),
                   client != .codex || self.aggregationEntries.isEmpty else { return }
             let epoch = self.standardPublicationEpoch
+            if client == .codex, next.kind == .official, next.staleReason == nil {
+                self.lastCodexOfficialSuccess[providerID] = (configurationRevision, next.quotaPredictionAccountKey, next)
+            }
             if next.kind == .balance {
                 self.providerBalanceSnapshots.store(
                     next,

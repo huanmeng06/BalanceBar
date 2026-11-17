@@ -3600,6 +3600,85 @@ extension StatusItemControllerTests {
     }
 
     @MainActor
+    func testCodexLoginFailureCardCopiesCodexLoginAndShowsShortAccountStatus() throws {
+        var opened: [URL] = []
+        let controller = StatusItemController(actions: .init(manualRefresh: {}, openDashboard: {}, openChatGPT: {},
+            openCCSwitch: {}, quit: {}, switchProvider: { _ in }, openProviderWebsite: {}, openStatusLink: { opened.append($0) },
+            iconChanged: { _ in }))
+        defer { controller.teardown() }
+        let input = StatusItemController.MenuInput(choices: [], quickSwitchSummaries: [:], activeClient: .codex,
+            openAIAccount: OpenAIAccountPresentation(email: "a@example.com"), statusLinks: [], showQuickSwitchMenu: false,
+            showOpenChatGPTMenu: false, showOpenCCSwitchMenu: false, showStatusMenu: false, directProviderID: "codex-official")
+        func find<T: NSView>(_ type: T.Type, in view: NSView) -> T? {
+            (view as? T) ?? view.subviews.lazy.compactMap { find(type, in: $0) }.first
+        }
+        var expired = Snapshot.providerError("Codex Official", reason: tr(.keyCodexRefreshLoginExpired), cachedBalance: nil)
+        expired.failureClient = .codex
+        expired.failureRecovery = .copySignInCommand
+        expired.accountUnavailableReason = .codexLoginExpired
+        controller.start(snapshot: expired, refreshDate: nil, menuInput: input, settings: makeSettings())
+        let card = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        let failure = try XCTUnwrap(find(FailureStateView.self, in: card), "Codex failures get the failure view too")
+        XCTAssertEqual(failure.action, .copySignInCommand)
+        XCTAssertEqual(failure.client, .codex)
+        XCTAssertEqual(failure.actionButton.title, tr(.keyQuotaFailureCopyCodexLoginCommand))
+        XCTAssertEqual(StatusItemController.directAccount(input.openAIAccount, snapshot: expired, activeClient: .codex)?.text(),
+            tr(.keyCodexAccountLoginExpired), "the account row shows the short status, not the cached email")
+
+        var network = Snapshot.providerError("Codex Official", reason: "Network down", cachedBalance: nil)
+        network.failureClient = .codex
+        controller.start(snapshot: network, refreshDate: nil, menuInput: input, settings: makeSettings())
+        let networkCard = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        let open = try XCTUnwrap(find(FailureStateView.self, in: networkCard))
+        open.actionButton.performClick(nil)
+        XCTAssertEqual(opened, [FailureStateView.codexUsageURL], "Codex opens its own usage page, never claude.ai")
+        XCTAssertEqual(StatusItemController.directAccount(input.openAIAccount, snapshot: network, activeClient: .codex),
+            input.openAIAccount, "a network failure keeps the account")
+        XCTAssertEqual(StatusItemController.directAccount(input.openAIAccount, snapshot: expired, activeClient: .claude),
+            input.openAIAccount, "another client's failure never rewrites the account row")
+    }
+
+    @MainActor
+    func testCodexKeptDataAfterLoginFailureShowsWarningTimeAndReloginRow() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        let fetchedAt = Date(timeIntervalSince1970: 1_700_000_000)
+        let window = OfficialQuotaWindow(kind: .fiveHour, remaining: 86, label: "5h", daysText: "5 hours",
+            reset: "1h5m", durationSeconds: 18_000, resetAt: fetchedAt.addingTimeInterval(3_900))
+        let fresh = Snapshot.official("Codex Official", 86, "5h", "1h5m", fetchedAt, windows: [window])
+        var stale = fresh
+        stale.staleReason = tr(.keyCodexRefreshLoginExpired)
+        stale.failureClient = .codex
+        stale.failureRecovery = .copySignInCommand
+        stale.accountUnavailableReason = .codexLoginExpired
+        let input = StatusItemController.MenuInput(choices: [], quickSwitchSummaries: [:], activeClient: .codex,
+            openAIAccount: OpenAIAccountPresentation(email: "a@example.com"), statusLinks: [], showQuickSwitchMenu: false,
+            showOpenChatGPTMenu: false, showOpenCCSwitchMenu: false, showStatusMenu: false, directProviderID: "codex-official")
+        func promptRow() -> NSView? {
+            controller.statusMenuForTesting.items.lazy.compactMap(\.view)
+                .first { $0.identifier?.rawValue == "menu.codexLoginPrompt" }
+        }
+        func fields(_ view: NSView) -> [NSTextField] { (view as? NSTextField).map { [$0] } ?? view.subviews.flatMap(fields) }
+
+        controller.start(snapshot: fresh, refreshDate: fetchedAt, menuInput: input, settings: makeSettings())
+        XCTAssertNil(promptRow(), "fresh data needs no re-login row")
+
+        controller.update(snapshot: stale, refreshDate: fetchedAt, menuInput: input, settings: makeSettings())
+        XCTAssertNotNil(promptRow(), "kept data after a login failure still shows the reason and the command")
+        let card = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        let time = try XCTUnwrap(fields(card).first { $0.identifier?.rawValue == "overview.refreshTime" })
+        XCTAssertTrue(time.stringValue.hasPrefix("⚠︎ "))
+        XCTAssertEqual(time.toolTip, tr(.keyCodexRefreshLoginExpired))
+
+        var networkStale = stale
+        networkStale.staleReason = "Network down"
+        networkStale.failureRecovery = .openUsagePage
+        networkStale.accountUnavailableReason = nil
+        controller.update(snapshot: networkStale, refreshDate: fetchedAt, menuInput: input, settings: makeSettings())
+        XCTAssertNil(promptRow(), "a network failure only marks the time")
+    }
+
+    @MainActor
     func testOpenMenuUpdatesStaleRefreshTimeInPlaceThroughRateLimitAndRecovery() throws {
         let controller = makeController()
         defer { controller.teardown() }

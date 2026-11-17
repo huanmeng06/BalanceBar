@@ -118,6 +118,10 @@ struct OpenAIAccountPresentation: Equatable {
         case claudeLoginRequired
         case claudeCredentialsUnreadable
         case claudeNoSubscriptionAccount
+        /// Codex official quota was rejected with HTTP 401/403.
+        case codexLoginExpired
+        /// `~/.codex/auth.json` has no usable sign-in.
+        case codexSignedOut
 
         /// The short account-row status for a Claude official failure; nil when the failure
         /// says nothing about the account (network, rate limit, server error).
@@ -192,6 +196,10 @@ struct OpenAIAccountPresentation: Equatable {
                 return tr(.keyClaudeAccountCredentialsUnreadable, language: language)
             case .claudeNoSubscriptionAccount:
                 return tr(.keyClaudeAccountNoSubscriptionAccount, language: language)
+            case .codexLoginExpired:
+                return tr(.keyCodexAccountLoginExpired, language: language)
+            case .codexSignedOut:
+                return tr(.keyCodexAccountSignedOut, language: language)
             case nil:
                 return tr(.keyProviderModelsAccountUnavailable, language: language)
             }
