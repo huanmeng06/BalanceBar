@@ -15,6 +15,9 @@ enum ClaudeQuotaFailure: Equatable {
     case transport(possibleProxy: Bool, description: String)
     case http(Int)
     case invalidResponse
+    /// The egress guard kept the request on this machine (`noTargets`, `mismatch`, `unsupportedRegion` or
+    /// `checkFailed`). A switched-off guard is `ClaudeQuotaState.officialDisabled`, not a failure.
+    case egressGuard(ClaudeEgressGuardBlock)
 }
 
 /// Everything the refresh coordinator needs to publish Claude official quota.
@@ -38,6 +41,9 @@ struct ClaudeQuotaState: Equatable {
     let updatedAt: Date?
     let isRefreshing: Bool
     let failure: ClaudeQuotaFailure?
+    /// The egress guard is switched off, so official requests are turned off (Issue #686): the
+    /// card keeps local data and shows no failure.
+    var officialDisabled = false
     /// Status-slot state resolved with BB-07's rules.
     let status: StatusSlotState
     /// Source of the newest displayed standard-window reading, independent of
@@ -117,6 +123,8 @@ final class ClaudeQuotaPipeline {
     static let sourceID = "oauth-api"
 
     private let client: OfficialQuotaClient
+    /// Checks the egress IP before each official request; nil (tests) sends without checking.
+    fileprivate let egressGuard: ClaudeEgressGuard?
     private let identity: ClaudeAccountIdentityProvider
     private let identityQueue: DispatchQueue
     private let stateStore: ObservedFetchSchedulerStateStore
@@ -150,6 +158,8 @@ final class ClaudeQuotaPipeline {
     private var started = false
     private var pendingReasons: [FetchRequestReason] = []
     private var failure: ClaudeQuotaFailure?
+    /// Official requests are off because the egress guard is switched off. Guarded by `lock`.
+    private var officialDisabled = false
     /// Start of the current unbroken run of failed official reads; nil while none is failing.
     private var failureSince: Date?
     private var refreshing = false
@@ -258,12 +268,14 @@ final class ClaudeQuotaPipeline {
         realtimeTracker: ClaudeRealtimeTracker? = nil,
         snapshotInbox: SnapshotInbox? = nil,
         sourceValidity: @escaping () -> ClaudeSourceValidity = { .defaults },
+        egressGuard: ClaudeEgressGuard? = nil,
         now: @escaping () -> Date = Date.init,
         diagnostics: @escaping (String, SwitchLog.Level) -> Void = { message, level in
             SwitchLog.write(message, level: level, category: "refresh.claude")
         }
     ) {
         self.client = client
+        self.egressGuard = egressGuard
         self.diagnostics = diagnostics
         self.identity = identity
         self.identityQueue = identityQueue
@@ -534,7 +546,45 @@ final class ClaudeQuotaPipeline {
         let token = client.claudeRequestCredentials(cacheFor: 2).accessToken
         identity.ingestCredential(accessToken: token, expectedEpoch: epoch)
         identityQueue.sync {}
+        // A switched-off guard turns official requests off: the local credential read above
+        // still attributes Mod snapshots to the account, but nothing reaches the scheduler.
+        if let egressGuard, !egressGuard.isEnabled {
+            markOfficialDisabled()
+            return
+        }
         scheduler.requestFetch(reason: reason)
+    }
+
+    /// Clears any official failure and publishes the "official requests off" state. Pipeline queue.
+    private func markOfficialDisabled() {
+        let changed = lock.withLock { () -> Bool in
+            let changed = !officialDisabled || failure != nil
+            officialDisabled = true
+            setFailureLocked(nil)
+            return changed
+        }
+        if changed {
+            diagnostics("claude official requests off; reason=egress_guard_disabled", .info)
+            publish()
+        }
+    }
+
+    /// The egress guard settings changed: re-evaluate at once. A manual request skips the
+    /// automatic waits left by earlier blocked attempts.
+    func egressGuardSettingsChanged() {
+        queue.async { [self] in
+            guard let egressGuard else { return }
+            if egressGuard.isEnabled {
+                lock.withLock { officialDisabled = false }
+                publish()
+            }
+            guard engine != nil else {
+                pendingReasons.append(.manual)
+                startOnQueue()
+                return
+            }
+            prepareAndRequest(.manual)
+        }
     }
 
     /// Whether official reads are waiting for Claude Code to be signed in again.
@@ -879,9 +929,25 @@ final class ClaudeQuotaPipeline {
         case .failure, .notSent:
             newFailure = Self.failure(from: lock.withLock { lastClientError })
         }
+        // A result that lands after the guard was switched off never re-labels the source as
+        // failing: official requests are off, whatever the in-flight check concluded.
+        if newFailure != nil, let egressGuard, !egressGuard.isEnabled {
+            newFailure = .egressGuard(.disabled)
+        }
+        // Switched off while the request was being checked: official requests are off, not failing.
+        if case .egressGuard(.disabled)? = newFailure {
+            lock.withLock { refreshing = false }
+            sourceTimeline.recordRequestCompleted(
+                trigger: delivery.trigger, startedAt: delivery.dispatchedAt, completedAt: delivery.receivedAt,
+                outcome: .failure(.egressGuard))
+            markOfficialDisabled()
+            publish()
+            return
+        }
         lock.withLock {
             setFailureLocked(newFailure)
             refreshing = false
+            officialDisabled = false
         }
         if let newFailure {
             diagnostics("claude official fetch failed; kind=\(Self.failureKind(newFailure))", .info)
@@ -968,6 +1034,7 @@ final class ClaudeQuotaPipeline {
             return "transport; possible_proxy=\(possibleProxy); detail=\(description)"
         case let .http(status): return "http; status=\(status)"
         case .invalidResponse: return "invalid_response"
+        case let .egressGuard(block): return "egress_guard; block=\(block.rawValue)"
         }
     }
 
@@ -1102,8 +1169,8 @@ final class ClaudeQuotaPipeline {
         let merged = engine.currentState
         let date = now()
         let updatedAt = merged.windows.values.compactMap { $0.displayed?.receivedAt }.max()
-        let (failure, failureSince, refreshing, handler) = lock.withLock {
-            (self.failure, self.failureSince, self.refreshing, updateHandler)
+        let (failure, failureSince, refreshing, handler, officialDisabled) = lock.withLock {
+            (self.failure, self.failureSince, self.refreshing, updateHandler, self.officialDisabled)
         }
         // Local evidence: readings displayed from the Mod's inbox snapshots.
         // `ClaudeRealtimeTracker` stays scheduler-only; a pending reset must not hide fresh
@@ -1154,7 +1221,7 @@ final class ClaudeQuotaPipeline {
                 // (a Mod snapshot read at launch may have been written minutes earlier).
                 updatedAt: newestStandard?.effectiveTime ?? updatedAt,
                 lastSource: Self.statusSource(of: standard)))
-        let next = ClaudeQuotaState(
+        var next = ClaudeQuotaState(
             display: model,
             windows: DevelopmentClaudeIdleDemo.windows() ?? Self.cardWindows(from: presented, now: date),
             accountEpoch: identity.accountEpoch,
@@ -1166,6 +1233,7 @@ final class ClaudeQuotaPipeline {
             failure: failure,
             status: status,
             newestReadingSource: Self.statusSource(of: standard))
+        next.officialDisabled = officialDisabled
         let changed = lock.withLock { () -> Bool in
             guard state != next else { return false }
             state = next
@@ -1289,6 +1357,7 @@ final class ClaudeQuotaPipeline {
         case .missingCredentials?, nil: return .missingCredentials
         case .credentialsUnreadable?: return .credentialsUnreadable
         case .missingAccount?: return .noAccount
+        case let .egressGuard(block)?: return .egressGuard(block)
         case let .transport(transport)?:
             if case .possibleProxy = transport {
                 return .transport(possibleProxy: true, description: transport.localizedDescription)
@@ -1330,8 +1399,35 @@ private final class ClaudeUsageTransport: UsageFetchTransport {
             completion(.unauthorized)
             return
         }
+        guard let egressGuard = pipeline.egressGuard else { return send(pipeline, sendCheck: { _ in nil }, completion) }
+        egressGuard.evaluateTrace { decision, trace in
+            switch decision {
+            case .allowed:
+                // Reading the token may wait on the Keychain, and the settings or the proxy may
+                // change meanwhile: the pass is checked again at the moment the request leaves.
+                self.send(pipeline, sendCheck: { route in
+                    guard let trace else { return .checkFailed }
+                    if let checked = trace.route, checked != route { return .checkFailed }
+                    if case let .blocked(block) = egressGuard.decision(for: trace) { return block }
+                    return nil
+                }, completion)
+            case let .blocked(block):
+                // Nothing reached Anthropic: the scheduler refunds the request and waits for a
+                // manual refresh or a settings change instead of backing off.
+                pipeline.recordClientError(.egressGuard(block))
+                completion(.notSent("\(FetchScheduler.egressGuardDetailPrefix)_\(block.rawValue)"))
+            }
+        }
+    }
+
+    private func send(
+        _ pipeline: ClaudeQuotaPipeline,
+        sendCheck: @escaping (CCSwitchProxyConfiguration) -> ClaudeEgressGuardBlock?,
+        _ completion: @escaping (UsageFetchResult) -> Void
+    ) {
         let epoch = pipeline.currentEpoch
         pipeline.transportClient.fetchClaudeUsage(
+            sendCheck: sendCheck,
             didReadToken: { pipeline.recordCredentialRead($0, epoch: epoch) },
             completion: { result, error in
                 pipeline.recordClientError(error)
@@ -1357,7 +1453,8 @@ extension ClaudeQuotaPipeline {
         client: OfficialQuotaClient,
         calibrationIntervalCap: @escaping () -> TimeInterval?,
         automaticInterval: @escaping () -> TimeInterval? = { nil },
-        sourceValidity: @escaping () -> ClaudeSourceValidity = { .defaults }
+        sourceValidity: @escaping () -> ClaudeSourceValidity = { .defaults },
+        egressGuard: ClaudeEgressGuard? = nil
     ) -> ClaudeQuotaPipeline {
         let identityQueue = DispatchQueue(label: "BalanceBar.AccountIdentity", qos: .utility)
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
@@ -1380,7 +1477,8 @@ extension ClaudeQuotaPipeline {
             schedulerConfiguration: .claudeV1,
             realtimeTracker: tracker,
             snapshotInbox: inbox,
-            sourceValidity: sourceValidity)
+            sourceValidity: sourceValidity,
+            egressGuard: egressGuard)
     }
 }
 

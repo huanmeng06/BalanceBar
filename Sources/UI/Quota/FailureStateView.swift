@@ -17,6 +17,7 @@ final class FailureStateView: NSView {
     private let localize: (StatusSlotText) -> String
     private let onOpenUsagePage: () -> Void
     private let onOpenCCSwitch: () -> Void
+    private let onOpenEgressGuardSettings: () -> Void
     private let copyToPasteboard: (String) -> Void
 
     var reasonForTesting: String { reasonLabel.stringValue }
@@ -30,6 +31,7 @@ final class FailureStateView: NSView {
     ///   - onOpenUsagePage: Called for `.openUsagePage`; defaults to opening `officialUsageURL`.
     ///   - onOpenCCSwitch: Called for `.openCCSwitch`.
     ///   - copyToPasteboard: Called for `.copySignInCommand`; defaults to the general pasteboard.
+    ///   - onOpenEgressGuardSettings: Called for `.openEgressGuardSettings`.
     init(
         reason: String,
         action: Action = .openUsagePage,
@@ -40,17 +42,20 @@ final class FailureStateView: NSView {
         copyToPasteboard: @escaping (String) -> Void = { text in
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(text, forType: .string)
-        }
+        },
+        onOpenEgressGuardSettings: @escaping () -> Void = {}
     ) {
         self.action = action
         self.localize = localize
         self.onOpenUsagePage = onOpenUsagePage
         self.onOpenCCSwitch = onOpenCCSwitch
+        self.onOpenEgressGuardSettings = onOpenEgressGuardSettings
         self.copyToPasteboard = copyToPasteboard
         let title: String
         switch action {
         case .copySignInCommand: title = localize(.copySignInCommand)
         case .openCCSwitch: title = localize(.openCCSwitch)
+        case .openEgressGuardSettings: title = localize(.openEgressGuardSettings)
         case .openUsagePage, .none: title = localize(.openUsagePage)
         }
         actionButton = NSButton(title: title, target: nil, action: nil)
@@ -96,6 +101,8 @@ final class FailureStateView: NSView {
         case .copySignInCommand:
             copyToPasteboard(Self.signInCommand)
             actionButton.title = localize(.copied)
+        case .openEgressGuardSettings:
+            onOpenEgressGuardSettings()
         case .none:
             break
         }

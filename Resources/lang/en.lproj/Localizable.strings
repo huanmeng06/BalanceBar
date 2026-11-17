@@ -656,6 +656,8 @@
 "claude.timeline.estimate.in" = "in about %1$@";
 "claude.refresh.every_minutes" = "Every %1$@ min";
 "claude.quota.calibration_detail" = "Polls the official source on a timer as a fallback; longer intervals avoid rate limits";
+"claude.quota.calibration_off_detail" = "Claude official requests are off, so this interval has no effect.";
+"claude.quota.calibration_off_link" = "Set Up IP Allowlist…";
 
 // BalanceBar Mod realtime sync (Issue #597)
 "claude.mod_sync.title" = "BalanceBar Mod realtime boost";
@@ -820,3 +822,32 @@
 "ccswitch.database_unreadable" = "Can't read the CC Switch database. Reopen CC Switch and try again.";
 "ccswitch.database_busy" = "The CC Switch database is busy. BalanceBar will keep retrying.";
 "aggregation.not_configured" = "No usage query is set up for this Provider. Configure a usage script in CC Switch.";
+"claude.refresh.egress_guard_mismatch" = "The egress IP isn't on the allowlist, so Claude official requests are paused.";
+"claude.refresh.egress_guard_check_failed" = "Couldn't confirm the egress IP, so Claude official requests are paused.";
+"claude.refresh.egress_guard_no_targets" = "The IP allowlist is empty, so Claude official requests are paused.";
+"claude.refresh.egress_guard_unsupported_region" = "The egress region isn't one where Anthropic offers Claude, or couldn't be identified, so Claude official requests are paused.";
+"claude.refresh.egress_guard_disabled" = "Claude official requests are off. Turn on the IP allowlist in Settings › Advanced.";
+"claude.timeline.failure.egress_guard" = "Blocked by IP allowlist";
+"quota.failure.open_egress_guard_settings" = "Set Up IP Allowlist";
+"dashboard.advanced.page.egress_guard" = "Claude IP Allowlist";
+"dashboard.advanced.page.egress_guard_enabled" = "Request official quota only from allowlisted IPs";
+"dashboard.advanced.page.egress_guard_enabled_detail" = "Before each request, BalanceBar checks your current egress IP (the IP Claude’s servers see). If it isn’t on the allowlist, nothing is sent. When off, official quota is never requested and only Mod data is used.";
+"dashboard.advanced.page.egress_guard_allowed" = "IP Allowlist";
+"dashboard.advanced.page.egress_guard_allowed_empty" = "Click + to add an IP, or detect your current egress first";
+"dashboard.advanced.page.egress_guard_remove" = "Remove";
+"dashboard.advanced.page.egress_guard_add_title" = "Add IP";
+"dashboard.advanced.page.egress_guard_add_placeholder" = "IPv4 or IPv6 address";
+"dashboard.advanced.page.egress_guard_invalid_ip" = "Not a valid IP address";
+"dashboard.advanced.page.egress_guard_detect" = "Detect";
+"dashboard.advanced.page.egress_guard_detecting" = "Detecting current egress…";
+"dashboard.advanced.page.egress_guard_detected_listed" = "Current egress: %1$@ — on the allowlist";
+"dashboard.advanced.page.egress_guard_detected_unlisted" = "Current egress: %1$@ — not on the allowlist";
+"dashboard.advanced.page.egress_guard_detect_failed" = "Couldn’t detect the current egress";
+"dashboard.advanced.page.egress_guard_add_detected" = "Add";
+"dashboard.advanced.page.egress_guard_footnote" = "The check visits claude.ai; quota requests go to api.anthropic.com. Route both through the same proxy rule, or the check may not match the real egress. Country/region comes from ipinfo.io and is looked up once per IP. Availability follows Anthropic’s Supported Regions Policy as of 2026-11-12. Requests are also paused when Cloudflare places the egress outside those regions.";
+"dashboard.advanced.page.egress_guard_column_ip" = "IP Address";
+"dashboard.advanced.page.egress_guard_column_region" = "Country/Region";
+"dashboard.advanced.page.egress_guard_country_loading" = "Looking up…";
+"dashboard.advanced.page.egress_guard_column_available" = "Claude Available";
+"dashboard.advanced.page.egress_guard_available_yes" = "In a region where Anthropic offers Claude";
+"dashboard.advanced.page.egress_guard_available_no" = "Not in a region where Anthropic offers Claude";

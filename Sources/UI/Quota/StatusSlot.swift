@@ -89,6 +89,7 @@ enum StatusSlotText: String, CaseIterable {
     case openUsagePage = "quota.failure.open_usage_page"
     case copySignInCommand = "quota.failure.copy_sign_in_command"
     case openCCSwitch = "quota.failure.open_cc_switch"
+    case openEgressGuardSettings = "quota.failure.open_egress_guard_settings"
     case copied = "quota.failure.copied"
     case accessibilityStatus = "quota.status.accessibility"
 
@@ -113,6 +114,7 @@ enum StatusSlotText: String, CaseIterable {
         case .openUsagePage: return "打开官方用量页"
         case .copySignInCommand: return "复制 claude 命令"
         case .openCCSwitch: return "打开 CC Switch"
+        case .openEgressGuardSettings: return "打开护栏设置"
         case .copied: return "已复制"
         case .accessibilityStatus: return "额度状态：%@"
         }

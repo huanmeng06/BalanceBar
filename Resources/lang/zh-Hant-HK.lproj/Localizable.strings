@@ -656,6 +656,8 @@
 "claude.timeline.estimate.in" = "約 %1$@後";
 "claude.refresh.every_minutes" = "每 %1$@ 分鐘";
 "claude.quota.calibration_detail" = "定時向官方查詢作為備援；間隔越長越不容易被限流";
+"claude.quota.calibration_off_detail" = "Claude 官方請求已關閉，此間隔暫不生效。";
+"claude.quota.calibration_off_link" = "前往 IP 白名單設定…";
 
 // BalanceBar Mod realtime sync (Issue #597)
 "claude.mod_sync.title" = "BalanceBar Mod 即時增強";
@@ -820,3 +822,32 @@
 "ccswitch.database_unreadable" = "無法讀取 CC Switch 資料庫，請重新開啟 CC Switch 後再試";
 "ccswitch.database_busy" = "CC Switch 資料庫持續被佔用，BalanceBar 會繼續重試";
 "aggregation.not_configured" = "此供應商未設定用量查詢，請在 CC Switch 中設定用量腳本";
+"claude.refresh.egress_guard_mismatch" = "出口 IP 不在白名單中，已暫停 Claude 官方請求。";
+"claude.refresh.egress_guard_check_failed" = "無法確認出口 IP，已暫停 Claude 官方請求。";
+"claude.refresh.egress_guard_no_targets" = "IP 白名單為空，已暫停 Claude 官方請求。";
+"claude.refresh.egress_guard_unsupported_region" = "出口地區不在 Claude 可用地區內或無法辨識，已暫停 Claude 官方請求。";
+"claude.refresh.egress_guard_disabled" = "Claude 官方請求已關閉。可在 設定 › 進階 中開啟 IP 白名單。";
+"claude.timeline.failure.egress_guard" = "被 IP 白名單攔截";
+"quota.failure.open_egress_guard_settings" = "設定 IP 白名單";
+"dashboard.advanced.page.egress_guard" = "Claude IP 白名單";
+"dashboard.advanced.page.egress_guard_enabled" = "僅允許白名單 IP 請求官方額度";
+"dashboard.advanced.page.egress_guard_enabled_detail" = "每次請求前先檢查目前出口 IP（即 Claude 伺服器看到的你的 IP），不在白名單中就不送出。關閉後不請求官方額度，只使用 Mod 資料。";
+"dashboard.advanced.page.egress_guard_allowed" = "IP 白名單";
+"dashboard.advanced.page.egress_guard_allowed_empty" = "點「+」加入 IP，或先偵測目前出口";
+"dashboard.advanced.page.egress_guard_remove" = "移除";
+"dashboard.advanced.page.egress_guard_add_title" = "加入 IP";
+"dashboard.advanced.page.egress_guard_add_placeholder" = "IPv4 或 IPv6 位址";
+"dashboard.advanced.page.egress_guard_invalid_ip" = "不是有效的 IP 位址";
+"dashboard.advanced.page.egress_guard_detect" = "偵測";
+"dashboard.advanced.page.egress_guard_detecting" = "正在偵測目前出口…";
+"dashboard.advanced.page.egress_guard_detected_listed" = "目前出口：%1$@，在白名單中";
+"dashboard.advanced.page.egress_guard_detected_unlisted" = "目前出口：%1$@，不在白名單中";
+"dashboard.advanced.page.egress_guard_detect_failed" = "無法偵測目前出口";
+"dashboard.advanced.page.egress_guard_add_detected" = "加入";
+"dashboard.advanced.page.egress_guard_footnote" = "偵測連到的是 claude.ai，額度請求連到的是 api.anthropic.com。請讓兩者走同一條代理規則，否則偵測結果可能與實際出口不一致。國家/地區由 ipinfo.io 查詢，每個 IP 只查一次。可用性依據 Anthropic 支援地區政策（截至 2026-11-12）；Cloudflare 判定的出口地區不在其中時，同樣會暫停官方請求。";
+"dashboard.advanced.page.egress_guard_column_ip" = "IP 位址";
+"dashboard.advanced.page.egress_guard_column_region" = "國家/地區";
+"dashboard.advanced.page.egress_guard_country_loading" = "查詢中…";
+"dashboard.advanced.page.egress_guard_column_available" = "Claude 可用";
+"dashboard.advanced.page.egress_guard_available_yes" = "在 Anthropic 可用地區內";
+"dashboard.advanced.page.egress_guard_available_no" = "不在 Anthropic 可用地區內";

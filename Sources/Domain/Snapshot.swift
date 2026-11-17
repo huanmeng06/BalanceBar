@@ -1034,6 +1034,8 @@ enum FailureRecovery: Equatable {
     case openCCSwitch
     /// Nothing the card can do (for example the keychain prompt must be allowed); no button.
     case none
+    /// The Claude egress guard blocked or turned off official requests: open its settings.
+    case openEgressGuardSettings
 }
 
 struct Snapshot: Equatable {
@@ -1058,6 +1060,9 @@ struct Snapshot: Equatable {
     var quotaStatus: StatusSlotState? = nil
     /// Which recovery button a Claude official failure card offers.
     var failureRecovery: FailureRecovery = .openUsagePage
+    /// Claude official requests are turned off by the egress guard (Issue #686): the card
+    /// explains it, but the menu bar shows a neutral dash instead of the "!" failure mark.
+    var officialSourceDisabled = false
     /// Opaque identity of the account this official quota belongs to, so
     /// notification progress and stored samples never cross accounts.
     var notificationAccountScope: String? = nil
@@ -1466,7 +1471,7 @@ struct Snapshot: Equatable {
         case .placeholder: return " …"
         case .official: return " \(Int(amount ?? 0))%\(menuBarUsesLunaReserve ? " 🌙" : "")"
         case .balance: return " \(format(amount ?? 0, unit ?? "USD"))"
-        case .error: return " !"
+        case .error: return officialSourceDisabled ? " –" : " !"
         }
     }
 
@@ -1475,7 +1480,7 @@ struct Snapshot: Equatable {
         case .placeholder: return "…"
         case .official: return "\(Int(amount ?? 0))%\(menuBarUsesLunaReserve ? " 🌙" : "")"
         case .balance: return format(amount ?? 0, unit ?? "USD")
-        case .error: return "!"
+        case .error: return officialSourceDisabled ? "–" : "!"
         }
     }
 

@@ -86,6 +86,31 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         XCTAssertEqual(ProviderRefreshCoordinator.claudeFailureRecovery(.credentialsUnreadable), .none)
         XCTAssertEqual(ProviderRefreshCoordinator.claudeFailureRecovery(.rateLimited), .openUsagePage)
         XCTAssertEqual(ProviderRefreshCoordinator.claudeFailureRecovery(.http(500)), .openUsagePage)
+        XCTAssertEqual(ProviderRefreshCoordinator.claudeFailureRecovery(.egressGuard(.mismatch)), .openEgressGuardSettings)
+    }
+
+    func testClaudeEgressGuardReasonsNameEachBlock() {
+        XCTAssertEqual(ProviderRefreshCoordinator.claudeFailureReason(.egressGuard(.mismatch)),
+                       tr(.keyClaudeRefreshEgressGuardMismatch))
+        XCTAssertEqual(ProviderRefreshCoordinator.claudeFailureReason(.egressGuard(.checkFailed)),
+                       tr(.keyClaudeRefreshEgressGuardCheckFailed))
+        XCTAssertEqual(ProviderRefreshCoordinator.claudeFailureReason(.egressGuard(.noTargets)),
+                       tr(.keyClaudeRefreshEgressGuardNoTargets))
+        XCTAssertEqual(ProviderRefreshCoordinator.claudeFailureReason(.egressGuard(.unsupportedRegion)),
+                       tr(.keyClaudeRefreshEgressGuardUnsupportedRegion))
+        let reasons = [ClaudeEgressGuardBlock.mismatch, .checkFailed, .noTargets, .unsupportedRegion]
+            .map { ProviderRefreshCoordinator.claudeFailureReason(.egressGuard($0)) }
+        XCTAssertEqual(Set(reasons).count, 4, "each block has its own reason, distinct from network errors")
+        XCTAssertFalse(reasons.contains(ProviderRefreshCoordinator.claudeFailureReason(
+            .transport(possibleProxy: true, description: "x"))))
+    }
+
+    func testOfficialRequestsTurnedOffShowADashInsteadOfTheFailureMark() {
+        var off = Snapshot.providerError("Claude", reason: tr(.keyClaudeRefreshEgressGuardDisabled), cachedBalance: nil)
+        XCTAssertEqual(off.menuBarPrimary, "!")
+        off.officialSourceDisabled = true
+        XCTAssertEqual(off.menuBarPrimary, "–")
+        XCTAssertEqual(off.menuBarTitle, " –")
     }
 
     func testStoppedCoordinatorRejectsLateCallbacksAndRefreshesAgainstInvalidatedSession() throws {
