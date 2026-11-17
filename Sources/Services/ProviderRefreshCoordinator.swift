@@ -1631,14 +1631,16 @@ final class ProviderRefreshCoordinator {
             }
         }
         func fail(providerID: String, providerName: String, reason: String, client: AssistantClient,
-                  recovery: CodexOfficialFailure? = nil,
+                  directCodex: Bool = false, recovery: CodexOfficialFailure? = nil,
                   isCurrentRequest: @escaping () -> Bool) {
             if isValid(), isCurrentRequest() { officialSampleUnavailable(client: client, providerID: providerID) }
             var error = Snapshot.providerError(providerName, reason: reason, cachedBalance: nil)
-            if let recovery {
+            // Every direct Codex error names its client, so a network or server error card
+            // opens the Codex usage page instead of falling back to Claude's.
+            if directCodex {
                 error.failureClient = .codex
-                error.failureRecovery = recovery.action
-                error.accountUnavailableReason = recovery.accountReason
+                error.failureRecovery = recovery?.action ?? .openUsagePage
+                error.accountUnavailableReason = recovery?.accountReason
             }
             publish(error, providerID: providerID, client: client, isCurrentRequest: isCurrentRequest)
         }
@@ -1786,7 +1788,7 @@ final class ProviderRefreshCoordinator {
                         publish(stale, providerID: providerID, client: client, isCurrentRequest: isCurrentRequest)
                     } else {
                         fail(providerID: providerID, providerName: providerName, reason: reason, client: client,
-                            recovery: recovery, isCurrentRequest: isCurrentRequest)
+                            directCodex: direct, recovery: recovery, isCurrentRequest: isCurrentRequest)
                     }
                 }
             }

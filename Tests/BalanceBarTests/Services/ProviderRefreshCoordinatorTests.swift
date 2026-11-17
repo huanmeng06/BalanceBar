@@ -3158,6 +3158,23 @@ extension ProviderRefreshCoordinatorTests {
         XCTAssertEqual(fixture.quotaRequestCount, 0, "a signed-out request never leaves the machine")
     }
 
+    func testCodexNetworkFailureWithoutEarlierDataShowsCodexErrorCardWithCodexUsagePage() throws {
+        let fixture = ObservationFixture()
+        fixture.update { $0.quotaTransportFailure = true }
+        let coordinator = try observationCoordinator(fixture, store: try observationStore())
+        let error = try observationRefresh(coordinator, fixture: fixture)
+        XCTAssertEqual(error.kind, .error)
+        XCTAssertEqual(error.failureClient, .codex, "the card must not fall back to Claude's usage page")
+        XCTAssertEqual(error.failureRecovery, .openUsagePage)
+        XCTAssertNil(error.accountUnavailableReason, "a network failure says nothing about the account")
+
+        fixture.update { $0.quotaTransportFailure = false; $0.quotaStatus = 503 }
+        let server = try observationRefresh(coordinator, fixture: fixture)
+        XCTAssertEqual(server.kind, .error)
+        XCTAssertEqual(server.failureClient, .codex)
+        XCTAssertEqual(server.failureRecovery, .openUsagePage)
+    }
+
     func testCodexNetworkFailureKeepsEarlierWindowsAsStaleData() throws {
         let fixture = ObservationFixture()
         let clock = TestClock(date: Date(timeIntervalSince1970: 1_800_000_000))
