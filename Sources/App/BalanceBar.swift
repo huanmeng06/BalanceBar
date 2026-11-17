@@ -2510,7 +2510,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     /// The card for a CC Switch with no current Provider for this app.
     static func ccSwitchNoCurrentProviderSnapshot(clientName: String) -> Snapshot {
         var snapshot = Snapshot.error(tr(.keyAppTheCurrentCcSwitchValueProviderWasNotFound, arguments: [clientName]))
-        snapshot.failureRecovery = .openCCSwitch
         return snapshot
     }
 

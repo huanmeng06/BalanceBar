@@ -316,7 +316,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(recorder.stored[.claude]?.snapshot.amount), 1.30, accuracy: 0.000001)
     }
 
-    func testMissingUsageScriptCardOffersOpenCCSwitch() throws {
+    func testMissingUsageScriptShowsConfigurationReason() throws {
         try withDatabase { db in
             try execute(db, sql: """
                 UPDATE providers SET settings_config = '{"env":{"ANTHROPIC_API_KEY":"fixture-key"}}', meta = '{}'
@@ -348,7 +348,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         wait(for: [rendered], timeout: 3)
         lock.lock(); let result = card; lock.unlock()
         XCTAssertEqual(result?.kind, .error)
-        XCTAssertEqual(result?.failureRecovery, .openCCSwitch)
+        XCTAssertEqual(result?.message, BalanceQueryFailure.usageScriptMissing.userVisibleReason(language: .selected))
     }
 
     func testProviderChangeDuringRequestDropsLateCallback() throws {
@@ -3389,7 +3389,6 @@ extension ProviderRefreshCoordinatorTests {
         XCTAssertFalse(failed.isEmpty)
         for display in failed {
             XCTAssertEqual(display.status, .error)
-            XCTAssertEqual(display.snapshot.failureRecovery, .openCCSwitch)
             XCTAssertEqual(display.snapshot.message, tr(.keyCCSwitchDatabaseUnavailable))
         }
 
@@ -3423,7 +3422,7 @@ extension ProviderRefreshCoordinatorTests {
             }
             waitForCoordinator(coordinator)
             lock.lock(); let early = latest; lock.unlock()
-            XCTAssertTrue(early.allSatisfy { $0.snapshot.failureRecovery != .openCCSwitch }, "occasional BUSY must not bother the user")
+            XCTAssertTrue(early.allSatisfy { $0.snapshot.message != tr(.keyCCSwitchDatabaseBusy) }, "occasional BUSY must not bother the user")
             coordinator.performAsync { _ = coordinator.refreshAggregation(reader: reader, force: true) }
             waitForCoordinator(coordinator)
             lock.lock(); let late = latest; lock.unlock()

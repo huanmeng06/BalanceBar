@@ -413,22 +413,6 @@ final class StatusSlotViewTests: XCTestCase {
         XCTAssertEqual(view.actionButton.title, "已复制")
     }
 
-    func testFailureStateOpenCCSwitchButtonInvokesCallbackOnly() {
-        var openedCCSwitch = 0
-        var openedUsage = 0
-        let view = FailureStateView(
-            reason: "未找到 CC Switch 数据库", action: .openCCSwitch,
-            localize: { $0 == .openCCSwitch ? "打开 CC Switch" : "?" },
-            onOpenUsagePage: { openedUsage += 1 },
-            onOpenCCSwitch: { openedCCSwitch += 1 })
-        view.frame = NSRect(x: 0, y: 0, width: 240, height: 60)
-        view.layoutSubtreeIfNeeded()
-        XCTAssertEqual(view.actionButton.title, "打开 CC Switch")
-        view.actionButton.performClick(nil)
-        XCTAssertEqual(openedCCSwitch, 1)
-        XCTAssertEqual(openedUsage, 0)
-    }
-
     func testFailureStateWithoutRecoveryShowsReasonOnly() {
         let view = FailureStateView(reason: "无法读取钥匙串", action: .none)
         view.frame = NSRect(x: 0, y: 0, width: 240, height: 40)

@@ -136,9 +136,7 @@ extension Snapshot {
         case .unreadable: key = .keyCCSwitchDatabaseUnreadable
         case .busy: key = .keyCCSwitchDatabaseBusy
         }
-        var snapshot = Snapshot.error(tr(key))
-        snapshot.failureRecovery = .openCCSwitch
-        return snapshot
+        return Snapshot.error(tr(key))
     }
 }
 

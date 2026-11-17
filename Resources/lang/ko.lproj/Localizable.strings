@@ -817,7 +817,6 @@
 "mod.ui.int2.silent_check_version" = "Claude Code가 v2.1.287 이상인지";
 "mod.ui.int2.silent_check_session" = "새 세션이거나 그 안에서 /reload-plugins 를 실행했는지";
 "mod.ui.int2.silent_check_policy" = "조직 정책이 관리되는 플러그인만 허용하는지";
-"quota.failure.open_cc_switch" = "CC Switch 열기";
 "ccswitch.database_unavailable" = "CC Switch 데이터베이스를 찾을 수 없거나 열 수 없습니다. CC Switch를 설치하고 한 번 실행했는지 확인하세요";
 "ccswitch.database_unreadable" = "CC Switch 데이터베이스를 읽을 수 없습니다. CC Switch를 다시 열고 다시 시도하세요";
 "ccswitch.database_busy" = "CC Switch 데이터베이스가 사용 중입니다. BalanceBar가 계속 재시도합니다";

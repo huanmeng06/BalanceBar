@@ -817,7 +817,6 @@
 "mod.ui.int2.silent_check_version" = "Claude Code est en v2.1.287 ou ultérieure";
 "mod.ui.int2.silent_check_session" = "C’est une nouvelle session, ou /reload-plugins y a été exécuté";
 "mod.ui.int2.silent_check_policy" = "Si la politique de votre organisation n’autorise que les plugins gérés";
-"quota.failure.open_cc_switch" = "Ouvrir CC Switch";
 "ccswitch.database_unavailable" = "La base de données de CC Switch est introuvable ou impossible à ouvrir. Vérifiez que CC Switch est installé et a été lancé au moins une fois";
 "ccswitch.database_unreadable" = "Impossible de lire la base de données de CC Switch. Rouvrez CC Switch puis réessayez";
 "ccswitch.database_busy" = "La base de données de CC Switch est occupée. BalanceBar continue de réessayer";

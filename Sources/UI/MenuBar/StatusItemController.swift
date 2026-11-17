@@ -7636,7 +7636,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let message = snapshot.overviewReset(refreshDate: nil, formatter: AppDisplayTime.formatter(timeZone: settings.displayTimeZone))
         // Claude official failures add the BB-07 failure view: reason plus a button
         // that opens the official usage page, in extra height below the detail.
-        let showsUsagePageButton = snapshot.quotaStatus != nil || snapshot.failureRecovery == .openCCSwitch
+        let showsUsagePageButton = snapshot.quotaStatus != nil
         let buttonShift = showsUsagePageButton && snapshot.failureRecovery != .none
             ? ErrorCardLayout.usagePageButtonHeight : 0
         let baseFrames = ErrorCardLayout.errorFrames(
@@ -7691,7 +7691,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 font: ErrorCardLayout.detailFont,
                 localize: StatusSlotText.appLocalize,
                 onOpenUsagePage: { [weak self] in self?.actions.openStatusLink(FailureStateView.officialUsageURL) },
-                onOpenCCSwitch: { [weak self] in self?.actions.openCCSwitch() },
                 onOpenEgressGuardSettings: { [weak self] in
                     self?.cancelMenuBarTracking()
                     // The menu is closing; open the window once it is gone.

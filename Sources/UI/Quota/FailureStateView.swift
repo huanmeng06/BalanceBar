@@ -16,7 +16,6 @@ final class FailureStateView: NSView {
     let action: Action
     private let localize: (StatusSlotText) -> String
     private let onOpenUsagePage: () -> Void
-    private let onOpenCCSwitch: () -> Void
     private let onOpenEgressGuardSettings: () -> Void
     private let copyToPasteboard: (String) -> Void
 
@@ -29,7 +28,6 @@ final class FailureStateView: NSView {
     ///   - action: Which recovery button to show.
     ///   - font: Font of the reason; callers that pre-measure the height must pass the font they measured with.
     ///   - onOpenUsagePage: Called for `.openUsagePage`; defaults to opening `officialUsageURL`.
-    ///   - onOpenCCSwitch: Called for `.openCCSwitch`.
     ///   - copyToPasteboard: Called for `.copySignInCommand`; defaults to the general pasteboard.
     ///   - onOpenEgressGuardSettings: Called for `.openEgressGuardSettings`.
     init(
@@ -38,7 +36,6 @@ final class FailureStateView: NSView {
         font: NSFont = .systemFont(ofSize: NSFont.smallSystemFontSize),
         localize: @escaping (StatusSlotText) -> String = StatusSlotText.defaultLocalize,
         onOpenUsagePage: @escaping () -> Void = { NSWorkspace.shared.open(FailureStateView.officialUsageURL) },
-        onOpenCCSwitch: @escaping () -> Void = {},
         copyToPasteboard: @escaping (String) -> Void = { text in
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(text, forType: .string)
@@ -48,13 +45,11 @@ final class FailureStateView: NSView {
         self.action = action
         self.localize = localize
         self.onOpenUsagePage = onOpenUsagePage
-        self.onOpenCCSwitch = onOpenCCSwitch
         self.onOpenEgressGuardSettings = onOpenEgressGuardSettings
         self.copyToPasteboard = copyToPasteboard
         let title: String
         switch action {
         case .copySignInCommand: title = localize(.copySignInCommand)
-        case .openCCSwitch: title = localize(.openCCSwitch)
         case .openEgressGuardSettings: title = localize(.openEgressGuardSettings)
         case .openUsagePage, .none: title = localize(.openUsagePage)
         }
@@ -96,8 +91,6 @@ final class FailureStateView: NSView {
         switch action {
         case .openUsagePage:
             onOpenUsagePage()
-        case .openCCSwitch:
-            onOpenCCSwitch()
         case .copySignInCommand:
             copyToPasteboard(Self.signInCommand)
             actionButton.title = localize(.copied)

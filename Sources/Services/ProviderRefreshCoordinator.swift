@@ -814,9 +814,7 @@ final class ProviderRefreshCoordinator {
                     }, completion: finish)
             } else {
                 aggregationRequests.removeValue(forKey: identity)
-                var unconfigured = Snapshot.providerError(source.name, reason: tr(.keyAggregationNotConfigured), cachedBalance: nil)
-                unconfigured.failureRecovery = .openCCSwitch
-                display.snapshot = unconfigured
+                display.snapshot = .providerError(source.name, reason: tr(.keyAggregationNotConfigured), cachedBalance: nil)
                 display.status = .unavailable
                 display.reason = tr(.keyAggregationNotConfigured)
                 aggregationDisplays[identity] = display
@@ -908,9 +906,7 @@ final class ProviderRefreshCoordinator {
                     providerName: current.name,
                     reason: reason,
                     client: client,
-                    configurationRevision: current.configurationRevision,
-                    // Every one of these is fixed in CC Switch's Provider settings.
-                    recovery: .openCCSwitch
+                    configurationRevision: current.configurationRevision
                 )
                 return
             }
@@ -2029,31 +2025,28 @@ final class ProviderRefreshCoordinator {
         providerName: String,
         reason: String,
         client: AssistantClient,
-        configurationRevision: String = "",
-        recovery: FailureRecovery? = nil
+        configurationRevision: String = ""
     ) {
         queue.async { [weak self] in
             guard let self, self.lifetime.isCurrent(),
                   self.standardRequestIsCurrent(client: client, providerID: providerID, revision: configurationRevision),
                   client != .codex || self.aggregationEntries.isEmpty else { return }
             let epoch = self.standardPublicationEpoch
-            var next = self.providerBalanceSnapshots.errorSnapshot(
+            let next = self.providerBalanceSnapshots.errorSnapshot(
                 clientID: client.rawValue,
                 providerID: providerID,
                 providerName: providerName,
                 reason: reason,
                 configurationRevision: configurationRevision
             )
-            if let recovery, next.kind == .error { next.failureRecovery = recovery }
-            let published = next
             DispatchQueue.main.async {
                 guard self.lifetime.isCurrent(), (client != .codex || epoch.isCurrent()),
                       self.actions.isActiveClient(client),
                       let current = self.actions.currentProvider(client),
                       current.id == providerID,
                       current.configurationRevision == configurationRevision else { return }
-                if let ownedRender = self.actions.ownedRender { ownedRender(providerID, published) }
-                else { self.actions.render(published) }
+                if let ownedRender = self.actions.ownedRender { ownedRender(providerID, next) }
+                else { self.actions.render(next) }
             }
         }
     }

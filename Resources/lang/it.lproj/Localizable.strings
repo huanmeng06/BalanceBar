@@ -817,7 +817,6 @@
 "mod.ui.int2.silent_check_version" = "Claude Code è v2.1.287 o successivo";
 "mod.ui.int2.silent_check_session" = "È una sessione nuova, oppure vi è stato eseguito /reload-plugins";
 "mod.ui.int2.silent_check_policy" = "Se la policy dell’organizzazione consente solo plugin gestiti";
-"quota.failure.open_cc_switch" = "Apri CC Switch";
 "ccswitch.database_unavailable" = "Il database di CC Switch non è stato trovato o non può essere aperto. Verifica che CC Switch sia installato e sia stato avviato almeno una volta";
 "ccswitch.database_unreadable" = "Impossibile leggere il database di CC Switch. Riapri CC Switch e riprova";
 "ccswitch.database_busy" = "Il database di CC Switch è occupato. BalanceBar continuerà a riprovare";

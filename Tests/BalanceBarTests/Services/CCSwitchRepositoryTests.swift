@@ -1169,7 +1169,6 @@ extension CCSwitchRepositoryTests {
         XCTAssertEqual(outcome, .unavailable)
         let snapshot = try XCTUnwrap(AppDelegate.ccSwitchUnavailableSnapshot(for: outcome))
         XCTAssertEqual(snapshot.kind, .error)
-        XCTAssertEqual(snapshot.failureRecovery, .openCCSwitch)
         XCTAssertEqual(snapshot.message, tr(.keyCCSwitchDatabaseUnavailable))
     }
 
@@ -1205,7 +1204,6 @@ extension CCSwitchRepositoryTests {
         XCTAssertNil(try repository.loadCurrentChecked(appType: "missing-app"))
         let snapshot = AppDelegate.ccSwitchNoCurrentProviderSnapshot(clientName: "Codex")
         XCTAssertEqual(snapshot.kind, .error)
-        XCTAssertEqual(snapshot.failureRecovery, .openCCSwitch)
         XCTAssertEqual(snapshot.message, tr(.keyAppTheCurrentCcSwitchValueProviderWasNotFound, arguments: ["Codex"]))
         XCTAssertTrue(snapshot.message?.contains("Codex") == true)
     }
