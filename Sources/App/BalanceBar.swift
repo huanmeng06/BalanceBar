@@ -54,8 +54,18 @@ enum SwitchLog {
         if let override = ProcessInfo.processInfo.environment["BALANCEBAR_LOG_DIRECTORY"], !override.isEmpty {
             return URL(fileURLWithPath: override, isDirectory: true)
         }
+        if isRunningUnderXCTest {
+            // XCTest hosts must never write into the user's real log directory.
+            return FileManager.default.temporaryDirectory
+                .appendingPathComponent("BalanceBar-XCTest-Logs-\(ProcessInfo.processInfo.processIdentifier)", isDirectory: true)
+        }
         return URL(fileURLWithPath: NSString(string: "~/Library/Logs/BalanceBar/\(environmentName)").expandingTildeInPath, isDirectory: true)
     }
+
+    private static let isRunningUnderXCTest: Bool =
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+        || ProcessInfo.processInfo.environment["XCTestBundlePath"] != nil
+        || NSClassFromString("XCTestCase") != nil
 
     static func setTestingDirectory(_ url: URL?) {
         queue.sync { testingDirectoryURL = url; sessionID = nil }
