@@ -316,6 +316,41 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(recorder.stored[.claude]?.snapshot.amount), 1.30, accuracy: 0.000001)
     }
 
+    func testMissingUsageScriptCardOffersOpenCCSwitch() throws {
+        try withDatabase { db in
+            try execute(db, sql: """
+                UPDATE providers SET settings_config = '{"env":{"ANTHROPIC_API_KEY":"fixture-key"}}', meta = '{}'
+                WHERE app_type = 'claude' AND is_current = 1
+                """)
+        }
+        let rendered = expectation(description: "config failure card rendered")
+        let lock = NSLock()
+        var card: Snapshot?
+        let actions = ProviderRefreshActions(
+            currentProvider: { [repository] client in repository?.loadCurrent(appType: client.appType) },
+            isActiveClient: { _ in true },
+            render: { snapshot in
+                lock.lock(); card = snapshot; lock.unlock()
+                rendered.fulfill()
+            },
+            storeClientSnapshot: { _, _, _ in },
+            quickSwitchSummaryChanged: { _ in }
+        )
+        let coordinator = makeCoordinator(
+            repository: repository,
+            officialQuotaClient: OfficialQuotaClient(),
+            balanceAPIClient: BalanceAPIClient(session: session),
+            actions: actions
+        )
+        let current = try XCTUnwrap(repository.loadCurrent(appType: "claude"))
+        XCTAssertEqual(current.queryFailure, .usageScriptMissing)
+        coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: true, switched: false)
+        wait(for: [rendered], timeout: 3)
+        lock.lock(); let result = card; lock.unlock()
+        XCTAssertEqual(result?.kind, .error)
+        XCTAssertEqual(result?.failureRecovery, .openCCSwitch)
+    }
+
     func testProviderChangeDuringRequestDropsLateCallback() throws {
         let requestStarted = DispatchSemaphore(value: 0)
         let releaseRequest = DispatchSemaphore(value: 0)
