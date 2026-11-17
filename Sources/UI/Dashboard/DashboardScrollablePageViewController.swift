@@ -117,9 +117,10 @@ final class DashboardScrollablePageViewController: NSViewController {
     var hostedContentForTesting: NSView { hostedContent }
     var clipViewObserverInstalledForTesting: Bool { clipViewObserver != nil }
     /// Scroll-document margin above the first section, measured in the
-    /// flipped document. It is fixed (zero) at every viewport height, like
-    /// System Settings: the first section never moves while the window is
-    /// resized (#690). Chrome insets stay on `NSScrollView`.
+    /// flipped document. It is one fixed system spacing at every viewport
+    /// height, like System Settings, so the first section never moves while
+    /// the window is resized (#690). It scrolls away with the document;
+    /// chrome insets stay on `NSScrollView`.
     var documentTopSpacingForTesting: CGFloat {
         let contentRect = hostedContent.convert(hostedContent.bounds, to: pageDocumentView)
         return contentRect.minY - pageDocumentView.bounds.minY
@@ -245,7 +246,13 @@ final class DashboardScrollablePageViewController: NSViewController {
             documentFill.trailingAnchor.constraint(equalTo: documentView.trailingAnchor),
             documentFill.bottomAnchor.constraint(equalTo: documentView.bottomAnchor),
             documentFill.heightAnchor.constraint(greaterThanOrEqualToConstant: documentBottomInset),
-            contentView.topAnchor.constraint(equalTo: contentHost.topAnchor),
+            // One system spacing above the first section at every viewport
+            // height, like System Settings' grouped form (#690). A height
+            // breakpoint here made the first heading jump while resizing.
+            contentView.topAnchor.constraint(
+                equalToSystemSpacingBelow: contentHost.topAnchor,
+                multiplier: 1
+            ),
             contentView.leadingAnchor.constraint(
                 equalTo: contentHost.leadingAnchor,
                 constant: documentHorizontalInset

@@ -91,7 +91,7 @@ Section row 的字体与 SF Symbol tint 由 `.sourceList` + `NSTableCellView` �
 - native ownership：页面 `NSScrollView` 贴齐 page 顶部并 `automaticallyAdjustsContentInsets = true`，由 AppKit 为重叠的 unified toolbar / titlebar 写入 content insets 并自动选择 Soft 或 Hard scroll-edge。窗口不写死 `titlebarSeparatorStyle = .none`（该值会覆盖 split item 偏好）；content pane 使用 `.automatic`，sidebar 使用 `.none`，配合已有 `NSTrackingSeparatorToolbarItem`。不发明空 accessory，不强制 `.soft` / `.hard`，不调用私有 `NSScrollPocket`。公开的 `preferredScrollEdgeEffectStyle` 仅用于 accessory（macOS 26.1+），当前生产页面无 accessory，不为指定 style 而创建它；
 - legacy compatibility：保留 52pt 非滚动顶部空白、手动 zero content/scroller insets，以及 `.none` titlebar separator，避免内容进入透明 titlebar；不手写 scroll-edge；
 - 文档 `isFlipped`，初次挂载的 rest 原点是 `-contentInsets.top`（无 titlebar 重叠或旧系统 zero inset 时仍为文档顶部）；
-- 第一个 settings section 紧贴 scroll document 顶部，额外间距在任何窗口高度下都为零，与「系统设置」一致：内容顶部到 toolbar 的距离不随窗口高度变化，拖动窗口时第一个分组标题不移动（#690 移除了旧的 760pt `spaciousViewportHeight` 分档，它会在断点附近让标题上下跳一档 system spacing）。不看 `window.isZoomed` / 全屏，不写 `contentInsets`、`viewportTopInset` 或 `additionalSafeAreaInsets`。水平 34pt 与底部 34pt document inset 不变；
+- 第一个 settings section 与 scroll document 顶部之间固定一档公开 Auto Layout system spacing（`equalToSystemSpacingBelow` × 1），任何窗口高度都一样，与「系统设置」分组表单一致：内容顶部到 toolbar 有呼吸空间且不随窗口高度变化，拖动窗口时第一个分组标题不移动（#690 移除了旧的 760pt `spaciousViewportHeight` 分档：低于 760 为零、以上为一档 spacing，会在断点附近让标题上下跳）。该间距属于 scroll document，随内容滚入 toolbar / Scroll-Edge 下方并消失；不看 `window.isZoomed` / 全屏，不写 `contentInsets`、`viewportTopInset` 或 `additionalSafeAreaInsets`。水平 34pt 与底部 34pt document inset 不变；
 - 卡片圆角 18，可见行高度至少 62pt（个别行另有更高最小值）。
 
 About **不**走这套 scroll host，而是顶部 92pt 起居中堆叠。Advanced 页内日志查看器另有内部 `NSTextView` 滚动（固定深色 VS Code 配色），与页面滚动独立。
@@ -161,7 +161,7 @@ Tab 顺序、VoiceOver 树、全键盘控制是否覆盖每一行，静态代码
 
 - `DashboardNativeUIBaselineTests`：默认尺寸、`minSize`、styleMask、native 不透明标题栏 / legacy 透明标题栏、unified toolbar 含系统 `.flexibleSpace` / `.toggleSidebar` / `.sidebarTrackingSeparator` 以及 content-pane `NSSearchToolbarItem`、绿钮启用、无全窗口 drag overlay、`NSSplitViewController` 外壳、垂直 `NSSplitView`、侧栏 `.sidebar` item 与约 216pt 打开宽度、原生 min/max/collapse/`toggleSidebar` 契约、live `DashboardContentRootView`、native window surface（root + `splitView` only，无 hidden `legacyContentSurface`、无固定 root `cornerRadius`）/ legacy tint、默认 General、Provider 清空侧栏选中、Refresh 不是 `DashboardSection`、About 无设置页 `NSScrollView`。
 - `DashboardPlatformCapabilitiesTests`：14.x / 15.x / 26.x / 27.x 语义家族、scroll policy 映射、Dashboard 外壳 `majorVersion` 白名单
-- `DashboardScrollablePageViewControllerTests`：右侧设置页 document 顶部间距在任何 viewport 高度都为零，来回拖动高度时第一个分组标题位置不变、已滚动的 offset 不变；旧系统 52pt clearance 属于 viewport；macOS 26 automatic `contentInsets.top` 仍等于 titlebar 高度。
+- `DashboardScrollablePageViewControllerTests`：右侧设置页 document 顶部间距在任何 viewport 高度都是一档 system spacing 且属于 scroll document（下滚后消失、不形成固定灰带），来回拖动高度时第一个分组标题位置不变、已滚动的 offset 不变；旧系统 52pt clearance 属于 viewport；macOS 26 automatic `contentInsets.top` 仍等于 titlebar 高度。
 - `DashboardWindowControllerTests.testWindowEnablesNativeZoomAndStaysResizable`
 - `DashboardNativeUIBaselineTests.testSidebarSourceListUsesPolicyOwnedScrollEdgeLayout`：生产 `.current`（native 全高 + 自动 inset）
 - `DashboardNativeUIBaselineTests.testSidebarSourceListTitlebarClearanceKeepsFirstRowOutOfTitlebar`：注入 `.titlebarClearance`，在 CI 的 macOS 26 上也走 legacy 的 titlebarHeight+14 分支，第一行不得进入 titlebar
