@@ -1761,11 +1761,13 @@ final class DomainModelsTests: XCTestCase {
             date,
             windows: [fiveHour]
         )
-        let missingSevenDay = onlyFiveHour.menuBarSnapshot(preferredQuotaWindow: .sevenDay)
-        XCTAssertEqual(missingSevenDay.kind, .error)
-        XCTAssertEqual(missingSevenDay.menuBarPrimary, "!")
-        XCTAssertNil(missingSevenDay.amount)
-        XCTAssertNil(missingSevenDay.unit)
+        let sevenDayFallback = onlyFiveHour.menuBarSnapshot(preferredQuotaWindow: .sevenDay)
+        XCTAssertEqual(sevenDayFallback.kind, .official)
+        XCTAssertEqual(sevenDayFallback.menuBarPrimary, "80%")
+        XCTAssertEqual(sevenDayFallback.amount, fiveHour.remaining)
+        XCTAssertEqual(sevenDayFallback.unit, fiveHour.label)
+        XCTAssertEqual(sevenDayFallback.selectedOfficialQuotaWindowKind, .fiveHour)
+        XCTAssertEqual(sevenDayFallback.officialQuotaWindows, onlyFiveHour.officialQuotaWindows)
 
         let legacy = Snapshot.official(
             "OpenAI",
@@ -1786,6 +1788,13 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertEqual(legacyPresentation.amount, 63)
         XCTAssertEqual(legacyPresentation.unit, "Quota")
         XCTAssertEqual(legacyPresentation.officialQuotaWindows, legacy.officialQuotaWindows)
+    }
+
+    func testErrorMenuBarTooltipNamesProviderAndShowsFailureReason() {
+        let snapshot = Snapshot.providerError("Example API", reason: "Invalid API key", cachedBalance: nil)
+        XCTAssertEqual(snapshot.menuBarPrimary, "!")
+        XCTAssertEqual(snapshot.menuBarToolTip, "Example API · Invalid API key")
+        XCTAssertEqual(Snapshot.error("Database unavailable").menuBarToolTip, "CC Switch · Database unavailable")
     }
 
     func testOfficialQuotaWindowResolverUsesOneSafePolicyForAllWindowOrders() {
@@ -1827,8 +1836,8 @@ final class DomainModelsTests: XCTestCase {
             .selected(sevenDay)
         )
         XCTAssertEqual(
-            OfficialQuotaWindowResolver.resolve([fiveHour], preference: .sevenDay),
-            .unavailable
+            OfficialQuotaWindowResolver.resolve([legacy, fiveHour], preference: .sevenDay),
+            .selected(fiveHour)
         )
         XCTAssertEqual(
             OfficialQuotaWindowResolver.resolve([legacy], preference: .fiveHour),

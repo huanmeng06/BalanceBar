@@ -167,6 +167,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         off.officialSourceDisabled = true
         XCTAssertEqual(off.menuBarPrimary, "–")
         XCTAssertEqual(off.menuBarTitle, " –")
+        XCTAssertEqual(off.menuBarToolTip, "Claude · \(tr(.keyClaudeRefreshEgressGuardDisabled))")
     }
 
     func testStoppedCoordinatorRejectsLateCallbacksAndRefreshesAgainstInvalidatedSession() throws {
@@ -1902,7 +1903,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         XCTAssertNil(coordinator.quickSwitchSummariesSnapshot(preferredQuotaWindow: .fiveHour, client: .codex)["codex-replacement"])
     }
 
-    func testOfficialQuickSwitchSummaryUsesSafeFallbacksAndDoesNotKeepStaleMissingWindow() throws {
+    func testOfficialQuickSwitchSummaryUsesFallbacksWithoutKeepingStaleWindows() throws {
         try setCurrentProvider("codex-replacement")
         DelayedBalanceURLProtocol.setHandler { _ in
             DelayedBalanceURLProtocol.success(amount: "0.00")
@@ -1980,8 +1981,9 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
             coordinator.quickSwitchSummariesSnapshot(preferredQuotaWindow: .fiveHour)["codex-replacement"],
             "80% / 5 hours"
         )
-        XCTAssertNil(
-            coordinator.quickSwitchSummariesSnapshot(preferredQuotaWindow: .sevenDay)["codex-replacement"]
+        XCTAssertEqual(
+            coordinator.quickSwitchSummariesSnapshot(preferredQuotaWindow: .sevenDay)["codex-replacement"],
+            "80% / 5 hours"
         )
         XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 3)
     }
@@ -3253,7 +3255,10 @@ extension ProviderRefreshCoordinatorTests {
         let coordinator = try observationCoordinator(fixture, store: try observationStore())
         let error = try observationRefresh(coordinator, fixture: fixture)
         XCTAssertEqual(error.kind, .error)
-        XCTAssertEqual(error.message, tr(.keyCodexRefreshLoginExpired) + " (HTTP 401)")
+        let reason = tr(.keyCodexRefreshLoginExpired) + " (HTTP 401)"
+        XCTAssertEqual(error.message, reason)
+        XCTAssertEqual(error.menuBarToolTip,
+            "\(error.provider) · \(tr(.keySnapshotFailedToLoadQuotaReason, arguments: [reason]))")
         XCTAssertFalse(error.message?.contains(tr(.keyProviderRefreshCoordinatorOfficialValueTheQuotaEndpointReturnedAnError,
             arguments: ["Codex"])) == true, "a rejected token is not a server error")
         XCTAssertEqual(error.failureClient, .codex)
@@ -4947,6 +4952,10 @@ extension ProviderRefreshCoordinatorTests {
                     XCTAssertEqual(snapshot.provider, "Claude Official")
                     guard case .error? = snapshot.quotaStatus else { return XCTFail("error cards carry the failure status") }
                     if status == 429 { XCTAssertTrue(snapshot.message?.contains("429") == true) }
+                    let reason = snapshot.officialRetryReason(timeZone: .autoupdatingCurrent) ?? snapshot.message
+                    XCTAssertNotNil(reason)
+                    XCTAssertEqual(snapshot.menuBarToolTip,
+                        "Claude Official · \(tr(.keySnapshotFailedToLoadQuotaReason, arguments: [reason ?? ""]))")
                     rendered.fulfill()
                 }, claudeQuota: harness.pipeline, now: { clock.now })
             coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: true, switched: false)
