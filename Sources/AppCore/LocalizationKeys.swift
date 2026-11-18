@@ -109,6 +109,7 @@
     case keySnapshotValueRemainingValueValue = "snapshot.value_remaining_value_value"
     case keySnapshotValueRemainingValue = "snapshot.value_remaining_value"
     case keySnapshotFailedToLoadBalance2 = "snapshot.failed_to_load_balance.2"
+    case keySnapshotFailedToLoadQuotaReason = "snapshot.failed_to_load_quota_reason"
     case keySnapshotValueRemainingValue2 = "snapshot.value_remaining_value.2"
     case keySnapshotResetValue2 = "snapshot.reset_value.2"
     case keySnapshotUpdatedValueFollowsCcSwitchAutomatically = "snapshot.updated_value_follows_cc_switch_automatically"

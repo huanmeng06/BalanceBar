@@ -70,6 +70,7 @@
 "snapshot.value_remaining_value_value" = "%1$@ 剩余：%2$@%%（%3$@）";
 "snapshot.value_remaining_value" = "%1$@ 剩余：%2$@";
 "snapshot.failed_to_load_balance.2" = "无法读取余额";
+"snapshot.failed_to_load_quota_reason" = "无法读取额度：%1$@";
 "snapshot.value_remaining_value.2" = "%1$@剩余：%2$@%%";
 "snapshot.reset_value.2" = "%1$@";
 "snapshot.updated_value_follows_cc_switch_automatically" = "更新于：%1$@ · 自动跟随 CC Switch";

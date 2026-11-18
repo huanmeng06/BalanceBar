@@ -540,7 +540,7 @@ final class ProviderRefreshCoordinator {
                 ) {
                 case .selected(let window), .legacy(let window?):
                     summaries[providerID] = Self.formatOfficialQuotaSummary(window)
-                case .legacy(nil), .unavailable:
+                case .legacy(nil):
                     break
                 }
             }
@@ -1494,7 +1494,7 @@ final class ProviderRefreshCoordinator {
             off.officialSourceDisabled = true
             snapshot = off
         } else if let failure = state.failure, let failureReason {
-            var error = Snapshot.providerError(target.providerName, reason: failureReason, cachedBalance: nil)
+            var error = Snapshot.officialQuotaError(target.providerName, reason: failureReason)
             error.officialRetryAt = retryAt
             error.quotaStatus = state.status
             error.failureRecovery = Self.claudeFailureRecovery(failure)
@@ -1645,7 +1645,7 @@ final class ProviderRefreshCoordinator {
                   directCodex: Bool = false, recovery: CodexOfficialFailure? = nil, retryAt: Date? = nil,
                   isCurrentRequest: @escaping () -> Bool) {
             if isValid(), isCurrentRequest() { officialSampleUnavailable(client: client, providerID: providerID) }
-            var error = Snapshot.providerError(providerName, reason: reason, cachedBalance: nil)
+            var error = Snapshot.officialQuotaError(providerName, reason: reason)
             error.officialRetryAt = retryAt
             // Every direct Codex error names its client, so a network or server error card
             // opens the Codex usage page instead of falling back to Claude's.

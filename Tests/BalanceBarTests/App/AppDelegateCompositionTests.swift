@@ -1504,8 +1504,8 @@ final class AppDelegateCompositionTests: XCTestCase {
             menuInput: input,
             settings: sevenDaySettings
         )
-        XCTAssertEqual(controller.menuBarPrimaryTextForTesting, "!")
-        XCTAssertEqual(controller.menuBarSecondaryTextForTesting, "")
+        XCTAssertEqual(controller.menuBarPrimaryTextForTesting, "80%")
+        XCTAssertEqual(controller.menuBarSecondaryTextForTesting, "1h0m")
         controller.teardown()
     }
 
