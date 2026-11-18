@@ -142,6 +142,27 @@ final class StatusLinksTests: XCTestCase {
         )
     }
 
+    func testTableBorderFollowsLightAndDarkAppearance() throws {
+        let editor = makeEditor(links: [StatusLink(title: "One", url: "https://one.example")])
+        let window = makeWindow(for: editor)
+        defer { window.orderOut(nil) }
+        let layer = try XCTUnwrap(editor.tableContainerForTesting.layer)
+
+        func separator(_ name: NSAppearance.Name) throws -> CGColor {
+            var color: CGColor?
+            try XCTUnwrap(NSAppearance(named: name)).performAsCurrentDrawingAppearance {
+                color = NSColor.separatorColor.cgColor
+            }
+            return try XCTUnwrap(color)
+        }
+
+        for name in [NSAppearance.Name.darkAqua, .aqua, .darkAqua] {
+            window.appearance = NSAppearance(named: name)
+            editor.viewDidChangeEffectiveAppearance()
+            XCTAssertEqual(layer.borderColor, try separator(name), name.rawValue)
+        }
+    }
+
     func testEditorUsesOnlyNativeTableAndControls() throws {
         let links = [
             StatusLink(title: "One", url: "https://one.example"),
@@ -200,7 +221,9 @@ final class StatusLinksTests: XCTestCase {
         )
         XCTAssertEqual(tableLayer.cornerCurve, .continuous)
         XCTAssertTrue(tableLayer.masksToBounds)
-        XCTAssertNil(table.headerView)
+        let headerView = try XCTUnwrap(table.headerView)
+        XCTAssertEqual(headerView.frame.height, StatusLinksEditorHostingView.tableHeaderHeight, accuracy: 0.001)
+        XCTAssertTrue(table.tableColumns.allSatisfy { $0.headerCell is PaddedTableHeaderCell })
         XCTAssertEqual(table.tableColumns.count, 2)
         XCTAssertEqual(table.tableColumns.map(\.identifier), [
             NSUserInterfaceItemIdentifier("statusLinks.name.column"),
@@ -363,8 +386,16 @@ final class StatusLinksTests: XCTestCase {
         defer { window.orderOut(nil) }
 
         let initialHeight = editor.currentHeight
-        XCTAssertEqual(initialHeight, StatusLinksEditorHostingView.fixedHeight, accuracy: 0.001)
+        XCTAssertEqual(initialHeight, StatusLinksEditorHostingView.maximumHeight, accuracy: 0.001)
         XCTAssertEqual(editor.frame.height, initialHeight, accuracy: 1)
+        editor.layoutSubtreeIfNeeded()
+        for control in [editor.actionsControlForTesting, editor.moveControlForTesting,
+                        editor.moreControlForTesting, editor.resetButtonForTesting] {
+            XCTAssertTrue(
+                editor.bounds.insetBy(dx: -0.5, dy: -0.5).contains(control.frame),
+                "Action buttons must stay inside the editor: \(control.frame) vs \(editor.bounds)"
+            )
+        }
         XCTAssertGreaterThan(editor.scrollViewForTesting.frame.height, 0)
         XCTAssertGreaterThan(
             editor.tableViewForTesting.frame.height,
@@ -610,6 +641,44 @@ final class StatusLinksTests: XCTestCase {
             scrollView.contentView.bounds.contains(fieldFrame),
             "The inserted row's Name field should be visible when inline editing starts"
         )
+    }
+
+    func testEditorHeightFollowsRowCountBetweenTwoAndSixRows() throws {
+        typealias Editor = StatusLinksEditorHostingView
+        XCTAssertEqual(Editor.layoutHeight(rowCount: 0), Editor.layoutHeight(rowCount: 2))
+        XCTAssertEqual(Editor.layoutHeight(rowCount: 3) - Editor.layoutHeight(rowCount: 2), Editor.tableRowHeight)
+        XCTAssertEqual(Editor.layoutHeight(rowCount: 12), Editor.maximumHeight)
+
+        func links(_ count: Int) -> [StatusLink] {
+            (0..<count).map { StatusLink(title: "Link \($0)", url: "https://\($0).example") }
+        }
+        let editor = makeEditor(links: links(3))
+        let window = makeWindow(for: editor)
+        defer { window.orderOut(nil) }
+        var heightChanges = 0
+        editor.onLayoutHeightChange = { heightChanges += 1 }
+        XCTAssertEqual(editor.currentHeight, Editor.layoutHeight(rowCount: 3), accuracy: 0.001)
+
+        editor.updateLinks(links(4), mutation: .insert(3))
+        window.layoutIfNeeded()
+        XCTAssertEqual(editor.currentHeight, Editor.layoutHeight(rowCount: 4), accuracy: 0.001)
+        XCTAssertEqual(editor.frame.height, Editor.layoutHeight(rowCount: 4), accuracy: 1)
+        XCTAssertEqual(heightChanges, 1)
+        XCTAssertFalse(try XCTUnwrap(editor.scrollViewForTesting as? StatusLinksScrollView).allowsVerticalScrolling)
+
+        editor.updateLinks(links(8))
+        window.layoutIfNeeded()
+        XCTAssertEqual(editor.currentHeight, Editor.maximumHeight, accuracy: 0.001)
+        XCTAssertTrue(try XCTUnwrap(editor.scrollViewForTesting as? StatusLinksScrollView).allowsVerticalScrolling)
+
+        editor.updateLinks(links(9))
+        XCTAssertEqual(heightChanges, 2, "Rows beyond six scroll instead of growing the editor")
+
+        editor.setVisible(false, animated: false)
+        editor.updateLinks(links(1))
+        XCTAssertEqual(editor.currentHeight, 0, accuracy: 0.001, "A hidden editor stays collapsed")
+        editor.setVisible(true, animated: false)
+        XCTAssertEqual(editor.currentHeight, Editor.layoutHeight(rowCount: 2), accuracy: 0.001)
     }
 
     func testEditorCommitsNativeNameAndURLEdits() throws {
@@ -1058,7 +1127,8 @@ final class StatusLinksTests: XCTestCase {
             defer: false
         )
         var completionCount = 0
-        let initialLinks = (0..<5).map {
+        // Six rows exactly fill the tallest table; the seventh starts scrolling.
+        let initialLinks = (0..<StatusLinksEditorHostingView.maximumVisibleRows).map {
             StatusLink(title: "Link \($0)", url: "https://\($0).example")
         }
         editor = makeEditor(
@@ -1505,8 +1575,8 @@ final class StatusLinksTests: XCTestCase {
 
         editor.setVisible(true, animated: false)
         window.layoutIfNeeded()
-        XCTAssertEqual(editor.currentHeight, StatusLinksEditorHostingView.fixedHeight, accuracy: 0.001)
-        XCTAssertEqual(editor.frame.height, StatusLinksEditorHostingView.fixedHeight, accuracy: 1)
+        XCTAssertEqual(editor.currentHeight, editor.layoutHeight, accuracy: 0.001)
+        XCTAssertEqual(editor.frame.height, editor.layoutHeight, accuracy: 1)
         XCTAssertEqual(editor.alphaValue, 1, accuracy: 0.001)
 
         editor.teardown()

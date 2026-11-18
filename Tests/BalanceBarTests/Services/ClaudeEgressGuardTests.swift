@@ -361,7 +361,7 @@ final class ClaudeEgressGuardTests: XCTestCase {
         let english = Locale(identifier: "en_US")
         XCTAssertEqual(IPCountryCode.displayTitle("US", locale: english), "🇺🇸 United States")
         XCTAssertEqual(IPCountryCode.displayTitle("HK", locale: Locale(identifier: "zh_CN")), "🇭🇰 中国香港")
-        XCTAssertEqual(IPCountryCode.displayTitle("TW", locale: Locale(identifier: "zh_CN")), "中国台湾")
+        XCTAssertEqual(IPCountryCode.displayTitle("TW", locale: Locale(identifier: "zh_CN")), "🇨🇳 中国台湾")
     }
 
     func testCountryCacheLooksUpOncePersistsAndPrunes() {
