@@ -1009,7 +1009,7 @@ struct BalanceRecharge: Codable, Equatable {
     }
 }
 
-/// Recovery offered by a Claude official failure card.
+/// Recovery offered by a provider failure card.
 enum FailureRecovery: Equatable {
     /// Default: open the official usage page.
     case openUsagePage
@@ -1033,6 +1033,8 @@ struct Snapshot: Equatable {
     let balanceProgressPercentage: Double?
     var balanceRecharge: BalanceRecharge? = nil
     var balanceProgressContext: BalanceProgressContext? = nil
+    /// A cold aggregated wallet should show this error before a transient failure.
+    var isBalanceConfigurationError = false
     /// Set when the last successful official data is kept on screen because
     /// the latest request failed (for example HTTP 429); the reason is shown
     /// on the refresh time instead of replacing the card with an error.
@@ -1043,7 +1045,7 @@ struct Snapshot: Equatable {
     /// reset pending, ...); nil for every other source, which keeps the
     /// plain refresh-time label.
     var quotaStatus: StatusSlotState? = nil
-    /// Which recovery button an official failure card offers.
+    /// Which recovery button a failure card offers.
     var failureRecovery: FailureRecovery = .openUsagePage
     /// The official client a failure belongs to (error card or kept stale data); selects the
     /// failure view's copied command and usage page. Claude error cards without it still
@@ -1111,17 +1113,21 @@ struct Snapshot: Equatable {
         self.menuBarUsesLunaReserve = menuBarUsesLunaReserve
     }
 
-    static let placeholder = Snapshot(
-        kind: .placeholder,
-        provider: "",
-        amount: nil,
-        unit: nil,
-        date: nil,
-        message: nil,
-        websiteURL: nil,
-        balanceProgressPercentage: nil,
-        officialQuotaWindows: []
-    )
+    static let placeholder = loadingProvider("")
+
+    static func loadingProvider(_ provider: String) -> Snapshot {
+        Snapshot(
+            kind: .placeholder,
+            provider: provider,
+            amount: nil,
+            unit: nil,
+            date: nil,
+            message: nil,
+            websiteURL: nil,
+            balanceProgressPercentage: nil,
+            officialQuotaWindows: []
+        )
+    }
 
     static func official(
         _ provider: String,
@@ -1537,9 +1543,8 @@ struct Snapshot: Equatable {
 
     var overviewProvider: String {
         switch kind {
-        case .placeholder: return "CC Switch"
         case .official, .balance: return provider
-        case .error: return provider.isEmpty ? "CC Switch" : provider
+        case .placeholder, .error: return provider.isEmpty ? "CC Switch" : provider
         }
     }
 

@@ -84,7 +84,11 @@ enum AggregationWalletPresentation {
             let first = members[0]
             guard let scope = walletID(first) else { return first }
             let valid = members.filter { $0.snapshot.kind == .balance }
-            let selected = valid.first(where: { $0.entry.role == .default }) ?? (valid.isEmpty ? members : valid).max {
+            // Without a balance, prefer a configuration error to a transient failure.
+            let coldConfigurationError = valid.isEmpty ? members.first {
+                $0.fetchedAt == nil && $0.snapshot.isBalanceConfigurationError
+            } : nil
+            let selected = valid.first(where: { $0.entry.role == .default }) ?? coldConfigurationError ?? (valid.isEmpty ? members : valid).max {
                 let left = $0.fetchedAt ?? .distantPast
                 let right = $1.fetchedAt ?? .distantPast
                 return left == right ? $0.status != .fresh && $1.status == .fresh : left < right

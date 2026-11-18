@@ -2999,10 +2999,10 @@ enum ErrorCardLayout {
     /// by `detailText(for:width:)`, so normal English words stay whole while
     /// over-wide tokens still have safe character-level break points. Never
     /// truncates.
-    static func makeRefreshTimeLabel(_ text: String, showsCachedBalance: Bool) -> NSTextField {
+    static func makeRefreshTimeLabel(_ text: String) -> NSTextField {
         let label = NSTextField(labelWithString: text)
         label.font = refreshTimeFont
-        label.textColor = showsCachedBalance ? .systemRed : .secondaryLabelColor
+        label.textColor = .secondaryLabelColor
         label.alignment = .right
         label.lineBreakMode = .byTruncatingTail
         return label

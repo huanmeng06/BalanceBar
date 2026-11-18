@@ -104,6 +104,7 @@
 "provider.balance.progress.store.the_balance_unit_changed" = "La unidad de saldo cambió";
 "provider.refresh.coordinator.the_balance_endpoint_is_not_https" = "El endpoint de saldo no usa HTTPS";
 "provider.refresh.coordinator.the_balance_endpoint_returned_an_error" = "El endpoint de saldo devolvió un error";
+"provider.refresh.coordinator.balance_api_key_invalid" = "La clave de API no es válida o ha caducado";
 "provider.refresh.coordinator.unrecognized_balance_format" = "Formato de saldo no reconocido";
 "provider.refresh.coordinator.the_balance_response_could_not_be_parsed" = "No se pudo analizar la respuesta de saldo";
 "provider.refresh.coordinator.official_value_local_sign_in_credentials_were_not_found" = "Oficial %1$@: no se encontraron las credenciales de inicio de sesión locales";
