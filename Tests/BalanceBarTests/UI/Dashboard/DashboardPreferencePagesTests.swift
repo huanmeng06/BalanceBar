@@ -2151,6 +2151,70 @@ final class DashboardPreferencePagesTests: XCTestCase {
         }
     }
 
+    func testClaudeSourcesFootnoteSpringsOpenAndShutAndLandsOnTheInstantLayout() throws {
+        try XCTSkipIf(NSWorkspace.shared.accessibilityDisplayShouldReduceMotion, "Reduce Motion switches at once")
+        let suite = "SourcesFootnoteSpring.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let generalPage = DashboardGeneralPage()
+        let page = generalPage.make(.init(preferences: AppPreferences(defaults: defaults),
+            relay: DashboardPreferencePageRelay(),
+            updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6")))))
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 3000),
+                              styleMask: [.borderless], backing: .buffered, defer: false)
+        defer { window.orderOut(nil) }
+        page.translatesAutoresizingMaskIntoConstraints = false
+        let host = NSView()
+        window.contentView = host
+        host.addSubview(page)
+        NSLayoutConstraint.activate([
+            page.leadingAnchor.constraint(equalTo: host.leadingAnchor),
+            page.trailingAnchor.constraint(equalTo: host.trailingAnchor),
+            page.topAnchor.constraint(equalTo: host.topAnchor)
+        ])
+        window.orderFront(nil)
+        window.layoutIfNeeded()
+        let section = try XCTUnwrap(generalPage.claudeSourcesSection)
+        let detail = try XCTUnwrap(section.footnoteDetailLabel)
+        let collapsed = section.frame.height
+        section.setFootnoteDetailExpanded(true, animated: false)
+        window.layoutIfNeeded()
+        let expanded = section.frame.height
+        section.setFootnoteDetailExpanded(false, animated: false)
+        window.layoutIfNeeded()
+        XCTAssertEqual(section.frame.height, collapsed, accuracy: 0.5)
+        XCTAssertGreaterThan(expanded, collapsed + 20)
+
+        func settle() {
+            let deadline = Date().addingTimeInterval(2)
+            while section.isFootnoteDetailAnimatingForTesting, Date() < deadline {
+                RunLoop.current.run(until: Date().addingTimeInterval(0.02))
+            }
+        }
+        section.setFootnoteDetailExpanded(true, animated: true)
+        XCTAssertTrue(section.isFootnoteDetailAnimatingForTesting)
+        XCTAssertFalse(detail.isHidden, "the text shows while the space opens")
+        RunLoop.current.run(until: Date().addingTimeInterval(0.08))
+        if section.isFootnoteDetailAnimatingForTesting {
+            XCTAssertLessThan(section.frame.height, expanded + 8, "only a slight overshoot")
+        }
+        settle()
+        XCTAssertFalse(section.isFootnoteDetailAnimatingForTesting)
+        XCTAssertEqual(section.frame.height, expanded, accuracy: 0.5)
+        XCTAssertEqual(detail.alphaValue, 1)
+        XCTAssertTrue(detail.contentFilters.isEmpty, "no blur left once open")
+
+        section.setFootnoteDetailExpanded(false, animated: true)
+        // Reversing mid-flight is fine and still lands where it should.
+        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        section.setFootnoteDetailExpanded(true, animated: true)
+        section.setFootnoteDetailExpanded(false, animated: true)
+        settle()
+        XCTAssertEqual(section.frame.height, collapsed, accuracy: 0.5)
+        XCTAssertTrue(detail.isHidden)
+        XCTAssertEqual(detail.alphaValue, 1)
+    }
+
     func testClaudeSourcesFootnoteStartsExpandedInSearchProjection() throws {
         let suite = "SourcesFootnoteSearch.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!

@@ -1,4 +1,6 @@
 import AppKit
+import CoreImage
+import QuartzCore
 
 /// Native Auto Layout settings section: optional heading plus a card that
 /// stacks row / content views.
@@ -26,8 +28,20 @@ final class SettingsSectionView: NSView {
     let footnoteDetailLabel: NSTextField?
     static let footnoteToDetailSpacing: CGFloat = 6
     static let footnoteDetailParagraphSpacing: CGFloat = 6
-    static let footnoteDetailAnimationDuration: TimeInterval = 0.2
     private(set) var isFootnoteDetailExpanded = false
+    /// Clips the detail while its height springs open or shut; the sections below follow
+    /// the clip's height, so they glide down and back up with it.
+    private let footnoteDetailClip: NSView?
+    private var footnoteDetailClipHeight: NSLayoutConstraint?
+    private var footnoteDetailClipFill: NSLayoutConstraint?
+    private var footnoteDetailTop: NSLayoutConstraint?
+    private var footnoteDetailDisplayLink: CADisplayLink?
+    /// Steps the spring when the display link stalls (no screen, display asleep), so the
+    /// detail always lands instead of freezing half open.
+    private var footnoteDetailWatchdog: Timer?
+    private var footnoteDetailLastStep: CFTimeInterval = 0
+    private var footnoteDetailSpring: FootnoteDetailSpring?
+    var isFootnoteDetailAnimatingForTesting: Bool { footnoteDetailSpring != nil }
     /// Section-wide view in its own card under the rows' card (e.g. a live chart).
     let footerView: NSView?
     /// The second card hosting `footerView`; unused without one.
@@ -54,7 +68,9 @@ final class SettingsSectionView: NSView {
         headingLabel = NSTextField(labelWithString: title)
         cardView = SettingsSectionCardView()
         footnoteLabel = footnote.map { NSTextField(wrappingLabelWithString: $0) }
-        footnoteDetailLabel = footnote == nil ? nil : footnoteDetail.map { _ in NSTextField(wrappingLabelWithString: "") }
+        let detailLabel = footnote == nil ? nil : footnoteDetail.map { _ in NSTextField(wrappingLabelWithString: "") }
+        footnoteDetailLabel = detailLabel
+        footnoteDetailClip = detailLabel.map { _ in NSView() }
         self.footerView = footerView
         self.contentViews = contentViews
         super.init(frame: .zero)
@@ -93,53 +109,147 @@ final class SettingsSectionView: NSView {
         DashboardSettingsComponents.invalidateHostedSettingsRowHeight(for: footnoteDetailLabel)
     }
 
-    /// Shows or hides the detail under the footnote. The page reflows at once (frames are
-    /// never animated: the page measures section heights itself, and a never-laid-out label
-    /// would fly in from the origin); only the text fades — in after the space opens, out
-    /// before it closes. Reduce Motion skips the fade.
+    /// Shows or hides the detail under the footnote. Animated, the clip's height follows a
+    /// spring — a touch of overshoot opening, settling firmly closing — and every section
+    /// below rides along. The text condenses in as the space opens: it fades up from a soft
+    /// blur and drops the last few points into place, and reverses on the way out. The
+    /// label keeps its frame inside the clip the whole time, so nothing flies in from the
+    /// origin. Reduce Motion, or no window, switches at once.
     func setFootnoteDetailExpanded(_ expanded: Bool, animated: Bool) {
-        guard let label = footnoteDetailLabel, expanded != isFootnoteDetailExpanded else { return }
+        guard let label = footnoteDetailLabel, let clip = footnoteDetailClip,
+              let heightConstraint = footnoteDetailClipHeight,
+              expanded != isFootnoteDetailExpanded else { return }
         isFootnoteDetailExpanded = expanded
         let animate = animated && window != nil
             && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        let reflow = { [weak self] in
-            guard let self else { return }
-            DashboardSettingsComponents.invalidateHostedSettingsRowHeight(for: label)
-            self.window?.layoutIfNeeded()
-        }
         guard animate else {
-            label.alphaValue = 1
-            label.isHidden = !expanded
-            reflow()
+            finishFootnoteDetailTransition()
             return
         }
-        let duration = Self.footnoteDetailAnimationDuration
-        if expanded {
-            label.alphaValue = 1
-            label.isHidden = false
-            reflow()
-            // An explicit 0 → 1 fade: setting alpha to 0 and animating back to 1 in the same
-            // transaction never renders the 0, so an implicit animation has nothing to animate.
-            let fade = CABasicAnimation(keyPath: "opacity")
-            fade.fromValue = 0
-            fade.toValue = 1
-            fade.duration = duration
-            fade.timingFunction = CAMediaTimingFunction(name: .easeOut)
-            label.layer?.removeAnimation(forKey: "opacity")
-            label.layer?.add(fade, forKey: "footnoteDetailFadeIn")
-        } else {
-            NSAnimationContext.runAnimationGroup({ context in
-                context.duration = duration * 0.6
-                context.timingFunction = CAMediaTimingFunction(name: .easeIn)
-                label.animator().alphaValue = 0
-            }, completionHandler: {
-                // A quick re-open during the fade wins.
-                guard !self.isFootnoteDetailExpanded else { return }
-                label.isHidden = true
-                label.alphaValue = 1
-                reflow()
-            })
+        // A toggle mid-flight reverses from wherever the clip is now.
+        let from = footnoteDetailSpring.map { _ in heightConstraint.constant } ?? clip.frame.height
+        label.isHidden = false
+        window?.layoutIfNeeded() // the label has its wrap width and a frame before it shows
+        let open = footnoteDetailOpenHeight
+        footnoteDetailSpring = expanded
+            ? FootnoteDetailSpring(from: from, to: open, openHeight: open, response: 0.46, damping: 0.72)
+            : FootnoteDetailSpring(from: from, to: 0, openHeight: open, response: 0.36, damping: 0.92)
+        footnoteDetailClipFill?.isActive = false
+        heightConstraint.isActive = true
+        applyFootnoteDetailHeight(from)
+        footnoteDetailLastStep = CACurrentMediaTime()
+        if footnoteDetailDisplayLink == nil {
+            let link = displayLink(target: self, selector: #selector(stepFootnoteDetailSpring(_:)))
+            link.add(to: .main, forMode: .common)
+            footnoteDetailDisplayLink = link
         }
+        if footnoteDetailWatchdog == nil {
+            let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] _ in
+                guard let self, CACurrentMediaTime() - self.footnoteDetailLastStep > 0.034 else { return }
+                self.stepFootnoteDetailSpring()
+            }
+            RunLoop.main.add(timer, forMode: .common)
+            footnoteDetailWatchdog = timer
+        }
+    }
+
+    /// The clip's height with the detail fully shown: the gap above it plus its text.
+    private var footnoteDetailOpenHeight: CGFloat {
+        guard let label = footnoteDetailLabel else { return 0 }
+        return Self.footnoteToDetailSpacing + ceil(max(label.intrinsicContentSize.height, label.frame.height))
+    }
+
+    @objc private func stepFootnoteDetailSpring(_ link: CADisplayLink) {
+        stepFootnoteDetailSpring()
+    }
+
+    private func stepFootnoteDetailSpring() {
+        footnoteDetailLastStep = CACurrentMediaTime()
+        guard let spring = footnoteDetailSpring, window != nil else {
+            finishFootnoteDetailTransition()
+            return
+        }
+        let elapsed = CACurrentMediaTime() - spring.start
+        guard !spring.isSettled(after: elapsed) else {
+            finishFootnoteDetailTransition()
+            return
+        }
+        applyFootnoteDetailHeight(spring.value(after: elapsed))
+    }
+
+    /// One frame: the clip's height, the text's opacity, blur and drop, then the page reflows.
+    private func applyFootnoteDetailHeight(_ height: CGFloat) {
+        guard let label = footnoteDetailLabel, let clip = footnoteDetailClip,
+              let spring = footnoteDetailSpring else { return }
+        let height = max(0, height)
+        footnoteDetailClipHeight?.constant = height
+        let textHeight = max(1, spring.openHeight - Self.footnoteToDetailSpacing)
+        let revealed = min(1, max(0, (height - Self.footnoteToDetailSpacing) / textHeight))
+        // Text trails the opening a little and leads the closing.
+        let opacity = min(1, max(0, (revealed - 0.12) / 0.88))
+        label.alphaValue = opacity * opacity * (3 - 2 * opacity)
+        footnoteDetailTop?.constant = Self.footnoteToDetailSpacing - 8 * (1 - revealed)
+        let blur = 6 * (1 - revealed)
+        label.contentFilters = blur > 0.05
+            ? [CIFilter(name: "CIGaussianBlur", parameters: [kCIInputRadiusKey: blur])].compactMap { $0 }
+            : []
+        DashboardSettingsComponents.invalidateHostedSettingsRowHeight(for: clip)
+        window?.layoutIfNeeded()
+        softenFootnoteDetailEdge(band: 22 * (1 - revealed))
+    }
+
+    /// Feathers the clip's bottom edge so the text dissolves into the opening instead of being
+    /// cut by a hard line. The band narrows as the text is revealed and is gone once fully open.
+    private func softenFootnoteDetailEdge(band: CGFloat) {
+        guard let layer = footnoteDetailClip?.layer else { return }
+        let height = layer.bounds.height
+        guard band > 0.5, height > 0.5 else {
+            layer.mask = nil
+            return
+        }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        let mask = (layer.mask as? CAGradientLayer) ?? CAGradientLayer()
+        mask.frame = layer.bounds
+        mask.colors = [NSColor.clear.cgColor, NSColor.black.cgColor]
+        // Unit space follows the layer: y = 0 is the bottom unless the geometry is flipped.
+        let fade = min(1, band / height)
+        let bottom: CGFloat = layer.isGeometryFlipped ? 1 : 0
+        mask.startPoint = CGPoint(x: 0.5, y: bottom)
+        mask.endPoint = CGPoint(x: 0.5, y: layer.isGeometryFlipped ? 1 - fade : fade)
+        layer.mask = mask
+        CATransaction.commit()
+    }
+
+    /// Ends any spring and pins the detail to its resting state: open, the clip hugs the text
+    /// (and follows it when the window resizes); closed, the clip is zero tall and the text hidden.
+    private func finishFootnoteDetailTransition() {
+        footnoteDetailDisplayLink?.invalidate()
+        footnoteDetailDisplayLink = nil
+        footnoteDetailWatchdog?.invalidate()
+        footnoteDetailWatchdog = nil
+        footnoteDetailSpring = nil
+        guard let label = footnoteDetailLabel, let clip = footnoteDetailClip else { return }
+        label.alphaValue = 1
+        label.contentFilters = []
+        footnoteDetailClip?.layer?.mask = nil
+        label.isHidden = !isFootnoteDetailExpanded
+        footnoteDetailTop?.constant = Self.footnoteToDetailSpacing
+        if isFootnoteDetailExpanded {
+            footnoteDetailClipHeight?.isActive = false
+            footnoteDetailClipFill?.isActive = true
+        } else {
+            footnoteDetailClipFill?.isActive = false
+            footnoteDetailClipHeight?.constant = 0
+            footnoteDetailClipHeight?.isActive = true
+        }
+        DashboardSettingsComponents.invalidateHostedSettingsRowHeight(for: clip)
+        window?.layoutIfNeeded()
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window == nil, footnoteDetailSpring != nil { finishFootnoteDetailTransition() }
     }
 
     required init?(coder: NSCoder) {
@@ -235,16 +345,22 @@ final class SettingsSectionView: NSView {
             footnoteLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             contentStack.addView(footnoteLabel, in: .top)
             contentStack.setCustomSpacing(Self.cardToFootnoteSpacing, after: cardView)
-            if let footnoteDetailLabel {
+            if let footnoteDetailLabel, let clip = footnoteDetailClip {
                 footnoteDetailLabel.isSelectable = false
                 footnoteDetailLabel.isHidden = true
                 footnoteDetailLabel.wantsLayer = true
+                footnoteDetailLabel.layerUsesCoreImageFilters = true
                 footnoteDetailLabel.translatesAutoresizingMaskIntoConstraints = false
                 footnoteDetailLabel.setContentHuggingPriority(.required, for: .vertical)
                 footnoteDetailLabel.setContentCompressionResistancePriority(.required, for: .vertical)
                 footnoteDetailLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-                contentStack.addView(footnoteDetailLabel, in: .top)
-                contentStack.setCustomSpacing(Self.footnoteToDetailSpacing, after: footnoteLabel)
+                clip.translatesAutoresizingMaskIntoConstraints = false
+                clip.wantsLayer = true
+                clip.layer?.masksToBounds = true
+                clip.addSubview(footnoteDetailLabel)
+                contentStack.addView(clip, in: .top)
+                // The gap above the detail lives inside the clip, so a closed detail leaves none.
+                contentStack.setCustomSpacing(0, after: footnoteLabel)
             }
         }
         if let footerView {
@@ -258,7 +374,7 @@ final class SettingsSectionView: NSView {
                 equalTo: footerCardView.widthAnchor, constant: -2 * SettingsLayout.rowHorizontalInset).isActive = true
             contentStack.addView(footerCardView, in: .top)
             contentStack.setCustomSpacing(
-                Self.cardToFooterCardSpacing, after: footnoteDetailLabel ?? footnoteLabel ?? cardView)
+                Self.cardToFooterCardSpacing, after: footnoteDetailClip ?? footnoteLabel ?? cardView)
         }
 
         addSubview(contentStack)
@@ -275,11 +391,21 @@ final class SettingsSectionView: NSView {
                 footnoteLabel.leadingAnchor.constraint(equalTo: contentStack.leadingAnchor, constant: inset),
                 footnoteLabel.trailingAnchor.constraint(equalTo: contentStack.trailingAnchor, constant: -inset)
             ])
-            if let footnoteDetailLabel {
+            if let footnoteDetailLabel, let clip = footnoteDetailClip {
+                let top = footnoteDetailLabel.topAnchor.constraint(
+                    equalTo: clip.topAnchor, constant: Self.footnoteToDetailSpacing)
+                let height = clip.heightAnchor.constraint(equalToConstant: 0)
                 NSLayoutConstraint.activate([
-                    footnoteDetailLabel.leadingAnchor.constraint(equalTo: contentStack.leadingAnchor, constant: inset),
-                    footnoteDetailLabel.trailingAnchor.constraint(equalTo: contentStack.trailingAnchor, constant: -inset)
+                    clip.leadingAnchor.constraint(equalTo: contentStack.leadingAnchor, constant: inset),
+                    clip.trailingAnchor.constraint(equalTo: contentStack.trailingAnchor, constant: -inset),
+                    footnoteDetailLabel.leadingAnchor.constraint(equalTo: clip.leadingAnchor),
+                    footnoteDetailLabel.trailingAnchor.constraint(equalTo: clip.trailingAnchor),
+                    top,
+                    height
                 ])
+                footnoteDetailTop = top
+                footnoteDetailClipHeight = height
+                footnoteDetailClipFill = clip.bottomAnchor.constraint(equalTo: footnoteDetailLabel.bottomAnchor)
             }
         }
         if footerView != nil {
@@ -533,5 +659,36 @@ final class SettingsSectionCardView: NSStackView, SettingsRowHeightInvalidating 
         layer?.shadowRadius = SettingsSectionView.shadowRadius
         layer?.shadowOffset = SettingsSectionView.shadowOffset
         layer?.masksToBounds = false
+    }
+}
+
+/// A damped spring from one clip height to another (SwiftUI-style response and damping).
+private struct FootnoteDetailSpring {
+    let from: CGFloat
+    let to: CGFloat
+    /// The clip's fully open height, which maps a height to how much text is revealed.
+    let openHeight: CGFloat
+    let start = CACurrentMediaTime()
+    private let omega: Double
+    private let damping: Double
+
+    init(from: CGFloat, to: CGFloat, openHeight: CGFloat, response: Double, damping: Double) {
+        self.from = from
+        self.to = to
+        self.openHeight = openHeight
+        omega = 2 * .pi / response
+        self.damping = damping
+    }
+
+    func value(after t: Double) -> CGFloat {
+        let damped = omega * (1 - damping * damping).squareRoot()
+        let envelope = exp(-damping * omega * t)
+        let progress = 1 - envelope * (cos(damped * t) + damping * omega / damped * sin(damped * t))
+        return from + (to - from) * CGFloat(progress)
+    }
+
+    /// Done once the remaining swing is under a third of a point.
+    func isSettled(after t: Double) -> Bool {
+        exp(-damping * omega * t) * Double(abs(to - from)) < 0.3
     }
 }
