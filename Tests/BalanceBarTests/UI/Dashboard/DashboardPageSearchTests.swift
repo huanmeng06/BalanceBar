@@ -4062,6 +4062,39 @@ extension DashboardPageSearchTests {
         XCTAssertFalse(claudeRowsShown(for: intervalSentence(300)), "the old footnote must no longer match")
     }
 
+    func testSearchFollowsTheCalibrationRowWhenOfficialRequestsAreSwitched() throws {
+        let language = AppLanguage.selected
+        AppLanguage.selected = .english
+        defer { AppLanguage.selected = language }
+        let suite = "EgressToggleSearch.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.claudeEgressGuardEnabled = true
+        let composition = modCardComposition(ModCardRefreshState(), defaults: defaults)
+        defer { composition.teardownForTesting() }
+        let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .general))
+        window.setContentSize(NSSize(width: 1000, height: 700))
+        window.layoutIfNeeded()
+        let calibration = tr(.keyClaudeQuotaCalibration)
+        let offNote = tr(.keyClaudeQuotaCalibrationOffDetail)
+        func calibrationShown(for query: String) -> Bool {
+            composition.applySearchQueryForTesting(query)
+            window.layoutIfNeeded()
+            return visibleSearchableRowTitles(in: composition.currentHostedPageContentForTesting())
+                .contains(calibration)
+        }
+        XCTAssertFalse(calibrationShown(for: offNote), "requests on: the row shows its login line")
+
+        preferences.claudeEgressGuardEnabled = false
+        composition.refreshClaudeEgressGuard()
+        XCTAssertTrue(calibrationShown(for: offNote), "requests off: the off note must be searchable")
+
+        preferences.claudeEgressGuardEnabled = true
+        composition.refreshClaudeEgressGuard()
+        XCTAssertFalse(calibrationShown(for: offNote), "requests back on: the off note must no longer match")
+    }
+
     private func modCardRow(_ composition: DashboardCompositionController) throws -> SettingsRowView {
         try XCTUnwrap(firstDescendant(of: composition.currentHostedPageContentForTesting()) { view in
             guard let row = view as? SettingsRowView else { return false }

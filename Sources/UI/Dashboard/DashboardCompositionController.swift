@@ -304,7 +304,7 @@ final class DashboardCompositionController {
             modPanelStateProvider: state.modPanelState,
             claudeSourceTimelineProvider: state.claudeSourceTimeline,
             claudeLoginStatusProvider: state.claudeLoginStatus,
-            onClaudeLoginLineRedrawn: { [weak self] in self?.invalidateSearchData() },
+            onSearchableCopyChanged: { [weak self] in self?.invalidateSearchData() },
             claudeEgressGuard: actions.claudeEgressGuard
         ),
         launchAtLoginController: launchAtLoginController,
@@ -734,9 +734,12 @@ final class DashboardCompositionController {
         invalidateSearchData()
     }
 
-    /// Both Advanced page copies re-read the egress guard settings; search text is unchanged.
+    /// Both Advanced page copies re-read the egress guard settings, and the General page's
+    /// calibration row swaps between the login line and the "official requests are off" note;
+    /// both are searchable, so search data is refreshed.
     func refreshClaudeEgressGuard() {
         dashboardPreferencePages.refreshClaudeEgressGuard()
+        invalidateSearchData()
     }
 
     /// The calibration interval bounds the official-validity choices on the Advanced page and is

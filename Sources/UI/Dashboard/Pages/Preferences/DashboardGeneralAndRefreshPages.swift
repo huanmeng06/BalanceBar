@@ -801,6 +801,7 @@ final class DashboardGeneralPage {
         guard let section = claudeSourcesSection else { return }
         section.setFootnoteDetailExpanded(!section.isFootnoteDetailExpanded, animated: true)
         refreshClaudeSourcesFootnote(calibrationInterval: claudeSourcesFootnoteInterval)
+        onSearchableCopyChanged?()
     }
 
     func toggleClaudeSourcesFootnoteForTesting() { claudeSourcesFootnoteLink?.performClickForTesting() }
@@ -866,8 +867,9 @@ final class DashboardGeneralPage {
         return true
     }
 
-    /// Called after the expiry timer redraws the login line, so search can drop stale copy.
-    var onClaudeLoginLineRedrawn: (() -> Void)?
+    /// Called when the page rewrites searchable copy by itself (the login line's expiry redraw,
+    /// the footnote link's wording), so search can drop its stale index.
+    var onSearchableCopyChanged: (() -> Void)?
 
     private func applyClaudeLoginDetail() {
         guard let row = claudeCalibrationRow else { return }
@@ -903,7 +905,7 @@ final class DashboardGeneralPage {
         let timer = Timer(fire: expiresAt.addingTimeInterval(1), interval: 0, repeats: false) { [weak self] _ in
             guard let self, self.claudeOfficialEnabled else { return }
             self.applyClaudeLoginDetail()
-            self.onClaudeLoginLineRedrawn?()
+            self.onSearchableCopyChanged?()
         }
         RunLoop.main.add(timer, forMode: .common)
         claudeLoginExpiryTimer = timer

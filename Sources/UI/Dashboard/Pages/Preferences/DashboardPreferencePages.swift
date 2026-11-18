@@ -40,9 +40,9 @@ struct DashboardPreferencePageActions {
     var modPanelStateProvider: () -> ModPanelState? = { nil }
     var claudeSourceTimelineProvider: () -> ClaudeSourceTimelineView.Content = { .empty }
     var claudeLoginStatusProvider: () -> ClaudeLoginStatus = { .unknown }
-    /// The login line changed on its own (a sign-in just passed its expiry time), so search
-    /// copy built from it is stale.
-    var onClaudeLoginLineRedrawn: () -> Void = {}
+    /// The General page changed searchable copy on its own — the login line passed its expiry
+    /// time, or the footnote link flipped between "How they differ" and "Hide".
+    var onSearchableCopyChanged: () -> Void = {}
     var claudeEgressGuard = ClaudeEgressGuardPageActions()
 }
 
@@ -141,7 +141,7 @@ final class DashboardPreferencePages {
         forSearch: Bool = false
     ) -> NSView {
         let generalPage = forSearch ? searchGeneralPage : self.generalPage
-        generalPage.onClaudeLoginLineRedrawn = actions.onClaudeLoginLineRedrawn
+        generalPage.onSearchableCopyChanged = actions.onSearchableCopyChanged
         let menuBarPage = forSearch ? searchMenuBarPage : self.menuBarPage
         let menuPage = forSearch ? searchMenuPage : self.menuPage
         let advancedPage = forSearch ? searchAdvancedPage : self.advancedPage
