@@ -2167,7 +2167,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertEqual(editor.frame.height, editor.layoutHeight, accuracy: 1)
         XCTAssertTrue(editor.clipsToBounds)
         XCTAssertTrue(editor.scrollViewForTesting.documentView === editor.tableViewForTesting)
-        XCTAssertNil(editor.tableViewForTesting.headerView)
+        XCTAssertNotNil(editor.tableViewForTesting.headerView)
         XCTAssertEqual(editor.tableViewForTesting.tableColumns.count, 2)
         XCTAssertGreaterThan(editor.scrollViewForTesting.frame.width, 0)
         XCTAssertGreaterThan(editor.scrollViewForTesting.frame.height, 0)

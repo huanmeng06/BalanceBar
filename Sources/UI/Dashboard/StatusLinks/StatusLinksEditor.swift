@@ -80,7 +80,9 @@ final class StatusLinksEditorHostingView: NSView,
     NSMenuDelegate
 {
     static let fixedHeight: CGFloat = 190
-    static let tableViewportHeight: CGFloat = 134
+    static let tableHeaderHeight: CGFloat = 28
+    /// Header plus six rows plus the 1pt border on each side.
+    static let tableViewportHeight: CGFloat = tableHeaderHeight + 134
     static let tableRowHeight: CGFloat = 22
     static let tableRowMoveAnimationDuration: TimeInterval = 0.16
     static let tableFieldFont = NSFont.systemFont(ofSize: 13)
@@ -748,6 +750,7 @@ final class StatusLinksEditorHostingView: NSView,
         nameColumn: NSTableColumn,
         urlColumn: NSTableColumn
     ) {
+        PaddedTableHeaderCell.install(on: [nameColumn, urlColumn], horizontalInset: Self.fieldHorizontalInset)
         nameColumn.title = tr(.keyStatusLinksEditorName)
         nameColumn.minWidth = Self.nameColumnMinimumWidth
         nameColumn.resizingMask = .autoresizingMask
@@ -757,7 +760,7 @@ final class StatusLinksEditorHostingView: NSView,
 
         table.addTableColumn(nameColumn)
         table.addTableColumn(urlColumn)
-        table.headerView = nil
+        table.headerView = NSTableHeaderView(frame: NSRect(x: 0, y: 0, width: 0, height: Self.tableHeaderHeight))
         table.delegate = self
         table.dataSource = self
         table.identifier = NSUserInterfaceItemIdentifier("statusLinks.table")
@@ -801,6 +804,19 @@ final class StatusLinksEditorHostingView: NSView,
         documentView.autoresizingMask = []
     }
 
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateTableBorderColor(tableContainer)
+    }
+
+    /// `CGColor` is a fixed snapshot of the dynamic `separatorColor`, so it has to be
+    /// re-resolved under the current appearance whenever light/dark mode changes.
+    private func updateTableBorderColor(_ container: NSBox) {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            container.layer?.borderColor = NSColor.separatorColor.cgColor
+        }
+    }
+
     private func configureTableContainer(_ container: NSBox, contentView: NSView) {
         container.translatesAutoresizingMaskIntoConstraints = false
         container.boxType = .custom
@@ -816,8 +832,8 @@ final class StatusLinksEditorHostingView: NSView,
         container.layer?.cornerRadius = Self.tableCornerRadius
         container.layer?.cornerCurve = .continuous
         container.layer?.borderWidth = Self.tableBorderWidth
-        container.layer?.borderColor = NSColor.separatorColor.cgColor
         container.layer?.masksToBounds = true
+        updateTableBorderColor(container)
 
         let borderInset = Self.tableBorderWidth
         NSLayoutConstraint.activate([
@@ -1181,9 +1197,12 @@ final class StatusLinksEditorHostingView: NSView,
             rowsHeight = 0
         }
 
-        let shouldScroll = rowsHeight > viewportSize.height + 0.5
+        // The header floats over the clip view, which reserves it as a top content inset.
+        let insets = scrollView.contentView.contentInsets
+        let rowsViewportHeight = max(0, viewportSize.height - insets.top - insets.bottom)
+        let shouldScroll = rowsHeight > rowsViewportHeight + 0.5
         scrollView.allowsVerticalScrolling = shouldScroll
-        let documentHeight = max(viewportSize.height, rowsHeight)
+        let documentHeight = max(rowsViewportHeight, rowsHeight)
         if abs(tableView.frame.height - documentHeight) > 0.001 {
             var frame = tableView.frame
             frame.size.height = documentHeight

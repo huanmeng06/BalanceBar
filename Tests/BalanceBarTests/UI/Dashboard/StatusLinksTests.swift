@@ -142,6 +142,27 @@ final class StatusLinksTests: XCTestCase {
         )
     }
 
+    func testTableBorderFollowsLightAndDarkAppearance() throws {
+        let editor = makeEditor(links: [StatusLink(title: "One", url: "https://one.example")])
+        let window = makeWindow(for: editor)
+        defer { window.orderOut(nil) }
+        let layer = try XCTUnwrap(editor.tableContainerForTesting.layer)
+
+        func separator(_ name: NSAppearance.Name) throws -> CGColor {
+            var color: CGColor?
+            try XCTUnwrap(NSAppearance(named: name)).performAsCurrentDrawingAppearance {
+                color = NSColor.separatorColor.cgColor
+            }
+            return try XCTUnwrap(color)
+        }
+
+        for name in [NSAppearance.Name.darkAqua, .aqua, .darkAqua] {
+            window.appearance = NSAppearance(named: name)
+            editor.viewDidChangeEffectiveAppearance()
+            XCTAssertEqual(layer.borderColor, try separator(name), name.rawValue)
+        }
+    }
+
     func testEditorUsesOnlyNativeTableAndControls() throws {
         let links = [
             StatusLink(title: "One", url: "https://one.example"),
@@ -200,7 +221,9 @@ final class StatusLinksTests: XCTestCase {
         )
         XCTAssertEqual(tableLayer.cornerCurve, .continuous)
         XCTAssertTrue(tableLayer.masksToBounds)
-        XCTAssertNil(table.headerView)
+        let headerView = try XCTUnwrap(table.headerView)
+        XCTAssertEqual(headerView.frame.height, StatusLinksEditorHostingView.tableHeaderHeight, accuracy: 0.001)
+        XCTAssertTrue(table.tableColumns.allSatisfy { $0.headerCell is PaddedTableHeaderCell })
         XCTAssertEqual(table.tableColumns.count, 2)
         XCTAssertEqual(table.tableColumns.map(\.identifier), [
             NSUserInterfaceItemIdentifier("statusLinks.name.column"),
