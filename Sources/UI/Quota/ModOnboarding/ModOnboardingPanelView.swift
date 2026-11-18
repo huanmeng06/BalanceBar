@@ -334,8 +334,6 @@ struct ModMenuAttentionCopy: Equatable {
             return .init(mainText: localize(.cardUpdateRestart), detailText: localize(.viewNote))
         case .accountMismatch:
             return .init(mainText: localize(.cardRejectedTitle), detailText: localize(.cardRejectedAccountReason))
-        case .silent:
-            return .init(mainText: localize(.cardSilentTitle), detailText: localize(.cardSilentAction))
         }
     }
 }
