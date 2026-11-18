@@ -353,7 +353,7 @@ final class ModMenuRowTests: XCTestCase {
     }
 
     func testInstalledOrUndetectedStatesHaveNoPrompt() {
-        for status: ModSyncStatus in [.detecting, .waitingForData, .disabled, .active(lastAcceptedAt: Date()),
+        for status: ModSyncStatus in [.detecting, .waitingForData, .silent, .disabled, .active(lastAcceptedAt: Date()),
                                       .claudeMissing, .inboxNotReady, .installationUnknown,
                                       .snapshotRejected(ModRejectionEvent(rejection: .unverifiedCycle, at: Date()))] {
             XCTAssertEqual(
@@ -374,8 +374,7 @@ final class ModMenuRowTests: XCTestCase {
         XCTAssertEqual(row(unknownVersion), .attention(.updateRequired(installedVersion: nil)))
         XCTAssertEqual(row(restart), .attention(.restartRequired))
         XCTAssertEqual(row(mismatch), .attention(.accountMismatch))
-        XCTAssertEqual(row(.silent), .attention(.silent))
-        for status in [outdated, restart, mismatch, ModSyncStatus.silent] {
+        for status in [outdated, restart, mismatch] {
             XCTAssertEqual(row(status, official: false), .none, "\(status) is official-Claude only")
             XCTAssertEqual(row(status, dismissed: true), .none, "\(status) honours the dismissed preference")
         }
@@ -390,7 +389,6 @@ final class ModMenuRowTests: XCTestCase {
 
     func testAttentionCopyReusesSettingsCardWording() {
         let t = RealtimeBoostText.defaultLocalize
-        XCTAssertEqual(ModMenuAttentionCopy.make(.silent, localize: t).mainText, t(.cardSilentTitle))
         XCTAssertEqual(ModMenuAttentionCopy.make(.accountMismatch, localize: t).detailText, t(.cardRejectedAccountReason))
         XCTAssertEqual(ModMenuAttentionCopy.make(.restartRequired, localize: t).mainText, t(.cardUpdateRestart))
         let update = ModMenuAttentionCopy.make(.updateRequired(installedVersion: "1.0.0"), localize: t)
