@@ -1234,9 +1234,7 @@ final class DashboardPageSearchFilter {
         switch mode {
         case .titles:
             for section in collectSections(in: root) {
-                if let heading = sectionHeading(section) {
-                    keepBest(DashboardPageSearch.bestMatch(texts: [heading] + sectionFootnote(section), query: needle))
-                }
+                keepBest(DashboardPageSearch.bestMatch(texts: sectionWideTexts(section), query: needle))
                 for row in rows(in: section) {
                     keepBest(rowMatch(row, query: needle, includeVisibleCopy: false, sectionHeading: sectionHeading(section)))
                 }
@@ -1244,9 +1242,7 @@ final class DashboardPageSearchFilter {
         case .visibleCopy:
             let sections = collectSections(in: root)
             for section in sections {
-                if let heading = sectionHeading(section) {
-                    keepBest(DashboardPageSearch.bestMatch(texts: [heading] + sectionFootnote(section), query: needle))
-                }
+                keepBest(DashboardPageSearch.bestMatch(texts: sectionWideTexts(section), query: needle))
                 for row in rows(in: section) {
                     keepBest(rowMatch(row, query: needle, includeVisibleCopy: true, sectionHeading: sectionHeading(section)))
                 }
@@ -1339,7 +1335,7 @@ final class DashboardPageSearchFilter {
            let sectionID = activeSearchIndex?.documentIDByView[ObjectIdentifier(section)] {
             headingMatches = activeDocumentMatches.contains(sectionID)
         } else {
-            headingMatches = ((sectionHeading(section).map { [$0] } ?? []) + sectionFootnote(section))
+            headingMatches = sectionWideTexts(section)
                 .contains { DashboardPageSearch.bestMatch(texts: [$0], query: query) != nil }
         }
         if headingMatches {
@@ -1534,12 +1530,14 @@ final class DashboardPageSearchFilter {
             documentIDByView[ObjectIdentifier(section)] = sectionID
             // The footnote sits outside the rows but describes the whole section,
             // so it matches like the heading and keeps every row visible.
-            if let heading = sectionHeading(section), !heading.isEmpty {
+            // Untitled sections still get a document when they carry a footnote.
+            let sectionTexts = sectionWideTexts(section)
+            if !sectionTexts.isEmpty {
                 documents.append(
                     DashboardSearchDocument(
                         id: sectionID,
                         sectionID: nil,
-                        texts: [heading] + sectionFootnote(section),
+                        texts: sectionTexts,
                         supportingTexts: [],
                         businessVisible: !DashboardSearchVisibility.isBusinessHidden(section),
                         order: documentOrder
@@ -1604,6 +1602,12 @@ final class DashboardPageSearchFilter {
         )
         searchIndexes.setObject(index, forKey: root)
         return index
+    }
+
+    /// Copy that describes the whole section — its heading and footnote. A match keeps every
+    /// row visible. Untitled sections (the Claude sources card) still count their footnote.
+    private func sectionWideTexts(_ section: NSView) -> [String] {
+        (sectionHeading(section).map { [$0] } ?? []) + sectionFootnote(section)
     }
 
     private func sectionFootnote(_ section: NSView) -> [String] {

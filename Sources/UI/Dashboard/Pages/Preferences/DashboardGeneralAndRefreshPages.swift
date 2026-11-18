@@ -855,13 +855,19 @@ final class DashboardGeneralPage {
     ]
 
     /// New login facts (after each official request) or a new display time zone.
-    func refreshClaudeLogin(_ status: ClaudeLoginStatus, timeZone: TimeZone) {
-        guard status != claudeLoginStatus || timeZone != claudeLoginTimeZone else { return }
+    /// Returns whether the shown login line changed.
+    @discardableResult
+    func refreshClaudeLogin(_ status: ClaudeLoginStatus, timeZone: TimeZone) -> Bool {
+        guard status != claudeLoginStatus || timeZone != claudeLoginTimeZone else { return false }
         claudeLoginStatus = status
         claudeLoginTimeZone = timeZone
-        guard claudeOfficialEnabled else { return }
+        guard claudeOfficialEnabled else { return false }
         applyClaudeLoginDetail()
+        return true
     }
+
+    /// Called after the expiry timer redraws the login line, so search can drop stale copy.
+    var onClaudeLoginLineRedrawn: (() -> Void)?
 
     private func applyClaudeLoginDetail() {
         guard let row = claudeCalibrationRow else { return }
@@ -897,6 +903,7 @@ final class DashboardGeneralPage {
         let timer = Timer(fire: expiresAt.addingTimeInterval(1), interval: 0, repeats: false) { [weak self] _ in
             guard let self, self.claudeOfficialEnabled else { return }
             self.applyClaudeLoginDetail()
+            self.onClaudeLoginLineRedrawn?()
         }
         RunLoop.main.add(timer, forMode: .common)
         claudeLoginExpiryTimer = timer

@@ -304,6 +304,7 @@ final class DashboardCompositionController {
             modPanelStateProvider: state.modPanelState,
             claudeSourceTimelineProvider: state.claudeSourceTimeline,
             claudeLoginStatusProvider: state.claudeLoginStatus,
+            onClaudeLoginLineRedrawn: { [weak self] in self?.invalidateSearchData() },
             claudeEgressGuard: actions.claudeEgressGuard
         ),
         launchAtLoginController: launchAtLoginController,
@@ -739,15 +740,20 @@ final class DashboardCompositionController {
     }
 
     /// The calibration interval bounds the official-validity choices on the Advanced page and is
-    /// quoted in the Claude sources footnote on the General page.
+    /// quoted in the Claude sources footnote on the General page; both are searchable, so the
+    /// built search indexes are dropped.
     func refreshClaudeSourceValidity() {
         dashboardPreferencePages.refreshClaudeSourceValidity()
+        invalidateSearchData()
     }
 
-    /// New Claude source activity or status: redraws the Advanced page's timeline if it exists.
-    /// The chart carries no searchable text, so search data stays valid.
+    /// New Claude source activity or status: redraws the Advanced page's timeline and the
+    /// General page's login line. The chart carries no searchable text; the login line does,
+    /// so search data is refreshed only when that line changed.
     func refreshClaudeSourceTimeline() {
-        dashboardPreferencePages.refreshClaudeSourceTimeline()
+        if dashboardPreferencePages.refreshClaudeSourceTimeline() {
+            invalidateSearchData()
+        }
     }
 
     func refreshLaunchAtLogin() {

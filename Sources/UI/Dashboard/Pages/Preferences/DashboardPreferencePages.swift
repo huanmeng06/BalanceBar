@@ -40,6 +40,9 @@ struct DashboardPreferencePageActions {
     var modPanelStateProvider: () -> ModPanelState? = { nil }
     var claudeSourceTimelineProvider: () -> ClaudeSourceTimelineView.Content = { .empty }
     var claudeLoginStatusProvider: () -> ClaudeLoginStatus = { .unknown }
+    /// The login line changed on its own (a sign-in just passed its expiry time), so search
+    /// copy built from it is stale.
+    var onClaudeLoginLineRedrawn: () -> Void = {}
     var claudeEgressGuard = ClaudeEgressGuardPageActions()
 }
 
@@ -138,6 +141,7 @@ final class DashboardPreferencePages {
         forSearch: Bool = false
     ) -> NSView {
         let generalPage = forSearch ? searchGeneralPage : self.generalPage
+        generalPage.onClaudeLoginLineRedrawn = actions.onClaudeLoginLineRedrawn
         let menuBarPage = forSearch ? searchMenuBarPage : self.menuBarPage
         let menuPage = forSearch ? searchMenuPage : self.menuPage
         let advancedPage = forSearch ? searchAdvancedPage : self.advancedPage
@@ -257,17 +261,21 @@ final class DashboardPreferencePages {
 
     /// Runs after each official request: the timeline and the login line (whose facts come
     /// from that request's credential read) both move on.
-    func refreshClaudeSourceTimeline() {
+    /// Returns whether the login line's copy changed, which search has indexed.
+    @discardableResult
+    func refreshClaudeSourceTimeline() -> Bool {
         advancedPage.refreshSourceTimeline()
         searchAdvancedPage.refreshSourceTimeline()
-        refreshClaudeLogin()
+        return refreshClaudeLogin()
     }
 
-    func refreshClaudeLogin() {
+    @discardableResult
+    func refreshClaudeLogin() -> Bool {
         let status = actions.claudeLoginStatusProvider()
         let timeZone = preferences.effectiveDisplayTimeZone
-        generalPage.refreshClaudeLogin(status, timeZone: timeZone)
-        searchGeneralPage.refreshClaudeLogin(status, timeZone: timeZone)
+        let changed = generalPage.refreshClaudeLogin(status, timeZone: timeZone)
+        let searchChanged = searchGeneralPage.refreshClaudeLogin(status, timeZone: timeZone)
+        return changed || searchChanged
     }
 
     func refreshDisplayTimeZone() {
