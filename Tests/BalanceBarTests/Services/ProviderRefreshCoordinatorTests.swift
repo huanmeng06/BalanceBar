@@ -278,12 +278,12 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         refresh()
         let successful = try XCTUnwrap(rendered)
         XCTAssertEqual(successful.kind, .balance)
-        let failures: [(Int, LocalizationKey, FailureRecovery)] = [
-            (401, .keyProviderRefreshCoordinatorBalanceAPIKeyInvalid, .openCCSwitch),
-            (403, .keyProviderRefreshCoordinatorBalanceAPIKeyInvalid, .openCCSwitch),
-            (503, .keyProviderRefreshCoordinatorTheBalanceEndpointReturnedAnError, .none),
+        let failures: [(Int, LocalizationKey)] = [
+            (401, .keyProviderRefreshCoordinatorBalanceAPIKeyInvalid),
+            (403, .keyProviderRefreshCoordinatorBalanceAPIKeyInvalid),
+            (503, .keyProviderRefreshCoordinatorTheBalanceEndpointReturnedAnError),
         ]
-        for (status, key, recovery) in failures {
+        for (status, key) in failures {
             expectedRender = expectation(description: "HTTP \(status) renders")
             DelayedBalanceURLProtocol.setHandler { _ in .init(data: Data(), statusCode: status) }
             refresh()
@@ -292,7 +292,6 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
             XCTAssertEqual(failure.amount, successful.amount)
             XCTAssertEqual(failure.date, successful.date)
             XCTAssertEqual(failure.message, tr(key, language: AppLanguage.resolved) + " (HTTP \(status))")
-            XCTAssertEqual(failure.failureRecovery, recovery)
         }
     }
 

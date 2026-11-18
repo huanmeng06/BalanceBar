@@ -3130,8 +3130,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             || self.menuInput != menuInput || self.settings != settings
         // The Codex re-login row follows the snapshot, so its appearance is a native-item change too.
         let nativeItemsChanged = !self.menuInput.hasSameNativeItems(as: menuInput)
-            || Self.codexLoginPromptReason(snapshot: self.snapshot, input: self.menuInput)
-                != Self.codexLoginPromptReason(snapshot: snapshot, input: menuInput)
+            || Self.codexLoginPromptTitle(snapshot: self.snapshot, input: self.menuInput)
+                != Self.codexLoginPromptTitle(snapshot: snapshot, input: menuInput)
         let iconSizeChanged = self.settings.iconSize != settings.iconSize
         self.snapshot = snapshot
         self.refreshDate = refreshDate
@@ -3263,8 +3263,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         // hierarchy when that read produces the same semantic input.
         guard menuInput != input else { return }
         let nativeItemsChanged = !menuInput.hasSameNativeItems(as: input)
-            || Self.codexLoginPromptReason(snapshot: snapshot, input: menuInput)
-                != Self.codexLoginPromptReason(snapshot: snapshot, input: input)
+            || Self.codexLoginPromptTitle(snapshot: snapshot, input: menuInput)
+                != Self.codexLoginPromptTitle(snapshot: snapshot, input: input)
         let overviewUnchanged = menuInput.aggregatedProviders == input.aggregatedProviders
             && menuInput.directProviderNotes == input.directProviderNotes
             && menuInput.directProviderID == input.directProviderID
@@ -6195,25 +6195,26 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             identifier: "menu.claudeLoginPrompt")
     }
 
-    /// The direct Codex card keeps older data after a login failure; this row carries the
-    /// reason and the `codex login` command that would otherwise only be in the ⚠︎ tooltip.
     private func makeCodexLoginPromptItem() -> NSMenuItem? {
-        guard let reason = Self.codexLoginPromptReason(snapshot: snapshot, input: menuInput) else { return nil }
+        guard let title = Self.codexLoginPromptTitle(snapshot: snapshot, input: menuInput) else { return nil }
         return makeLoginPromptItem(
-            mainText: tr(reason == .codexSignedOut ? .keyCodexLoginPromptTitleSignedOut : .keyCodexLoginPromptTitleExpired),
+            mainText: tr(title),
             detailText: tr(.keyCodexLoginPromptAction),
             command: FailureStateView.codexSignInCommand,
             copiedTitle: tr(.keyCodexLoginPromptCopiedTitle),
             identifier: "menu.codexLoginPrompt")
     }
 
-    /// Shown only while the direct Codex card shows kept data after a login failure; with no
-    /// data the error card already shows the reason and the button.
-    static func codexLoginPromptReason(snapshot: Snapshot, input: MenuInput) -> OpenAIAccountPresentation.UnavailableReason? {
+    /// A single orange row carries the login command for both cold and cached direct Codex failures.
+    private static func codexLoginPromptTitle(snapshot: Snapshot, input: MenuInput) -> LocalizationKey? {
         guard input.activeClient == .codex, input.aggregatedProviders.isEmpty,
-              snapshot.kind == .official, snapshot.staleReason != nil,
               snapshot.failureClient == .codex, snapshot.failureRecovery == .copySignInCommand else { return nil }
-        return snapshot.accountUnavailableReason ?? .codexLoginExpired
+        let signedOut = snapshot.accountUnavailableReason == .codexSignedOut
+        if snapshot.kind == .error {
+            return signedOut ? .keyCodexAccountSignedOut : .keyCodexAccountLoginExpired
+        }
+        guard snapshot.kind == .official, snapshot.staleReason != nil else { return nil }
+        return signedOut ? .keyCodexLoginPromptTitleSignedOut : .keyCodexLoginPromptTitleExpired
     }
 
     private func makeLoginPromptItem(mainText: String, detailText: String, command: String,
@@ -6576,13 +6577,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func cardContext(_ display: AggregatedProviderDisplay) -> OverviewCardContext {
-        var snapshot = display.snapshot
-        if display.status == .loading && display.fetchedAt == nil {
-            snapshot = .loadingProvider(display.entry.source.name)
-        } else if snapshot.kind == .balance, snapshot.failureRecovery == .openCCSwitch, let reason = display.reason {
-            snapshot = .providerError(snapshot.provider, reason: reason, cachedBalance: snapshot)
-            snapshot.failureRecovery = .openCCSwitch
-        }
+        let snapshot = display.status == .loading && display.fetchedAt == nil
+            ? .loadingProvider(display.entry.source.name) : display.snapshot
         return OverviewCardContext(snapshot: snapshot, identity: display.identity.numericScope,
             account: display.account, date: display.fetchedAt, notes: display.entry.source.notes, noteTags: display.groupedNotes)
     }
@@ -7655,10 +7651,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let isLoading = snapshot.kind == .placeholder
         let hasCachedBalance = snapshot.hasCachedBalance
         let message = snapshot.overviewReset(refreshDate: nil, formatter: AppDisplayTime.formatter(timeZone: settings.displayTimeZone))
-        let showsFailureView = !isLoading && (snapshot.quotaStatus != nil || snapshot.failureClient != nil
-            || snapshot.failureRecovery == .openCCSwitch)
+        let showsFailureView = !isLoading && (snapshot.quotaStatus != nil || snapshot.failureClient != nil)
         let failureClient = snapshot.failureClient ?? .claude
-        let buttonShift = showsFailureView && snapshot.failureRecovery != .none
+        let action: FailureRecovery = failureClient == .codex && snapshot.failureRecovery == .copySignInCommand
+            ? .none : snapshot.failureRecovery
+        let buttonShift = showsFailureView && action != .none
             ? ErrorCardLayout.usagePageButtonHeight : 0
         let baseFrames = ErrorCardLayout.errorFrames(
             for: isLoading ? tr(.keyAggregationLoading) : (hasCachedBalance ? "" : message),
@@ -7712,8 +7709,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             quotaDetail.frame.origin.y = frames.amount.midY - frames.quotaDetail.height / 2
         }
         view.addSubview(quotaDetail)
-        // Official failures have no amount; configuration failures may still have a cached balance.
-        if !showsFailureView || hasCachedBalance {
+        // Official failures have no amount.
+        if !showsFailureView {
             let amount = makeOverviewLabel(snapshot.overviewLargeAmount, font: ErrorCardLayout.amountFont)
             if hasCachedBalance { amount.textColor = .secondaryLabelColor }
             amount.alignment = .right
@@ -7723,7 +7720,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         if showsFailureView {
             let failure = FailureStateView(
                 reason: frames.detailText,
-                action: snapshot.failureRecovery,
+                action: action,
                 client: failureClient,
                 // The detail frame was measured with this font; a smaller one leaves a blank gap.
                 font: ErrorCardLayout.detailFont,
@@ -7733,10 +7730,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     self?.cancelMenuBarTracking()
                     // The menu is closing; open the window once it is gone.
                     DispatchQueue.main.async { self?.actions.openEgressGuardSettings() }
-                },
-                onOpenCCSwitch: { [weak self] in
-                    guard let self else { return }
-                    self.openExternalAppFromStatusItemClick(self.actions.openCCSwitch)
                 })
             failure.identifier = NSUserInterfaceItemIdentifier("overview.failureState")
             failure.frame = NSRect(x: frames.detail.minX, y: frames.detail.minY - buttonShift,

@@ -3633,20 +3633,20 @@ extension StatusItemControllerTests {
     }
 
     @MainActor
-    func testColdWalletShowsCredentialRecoveryRegardlessOfMemberOrder() throws {
+    func testColdWalletShowsCredentialErrorWithoutButtonRegardlessOfMemberOrder() throws {
         let keyReason = ProviderRefreshCoordinator.balanceHTTPErrorReason(401, language: .selected)
         let serverReason = ProviderRefreshCoordinator.balanceHTTPErrorReason(503, language: .selected)
-        func member(_ id: String, reason: String, recovery: FailureRecovery) -> AggregatedProviderDisplay {
+        func member(_ id: String, reason: String, configurationError: Bool) -> AggregatedProviderDisplay {
             let source = ProviderSummarySource(id: id, name: "Shared Wallet", isOfficial: false,
                 query: nil, officialAccessToken: nil)
             var snapshot = Snapshot.providerError(source.name, reason: reason, cachedBalance: nil)
-            snapshot.failureRecovery = recovery
+            snapshot.isBalanceConfigurationError = configurationError
             return .init(entry: .init(source: source, role: .member),
                 identity: .init(providerID: id, accountScope: "fixture", configurationRevision: "fixture"),
                 snapshot: snapshot, account: nil, status: .error, reason: reason, fetchedAt: nil)
         }
-        let server = member("server", reason: serverReason, recovery: .none)
-        let auth = member("auth", reason: keyReason, recovery: .openCCSwitch)
+        let server = member("server", reason: serverReason, configurationError: false)
+        let auth = member("auth", reason: keyReason, configurationError: true)
         for members in [[server, auth], [auth, server]] {
             let controller = makeController()
             defer { controller.teardown() }
@@ -3658,10 +3658,10 @@ extension StatusItemControllerTests {
             let document = try XCTUnwrap(scroll.documentView)
             XCTAssertEqual(document.subviews.count, 1, "same-name cold members share a wallet")
             let wallet = try XCTUnwrap(document.subviews.first?.subviews.first)
-            let failure = try XCTUnwrap(wallet.subviews.compactMap { $0 as? FailureStateView }.first,
-                "credential recovery is required for member order \(members.map(\.entry.providerID))")
-            XCTAssertEqual(failure.reasonForTesting.replacingOccurrences(of: "\u{200B}", with: ""), keyReason)
-            XCTAssertEqual(failure.actionButton.title, tr(.keyStatusItemControllerOpenCcSwitch))
+            let labels = wallet.subviews.compactMap { $0 as? NSTextField }
+            XCTAssertTrue(labels.contains { $0.stringValue.replacingOccurrences(of: "\u{200B}", with: "") == keyReason },
+                "credential error is required for member order \(members.map(\.entry.providerID))")
+            XCTAssertFalse(wallet.subviews.contains { $0 is FailureStateView || $0 is NSButton })
             let time = try XCTUnwrap(wallet.subviews.compactMap { $0 as? NSTextField }.first {
                 $0.identifier?.rawValue == "overview.refreshTime"
             })
@@ -3671,14 +3671,13 @@ extension StatusItemControllerTests {
     }
 
     @MainActor
-    func testCachedBalanceFailureUsesWarningTimeAndAddsOnlyOneRecoveryRow() throws {
-        var opens = 0
-        let controller = makeController(openCCSwitch: { opens += 1 })
+    func testCachedBalanceFailureUsesWarningTimeWithoutRecoveryRow() throws {
+        let controller = makeController()
         defer { controller.teardown() }
         let date = Date(timeIntervalSince1970: 1_700_000_000)
         let balance = Snapshot.balance("Fixture API", 3.34, "USD", nil, date)
         let reason = "Fixture failure (HTTP 403)"
-        var error = Snapshot.providerError(balance.provider, reason: reason, cachedBalance: balance)
+        let error = Snapshot.providerError(balance.provider, reason: reason, cachedBalance: balance)
         func card() throws -> NSView {
             controller.start(snapshot: error, refreshDate: date, menuInput: makeMenuInput(), settings: makeSettings())
             return try XCTUnwrap(controller.menuItemsForTesting.first?.view)
@@ -3696,23 +3695,13 @@ extension StatusItemControllerTests {
         XCTAssertGreaterThanOrEqual(amount.frame.minY, 5)
         XCTAssertGreaterThanOrEqual(time.frame.minY - amount.frame.maxY, 6)
 
-        error.failureRecovery = .openCCSwitch
-        let recoverable = try card()
-        let recovery = try XCTUnwrap(recoverable.subviews.compactMap { $0 as? FailureStateView }.first)
-        XCTAssertEqual(recovery.actionButton.title, tr(.keyStatusItemControllerOpenCcSwitch))
-        XCTAssertTrue(recovery.reasonForTesting.isEmpty)
-        XCTAssertEqual(recovery.frame.minY, 7, accuracy: 0.5)
-        XCTAssertEqual(recoverable.frame.height, cached.frame.height + ErrorCardLayout.usagePageButtonHeight, accuracy: 0.5)
-        recovery.actionButton.performClick(nil)
-        XCTAssertEqual(opens, 1)
+        XCTAssertFalse(cached.subviews.contains { $0 is FailureStateView || $0 is NSButton })
 
-        var aggregatedBalance = balance
-        aggregatedBalance.failureRecovery = .openCCSwitch
         let source = ProviderSummarySource(id: "api", name: balance.provider, isOfficial: false,
             query: nil, officialAccessToken: nil)
         let display = AggregatedProviderDisplay(entry: .init(source: source, role: .default),
             identity: .init(providerID: source.id, accountScope: "fixture", configurationRevision: "fixture"),
-            snapshot: aggregatedBalance, account: nil, status: .stale, reason: reason, fetchedAt: date)
+            snapshot: balance, account: nil, status: .stale, reason: reason, fetchedAt: date)
         let aggregateInput = StatusItemController.MenuInput(choices: [], quickSwitchSummaries: [:], activeClient: .codex,
             openAIAccount: nil, statusLinks: [], showQuickSwitchMenu: false, showOpenChatGPTMenu: false,
             showOpenCCSwitchMenu: false, showStatusMenu: false, aggregatedProviders: [display])
@@ -3721,8 +3710,8 @@ extension StatusItemControllerTests {
         aggregated.start(snapshot: .placeholder, refreshDate: nil, menuInput: aggregateInput, settings: makeSettings())
         let scroll = try XCTUnwrap(aggregated.statusMenuForTesting.items.first?.view as? NSScrollView)
         let wallet = try XCTUnwrap(scroll.documentView?.subviews.first?.subviews.first)
-        XCTAssertEqual(wallet.frame.height, recoverable.frame.height, accuracy: 0.5)
-        XCTAssertEqual(wallet.subviews.compactMap { ($0 as? FailureStateView)?.action }.first, .openCCSwitch)
+        XCTAssertTrue(wallet is MenuHoverLinkHostView, "cached wallet keeps its normal balance layout")
+        XCTAssertFalse(wallet.subviews.contains { $0 is FailureStateView || $0 is NSButton })
         let walletTime = wallet.subviews.compactMap { $0 as? NSTextField }.first { $0.identifier?.rawValue == "overview.refreshTime" }
         XCTAssertEqual(walletTime?.textColor, .systemOrange)
         XCTAssertTrue(walletTime?.toolTip?.contains(reason) == true)
@@ -3761,7 +3750,7 @@ extension StatusItemControllerTests {
     }
 
     @MainActor
-    func testCodexLoginFailureCardCopiesCodexLoginAndShowsShortAccountStatus() throws {
+    func testCodexLoginFailureShowsOrangeCommandRowInsteadOfCardButton() throws {
         var opened: [URL] = []
         let controller = StatusItemController(actions: .init(manualRefresh: {}, openDashboard: {}, openChatGPT: {},
             openCCSwitch: {}, quit: {}, switchProvider: { _ in }, openProviderWebsite: {}, openStatusLink: { opened.append($0) },
@@ -3780,9 +3769,17 @@ extension StatusItemControllerTests {
         controller.start(snapshot: expired, refreshDate: nil, menuInput: input, settings: makeSettings())
         let card = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
         let failure = try XCTUnwrap(find(FailureStateView.self, in: card), "Codex failures get the failure view too")
-        XCTAssertEqual(failure.action, .copySignInCommand)
+        XCTAssertEqual(failure.action, .none)
         XCTAssertEqual(failure.client, .codex)
-        XCTAssertEqual(failure.actionButton.title, tr(.keyQuotaFailureCopyCodexLoginCommand))
+        XCTAssertNil(find(NSButton.self, in: card))
+        let rows = controller.menuItemsForTesting.compactMap { $0.view as? ModPromptRowView }
+            .filter { $0.identifier?.rawValue == "menu.codexLoginPrompt" }
+        XCTAssertEqual(rows.count, 1)
+        let row = try XCTUnwrap(rows.first)
+        XCTAssertEqual(row.mainText, tr(.keyCodexAccountLoginExpired))
+        XCTAssertEqual(row.whyText, tr(.keyCodexLoginPromptAction))
+        XCTAssertTrue(row.whyText.contains("codex login"))
+        XCTAssertEqual(row.iconView.contentTintColor, .systemOrange)
         XCTAssertEqual(StatusItemController.directAccount(input.openAIAccount, snapshot: expired, activeClient: .codex)?.text(),
             tr(.keyCodexAccountLoginExpired), "the account row shows the short status, not the cached email")
 

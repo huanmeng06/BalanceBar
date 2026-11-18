@@ -31,7 +31,6 @@ final class FailureStateView: NSView {
     private let localize: (StatusSlotText) -> String
     private let onOpenUsagePage: () -> Void
     private let onOpenEgressGuardSettings: () -> Void
-    private let onOpenCCSwitch: () -> Void
     private let copyToPasteboard: (String) -> Void
 
     var reasonForTesting: String { reasonLabel.stringValue }
@@ -57,21 +56,18 @@ final class FailureStateView: NSView {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(text, forType: .string)
         },
-        onOpenEgressGuardSettings: @escaping () -> Void = {},
-        onOpenCCSwitch: @escaping () -> Void = {}
+        onOpenEgressGuardSettings: @escaping () -> Void = {}
     ) {
         self.action = action
         self.client = client
         self.localize = localize
         self.onOpenUsagePage = onOpenUsagePage ?? { NSWorkspace.shared.open(FailureStateView.usageURL(for: client)) }
         self.onOpenEgressGuardSettings = onOpenEgressGuardSettings
-        self.onOpenCCSwitch = onOpenCCSwitch
         self.copyToPasteboard = copyToPasteboard
         let title: String
         switch action {
         case .copySignInCommand: title = localize(client == .codex ? .copyCodexLoginCommand : .copySignInCommand)
         case .openEgressGuardSettings: title = localize(.openEgressGuardSettings)
-        case .openCCSwitch: title = tr(.keyStatusItemControllerOpenCcSwitch)
         case .openUsagePage, .none: title = localize(.openUsagePage)
         }
         actionButton = NSButton(title: title, target: nil, action: nil)
@@ -84,9 +80,7 @@ final class FailureStateView: NSView {
         actionButton.action = #selector(performAction)
         actionButton.setAccessibilityLabel(title)
 
-        var rows: [NSView] = reason.isEmpty ? [] : [reasonLabel]
-        if action != .none { rows.append(actionButton) }
-        let stack = NSStackView(views: rows)
+        let stack = NSStackView(views: action == .none ? [reasonLabel] : [reasonLabel, actionButton])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 6
@@ -119,8 +113,6 @@ final class FailureStateView: NSView {
             actionButton.title = localize(.copied)
         case .openEgressGuardSettings:
             onOpenEgressGuardSettings()
-        case .openCCSwitch:
-            onOpenCCSwitch()
         case .none:
             break
         }

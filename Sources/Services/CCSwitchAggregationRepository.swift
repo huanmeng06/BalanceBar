@@ -84,12 +84,11 @@ enum AggregationWalletPresentation {
             let first = members[0]
             guard let scope = walletID(first) else { return first }
             let valid = members.filter { $0.snapshot.kind == .balance }
-            // Without a balance, show an actionable error instead of letting an
-            // equally undated transient failure hide its recovery button.
-            let coldRecovery = valid.isEmpty ? members.first {
-                $0.fetchedAt == nil && $0.snapshot.kind == .error && $0.snapshot.failureRecovery == .openCCSwitch
+            // Without a balance, prefer a configuration error to a transient failure.
+            let coldConfigurationError = valid.isEmpty ? members.first {
+                $0.fetchedAt == nil && $0.snapshot.isBalanceConfigurationError
             } : nil
-            let selected = valid.first(where: { $0.entry.role == .default }) ?? coldRecovery ?? (valid.isEmpty ? members : valid).max {
+            let selected = valid.first(where: { $0.entry.role == .default }) ?? coldConfigurationError ?? (valid.isEmpty ? members : valid).max {
                 let left = $0.fetchedAt ?? .distantPast
                 let right = $1.fetchedAt ?? .distantPast
                 return left == right ? $0.status != .fresh && $1.status == .fresh : left < right
@@ -98,7 +97,7 @@ enum AggregationWalletPresentation {
             let membership = members.map { $0.identity.numericScope }.sorted()
             let memberKey = String(data: (try? JSONEncoder().encode(membership)) ?? Data(), encoding: .utf8) ?? ""
             let wallet = scope + "|" + unit + "|" + memberKey
-            var snapshot: Snapshot
+            let snapshot: Snapshot
             if let amount = selected.snapshot.amount, selected.snapshot.kind == .balance {
                 snapshot = .balance(selected.entry.source.name, amount, unit, selected.entry.source.websiteURL ?? selected.entry.source.query?.websiteURL,
                     selected.snapshot.date ?? selected.fetchedAt ?? .distantPast,
@@ -116,10 +115,6 @@ enum AggregationWalletPresentation {
                    !note.isEmpty, !notes.contains(note) { notes.append(note) }
             }
             let failed = members.filter { $0.status == .stale || $0.status == .error || $0.status == .unavailable }
-            if snapshot.kind == .balance, selected.snapshot.failureRecovery == .openCCSwitch
-                || failed.contains(where: { $0.snapshot.failureRecovery == .openCCSwitch }) {
-                snapshot.failureRecovery = .openCCSwitch
-            }
             let reason = failed.isEmpty ? selected.reason : failed.map {
                 ($0.entry.source.notes ?? $0.entry.source.name) + ": " + ($0.reason ?? tr(.keyAggregationUnavailable))
             }.joined(separator: "\n")
