@@ -7712,7 +7712,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         // Official failures have no amount.
         if !showsFailureView {
             let amount = makeOverviewLabel(snapshot.overviewLargeAmount, font: ErrorCardLayout.amountFont)
-            if hasCachedBalance { amount.textColor = .secondaryLabelColor }
             amount.alignment = .right
             amount.frame = frames.amount
             view.addSubview(amount)

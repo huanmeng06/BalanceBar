@@ -3689,7 +3689,7 @@ extension StatusItemControllerTests {
         XCTAssertTrue(time.stringValue.hasPrefix("⚠︎ "))
         XCTAssertEqual(time.textColor, .systemOrange)
         XCTAssertEqual(time.toolTip, reason)
-        XCTAssertEqual(amount.textColor, .secondaryLabelColor)
+        XCTAssertEqual(amount.textColor, .labelColor, "cached amounts use the normal foreground color")
         XCTAssertFalse(labels.contains { [reason, tr(.keySnapshotLoadFailed)].contains($0.stringValue) })
         XCTAssertEqual(cached.frame.height, ErrorCardLayout.minimumCardHeight, accuracy: 0.5)
         XCTAssertGreaterThanOrEqual(amount.frame.minY, 5)
