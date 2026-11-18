@@ -1676,27 +1676,44 @@ final class SettingsSubtitleLink: NSResponder {
         label.attributedStringValue = attributed
     }
 
-    /// The link words' box in label coordinates, padded a little for an easier hit.
-    var linkHitRect: NSRect? {
-        guard let label, let range = displayedLinkRange, let cell = label.cell else { return nil }
+    /// One box per line the link words occupy, in label coordinates, padded a little for
+    /// an easier hit. A wrapped link gets a box on each line it touches, never the whole
+    /// lines around it.
+    var linkHitRects: [NSRect] {
+        guard let label, let range = displayedLinkRange, let cell = label.cell else { return [] }
         let textRect = cell.titleRect(forBounds: label.bounds)
+        guard !textRect.isEmpty else { return [] }
         let storage = NSTextStorage(attributedString: label.attributedStringValue)
         let layout = NSLayoutManager()
         let container = NSTextContainer(size: NSSize(width: textRect.width, height: .greatestFiniteMagnitude))
         container.lineFragmentPadding = 2
+        container.lineBreakMode = cell.lineBreakMode
         layout.addTextContainer(container)
         storage.addLayoutManager(layout)
+        layout.ensureLayout(for: container)
         let glyphs = layout.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
-        let box = layout.boundingRect(forGlyphRange: glyphs, in: container)
-        let y = label.isFlipped ? textRect.minY + box.minY : textRect.maxY - box.maxY
-        return NSRect(x: textRect.minX + box.minX, y: y, width: box.width, height: box.height)
-            .insetBy(dx: -3, dy: -2)
+        guard glyphs.length > 0 else { return [] }
+        var rects: [NSRect] = []
+        layout.enumerateEnclosingRects(forGlyphRange: glyphs, withinSelectedGlyphRange: glyphs,
+                                       in: container) { box, _ in
+            guard !box.isEmpty else { return }
+            let y = label.isFlipped ? textRect.minY + box.minY : textRect.maxY - box.maxY
+            let rect = NSRect(x: textRect.minX + box.minX, y: y, width: box.width, height: box.height)
+                .insetBy(dx: -3, dy: -2)
+                .intersection(label.bounds)
+            if !rect.isEmpty { rects.append(rect) }
+        }
+        return rects
+    }
+
+    private func isOverLink(_ point: NSPoint) -> Bool {
+        linkHitRects.contains { $0.contains(point) }
     }
 
     private func isOverLink(_ event: NSEvent) -> Bool {
         guard restrictsHitAreaToLinkText else { return true }
-        guard let label, let rect = linkHitRect else { return false }
-        return rect.contains(label.convert(event.locationInWindow, from: nil))
+        guard let label else { return false }
+        return isOverLink(label.convert(event.locationInWindow, from: nil))
     }
 
     override func cursorUpdate(with event: NSEvent) {
@@ -1709,8 +1726,8 @@ final class SettingsSubtitleLink: NSResponder {
     }
 
     @objc private func clicked() {
-        if restrictsHitAreaToLinkText, let label, let recognizer, let rect = linkHitRect,
-           !rect.contains(recognizer.location(in: label)) { return }
+        if restrictsHitAreaToLinkText, let label, let recognizer,
+           !isOverLink(recognizer.location(in: label)) { return }
         action()
     }
 

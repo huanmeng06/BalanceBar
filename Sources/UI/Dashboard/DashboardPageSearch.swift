@@ -367,6 +367,7 @@ enum DashboardSettingsSearchCatalog {
     ]
     private static var cachedCatalogLanguageKey: String?
     private static var cachedTitlesBySection: [DashboardSection: [String]] = [:]
+    private static var cachedSupportingTitlesBySection: [DashboardSection: [String]] = [:]
 
     /// The language row is the one intentional cross-language entry point.
     /// Every other catalog value comes from the currently selected UI locale.
@@ -384,8 +385,23 @@ enum DashboardSettingsSearchCatalog {
             cachedTitlesBySection = Dictionary(uniqueKeysWithValues: DashboardSection.allCases.map {
                 ($0, buildTitles(for: $0))
             })
+            cachedSupportingTitlesBySection = Dictionary(uniqueKeysWithValues: DashboardSection.allCases.map {
+                ($0, buildSupportingTitles(for: $0))
+            })
         }
         return cachedTitlesBySection[section] ?? []
+    }
+
+    /// Explanatory prose that should still find its page, but rank below any page whose own
+    /// settings carry the words: the Claude footnote's example mentions "5-hour quota", which
+    /// belongs to the menu bar page first.
+    static func supportingTitles(for section: DashboardSection) -> [String] {
+        _ = titles(for: section) // refreshes both caches for the current language
+        return cachedSupportingTitlesBySection[section] ?? []
+    }
+
+    private static func buildSupportingTitles(for section: DashboardSection) -> [String] {
+        section == .general ? DashboardGeneralPage.claudeSourcesFootnoteSearchCopy() : []
     }
 
     private static func buildTitles(for section: DashboardSection) -> [String] {
@@ -401,7 +417,6 @@ enum DashboardSettingsSearchCatalog {
             values.append(contentsOf: AppPreferences.claudeCalibrationIntervals.map {
                 tr(.keyClaudeRefreshEveryMinutes, arguments: [String(Int($0 / 60))])
             })
-            values.append(contentsOf: DashboardGeneralPage.claudeSourcesFootnoteSearchCopy())
             values.append(contentsOf: DashboardGeneralPage.claudeLoginSearchKeys.map { tr($0) })
         }
         if section == .advanced {
@@ -458,7 +473,9 @@ enum DashboardSettingsSearchCatalog {
             let match = DashboardPageSearch.bestMatch(
                 texts: titles(for: section) + (runtimeTexts[section] ?? []),
                 query: query
-            )
+            ) ?? DashboardPageSearch.bestMatch(texts: supportingTitles(for: section), query: query).map {
+                DashboardPageSearch.Match(kind: $0.kind, relevance: $0.relevance / 2)
+            }
             if let match {
                 scored.append((section: section, match: match))
             }
@@ -477,7 +494,9 @@ enum DashboardSettingsSearchCatalog {
         return DashboardPageSearch.bestMatch(
             texts: titles(for: section),
             query: query
-        )
+        ) ?? DashboardPageSearch.bestMatch(texts: supportingTitles(for: section), query: query).map {
+            DashboardPageSearch.Match(kind: $0.kind, relevance: $0.relevance / 2)
+        }
     }
 
     static func firstMatchingSection(query: String) -> DashboardSection? {
@@ -1588,8 +1607,12 @@ final class DashboardPageSearchFilter {
     }
 
     private func sectionFootnote(_ section: NSView) -> [String] {
-        guard let text = (section as? SettingsSectionView)?.footnoteLabel?.stringValue, !text.isEmpty else { return [] }
-        return [text]
+        // The expandable detail belongs to the footnote too, so its words match even
+        // while it is collapsed.
+        guard let native = section as? SettingsSectionView else { return [] }
+        return [native.footnoteLabel?.stringValue, native.footnoteDetailLabel?.stringValue]
+            .compactMap { $0 }
+            .filter { !$0.isEmpty }
     }
 
     private func searchDocumentID(for view: NSView, prefix: String) -> String {

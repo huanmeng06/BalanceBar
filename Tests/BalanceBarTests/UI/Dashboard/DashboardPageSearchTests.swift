@@ -537,6 +537,33 @@ final class DashboardPageSearchTests: XCTestCase {
         XCTAssertTrue(emptyState(in: stack)?.isHidden != false)
     }
 
+    func testFootnoteDetailWordsMatchAndKeepTheSectionVisibleEvenWhileCollapsed() {
+        let official = SettingsRowView(title: "Official calibration")
+        let mod = SettingsRowView(title: "Mod boost")
+        let section = SettingsSectionView(title: "Claude", contentViews: [official, mod],
+                                          footnote: "Both sources sync usage.", footnoteDetail: "")
+        section.setFootnoteDetailText("Example: 5h 90% → 80%")
+        XCTAssertFalse(section.isFootnoteDetailExpanded)
+        let stack = DashboardSettingsComponents.makeSettingsPageContent([section])
+
+        XCTAssertTrue(
+            DashboardPageSearchFilter().apply(query: "90%", to: stack, pageTitle: "General", mode: .titles),
+            "words only in the expandable detail must still match"
+        )
+        XCTAssertFalse(isCollapsedForSearch(section))
+        XCTAssertFalse(isCollapsedForSearch(official))
+        XCTAssertFalse(isCollapsedForSearch(mod))
+    }
+
+    func testClaudeFootnoteDetailRoutesToGeneralButRanksBelowPagesThatOwnTheWords() {
+        let detail = DashboardGeneralPage.claudeSourcesFootnoteParts(calibrationInterval: 300).detail
+        XCTAssertTrue(detail.contains("90%"))
+        XCTAssertEqual(DashboardSettingsSearchCatalog.firstMatchingSection(query: "90%"), .general)
+        // The example names the 5-hour quota, but that setting lives on the menu bar page.
+        let fiveHour = tr(.keyDashboardMenuBarPageFiveHourQuota)
+        XCTAssertEqual(DashboardSettingsSearchCatalog.firstMatchingSection(query: fiveHour), .menuBar)
+    }
+
     func testEmptyStateStaysVisibleAcrossRepeatedUnmatchedQueries() {
         let language = SettingsRowView(title: "Language")
         let stack = DashboardSettingsComponents.makeSettingsPageContent([

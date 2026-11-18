@@ -2108,34 +2108,47 @@ final class DashboardPreferencePagesTests: XCTestCase {
     /// The pointing hand and the click belong to the trailing link words, not to the whole
     /// summary label or the blank space beside it.
     func testClaudeSourcesFootnoteLinkHitAreaCoversOnlyTheLinkWords() throws {
-        let suite = "SourcesFootnoteHit.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defer { defaults.removePersistentDomain(forName: suite) }
-        let generalPage = DashboardGeneralPage()
-        let page = generalPage.make(.init(preferences: AppPreferences(defaults: defaults),
-            relay: DashboardPreferencePageRelay(),
-            updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6")))))
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1000, height: 3000),
-                              styleMask: [.borderless], backing: .buffered, defer: false)
-        defer { window.orderOut(nil) }
-        page.translatesAutoresizingMaskIntoConstraints = false
-        let host = NSView()
-        window.contentView = host
-        host.addSubview(page)
-        NSLayoutConstraint.activate([
-            page.leadingAnchor.constraint(equalTo: host.leadingAnchor),
-            page.trailingAnchor.constraint(equalTo: host.trailingAnchor),
-            page.topAnchor.constraint(equalTo: host.topAnchor)
-        ])
-        window.layoutIfNeeded()
-        let label = try XCTUnwrap(generalPage.claudeSourcesSection?.footnoteLabel)
-        let link = try XCTUnwrap(generalPage.claudeSourcesFootnoteLinkForTesting)
-        let rect = try XCTUnwrap(link.linkHitRect)
+        // Narrow widths wrap the summary onto two or more lines; the hit area must still
+        // hug the link words instead of spanning whole lines.
+        for width: CGFloat in [1000, 600, 550, 480, 380] {
+            let suite = "SourcesFootnoteHit.\(UUID().uuidString)"
+            let defaults = UserDefaults(suiteName: suite)!
+            defer { defaults.removePersistentDomain(forName: suite) }
+            let generalPage = DashboardGeneralPage()
+            let page = generalPage.make(.init(preferences: AppPreferences(defaults: defaults),
+                relay: DashboardPreferencePageRelay(),
+                updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6")))))
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: width, height: 3000),
+                                  styleMask: [.borderless], backing: .buffered, defer: false)
+            defer { window.orderOut(nil) }
+            page.translatesAutoresizingMaskIntoConstraints = false
+            let host = NSView()
+            window.contentView = host
+            host.addSubview(page)
+            NSLayoutConstraint.activate([
+                page.leadingAnchor.constraint(equalTo: host.leadingAnchor),
+                page.trailingAnchor.constraint(equalTo: host.trailingAnchor),
+                page.topAnchor.constraint(equalTo: host.topAnchor)
+            ])
+            window.layoutIfNeeded()
+            let label = try XCTUnwrap(generalPage.claudeSourcesSection?.footnoteLabel)
+            let link = try XCTUnwrap(generalPage.claudeSourcesFootnoteLinkForTesting)
+            let rects = link.linkHitRects
+            let context = "width \(width), label \(label.bounds)"
 
-        XCTAssertGreaterThan(rect.width, 0)
-        XCTAssertLessThan(rect.width, label.bounds.width / 3, "only the link words, not the sentence")
-        XCTAssertGreaterThan(rect.minX, label.bounds.width / 4, "the link trails the sentence")
-        XCTAssertLessThanOrEqual(rect.height, label.bounds.height + 4)
+            XCTAssertFalse(rects.isEmpty, context)
+            let lineHeight = try XCTUnwrap(label.font).boundingRectForFont.height
+            for rect in rects {
+                XCTAssertLessThanOrEqual(rect.height, lineHeight + 8, "one box per line, \(context)")
+            }
+            let linkArea = rects.reduce(0) { $0 + $1.width * $1.height }
+            XCTAssertLessThan(linkArea, label.bounds.width * label.bounds.height * 0.3,
+                              "only the link words, not the sentence, \(context)")
+            // The summary sentence opens the label, so its first words are never the link.
+            let firstLineY = label.isFlipped ? label.bounds.minY + lineHeight / 2 : label.bounds.maxY - lineHeight / 2
+            let sentenceStart = NSPoint(x: label.bounds.minX + 6, y: firstLineY)
+            XCTAssertFalse(rects.contains { $0.contains(sentenceStart) }, context)
+        }
     }
 
     func testClaudeSourcesFootnoteStartsExpandedInSearchProjection() throws {
