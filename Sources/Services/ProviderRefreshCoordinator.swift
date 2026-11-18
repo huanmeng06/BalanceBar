@@ -646,7 +646,7 @@ final class ProviderRefreshCoordinator {
                 let profile = entry.source.officialAccessToken != nil
                     ? entry.source.officialAccount : officialQuotaClient.codexAccountProfile()
                 aggregationDisplays[identity] = AggregatedProviderDisplay(entry: entry, identity: identity,
-                    snapshot: .providerError(entry.source.name, reason: tr(.keyAggregationLoading), cachedBalance: nil),
+                    snapshot: .loadingProvider(entry.source.name),
                     account: entry.source.isOfficial ? OpenAIAccountPresentation.current(
                         activeClient: .codex, providerIsOfficial: true, email: profile?.email,
                         subscription: OpenAISubscriptionTier(planType: profile?.planType)) : nil,
@@ -801,7 +801,12 @@ final class ProviderRefreshCoordinator {
                         current.reason = snapshot.message
                         current.status = current.fetchedAt == nil ? .error : .stale
                         if current.fetchedAt == nil { current.snapshot = snapshot }
-                        else { current.snapshot.officialRetryAt = snapshot.officialRetryAt }
+                        else {
+                            current.snapshot.officialRetryAt = snapshot.officialRetryAt
+                            if current.snapshot.kind == .balance {
+                                current.snapshot.failureRecovery = snapshot.failureRecovery
+                            }
+                        }
                     } else {
                         current.snapshot = snapshot
                         current.status = .fresh
@@ -828,6 +833,7 @@ final class ProviderRefreshCoordinator {
             } else {
                 aggregationRequests.removeValue(forKey: identity)
                 display.snapshot = .providerError(source.name, reason: tr(.keyAggregationNotConfigured), cachedBalance: nil)
+                display.snapshot.failureRecovery = .openCCSwitch
                 display.status = .unavailable
                 display.reason = tr(.keyAggregationNotConfigured)
                 aggregationDisplays[identity] = display
@@ -919,7 +925,8 @@ final class ProviderRefreshCoordinator {
                     providerName: current.name,
                     reason: reason,
                     client: client,
-                    configurationRevision: current.configurationRevision
+                    configurationRevision: current.configurationRevision,
+                    recovery: .openCCSwitch
                 )
                 return
             }
@@ -1293,16 +1300,20 @@ final class ProviderRefreshCoordinator {
         onDiscard: (() -> Void)? = nil,
         completion: ((Snapshot) -> Void)? = nil
     ) {
-        func fail(providerID: String, providerName: String, reason: String, client: AssistantClient) {
+        func fail(_ reason: String, recovery: FailureRecovery = .none) {
             officialSampleUnavailable(client: client, providerID: providerID)
-            if let completion { completion(.providerError(providerName, reason: reason, cachedBalance: nil)) }
-            else {
+            if let completion {
+                var snapshot = Snapshot.providerError(providerName, reason: reason, cachedBalance: nil)
+                snapshot.failureRecovery = recovery
+                completion(snapshot)
+            } else {
                 renderBalanceError(
                     providerID: providerID,
                     providerName: providerName,
                     reason: reason,
                     client: client,
-                    configurationRevision: configurationRevision
+                    configurationRevision: configurationRevision,
+                    recovery: recovery
                 )
             }
         }
@@ -1345,8 +1356,7 @@ final class ProviderRefreshCoordinator {
                         identity: identity, sampleSequence: sampleSequence, observedAt: self.now())
                     guard case .success(let observation) = progressResult else {
                         if requestIsCurrent, case .failure(let error) = progressResult {
-                            fail(providerID: providerID, providerName: providerName,
-                                reason: error.userVisibleReason(language: AppLanguage.resolved), client: client)
+                            fail(error.userVisibleReason(language: AppLanguage.resolved))
                         }
                         return
                     }
@@ -1379,23 +1389,25 @@ final class ProviderRefreshCoordinator {
                     }
                 case .failure(.nonHTTPS):
                     if requestIsCurrent {
-                        fail(providerID: providerID, providerName: providerName, reason: tr(.keyProviderRefreshCoordinatorTheBalanceEndpointIsNotHttps), client: client)
+                        fail(tr(.keyProviderRefreshCoordinatorTheBalanceEndpointIsNotHttps), recovery: .openCCSwitch)
                     }
                 case .failure(.transport(let error)):
                     if requestIsCurrent {
-                        fail(providerID: providerID, providerName: providerName, reason: Self.localizedBalanceNetworkErrorReason(error, language: AppLanguage.resolved), client: client)
+                        fail(Self.localizedBalanceNetworkErrorReason(error, language: AppLanguage.resolved))
                     }
-                case .failure(.httpStatus):
+                case .failure(.httpStatus(let code)):
                     if requestIsCurrent {
-                        fail(providerID: providerID, providerName: providerName, reason: tr(.keyProviderRefreshCoordinatorTheBalanceEndpointReturnedAnError), client: client)
+                        let authFailure = code == 401 || code == 403
+                        fail(Self.balanceHTTPErrorReason(code, language: AppLanguage.resolved),
+                            recovery: authFailure ? .openCCSwitch : .none)
                     }
                 case .failure(.unsupportedFormat):
                     if requestIsCurrent {
-                        fail(providerID: providerID, providerName: providerName, reason: tr(.keyProviderRefreshCoordinatorUnrecognizedBalanceFormat), client: client)
+                        fail(tr(.keyProviderRefreshCoordinatorUnrecognizedBalanceFormat), recovery: .openCCSwitch)
                     }
                 case .failure(.invalidJSON):
                     if requestIsCurrent {
-                        fail(providerID: providerID, providerName: providerName, reason: tr(.keyProviderRefreshCoordinatorTheBalanceResponseCouldNotBeParsed), client: client)
+                        fail(tr(.keyProviderRefreshCoordinatorTheBalanceResponseCouldNotBeParsed))
                     }
                 }
             }
@@ -2125,30 +2137,40 @@ final class ProviderRefreshCoordinator {
         providerName: String,
         reason: String,
         client: AssistantClient,
-        configurationRevision: String = ""
+        configurationRevision: String,
+        recovery: FailureRecovery
     ) {
         queue.async { [weak self] in
             guard let self, self.lifetime.isCurrent(),
                   self.standardRequestIsCurrent(client: client, providerID: providerID, revision: configurationRevision),
                   client != .codex || self.aggregationEntries.isEmpty else { return }
             let epoch = self.standardPublicationEpoch
-            let next = self.providerBalanceSnapshots.errorSnapshot(
+            var next = self.providerBalanceSnapshots.errorSnapshot(
                 clientID: client.rawValue,
                 providerID: providerID,
                 providerName: providerName,
                 reason: reason,
                 configurationRevision: configurationRevision
             )
+            next.failureRecovery = recovery
+            let snapshot = next
             DispatchQueue.main.async {
                 guard self.lifetime.isCurrent(), (client != .codex || epoch.isCurrent()),
                       self.actions.isActiveClient(client),
                       let current = self.actions.currentProvider(client),
                       current.id == providerID,
                       current.configurationRevision == configurationRevision else { return }
-                if let ownedRender = self.actions.ownedRender { ownedRender(providerID, next) }
-                else { self.actions.render(next) }
+                if let ownedRender = self.actions.ownedRender { ownedRender(providerID, snapshot) }
+                else { self.actions.render(snapshot) }
             }
         }
+    }
+
+    static func balanceHTTPErrorReason(_ status: Int, language: AppLanguage) -> String {
+        let key: LocalizationKey = status == 401 || status == 403
+            ? .keyProviderRefreshCoordinatorBalanceAPIKeyInvalid
+            : .keyProviderRefreshCoordinatorTheBalanceEndpointReturnedAnError
+        return tr(key, language: language) + " (HTTP \(status))"
     }
 
     private static func formatBalanceSummary(_ amount: Double, unit: String) -> String {

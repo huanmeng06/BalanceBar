@@ -259,6 +259,43 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         XCTAssertEqual(notificationClient.deliveries.count, 1)
     }
 
+    func testBalanceHTTPFailuresKeepCachedAmountAndDistinguishCredentialsFromServerErrors() throws {
+        let current = try XCTUnwrap(repository.loadCurrent(appType: "codex"))
+        var actions = makeActions()
+        var expectedRender = expectation(description: "initial balance")
+        var rendered: Snapshot?
+        actions.ownedRender = { _, snapshot in
+            rendered = snapshot
+            expectedRender.fulfill()
+        }
+        let coordinator = makeCoordinator(repository: repository, officialQuotaClient: OfficialQuotaClient(),
+            balanceAPIClient: BalanceAPIClient(session: session), actions: actions)
+        DelayedBalanceURLProtocol.setHandler { _ in DelayedBalanceURLProtocol.success(amount: "3.34") }
+        func refresh() {
+            coordinator.refreshStandardProvider(current: current, client: .codex, forceBalance: true, switched: false)
+            wait(for: [expectedRender], timeout: 3)
+        }
+        refresh()
+        let successful = try XCTUnwrap(rendered)
+        XCTAssertEqual(successful.kind, .balance)
+        let failures: [(Int, LocalizationKey, FailureRecovery)] = [
+            (401, .keyProviderRefreshCoordinatorBalanceAPIKeyInvalid, .openCCSwitch),
+            (403, .keyProviderRefreshCoordinatorBalanceAPIKeyInvalid, .openCCSwitch),
+            (503, .keyProviderRefreshCoordinatorTheBalanceEndpointReturnedAnError, .none),
+        ]
+        for (status, key, recovery) in failures {
+            expectedRender = expectation(description: "HTTP \(status) renders")
+            DelayedBalanceURLProtocol.setHandler { _ in .init(data: Data(), statusCode: status) }
+            refresh()
+            let failure = try XCTUnwrap(rendered)
+            XCTAssertTrue(failure.hasCachedBalance)
+            XCTAssertEqual(failure.amount, successful.amount)
+            XCTAssertEqual(failure.date, successful.date)
+            XCTAssertEqual(failure.message, tr(key, language: AppLanguage.resolved) + " (HTTP \(status))")
+            XCTAssertEqual(failure.failureRecovery, recovery)
+        }
+    }
+
     func testStandardAPIBalanceFailureNeverAlertsFromStaleSampleUntilRefreshSucceeds() throws {
         try assertAPIFailureNeverAlertsFromStaleSample { coordinator, current in
             coordinator.refreshStandardProvider(current: current, client: .codex, forceBalance: true, switched: false)

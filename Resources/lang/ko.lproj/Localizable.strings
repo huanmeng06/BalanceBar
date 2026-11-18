@@ -103,6 +103,7 @@
 "provider.balance.progress.store.the_balance_unit_changed" = "잔액 단위가 변경되었습니다";
 "provider.refresh.coordinator.the_balance_endpoint_is_not_https" = "잔액 엔드포인트가 HTTPS가 아닙니다";
 "provider.refresh.coordinator.the_balance_endpoint_returned_an_error" = "잔액 엔드포인트가 오류를 반환했습니다";
+"provider.refresh.coordinator.balance_api_key_invalid" = "API 키가 유효하지 않거나 만료되었습니다";
 "provider.refresh.coordinator.unrecognized_balance_format" = "인식할 수 없는 잔액 형식";
 "provider.refresh.coordinator.the_balance_response_could_not_be_parsed" = "잔액 응답을 구문 분석할 수 없습니다";
 "provider.refresh.coordinator.official_value_local_sign_in_credentials_were_not_found" = "공식 %1$@: 로컬 로그인 자격 증명을 찾지 못했습니다";

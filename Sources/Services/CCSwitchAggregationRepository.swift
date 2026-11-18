@@ -93,7 +93,7 @@ enum AggregationWalletPresentation {
             let membership = members.map { $0.identity.numericScope }.sorted()
             let memberKey = String(data: (try? JSONEncoder().encode(membership)) ?? Data(), encoding: .utf8) ?? ""
             let wallet = scope + "|" + unit + "|" + memberKey
-            let snapshot: Snapshot
+            var snapshot: Snapshot
             if let amount = selected.snapshot.amount, selected.snapshot.kind == .balance {
                 snapshot = .balance(selected.entry.source.name, amount, unit, selected.entry.source.websiteURL ?? selected.entry.source.query?.websiteURL,
                     selected.snapshot.date ?? selected.fetchedAt ?? .distantPast,
@@ -111,6 +111,10 @@ enum AggregationWalletPresentation {
                    !note.isEmpty, !notes.contains(note) { notes.append(note) }
             }
             let failed = members.filter { $0.status == .stale || $0.status == .error || $0.status == .unavailable }
+            if snapshot.kind == .balance, selected.snapshot.failureRecovery == .openCCSwitch
+                || failed.contains(where: { $0.snapshot.failureRecovery == .openCCSwitch }) {
+                snapshot.failureRecovery = .openCCSwitch
+            }
             let reason = failed.isEmpty ? selected.reason : failed.map {
                 ($0.entry.source.notes ?? $0.entry.source.name) + ": " + ($0.reason ?? tr(.keyAggregationUnavailable))
             }.joined(separator: "\n")

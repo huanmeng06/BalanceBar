@@ -103,6 +103,7 @@
 "provider.balance.progress.store.the_balance_unit_changed" = "Die Guthabeneinheit wurde geändert";
 "provider.refresh.coordinator.the_balance_endpoint_is_not_https" = "Der Guthaben-Endpunkt verwendet kein HTTPS";
 "provider.refresh.coordinator.the_balance_endpoint_returned_an_error" = "Der Guthaben-Endpunkt hat einen Fehler zurückgegeben";
+"provider.refresh.coordinator.balance_api_key_invalid" = "Der API-Schlüssel ist ungültig oder abgelaufen";
 "provider.refresh.coordinator.unrecognized_balance_format" = "Nicht erkanntes Guthabenformat";
 "provider.refresh.coordinator.the_balance_response_could_not_be_parsed" = "Die Guthabenantwort konnte nicht analysiert werden";
 "provider.refresh.coordinator.official_value_local_sign_in_credentials_were_not_found" = "Offiziell %1$@: Lokale Anmeldedaten wurden nicht gefunden";

@@ -142,6 +142,7 @@
     case keyProviderBalanceProgressStoreTheBalanceUnitChanged = "provider.balance.progress.store.the_balance_unit_changed"
     case keyProviderRefreshCoordinatorTheBalanceEndpointIsNotHttps = "provider.refresh.coordinator.the_balance_endpoint_is_not_https"
     case keyProviderRefreshCoordinatorTheBalanceEndpointReturnedAnError = "provider.refresh.coordinator.the_balance_endpoint_returned_an_error"
+    case keyProviderRefreshCoordinatorBalanceAPIKeyInvalid = "provider.refresh.coordinator.balance_api_key_invalid"
     case keyProviderRefreshCoordinatorUnrecognizedBalanceFormat = "provider.refresh.coordinator.unrecognized_balance_format"
     case keyProviderRefreshCoordinatorTheBalanceResponseCouldNotBeParsed = "provider.refresh.coordinator.the_balance_response_could_not_be_parsed"
     case keyProviderRefreshCoordinatorOfficialValueLocalSignInCredentialsWereNotFound = "provider.refresh.coordinator.official_value_local_sign_in_credentials_were_not_found"

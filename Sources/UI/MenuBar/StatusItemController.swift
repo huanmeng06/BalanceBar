@@ -6576,7 +6576,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func cardContext(_ display: AggregatedProviderDisplay) -> OverviewCardContext {
-        OverviewCardContext(snapshot: display.snapshot, identity: display.identity.numericScope,
+        var snapshot = display.snapshot
+        if display.status == .loading && display.fetchedAt == nil {
+            snapshot = .loadingProvider(display.entry.source.name)
+        } else if snapshot.kind == .balance, snapshot.failureRecovery == .openCCSwitch, let reason = display.reason {
+            snapshot = .providerError(snapshot.provider, reason: reason, cachedBalance: snapshot)
+            snapshot.failureRecovery = .openCCSwitch
+        }
+        return OverviewCardContext(snapshot: snapshot, identity: display.identity.numericScope,
             account: display.account, date: display.fetchedAt, notes: display.entry.source.notes, noteTags: display.groupedNotes)
     }
 
@@ -6711,42 +6718,40 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let gap: CGFloat = 8
         for display in aggregationOverviewDisplays {
             let context = cardContext(display)
-            let errorRetryReason = display.snapshot.kind == .error
-                ? display.snapshot.officialRetryReason(timeZone: settings.displayTimeZone) : nil
+            let snapshot = context.snapshot
+            let errorRetryReason = snapshot.kind == .error
+                ? snapshot.officialRetryReason(timeZone: settings.displayTimeZone) : nil
             var record: AggregationCard
-            if var existing = aggregationCards[display.identity], existing.snapshot.kind == display.snapshot.kind {
+            if var existing = aggregationCards[display.identity], existing.snapshot.kind == snapshot.kind {
                 if let host = existing.card as? MenuHoverLinkHostView {
                     reconcileOverviewSections(in: host, context: context)
                     // Third-party cards have no section topology. Their source
                     // link is unchanged because configuration is part of identity.
-                    if display.snapshot.kind == .balance {
-                        let presentation = display.snapshot.officialQuotaMenuPresentation(
+                    if snapshot.kind == .balance {
+                        let presentation = snapshot.officialQuotaMenuPresentation(
                             lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
                             hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota)
-                        let layout = makeOverviewCardLayout(for: display.snapshot, presentation: presentation, account: context.account, aggregation: true)
+                        let layout = makeOverviewCardLayout(for: snapshot, presentation: presentation, account: context.account, aggregation: true)
                         reconcileBalanceLayout(in: host, next: layout)
                         if layout.progress == nil {
                             host.subviews.compactMap { $0 as? QuotaProgressView }.forEach { $0.removeFromSuperview() }
                         } else if !host.subviews.contains(where: { $0 is QuotaProgressView }),
                                   let frame = layout.progress,
-                                  let sample = OverviewNumericPresentation.samples(snapshot: display.snapshot, providerIdentity: context.identity,
+                                  let sample = OverviewNumericPresentation.samples(snapshot: snapshot, providerIdentity: context.identity,
                                       lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
                                       hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota,
                                       showBankedReset: settings.showBankedReset).first {
                             host.addSubview(makeOverviewNumericProgress(plan: overviewNumericPlan(for: sample), frame: frame))
                         }
                         let labels = existing.card.subviews.compactMap { $0 as? NSTextField }
-                        labels.first { $0.font?.pointSize == 15 }?.stringValue = display.snapshot.overviewProvider
-                        labels.first { $0.identifier?.rawValue == "overview.refreshTime" }?.stringValue = display.fetchedAt.map {
-                            AppDisplayTime.formatter(timeZone: settings.displayTimeZone).string(from: $0)
-                        } ?? "--:--:--"
+                        labels.first { $0.font?.pointSize == 15 }?.stringValue = snapshot.overviewProvider
                     }
-                } else if existing.snapshot != display.snapshot || existing.errorRetryReason != errorRetryReason {
+                } else if existing.snapshot != snapshot || existing.errorRetryReason != errorRetryReason {
                     existing.card.removeFromSuperview()
-                    existing.card = makeOverviewMenuItem(for: display.snapshot, context: context).view!
+                    existing.card = makeOverviewMenuItem(for: snapshot, context: context).view!
                     existing.wrapper.addSubview(existing.card)
                 }
-                existing.snapshot = display.snapshot
+                existing.snapshot = snapshot
                 existing.errorRetryReason = errorRetryReason
                 record = existing
             } else {
@@ -6755,10 +6760,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     old.wrapper.removeFromSuperview()
                 }
                 let wrapper = NSView(frame: .zero)
-                let card = makeOverviewMenuItem(for: display.snapshot, context: context).view!
+                let card = makeOverviewMenuItem(for: snapshot, context: context).view!
                 wrapper.addSubview(card)
                 document.addSubview(wrapper)
-                record = AggregationCard(wrapper: wrapper, card: card, snapshot: display.snapshot, errorRetryReason: errorRetryReason)
+                record = AggregationCard(wrapper: wrapper, card: card, snapshot: snapshot, errorRetryReason: errorRetryReason)
                 needsPlacement = true
             }
             if record.wrapper.superview !== document {
@@ -7076,13 +7081,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         guard let time = descendantViews(of: card, as: NSTextField.self).first(where: {
             $0.identifier?.rawValue == "overview.refreshTime"
         }) else { return }
-        let text = display.fetchedAt.map { AppDisplayTime.formatter(timeZone: settings.displayTimeZone).string(from: $0) } ?? "--:--:--"
         let isStale = display.status == .stale || (display.status == .loading && display.reason != nil && display.fetchedAt != nil)
-        let reason = isStale ? display.snapshot.officialRetryReason(timeZone: settings.displayTimeZone) ?? display.reason : nil
-        time.stringValue = isStale ? "⚠︎ " + text : text
-        time.textColor = isStale ? .systemOrange : .secondaryLabelColor
-        time.toolTip = isStale ? reason ?? tr(.keyAggregationStale) : nil
-        time.setAccessibilityLabel(isStale ? tr(.keyAggregationStale) + " · " + text + " · " + (reason ?? "") : text)
+        let reason = display.snapshot.officialRetryReason(timeZone: settings.displayTimeZone)
+            ?? display.reason ?? tr(.keyAggregationStale)
+        applyRefreshTime(to: time, date: display.fetchedAt, staleReason: isStale ? reason : nil, showsPlaceholder: false)
     }
 
     private func makeOverviewCardLayout(for snapshot: Snapshot,
@@ -7142,9 +7144,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     private func makeOverviewMenuItem(for snapshot: Snapshot, context supplied: OverviewCardContext? = nil) -> NSMenuItem {
         let context = supplied ?? directCardContext(for: snapshot)
-        if snapshot.kind == .error {
+        if snapshot.kind == .error || (supplied != nil && snapshot.kind == .placeholder) {
             presentedOverviewNumerics = currentOverviewNumericSamples()
-            return makeOverviewErrorMenuItem(for: snapshot, context: context)
+            return makeOverviewStatusMenuItem(for: snapshot, context: context)
         }
         let quotaPaceNow = quotaPaceNowForTesting ?? Date()
         let item = NSMenuItem()
@@ -7647,26 +7649,29 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         return item
     }
 
-    private func makeOverviewErrorMenuItem(for snapshot: Snapshot, context: OverviewCardContext) -> NSMenuItem {
+    private func makeOverviewStatusMenuItem(for snapshot: Snapshot, context: OverviewCardContext) -> NSMenuItem {
         let item = NSMenuItem()
         item.isEnabled = false
+        let isLoading = snapshot.kind == .placeholder
+        let hasCachedBalance = snapshot.hasCachedBalance
         let message = snapshot.overviewReset(refreshDate: nil, formatter: AppDisplayTime.formatter(timeZone: settings.displayTimeZone))
-        // Official Claude and Codex failures add the BB-07 failure view: reason plus a
-        // recovery button for that client, in extra height below the detail.
-        let showsUsagePageButton = snapshot.quotaStatus != nil || snapshot.failureClient != nil
+        let showsFailureView = !isLoading && (snapshot.quotaStatus != nil || snapshot.failureClient != nil
+            || snapshot.failureRecovery == .openCCSwitch)
         let failureClient = snapshot.failureClient ?? .claude
-        let buttonShift = showsUsagePageButton && snapshot.failureRecovery != .none
+        let buttonShift = showsFailureView && snapshot.failureRecovery != .none
             ? ErrorCardLayout.usagePageButtonHeight : 0
         let baseFrames = ErrorCardLayout.errorFrames(
-            for: message,
+            for: isLoading ? tr(.keyAggregationLoading) : (hasCachedBalance ? "" : message),
             includesAccount: context.account != nil,
             includesSubscription: context.account?.subscription != nil,
             subscriptionTextWidth: context.account?.subscription.map {
                 AccountMarqueeView.textWidth(of: $0.text, font: Self.subscriptionFont)
             },
-            fullWidthDetail: showsUsagePageButton
+            fullWidthDetail: isLoading || showsFailureView
         )
-        let frames = baseFrames.shiftedUp(by: buttonShift)
+        // The loading card needs only the header and one detail row, not a quota row.
+        let loadingInset = baseFrames.quotaDetail.minY - baseFrames.detail.maxY + ErrorCardLayout.singleLineDetailHeight
+        let frames = baseFrames.shiftedUp(by: isLoading ? -loadingInset : buttonShift)
         let view = NSView(frame: NSRect(origin: .zero, size: frames.cardSize))
         let provider = makeOverviewLabel(snapshot.overviewProvider, font: ErrorCardLayout.titleFont)
         provider.frame = frames.title
@@ -7683,25 +7688,39 @@ final class StatusItemController: NSObject, NSMenuDelegate {
            let subscriptionFrame = frames.subscription {
             view.addSubview(makeSubscriptionLabel(subscription.text, frame: subscriptionFrame))
         }
-        let timeText = context.date.map { AppDisplayTime.formatter(timeZone: settings.displayTimeZone).string(from: $0) } ?? "--:--:--"
-        let refreshTime = ErrorCardLayout.makeRefreshTimeLabel(
-            timeText,
-            showsCachedBalance: snapshot.hasCachedBalance
-        )
+        let refreshTime = ErrorCardLayout.makeRefreshTimeLabel("")
+        let errorDate = snapshot.provider.isEmpty ? snapshot.date : context.date ?? snapshot.date
+        applyRefreshTime(to: refreshTime, date: errorDate, staleReason: hasCachedBalance ? message : nil, showsPlaceholder: false)
         refreshTime.identifier = NSUserInterfaceItemIdentifier("overview.refreshTime")
         refreshTime.frame = frames.refreshTime
         view.addSubview(refreshTime)
-        let quotaDetail = makeOverviewLabel(snapshot.overviewQuotaDetail, font: ErrorCardLayout.quotaFont)
+        if isLoading {
+            let detail = ErrorCardLayout.makeDetailLabel(baseFrames.detailText)
+            detail.frame = baseFrames.detail
+            view.addSubview(detail)
+            updateOverviewHeaderNotes(in: view, context: context)
+            item.view = view
+            return item
+        }
+        let quotaDetail = makeOverviewLabel(
+            hasCachedBalance ? tr(.keySnapshotRemainingBalance) : snapshot.overviewQuotaDetail,
+            font: ErrorCardLayout.quotaFont
+        )
         quotaDetail.frame = frames.quotaDetail
+        if hasCachedBalance {
+            quotaDetail.textColor = .secondaryLabelColor
+            quotaDetail.frame.origin.y = frames.amount.midY - frames.quotaDetail.height / 2
+        }
         view.addSubview(quotaDetail)
-        // The Claude failure view spans the full width; its amount would only be an empty "—".
-        if !showsUsagePageButton {
+        // Official failures have no amount; configuration failures may still have a cached balance.
+        if !showsFailureView || hasCachedBalance {
             let amount = makeOverviewLabel(snapshot.overviewLargeAmount, font: ErrorCardLayout.amountFont)
+            if hasCachedBalance { amount.textColor = .secondaryLabelColor }
             amount.alignment = .right
             amount.frame = frames.amount
             view.addSubview(amount)
         }
-        if showsUsagePageButton {
+        if showsFailureView {
             let failure = FailureStateView(
                 reason: frames.detailText,
                 action: snapshot.failureRecovery,
@@ -7714,12 +7733,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     self?.cancelMenuBarTracking()
                     // The menu is closing; open the window once it is gone.
                     DispatchQueue.main.async { self?.actions.openEgressGuardSettings() }
+                },
+                onOpenCCSwitch: { [weak self] in
+                    guard let self else { return }
+                    self.openExternalAppFromStatusItemClick(self.actions.openCCSwitch)
                 })
             failure.identifier = NSUserInterfaceItemIdentifier("overview.failureState")
             failure.frame = NSRect(x: frames.detail.minX, y: frames.detail.minY - buttonShift,
                                    width: frames.detail.width, height: frames.detail.height + buttonShift)
             view.addSubview(failure)
-        } else {
+        } else if !hasCachedBalance {
             let detail = ErrorCardLayout.makeDetailLabel(
                 frames.detailText,
                 textColor: snapshot.provider.isEmpty ? .secondaryLabelColor : .systemRed
@@ -8492,8 +8515,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     /// Single source for the direct card's refresh time: a rebuilt card and an
     /// in-place update while the menu stays open must show the same state.
-    private func applyRefreshTime(to label: NSTextField, date: Date?, staleReason: String?) {
-        let timeText = date.map { AppDisplayTime.formatter(timeZone: settings.displayTimeZone).string(from: $0) } ?? "--:--:--"
+    private func applyRefreshTime(to label: NSTextField, date: Date?, staleReason: String?, showsPlaceholder: Bool = true) {
+        label.isHidden = date == nil && !showsPlaceholder
+        let staleReason = label.isHidden ? nil : staleReason
+        let timeText = date.map { AppDisplayTime.formatter(timeZone: settings.displayTimeZone).string(from: $0) }
+            ?? (showsPlaceholder ? "--:--:--" : "")
         label.stringValue = staleReason == nil ? timeText : "⚠︎ " + timeText
         label.textColor = staleReason == nil ? .secondaryLabelColor : .systemOrange
         label.toolTip = staleReason

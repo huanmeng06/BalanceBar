@@ -103,6 +103,7 @@
 "provider.balance.progress.store.the_balance_unit_changed" = "L’unité du solde a changé";
 "provider.refresh.coordinator.the_balance_endpoint_is_not_https" = "Le point de terminaison du solde n’utilise pas HTTPS";
 "provider.refresh.coordinator.the_balance_endpoint_returned_an_error" = "Le point de terminaison du solde a renvoyé une erreur";
+"provider.refresh.coordinator.balance_api_key_invalid" = "La clé API est invalide ou a expiré";
 "provider.refresh.coordinator.unrecognized_balance_format" = "Format de solde non reconnu";
 "provider.refresh.coordinator.the_balance_response_could_not_be_parsed" = "La réponse du solde n’a pas pu être analysée";
 "provider.refresh.coordinator.official_value_local_sign_in_credentials_were_not_found" = "Officiel %1$@ : les identifiants de connexion locaux sont introuvables";

@@ -103,6 +103,7 @@
 "provider.balance.progress.store.the_balance_unit_changed" = "The balance unit changed";
 "provider.refresh.coordinator.the_balance_endpoint_is_not_https" = "The balance endpoint is not HTTPS";
 "provider.refresh.coordinator.the_balance_endpoint_returned_an_error" = "The balance endpoint returned an error";
+"provider.refresh.coordinator.balance_api_key_invalid" = "API key is invalid or has expired";
 "provider.refresh.coordinator.unrecognized_balance_format" = "Unrecognized balance format";
 "provider.refresh.coordinator.the_balance_response_could_not_be_parsed" = "The balance response could not be parsed";
 "provider.refresh.coordinator.official_value_local_sign_in_credentials_were_not_found" = "Official %1$@: Local sign-in credentials were not found";
