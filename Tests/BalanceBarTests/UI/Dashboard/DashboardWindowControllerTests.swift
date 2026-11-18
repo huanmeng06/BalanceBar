@@ -2249,13 +2249,14 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         window.displayIfNeeded()
 
         XCTAssertEqual(editor.rowCount, 7)
-        XCTAssertEqual(editor.layoutHeight, StatusLinksEditorHostingView.fixedHeight, accuracy: 0.001)
+        XCTAssertEqual(editor.layoutHeight, StatusLinksEditorHostingView.maximumHeight, accuracy: 0.001)
         XCTAssertEqual(editor.frame.height, initialEditorHeight, accuracy: 1)
         XCTAssertEqual(card.frame.height, initialCardHeight, accuracy: 1)
         XCTAssertEqual(documentView.bounds.height, initialDocumentHeight, accuracy: 1)
+        let clipView = editor.scrollViewForTesting.contentView
         XCTAssertGreaterThan(
             editor.tableViewForTesting.frame.height,
-            editor.scrollViewForTesting.contentView.bounds.height,
+            clipView.bounds.height - clipView.contentInsets.top,
             "Additional rows should be handled by the native table viewport"
         )
     }

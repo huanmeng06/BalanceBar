@@ -355,6 +355,7 @@ private final class MenuStatusLinksEditorHost: NSView {
         if let editor { return editor }
         let editor = makeEditor()
         self.editor = editor
+        editor.onLayoutHeightChange = { [weak self] in self?.syncHeight() }
         editor.translatesAutoresizingMaskIntoConstraints = false
         addSubview(editor)
         NSLayoutConstraint.activate([
