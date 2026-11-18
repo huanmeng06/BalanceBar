@@ -595,6 +595,20 @@ final class ModSyncStatusTests: XCTestCase {
             .waitingForData)
     }
 
+    func testSilenceWaitsAFullGracePeriodAfterCollectionStarts() {
+        // Installed long ago, but BalanceBar only just started collecting (e.g. relaunched):
+        // the Mod has not had a chance to deliver yet, so it is waiting, not silent.
+        let oldInstall = ModPluginInstallation(scope: "user", isEnabled: true, version: ModOnboardingConfig.latestModVersion, installedAt: now.addingTimeInterval(-3_600))
+        var evidence = ModSnapshotEvidence(collectingSince: now.addingTimeInterval(-120))
+        XCTAssertEqual(
+            ModSyncStatus.resolve(environment: env(installation: oldInstall, processRunning: true), evidence: evidence, now: now),
+            .waitingForData)
+        evidence.collectingSince = now.addingTimeInterval(-600)
+        XCTAssertEqual(
+            ModSyncStatus.resolve(environment: env(installation: oldInstall, processRunning: true), evidence: evidence, now: now),
+            .silent)
+    }
+
     func testRejectionNewerThanAcceptanceIsReportedAndOlderIsSuperseded() {
         let accepted = ModSnapshotEvidence(
             lastAcceptedAt: now.addingTimeInterval(-60),

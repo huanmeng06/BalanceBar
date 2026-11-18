@@ -620,7 +620,6 @@
 "codex.login_prompt.copied_title" = "已複製 codex login 指令";
 "quota.status.accessibility" = "額度狀態：%1$@";
 "claude.refresh.login_expired" = "Claude Code 登入已失效。在終端機執行一次 claude 即可恢復；BalanceBar 不會自行續期登入。";
-"status.item.controller.refresh_now_login_expired" = "Claude Code 登入已失效，請在終端機執行 claude";
 "claude.quota.calibration" = "Claude 官方額度校準";
 "claude.source_tag.all_clients" = "全端通用";
 "claude.source_tag.desktop" = "桌面版優先";

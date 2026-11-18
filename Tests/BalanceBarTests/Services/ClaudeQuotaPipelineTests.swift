@@ -1038,6 +1038,46 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         XCTAssertTrue(pollUntil { events.snapshot().contains { $0.kind == .rejected(reason: .cycleUnverified) } })
     }
 
+    func testRestartReportsRestoredLiveModReadingsAsAcceptedOnlyWhileFresh() throws {
+        final class EventBox {
+            private let lock = NSLock()
+            private var values: [ClaudeQuotaPipeline.ModSnapshotEvent] = []
+            func append(_ value: ClaudeQuotaPipeline.ModSnapshotEvent) { lock.lock(); values.append(value); lock.unlock() }
+            func snapshot() -> [ClaudeQuotaPipeline.ModSnapshotEvent] { lock.lock(); defer { lock.unlock() }; return values }
+        }
+        // First run: an official read, then a Mod snapshot that is displayed and persisted.
+        let first = makePipeline(configuration: claudeV1TestConfiguration, withInbox: true)
+        first.start()
+        first.requestFetch(reason: .initial)
+        _ = try XCTUnwrap(waitForState(first) { !$0.windows.isEmpty })
+        clock.advance(by: 305)
+        let observedAt = Self.start.addingTimeInterval(310)
+        try placeModSnapshot(five: 25, seven: 42, observedAt: observedAt)
+        _ = try XCTUnwrap(waitForState(first) { $0.windows.first?.remaining == 75 })
+        quiet(first)
+
+        // Restart while the Mod readings are still valid: the card shows them as live, so the
+        // settings entry hears they were accepted instead of calling the Mod silent.
+        let events = EventBox()
+        let second = makePipeline(configuration: claudeV1TestConfiguration)
+        second.modSnapshotEventSink = { if case .formatChecked = $0.kind { return }; events.append($0) }
+        second.start()
+        quiet(second)
+        XCTAssertEqual(events.snapshot().map(\.kind), [.processed(accepted: true), .processed(accepted: true)])
+        XCTAssertEqual(events.snapshot().map(\.window), [.fiveHour, .sevenDay])
+        XCTAssertEqual(events.snapshot().map(\.observedAt), [observedAt, observedAt])
+        quiet(second)
+
+        // Restart after the readings expired: nothing live to report.
+        clock.advance(by: 24 * 3_600)
+        let expiredEvents = EventBox()
+        let third = makePipeline(configuration: claudeV1TestConfiguration)
+        third.modSnapshotEventSink = { if case .formatChecked = $0.kind { return }; expiredEvents.append($0) }
+        third.start()
+        quiet(third)
+        XCTAssertTrue(expiredEvents.snapshot().isEmpty)
+    }
+
     func testModSnapshotDisplaysAndSuppressesAutomaticReadsWhileFresh() throws {
         let pipeline = makePipeline(
             configuration: claudeV1TestConfiguration, withTracker: true, withInbox: true)

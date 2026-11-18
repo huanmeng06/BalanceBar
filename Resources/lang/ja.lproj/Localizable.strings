@@ -620,7 +620,6 @@
 "codex.login_prompt.copied_title" = "codex login コマンドをコピーしました";
 "quota.status.accessibility" = "クォータの状態：%1$@";
 "claude.refresh.login_expired" = "Claude Code のサインインが期限切れです。ターミナルで claude を一度実行すると復旧します。BalanceBar がサインインを自動更新することはありません。";
-"status.item.controller.refresh_now_login_expired" = "ログイン資格情報が期限切れです。ターミナルで Claude Code CLI をもう一度実行してください";
 "claude.quota.calibration" = "Claude 公式クォータの校正";
 "claude.source_tag.all_clients" = "全環境対応";
 "claude.source_tag.desktop" = "デスクトップ優先";

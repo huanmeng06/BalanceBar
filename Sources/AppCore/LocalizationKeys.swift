@@ -654,7 +654,6 @@
     case keyCodexLoginPromptCopiedTitle = "codex.login_prompt.copied_title"
     case keyQuotaStatusAccessibility = "quota.status.accessibility"
     case keyClaudeRefreshLoginExpired = "claude.refresh.login_expired"
-    case keyStatusItemControllerRefreshNowLoginExpired = "status.item.controller.refresh_now_login_expired"
     case keyClaudeModSyncTitle = "claude.mod_sync.title"
     case keyClaudeModSyncManage = "claude.mod_sync.manage"
     case modInt2PitchTitle = "mod.ui.int2.pitch_title"

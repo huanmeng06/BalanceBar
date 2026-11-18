@@ -620,7 +620,6 @@
 "codex.login_prompt.copied_title" = "Commande codex login copiée";
 "quota.status.accessibility" = "État du quota : %1$@";
 "claude.refresh.login_expired" = "La connexion à Claude Code a expiré. Exécutez claude une fois dans un terminal pour la rétablir ; BalanceBar ne renouvelle jamais la connexion lui-même.";
-"status.item.controller.refresh_now_login_expired" = "Identifiants expirés ; relancez Claude Code CLI dans le terminal";
 "claude.quota.calibration" = "Recalage du quota officiel Claude";
 "claude.source_tag.all_clients" = "Tous les clients";
 "claude.source_tag.desktop" = "Bureau d’abord";

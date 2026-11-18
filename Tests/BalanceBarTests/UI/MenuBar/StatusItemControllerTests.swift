@@ -3470,51 +3470,6 @@ extension StatusItemControllerTests {
     }
 
     @MainActor
-    func testRefreshItemShowsASubtitleOnlyWhenTheLoginExpired() throws {
-        var loginExpired = false
-        let controller = StatusItemController(actions: .init(manualRefresh: {}, openDashboard: {}, openChatGPT: {},
-            openCCSwitch: {}, quit: {}, switchProvider: { _ in }, openProviderWebsite: {}, openStatusLink: { _ in },
-            iconChanged: { _ in }, isClaudeLoginExpired: { loginExpired }))
-        defer { controller.teardown() }
-        let input = StatusItemController.MenuInput(choices: [], quickSwitchSummaries: [:], activeClient: .claude,
-            openAIAccount: nil, statusLinks: [], showQuickSwitchMenu: false, showOpenChatGPTMenu: false,
-            showOpenCCSwitchMenu: false, showStatusMenu: false, directProviderID: "claude-official")
-        controller.start(snapshot: .placeholder, refreshDate: Date(), menuInput: input, settings: makeSettings())
-        let refresh = try XCTUnwrap(controller.statusMenuForTesting.items.first { $0.title == tr(.keyStatusItemControllerRefreshNow) })
-
-        let actionTitle = tr(.keyStatusItemControllerRefreshNow)
-        func assertRefresh(subtitle: String?, _ message: String, line: UInt = #line) {
-            XCTAssertEqual(refresh.title.components(separatedBy: "\n").first, actionTitle, "the action title never carries the status", line: line)
-            // A long subtitle is wrapped by hand into the attributed title; a short one uses the native subtitle.
-            var shown: String?
-            if #available(macOS 14.4, *), let native = refresh.subtitle { shown = native }
-            if shown == nil, let attributed = refresh.attributedTitle?.string {
-                let rest = attributed.components(separatedBy: "\n").dropFirst()
-                shown = rest.isEmpty ? nil : rest.joined()
-            }
-            // Wrapping trims the space at a break, so compare without whitespace.
-            func squashed(_ text: String?) -> String? { text?.filter { !$0.isWhitespace } }
-            XCTAssertEqual(squashed(shown), squashed(subtitle), message, line: line)
-        }
-
-        assertRefresh(subtitle: nil, "a healthy login shows no subtitle")
-        loginExpired = true
-        XCTAssertTrue(controller.validateMenuItem(refresh), "a paused login can still be retried after claude renews it")
-        assertRefresh(subtitle: tr(.keyStatusItemControllerRefreshNowLoginExpired), "login expired")
-        loginExpired = false
-        _ = controller.validateMenuItem(refresh)
-        assertRefresh(subtitle: nil, "the subtitle clears with the expiry")
-
-        // The orange re-login row under the card already says it: no duplicate subtitle.
-        loginExpired = true
-        controller.updateMenu(input: StatusItemController.MenuInput(choices: [], quickSwitchSummaries: [:],
-            activeClient: .claude, openAIAccount: nil, statusLinks: [], showQuickSwitchMenu: false,
-            showOpenChatGPTMenu: false, showOpenCCSwitchMenu: false, showStatusMenu: false,
-            directProviderID: "claude-official", claudeLoginPrompt: .liveData))
-        XCTAssertNil(controller.manualRefreshMenuSubtitle(), "the re-login row carries the hint")
-    }
-
-    @MainActor
     func testClaudeCardShowsTheStatusSlotAndUpdatesItInPlaceThroughRefreshFailureAndRecovery() throws {
         let controller = makeController()
         defer { controller.teardown() }
