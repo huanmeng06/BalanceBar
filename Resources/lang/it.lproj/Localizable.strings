@@ -70,6 +70,7 @@
 "snapshot.value_remaining_value_value" = "%1$@ rimanente: %2$@%% (%3$@)";
 "snapshot.value_remaining_value" = "%1$@ rimanente: %2$@";
 "snapshot.failed_to_load_balance.2" = "Impossibile caricare il saldo";
+"snapshot.failed_to_load_quota_reason" = "Impossibile caricare la quota: %1$@";
 "snapshot.value_remaining_value.2" = "%1$@ rimanente: %2$@%%";
 "snapshot.reset_value.2" = "%1$@";
 "snapshot.updated_value_follows_cc_switch_automatically" = "Aggiornato: %1$@ · Sincronizzazione automatica con CC Switch";
@@ -103,6 +104,7 @@
 "provider.balance.progress.store.the_balance_unit_changed" = "L'unità del saldo è cambiata";
 "provider.refresh.coordinator.the_balance_endpoint_is_not_https" = "L’endpoint del saldo non usa HTTPS";
 "provider.refresh.coordinator.the_balance_endpoint_returned_an_error" = "L'endpoint del saldo ha restituito un errore";
+"provider.refresh.coordinator.balance_api_key_invalid" = "La chiave API non è valida o è scaduta";
 "provider.refresh.coordinator.unrecognized_balance_format" = "Formato del saldo non riconosciuto";
 "provider.refresh.coordinator.the_balance_response_could_not_be_parsed" = "Impossibile analizzare la risposta del saldo";
 "provider.refresh.coordinator.official_value_local_sign_in_credentials_were_not_found" = "Account ufficiale %1$@: le credenziali di accesso locali non sono state trovate";

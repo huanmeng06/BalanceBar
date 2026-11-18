@@ -70,6 +70,7 @@
 "snapshot.value_remaining_value_value" = "%1$@ verbleibend: %2$@%% (%3$@)";
 "snapshot.value_remaining_value" = "%1$@ verbleibend: %2$@";
 "snapshot.failed_to_load_balance.2" = "Guthaben konnte nicht geladen werden";
+"snapshot.failed_to_load_quota_reason" = "Kontingent konnte nicht geladen werden: %1$@";
 "snapshot.value_remaining_value.2" = "%1$@ verbleibend: %2$@%%";
 "snapshot.reset_value.2" = "%1$@";
 "snapshot.updated_value_follows_cc_switch_automatically" = "Aktualisiert: %1$@ · Automatische Synchronisierung mit CC Switch";
@@ -103,6 +104,7 @@
 "provider.balance.progress.store.the_balance_unit_changed" = "Die Guthabeneinheit wurde geändert";
 "provider.refresh.coordinator.the_balance_endpoint_is_not_https" = "Der Guthaben-Endpunkt verwendet kein HTTPS";
 "provider.refresh.coordinator.the_balance_endpoint_returned_an_error" = "Der Guthaben-Endpunkt hat einen Fehler zurückgegeben";
+"provider.refresh.coordinator.balance_api_key_invalid" = "Der API-Schlüssel ist ungültig oder abgelaufen";
 "provider.refresh.coordinator.unrecognized_balance_format" = "Nicht erkanntes Guthabenformat";
 "provider.refresh.coordinator.the_balance_response_could_not_be_parsed" = "Die Guthabenantwort konnte nicht analysiert werden";
 "provider.refresh.coordinator.official_value_local_sign_in_credentials_were_not_found" = "Offiziell %1$@: Lokale Anmeldedaten wurden nicht gefunden";

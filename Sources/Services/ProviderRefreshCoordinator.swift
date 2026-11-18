@@ -540,7 +540,7 @@ final class ProviderRefreshCoordinator {
                 ) {
                 case .selected(let window), .legacy(let window?):
                     summaries[providerID] = Self.formatOfficialQuotaSummary(window)
-                case .legacy(nil), .unavailable:
+                case .legacy(nil):
                     break
                 }
             }
@@ -646,7 +646,7 @@ final class ProviderRefreshCoordinator {
                 let profile = entry.source.officialAccessToken != nil
                     ? entry.source.officialAccount : officialQuotaClient.codexAccountProfile()
                 aggregationDisplays[identity] = AggregatedProviderDisplay(entry: entry, identity: identity,
-                    snapshot: .providerError(entry.source.name, reason: tr(.keyAggregationLoading), cachedBalance: nil),
+                    snapshot: .loadingProvider(entry.source.name),
                     account: entry.source.isOfficial ? OpenAIAccountPresentation.current(
                         activeClient: .codex, providerIsOfficial: true, email: profile?.email,
                         subscription: OpenAISubscriptionTier(planType: profile?.planType)) : nil,
@@ -828,6 +828,7 @@ final class ProviderRefreshCoordinator {
             } else {
                 aggregationRequests.removeValue(forKey: identity)
                 display.snapshot = .providerError(source.name, reason: tr(.keyAggregationNotConfigured), cachedBalance: nil)
+                display.snapshot.isBalanceConfigurationError = true
                 display.status = .unavailable
                 display.reason = tr(.keyAggregationNotConfigured)
                 aggregationDisplays[identity] = display
@@ -1293,10 +1294,13 @@ final class ProviderRefreshCoordinator {
         onDiscard: (() -> Void)? = nil,
         completion: ((Snapshot) -> Void)? = nil
     ) {
-        func fail(providerID: String, providerName: String, reason: String, client: AssistantClient) {
+        func fail(_ reason: String, configurationError: Bool = false) {
             officialSampleUnavailable(client: client, providerID: providerID)
-            if let completion { completion(.providerError(providerName, reason: reason, cachedBalance: nil)) }
-            else {
+            if let completion {
+                var snapshot = Snapshot.providerError(providerName, reason: reason, cachedBalance: nil)
+                snapshot.isBalanceConfigurationError = configurationError
+                completion(snapshot)
+            } else {
                 renderBalanceError(
                     providerID: providerID,
                     providerName: providerName,
@@ -1345,8 +1349,7 @@ final class ProviderRefreshCoordinator {
                         identity: identity, sampleSequence: sampleSequence, observedAt: self.now())
                     guard case .success(let observation) = progressResult else {
                         if requestIsCurrent, case .failure(let error) = progressResult {
-                            fail(providerID: providerID, providerName: providerName,
-                                reason: error.userVisibleReason(language: AppLanguage.resolved), client: client)
+                            fail(error.userVisibleReason(language: AppLanguage.resolved))
                         }
                         return
                     }
@@ -1379,23 +1382,25 @@ final class ProviderRefreshCoordinator {
                     }
                 case .failure(.nonHTTPS):
                     if requestIsCurrent {
-                        fail(providerID: providerID, providerName: providerName, reason: tr(.keyProviderRefreshCoordinatorTheBalanceEndpointIsNotHttps), client: client)
+                        fail(tr(.keyProviderRefreshCoordinatorTheBalanceEndpointIsNotHttps), configurationError: true)
                     }
                 case .failure(.transport(let error)):
                     if requestIsCurrent {
-                        fail(providerID: providerID, providerName: providerName, reason: Self.localizedBalanceNetworkErrorReason(error, language: AppLanguage.resolved), client: client)
+                        fail(Self.localizedBalanceNetworkErrorReason(error, language: AppLanguage.resolved))
                     }
-                case .failure(.httpStatus):
+                case .failure(.httpStatus(let code)):
                     if requestIsCurrent {
-                        fail(providerID: providerID, providerName: providerName, reason: tr(.keyProviderRefreshCoordinatorTheBalanceEndpointReturnedAnError), client: client)
+                        let authFailure = code == 401 || code == 403
+                        fail(Self.balanceHTTPErrorReason(code, language: AppLanguage.resolved),
+                            configurationError: authFailure)
                     }
                 case .failure(.unsupportedFormat):
                     if requestIsCurrent {
-                        fail(providerID: providerID, providerName: providerName, reason: tr(.keyProviderRefreshCoordinatorUnrecognizedBalanceFormat), client: client)
+                        fail(tr(.keyProviderRefreshCoordinatorUnrecognizedBalanceFormat), configurationError: true)
                     }
                 case .failure(.invalidJSON):
                     if requestIsCurrent {
-                        fail(providerID: providerID, providerName: providerName, reason: tr(.keyProviderRefreshCoordinatorTheBalanceResponseCouldNotBeParsed), client: client)
+                        fail(tr(.keyProviderRefreshCoordinatorTheBalanceResponseCouldNotBeParsed))
                     }
                 }
             }
@@ -1494,7 +1499,7 @@ final class ProviderRefreshCoordinator {
             off.officialSourceDisabled = true
             snapshot = off
         } else if let failure = state.failure, let failureReason {
-            var error = Snapshot.providerError(target.providerName, reason: failureReason, cachedBalance: nil)
+            var error = Snapshot.officialQuotaError(target.providerName, reason: failureReason)
             error.officialRetryAt = retryAt
             error.quotaStatus = state.status
             error.failureRecovery = Self.claudeFailureRecovery(failure)
@@ -1645,7 +1650,7 @@ final class ProviderRefreshCoordinator {
                   directCodex: Bool = false, recovery: CodexOfficialFailure? = nil, retryAt: Date? = nil,
                   isCurrentRequest: @escaping () -> Bool) {
             if isValid(), isCurrentRequest() { officialSampleUnavailable(client: client, providerID: providerID) }
-            var error = Snapshot.providerError(providerName, reason: reason, cachedBalance: nil)
+            var error = Snapshot.officialQuotaError(providerName, reason: reason)
             error.officialRetryAt = retryAt
             // Every direct Codex error names its client, so a network or server error card
             // opens the Codex usage page instead of falling back to Claude's.
@@ -2125,14 +2130,14 @@ final class ProviderRefreshCoordinator {
         providerName: String,
         reason: String,
         client: AssistantClient,
-        configurationRevision: String = ""
+        configurationRevision: String
     ) {
         queue.async { [weak self] in
             guard let self, self.lifetime.isCurrent(),
                   self.standardRequestIsCurrent(client: client, providerID: providerID, revision: configurationRevision),
                   client != .codex || self.aggregationEntries.isEmpty else { return }
             let epoch = self.standardPublicationEpoch
-            let next = self.providerBalanceSnapshots.errorSnapshot(
+            let snapshot = self.providerBalanceSnapshots.errorSnapshot(
                 clientID: client.rawValue,
                 providerID: providerID,
                 providerName: providerName,
@@ -2145,10 +2150,17 @@ final class ProviderRefreshCoordinator {
                       let current = self.actions.currentProvider(client),
                       current.id == providerID,
                       current.configurationRevision == configurationRevision else { return }
-                if let ownedRender = self.actions.ownedRender { ownedRender(providerID, next) }
-                else { self.actions.render(next) }
+                if let ownedRender = self.actions.ownedRender { ownedRender(providerID, snapshot) }
+                else { self.actions.render(snapshot) }
             }
         }
+    }
+
+    static func balanceHTTPErrorReason(_ status: Int, language: AppLanguage) -> String {
+        let key: LocalizationKey = status == 401 || status == 403
+            ? .keyProviderRefreshCoordinatorBalanceAPIKeyInvalid
+            : .keyProviderRefreshCoordinatorTheBalanceEndpointReturnedAnError
+        return tr(key, language: language) + " (HTTP \(status))"
     }
 
     private static func formatBalanceSummary(_ amount: Double, unit: String) -> String {

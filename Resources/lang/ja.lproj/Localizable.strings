@@ -70,6 +70,7 @@
 "snapshot.value_remaining_value_value" = "%1$@ の残り：%2$@%%（%3$@）";
 "snapshot.value_remaining_value" = "%1$@ の残り：%2$@";
 "snapshot.failed_to_load_balance.2" = "残高の読み込みに失敗しました";
+"snapshot.failed_to_load_quota_reason" = "使用枠を読み込めませんでした：%1$@";
 "snapshot.value_remaining_value.2" = "%1$@ の残り：%2$@%%";
 "snapshot.reset_value.2" = "%1$@";
 "snapshot.updated_value_follows_cc_switch_automatically" = "更新：%1$@ · CC Switch と自動同期中";
@@ -103,6 +104,7 @@
 "provider.balance.progress.store.the_balance_unit_changed" = "残高の単位が変わりました";
 "provider.refresh.coordinator.the_balance_endpoint_is_not_https" = "残高エンドポイントが HTTPS ではありません";
 "provider.refresh.coordinator.the_balance_endpoint_returned_an_error" = "残高エンドポイントでエラーが返されました";
+"provider.refresh.coordinator.balance_api_key_invalid" = "API キーが無効か、有効期限が切れています";
 "provider.refresh.coordinator.unrecognized_balance_format" = "残高形式を認識できません";
 "provider.refresh.coordinator.the_balance_response_could_not_be_parsed" = "残高レスポンスを解析できません";
 "provider.refresh.coordinator.official_value_local_sign_in_credentials_were_not_found" = "%1$@ 公式アカウント：ローカルログイン情報が見つかりません";

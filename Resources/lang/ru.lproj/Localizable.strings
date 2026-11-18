@@ -70,6 +70,7 @@
 "snapshot.value_remaining_value_value" = "%1$@: осталось %2$@%% (%3$@)";
 "snapshot.value_remaining_value" = "%1$@: осталось %2$@";
 "snapshot.failed_to_load_balance.2" = "Не удалось загрузить баланс";
+"snapshot.failed_to_load_quota_reason" = "Не удалось загрузить квоту: %1$@";
 "snapshot.value_remaining_value.2" = "%1$@: осталось %2$@%%";
 "snapshot.reset_value.2" = "%1$@";
 "snapshot.updated_value_follows_cc_switch_automatically" = "Обновлено: %1$@ · Автоматическая синхронизация с CC Switch";
@@ -103,6 +104,7 @@
 "provider.balance.progress.store.the_balance_unit_changed" = "Единица баланса изменилась";
 "provider.refresh.coordinator.the_balance_endpoint_is_not_https" = "Эндпоинт баланса не использует HTTPS";
 "provider.refresh.coordinator.the_balance_endpoint_returned_an_error" = "Сервер баланса вернул ошибку";
+"provider.refresh.coordinator.balance_api_key_invalid" = "Ключ API недействителен или срок его действия истёк";
 "provider.refresh.coordinator.unrecognized_balance_format" = "Неизвестный формат баланса";
 "provider.refresh.coordinator.the_balance_response_could_not_be_parsed" = "Не удалось разобрать ответ о балансе";
 "provider.refresh.coordinator.official_value_local_sign_in_credentials_were_not_found" = "Официальный аккаунт %1$@: локальные учетные данные для входа не найдены";

@@ -70,6 +70,7 @@
 "snapshot.value_remaining_value_value" = "%1$@ 剩余：%2$@%%（%3$@）";
 "snapshot.value_remaining_value" = "%1$@ 剩余：%2$@";
 "snapshot.failed_to_load_balance.2" = "无法读取余额";
+"snapshot.failed_to_load_quota_reason" = "无法读取额度：%1$@";
 "snapshot.value_remaining_value.2" = "%1$@剩余：%2$@%%";
 "snapshot.reset_value.2" = "%1$@";
 "snapshot.updated_value_follows_cc_switch_automatically" = "更新于：%1$@ · 自动跟随 CC Switch";
@@ -103,6 +104,7 @@
 "provider.balance.progress.store.the_balance_unit_changed" = "余额单位发生变化";
 "provider.refresh.coordinator.the_balance_endpoint_is_not_https" = "余额服务地址不是 HTTPS";
 "provider.refresh.coordinator.the_balance_endpoint_returned_an_error" = "余额服务返回错误";
+"provider.refresh.coordinator.balance_api_key_invalid" = "API Key 无效或已过期";
 "provider.refresh.coordinator.unrecognized_balance_format" = "未识别余额格式";
 "provider.refresh.coordinator.the_balance_response_could_not_be_parsed" = "余额响应无法解析";
 "provider.refresh.coordinator.official_value_local_sign_in_credentials_were_not_found" = "%1$@ 官方账户：未找到本机登录信息";

@@ -370,7 +370,6 @@ enum OfficialQuotaUsagePrediction: Equatable {
 enum OfficialQuotaWindowResolution: Equatable {
     case selected(OfficialQuotaWindow)
     case legacy(OfficialQuotaWindow?)
-    case unavailable
 }
 
 enum OfficialQuotaWindowResolver {
@@ -379,23 +378,10 @@ enum OfficialQuotaWindowResolver {
         preference: OfficialQuotaWindowPreference
     ) -> OfficialQuotaWindowResolution {
         let recognized = windows.filter { $0.kind != .other }
-        guard !recognized.isEmpty else {
+        guard let fallback = recognized.first else {
             return .legacy(windows.first)
         }
-
-        switch preference {
-        case .fiveHour:
-            guard let window = recognized.first(where: { $0.kind == .fiveHour })
-                    ?? recognized.first(where: { $0.kind == .sevenDay }) else {
-                return .unavailable
-            }
-            return .selected(window)
-        case .sevenDay:
-            guard let window = recognized.first(where: { $0.kind == .sevenDay }) else {
-                return .unavailable
-            }
-            return .selected(window)
-        }
+        return .selected(recognized.first(where: { $0.kind == preference.kind }) ?? fallback)
     }
 }
 
@@ -1023,7 +1009,7 @@ struct BalanceRecharge: Codable, Equatable {
     }
 }
 
-/// Recovery offered by a Claude official failure card.
+/// Recovery offered by a provider failure card.
 enum FailureRecovery: Equatable {
     /// Default: open the official usage page.
     case openUsagePage
@@ -1047,6 +1033,8 @@ struct Snapshot: Equatable {
     let balanceProgressPercentage: Double?
     var balanceRecharge: BalanceRecharge? = nil
     var balanceProgressContext: BalanceProgressContext? = nil
+    /// A cold aggregated wallet should show this error before a transient failure.
+    var isBalanceConfigurationError = false
     /// Set when the last successful official data is kept on screen because
     /// the latest request failed (for example HTTP 429); the reason is shown
     /// on the refresh time instead of replacing the card with an error.
@@ -1057,7 +1045,7 @@ struct Snapshot: Equatable {
     /// reset pending, ...); nil for every other source, which keeps the
     /// plain refresh-time label.
     var quotaStatus: StatusSlotState? = nil
-    /// Which recovery button an official failure card offers.
+    /// Which recovery button a failure card offers.
     var failureRecovery: FailureRecovery = .openUsagePage
     /// The official client a failure belongs to (error card or kept stale data); selects the
     /// failure view's copied command and usage page. Claude error cards without it still
@@ -1069,6 +1057,7 @@ struct Snapshot: Equatable {
     /// Claude official requests are turned off by the egress guard (Issue #686): the card
     /// explains it, but the menu bar shows a neutral dash instead of the "!" failure mark.
     var officialSourceDisabled = false
+    private var isOfficialQuotaError = false
     /// Opaque identity of the account this official quota belongs to, so
     /// notification progress and stored samples never cross accounts.
     var notificationAccountScope: String? = nil
@@ -1124,17 +1113,21 @@ struct Snapshot: Equatable {
         self.menuBarUsesLunaReserve = menuBarUsesLunaReserve
     }
 
-    static let placeholder = Snapshot(
-        kind: .placeholder,
-        provider: "",
-        amount: nil,
-        unit: nil,
-        date: nil,
-        message: nil,
-        websiteURL: nil,
-        balanceProgressPercentage: nil,
-        officialQuotaWindows: []
-    )
+    static let placeholder = loadingProvider("")
+
+    static func loadingProvider(_ provider: String) -> Snapshot {
+        Snapshot(
+            kind: .placeholder,
+            provider: provider,
+            amount: nil,
+            unit: nil,
+            date: nil,
+            message: nil,
+            websiteURL: nil,
+            balanceProgressPercentage: nil,
+            officialQuotaWindows: []
+        )
+    }
 
     static func official(
         _ provider: String,
@@ -1283,6 +1276,12 @@ struct Snapshot: Equatable {
         return snapshot
     }
 
+    static func officialQuotaError(_ provider: String, reason: String) -> Snapshot {
+        var snapshot = providerError(provider, reason: reason, cachedBalance: nil)
+        snapshot.isOfficialQuotaError = true
+        return snapshot
+    }
+
     /// Only recognized Codex windows participate in the expanded menu card.
     /// Unknown/legacy windows remain available through the normal single-row
     /// snapshot presentation instead of being mistaken for a 5-hour or 7-day
@@ -1399,12 +1398,6 @@ struct Snapshot: Equatable {
             selectedSnapshot = replacingOfficialWindow(selected)
         case .legacy:
             selectedSnapshot = self
-        case .unavailable:
-            return .providerError(
-                provider,
-                reason: tr(.keyProviderModelsQuotaUnavailable),
-                cachedBalance: nil
-            )
         }
         // The setting only permits the automatic takeover. Codex enters
         // Reserve after an identified original quota is exhausted; it must
@@ -1531,6 +1524,13 @@ struct Snapshot: Equatable {
     var menuBarToolTip: String { menuBarToolTip(timeZone: .autoupdatingCurrent) }
 
     func menuBarToolTip(timeZone: TimeZone) -> String {
+        if kind == .error {
+            let reason = officialRetryReason(timeZone: timeZone) ?? detail(timeZone: timeZone)
+            let failure = isOfficialQuotaError
+                ? tr(.keySnapshotFailedToLoadQuotaReason, arguments: [reason])
+                : reason
+            return tr(.keySnapshotValueValue, arguments: [overviewProvider, failure])
+        }
         guard kind == .official else { return title }
         let reset = String(describing: officialResetDisplayValue(timeZone: timeZone) ?? tr(.keyLocalizationUnknown))
         guard LunaReserveUserFacing.isCurrentlyEnabled, let lunaReserve else {
@@ -1547,9 +1547,8 @@ struct Snapshot: Equatable {
 
     var overviewProvider: String {
         switch kind {
-        case .placeholder: return "CC Switch"
         case .official, .balance: return provider
-        case .error: return provider.isEmpty ? "CC Switch" : provider
+        case .placeholder, .error: return provider.isEmpty ? "CC Switch" : provider
         }
     }
 
