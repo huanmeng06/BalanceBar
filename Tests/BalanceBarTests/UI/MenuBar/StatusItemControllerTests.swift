@@ -4630,6 +4630,17 @@ extension StatusItemControllerTests {
 extension StatusItemControllerTests {
     @MainActor
     func testBalanceFixedSubtitleAndFirstRechargeKeepCardAndViewport() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        // Fitting copy is a text field; longer copy (e.g. English) becomes a marquee.
+        for language in [AppLanguage.simplifiedChinese, .english] {
+            AppLanguage.selected = language
+            try assertBalanceFixedSubtitleAndFirstRechargeKeepCardAndViewport()
+        }
+    }
+
+    @MainActor
+    private func assertBalanceFixedSubtitleAndFirstRechargeKeepCardAndViewport() throws {
         func input(recharge: BalanceRecharge? = nil) -> StatusItemController.MenuInput {
             var displays = sharedWalletInput(recharge: recharge).aggregatedProviders
             for i in displays.indices {
@@ -4659,20 +4670,23 @@ extension StatusItemControllerTests {
         XCTAssertTrue(card.subviews.compactMap { $0 as? OverviewNumericTextView }.first === amount)
         XCTAssertNotNil(card.overviewLayout?.progress)
         XCTAssertEqual(detail.frame.minY, card.overviewLayout?.quotaDetail.minY)
-        let label = try XCTUnwrap(card.subviews.compactMap { $0 as? NSTextField }.first { $0.identifier?.rawValue == "balance.subtitle" })
+        let subtitle = try XCTUnwrap(balanceSubtitle(in: card))
+        let label = subtitle.label
         XCTAssertTrue(label.stringValue.contains("+$10.00"))
         XCTAssertFalse(label.stringValue.contains(":"))
-        XCTAssertTrue(label.toolTip?.contains(":") == true)
+        XCTAssertTrue(subtitle.view.toolTip?.contains(":") == true)
         XCTAssertTrue(label.usesSingleLineMode)
-        let paragraph = try XCTUnwrap(label.attributedStringValue.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle)
-        XCTAssertEqual(paragraph.lineBreakMode, .byTruncatingTail)
-        XCTAssertEqual(label.attributedStringValue.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor, .secondaryLabelColor)
+        if subtitle.view === label {
+            let paragraph = try XCTUnwrap(label.attributedStringValue.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle)
+            XCTAssertEqual(paragraph.lineBreakMode, .byTruncatingTail)
+            XCTAssertEqual(label.attributedStringValue.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor, .secondaryLabelColor)
+        }
         controller.updateMenu(input: input())
         XCTAssertTrue(wrapper.subviews.first === card)
         XCTAssertEqual(card.frame.height, height)
         XCTAssertNotNil(card.overviewLayout?.progress)
         XCTAssertTrue(card.subviews.contains { $0 is QuotaProgressView })
-        XCTAssertEqual(label.stringValue, tr(.keyBalanceRecordingStarted))
+        XCTAssertEqual(try XCTUnwrap(balanceSubtitle(in: card)).label.stringValue, tr(.keyBalanceRecordingStarted))
 
     }
 }

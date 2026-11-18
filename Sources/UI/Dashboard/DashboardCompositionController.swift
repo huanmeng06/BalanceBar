@@ -26,6 +26,7 @@ struct DashboardCompositionState {
     let modSyncStatus: () -> ModSyncStatus?
     let modPanelState: () -> ModPanelState?
     let claudeSourceTimeline: () -> ClaudeSourceTimelineView.Content
+    let claudeLoginStatus: () -> ClaudeLoginStatus
 
     init(
         preferences: AppPreferences,
@@ -50,7 +51,8 @@ struct DashboardCompositionState {
         isAggregationMode: @escaping () -> Bool = { false },
         modSyncStatus: @escaping () -> ModSyncStatus? = { nil },
         modPanelState: @escaping () -> ModPanelState? = { nil },
-        claudeSourceTimeline: @escaping () -> ClaudeSourceTimelineView.Content = { .empty }
+        claudeSourceTimeline: @escaping () -> ClaudeSourceTimelineView.Content = { .empty },
+        claudeLoginStatus: @escaping () -> ClaudeLoginStatus = { .unknown }
     ) {
         self.preferences = preferences
         self.devBundleIdentifier = devBundleIdentifier
@@ -75,6 +77,7 @@ struct DashboardCompositionState {
         self.modSyncStatus = modSyncStatus
         self.modPanelState = modPanelState
         self.claudeSourceTimeline = claudeSourceTimeline
+        self.claudeLoginStatus = claudeLoginStatus
     }
 }
 
@@ -300,6 +303,8 @@ final class DashboardCompositionController {
             onInstallModSync: actions.onInstallModSync,
             modPanelStateProvider: state.modPanelState,
             claudeSourceTimelineProvider: state.claudeSourceTimeline,
+            claudeLoginStatusProvider: state.claudeLoginStatus,
+            onSearchableCopyChanged: { [weak self] in self?.invalidateSearchData() },
             claudeEgressGuard: actions.claudeEgressGuard
         ),
         launchAtLoginController: launchAtLoginController,
@@ -729,20 +734,29 @@ final class DashboardCompositionController {
         invalidateSearchData()
     }
 
-    /// Both Advanced page copies re-read the egress guard settings; search text is unchanged.
+    /// Both Advanced page copies re-read the egress guard settings, and the General page's
+    /// calibration row swaps between the login line and the "official requests are off" note;
+    /// both are searchable, so search data is refreshed.
     func refreshClaudeEgressGuard() {
         dashboardPreferencePages.refreshClaudeEgressGuard()
+        invalidateSearchData()
     }
 
-    /// The calibration interval bounds the official-validity choices on the Advanced page.
+    /// The calibration interval bounds the official-validity choices on the Advanced page and is
+    /// quoted in the Claude sources footnote on the General page; both are searchable, so the
+    /// built search indexes are dropped.
     func refreshClaudeSourceValidity() {
         dashboardPreferencePages.refreshClaudeSourceValidity()
+        invalidateSearchData()
     }
 
-    /// New Claude source activity or status: redraws the Advanced page's timeline if it exists.
-    /// The chart carries no searchable text, so search data stays valid.
+    /// New Claude source activity or status: redraws the Advanced page's timeline and the
+    /// General page's login line. The chart carries no searchable text; the login line does,
+    /// so search data is refreshed only when that line changed.
     func refreshClaudeSourceTimeline() {
-        dashboardPreferencePages.refreshClaudeSourceTimeline()
+        if dashboardPreferencePages.refreshClaudeSourceTimeline() {
+            invalidateSearchData()
+        }
     }
 
     func refreshLaunchAtLogin() {
@@ -1220,7 +1234,16 @@ final class DashboardCompositionController {
         return content
     }
 
+    /// The cached texts plus the live Claude login line (its time changes with every credential
+    /// read, so it stays out of the cache identity).
     private func settingsSearchRuntimeTexts() -> [DashboardSection: [String]] {
+        var texts = cachedOrBuiltSettingsSearchRuntimeTexts()
+        texts[.general, default: []].append(DashboardGeneralPage.claudeLoginLine(
+            state.claudeLoginStatus(), timeZone: state.preferences.effectiveDisplayTimeZone).text)
+        return texts
+    }
+
+    private func cachedOrBuiltSettingsSearchRuntimeTexts() -> [DashboardSection: [String]] {
         let preferences = state.preferences
         let snapshot = state.snapshot()
         let presentation = DashboardMenuBarPage.presentation(

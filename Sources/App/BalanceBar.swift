@@ -484,7 +484,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 return ClaudeSourceTimelineView.Content(
                     timeline: DevelopmentClaudeFailuresDemo.decorate(self.claudeQuota.sourceTimeline.snapshot()),
                     status: self.claudeQuota.latestState?.status)
-            }
+            },
+            claudeLoginStatus: { [weak self] in self?.claudeQuota.loginStatus() ?? .unknown }
         ),
         actions: DashboardCompositionActions(
             onManualRefresh: { [weak self] in self?.performManualRefresh(source: "dashboard") },
@@ -2767,6 +2768,7 @@ final class ApplicationLifecycleState {
 enum BalanceBarMain {
     static func main() {
         if AutomatedTestHost.isRunning {
+            AutomatedTestHost.isolateUserDefaults()
             // XCTest still needs the default run loop to attach. Switch to
             // accessory and yield key focus before any window is created so
             // launch does not steal the user's input method.

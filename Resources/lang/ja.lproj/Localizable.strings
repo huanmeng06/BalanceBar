@@ -670,6 +670,21 @@
 "claude.timeline.estimate.in" = "約 %1$@後";
 "claude.refresh.every_minutes" = "%1$@ 分ごと";
 "claude.quota.calibration_detail" = "一定間隔で公式に問い合わせるフォールバックです。間隔を長くするとレート制限を避けられます";
+"claude.quota.sources_footnote" = "どちらも Web やモバイルアプリで使った分を反映できます。違うのは更新のタイミングです。\n\n公式校正は %1$@ 分ごとに更新しますが、ログインの期限切れやネットワーク制限があると妨げられます。Mod はその影響を受けませんが、デスクトップアプリや CLI でメッセージを送るまで更新されません。\n\n例：スマホで話したあと、5 時間枠が 90%% から 80%% に減った場合、公式校正はたいてい %1$@ 分以内に 80%% を表示し、Mod は次にメッセージを送ったあとに表示します。Mod だけでも十分使えます。";
+"claude.quota.sources_footnote.show" = "違いを見る";
+"claude.quota.sources_footnote.hide" = "閉じる";
+"claude.login.status.signed_in" = "ログイン済み";
+"claude.login.status.expired" = "期限切れ";
+"claude.login.status.signed_out" = "未ログイン";
+"claude.login.status.unreadable" = "読み取れません";
+"claude.login.status.detecting" = "確認中…";
+"claude.login.expires_at" = "期限：%1$@";
+"claude.login.action.renew" = "Claude Code を一度使うと自動で更新されます";
+"claude.login.reason.rejected" = "公式サービスがこのログインを拒否しました";
+"claude.login.action.relogin" = "Claude Code で再ログインしてください";
+"claude.login.action.sign_in" = "Claude Code にログインすると自動で認識します";
+"claude.login.reason.keychain" = "キーチェーンがログイン情報の読み取りを許可していません";
+"claude.login.action.retry" = "「今すぐ更新」をクリックして再度許可してください";
 "claude.quota.calibration_off_detail" = "Claude の公式リクエストはオフのため、この間隔は無効です。";
 "claude.quota.calibration_off_link" = "IP 許可リストを設定…";
 

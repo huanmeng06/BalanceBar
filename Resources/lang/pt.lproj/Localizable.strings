@@ -670,6 +670,21 @@
 "claude.timeline.estimate.in" = "em cerca de %1$@";
 "claude.refresh.every_minutes" = "A cada %1$@ min";
 "claude.quota.calibration_detail" = "Consulta a fonte oficial periodicamente como alternativa; intervalos maiores evitam limites de uso";
+"claude.quota.sources_footnote" = "Ambos captam a cota que você usa na web ou no app móvel; a diferença está em quando atualizam.\n\nA calibração oficial atualiza a cada %1$@ min, mas um login expirado ou uma rede restrita podem bloqueá-la. O Mod não é afetado por isso, mas só atualiza depois que você envia uma mensagem no app de desktop ou na CLI.\n\nPor exemplo, depois de conversar no celular sua cota de 5 horas cai de 90%% para 80%%: a calibração oficial costuma mostrar 80%% em até %1$@ min, e o Mod após sua próxima mensagem. Só o Mod já é suficiente.";
+"claude.quota.sources_footnote.show" = "Ver a diferença";
+"claude.quota.sources_footnote.hide" = "Ocultar";
+"claude.login.status.signed_in" = "Sessão iniciada";
+"claude.login.status.expired" = "Expirada";
+"claude.login.status.signed_out" = "Sem sessão";
+"claude.login.status.unreadable" = "Não foi possível ler";
+"claude.login.status.detecting" = "Verificando…";
+"claude.login.expires_at" = "Expira: %1$@";
+"claude.login.action.renew" = "Use o Claude Code uma vez para renovar automaticamente";
+"claude.login.reason.rejected" = "O serviço oficial recusou esta sessão";
+"claude.login.action.relogin" = "Entre novamente no Claude Code";
+"claude.login.action.sign_in" = "Detectada automaticamente após entrar no Claude Code";
+"claude.login.reason.keychain" = "O Keychain não permitiu ler a sessão";
+"claude.login.action.retry" = "Clique em “Atualizar agora” para permitir de novo";
 "claude.quota.calibration_off_detail" = "As solicitações oficiais do Claude estão desativadas; este intervalo não tem efeito.";
 "claude.quota.calibration_off_link" = "Configurar IPs permitidos…";
 

@@ -537,6 +537,34 @@ final class DashboardPageSearchTests: XCTestCase {
         XCTAssertTrue(emptyState(in: stack)?.isHidden != false)
     }
 
+    func testFootnoteDetailWordsMatchAndKeepTheSectionVisibleEvenWhileCollapsed() {
+        let official = SettingsRowView(title: "Official calibration")
+        let mod = SettingsRowView(title: "Mod boost")
+        // Untitled, like the real Claude sources card: the footnote alone must carry the match.
+        let section = SettingsSectionView(title: "", contentViews: [official, mod],
+                                          footnote: "Both sources sync usage.", footnoteDetail: "")
+        section.setFootnoteDetailText("Example: 5h 90% → 80%")
+        XCTAssertFalse(section.isFootnoteDetailExpanded)
+        let stack = DashboardSettingsComponents.makeSettingsPageContent([section])
+
+        XCTAssertTrue(
+            DashboardPageSearchFilter().apply(query: "90%", to: stack, pageTitle: "General", mode: .titles),
+            "words only in the expandable detail must still match"
+        )
+        XCTAssertFalse(isCollapsedForSearch(section))
+        XCTAssertFalse(isCollapsedForSearch(official))
+        XCTAssertFalse(isCollapsedForSearch(mod))
+    }
+
+    func testClaudeFootnoteDetailRoutesToGeneralButRanksBelowPagesThatOwnTheWords() {
+        let detail = DashboardGeneralPage.claudeSourcesFootnoteParts(calibrationInterval: 300).detail
+        XCTAssertTrue(detail.contains("90%"))
+        XCTAssertEqual(DashboardSettingsSearchCatalog.firstMatchingSection(query: "90%"), .general)
+        // The example names the 5-hour quota, but that setting lives on the menu bar page.
+        let fiveHour = tr(.keyDashboardMenuBarPageFiveHourQuota)
+        XCTAssertEqual(DashboardSettingsSearchCatalog.firstMatchingSection(query: fiveHour), .menuBar)
+    }
+
     func testEmptyStateStaysVisibleAcrossRepeatedUnmatchedQueries() {
         let language = SettingsRowView(title: "Language")
         let stack = DashboardSettingsComponents.makeSettingsPageContent([
@@ -3996,6 +4024,75 @@ extension DashboardPageSearchTests {
                 onManageModSync: { _ in }, onCheckForUpdates: {}, onInstallUpdate: {}, onOpenUpdateNotes: {},
                 onClamp: {}, onStatusLinksChanged: {}, onDidShowPage: {}, onDidClose: {}, onDidResize: {},
                 onModSyncVisibilityChanged: visibilityChanged))
+    }
+
+    func testSearchFollowsTheClaudeFootnoteAfterTheCalibrationIntervalChanges() throws {
+        let language = AppLanguage.selected
+        AppLanguage.selected = .english
+        defer { AppLanguage.selected = language }
+        let suite = "FootnoteIntervalSearch.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.claudeCalibrationInterval = 300
+        let composition = modCardComposition(ModCardRefreshState(), defaults: defaults)
+        defer { composition.teardownForTesting() }
+        let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .general))
+        window.setContentSize(NSSize(width: 1000, height: 700))
+        window.layoutIfNeeded()
+        // The sentence that quotes the interval, word for word, at 5 and at 15 minutes.
+        func intervalSentence(_ interval: TimeInterval) -> String {
+            DashboardGeneralPage.claudeSourcesFootnoteParts(calibrationInterval: interval)
+                .detail.components(separatedBy: "\n")[0]
+        }
+        let calibration = tr(.keyClaudeQuotaCalibration)
+        func claudeRowsShown(for query: String) -> Bool {
+            composition.applySearchQueryForTesting(query)
+            window.layoutIfNeeded()
+            return visibleSearchableRowTitles(in: composition.currentHostedPageContentForTesting())
+                .contains(calibration)
+        }
+        XCTAssertNotEqual(intervalSentence(300), intervalSentence(900))
+        XCTAssertTrue(claudeRowsShown(for: intervalSentence(300)), "builds the search index at 5 minutes")
+
+        preferences.claudeCalibrationInterval = 900
+        composition.refreshClaudeSourceValidity()
+
+        XCTAssertTrue(claudeRowsShown(for: intervalSentence(900)), "the new footnote must be searchable")
+        XCTAssertFalse(claudeRowsShown(for: intervalSentence(300)), "the old footnote must no longer match")
+    }
+
+    func testSearchFollowsTheCalibrationRowWhenOfficialRequestsAreSwitched() throws {
+        let language = AppLanguage.selected
+        AppLanguage.selected = .english
+        defer { AppLanguage.selected = language }
+        let suite = "EgressToggleSearch.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.claudeEgressGuardEnabled = true
+        let composition = modCardComposition(ModCardRefreshState(), defaults: defaults)
+        defer { composition.teardownForTesting() }
+        let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .general))
+        window.setContentSize(NSSize(width: 1000, height: 700))
+        window.layoutIfNeeded()
+        let calibration = tr(.keyClaudeQuotaCalibration)
+        let offNote = tr(.keyClaudeQuotaCalibrationOffDetail)
+        func calibrationShown(for query: String) -> Bool {
+            composition.applySearchQueryForTesting(query)
+            window.layoutIfNeeded()
+            return visibleSearchableRowTitles(in: composition.currentHostedPageContentForTesting())
+                .contains(calibration)
+        }
+        XCTAssertFalse(calibrationShown(for: offNote), "requests on: the row shows its login line")
+
+        preferences.claudeEgressGuardEnabled = false
+        composition.refreshClaudeEgressGuard()
+        XCTAssertTrue(calibrationShown(for: offNote), "requests off: the off note must be searchable")
+
+        preferences.claudeEgressGuardEnabled = true
+        composition.refreshClaudeEgressGuard()
+        XCTAssertFalse(calibrationShown(for: offNote), "requests back on: the off note must no longer match")
     }
 
     private func modCardRow(_ composition: DashboardCompositionController) throws -> SettingsRowView {

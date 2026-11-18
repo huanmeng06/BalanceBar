@@ -55,6 +55,17 @@ struct ClaudeStoredCredentials: Equatable {
     let planType: String?
     /// True when no token was found because the keychain could not be read, not because it is empty.
     var keychainUnreadable = false
+    /// When Claude Code's access token stops working (`claudeAiOauth.expiresAt`). Claude Code renews
+    /// it on its own use; BalanceBar only reads it and never refreshes or rewrites the credential.
+    var expiresAt: Date? = nil
+}
+
+/// What the last credential read found, for display only. Taken from the cached probe, so
+/// showing it never runs `security` or raises a keychain prompt.
+struct ClaudeCachedLogin: Equatable {
+    let hasToken: Bool
+    let expiresAt: Date?
+    let keychainUnreadable: Bool
 }
 
 extension OfficialQuotaCredentialReading {
@@ -236,7 +247,7 @@ final class OfficialQuotaClient {
     private let credentialReader: OfficialQuotaCredentialReading
     private let parser: OfficialQuotaParsing
     private let now: () -> Date
-    private var claudeAccountProbe: (credentials: CodexRequestCredentials, profile: CodexAccountProfile?, readAt: Date, keychainUnreadable: Bool)?
+    private var claudeAccountProbe: (credentials: CodexRequestCredentials, profile: CodexAccountProfile?, readAt: Date, keychainUnreadable: Bool, expiresAt: Date?)?
     private var claudeProbeInFlight = false
     private let claudeProbeCondition = NSCondition()
 
@@ -392,7 +403,7 @@ final class OfficialQuotaClient {
             profile = CodexAccountProfile(email: credentialReader.claudeAccountEmail(), planType: stored.planType)
         }
         claudeProbeCondition.lock()
-        claudeAccountProbe = (credentials, profile, now(), stored.keychainUnreadable)
+        claudeAccountProbe = (credentials, profile, now(), stored.keychainUnreadable, stored.expiresAt)
         claudeProbeInFlight = false
         claudeProbeCondition.broadcast()
         claudeProbeCondition.unlock()
@@ -409,6 +420,15 @@ final class OfficialQuotaClient {
         claudeProbeCondition.lock()
         defer { claudeProbeCondition.unlock() }
         return claudeAccountProbe?.keychainUnreadable ?? false
+    }
+
+    /// Display-only login facts from the last probe; never starts `security`. `nil` before any read.
+    func cachedClaudeLogin() -> ClaudeCachedLogin? {
+        claudeProbeCondition.lock()
+        defer { claudeProbeCondition.unlock() }
+        guard let probe = claudeAccountProbe else { return nil }
+        return ClaudeCachedLogin(hasToken: probe.credentials.accessToken != nil,
+                                 expiresAt: probe.expiresAt, keychainUnreadable: probe.keychainUnreadable)
     }
 
     /// Display-only email/plan from the last probe; never starts `security`.

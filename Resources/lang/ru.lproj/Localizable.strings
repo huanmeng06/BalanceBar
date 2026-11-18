@@ -670,6 +670,21 @@
 "claude.timeline.estimate.in" = "примерно через %1$@";
 "claude.refresh.every_minutes" = "Каждые %1$@ мин";
 "claude.quota.calibration_detail" = "Периодически запрашивает официальный источник как запасной вариант; больший интервал помогает избежать ограничений";
+"claude.quota.sources_footnote" = "Оба способа учитывают квоту, потраченную в вебе или мобильном приложении; различаются они тем, когда обновляются.\n\nОфициальная калибровка обновляется каждые %1$@ мин, но истёкший вход или ограниченная сеть могут ей помешать. Mod от этого не зависит, но обновляется только после того, как вы отправите сообщение в настольном приложении или CLI.\n\nНапример, после чата на телефоне 5-часовая квота падает с 90%% до 80%%: официальная калибровка обычно покажет 80%% в течение %1$@ мин, а Mod — после вашего следующего сообщения. Одного Mod вполне достаточно.";
+"claude.quota.sources_footnote.show" = "Чем они отличаются";
+"claude.quota.sources_footnote.hide" = "Скрыть";
+"claude.login.status.signed_in" = "Вход выполнен";
+"claude.login.status.expired" = "Истёк";
+"claude.login.status.signed_out" = "Вход не выполнен";
+"claude.login.status.unreadable" = "Не удаётся прочитать";
+"claude.login.status.detecting" = "Проверка…";
+"claude.login.expires_at" = "Истекает: %1$@";
+"claude.login.action.renew" = "Воспользуйтесь Claude Code один раз, чтобы продлить автоматически";
+"claude.login.reason.rejected" = "Официальный сервис отклонил этот вход";
+"claude.login.action.relogin" = "Войдите снова в Claude Code";
+"claude.login.action.sign_in" = "Определится автоматически после входа в Claude Code";
+"claude.login.reason.keychain" = "Связка ключей не разрешила прочитать данные входа";
+"claude.login.action.retry" = "Нажмите «Обновить сейчас», чтобы разрешить снова";
 "claude.quota.calibration_off_detail" = "Официальные запросы Claude выключены, этот интервал не действует.";
 "claude.quota.calibration_off_link" = "Настроить белый список IP…";
 

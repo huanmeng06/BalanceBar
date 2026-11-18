@@ -670,6 +670,21 @@
 "claude.timeline.estimate.in" = "dans environ %1$@";
 "claude.refresh.every_minutes" = "Toutes les %1$@ min";
 "claude.quota.calibration_detail" = "Interroge la source officielle à intervalles réguliers, en secours ; un intervalle plus long évite les limitations";
+"claude.quota.sources_footnote" = "Les deux récupèrent le quota utilisé sur le web ou l’app mobile ; ils diffèrent par le moment de la mise à jour.\n\nLe calibrage officiel se met à jour toutes les %1$@ min, mais une session expirée ou un réseau restreint peut le bloquer. Le Mod n’est pas concerné, mais ne se met à jour qu’après l’envoi d’un message dans l’app de bureau ou la CLI.\n\nPar exemple, après une conversation sur votre téléphone, votre quota de 5 heures passe de 90 %% à 80 %% : le calibrage officiel affiche généralement 80 %% en moins de %1$@ min, le Mod après votre prochain message. Le Mod seul suffit amplement.";
+"claude.quota.sources_footnote.show" = "Voir la différence";
+"claude.quota.sources_footnote.hide" = "Masquer";
+"claude.login.status.signed_in" = "Connecté";
+"claude.login.status.expired" = "Expirée";
+"claude.login.status.signed_out" = "Non connecté";
+"claude.login.status.unreadable" = "Illisible";
+"claude.login.status.detecting" = "Vérification…";
+"claude.login.expires_at" = "Expire : %1$@";
+"claude.login.action.renew" = "Utilisez Claude Code une fois pour la renouveler automatiquement";
+"claude.login.reason.rejected" = "Le service officiel a refusé cette connexion";
+"claude.login.action.relogin" = "Reconnectez-vous dans Claude Code";
+"claude.login.action.sign_in" = "Détectée automatiquement après la connexion à Claude Code";
+"claude.login.reason.keychain" = "Le trousseau n’a pas autorisé la lecture de la connexion";
+"claude.login.action.retry" = "Cliquez sur « Actualiser maintenant » pour l’autoriser à nouveau";
 "claude.quota.calibration_off_detail" = "Les requêtes officielles Claude sont désactivées ; cet intervalle est sans effet.";
 "claude.quota.calibration_off_link" = "Configurer les IP autorisées…";
 

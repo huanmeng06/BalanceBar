@@ -670,6 +670,21 @@
 "claude.timeline.estimate.in" = "tra circa %1$@";
 "claude.refresh.every_minutes" = "Ogni %1$@ min";
 "claude.quota.calibration_detail" = "Interroga la fonte ufficiale a intervalli regolari come ripiego; intervalli più lunghi evitano i limiti di frequenza";
+"claude.quota.sources_footnote" = "Entrambi rilevano la quota usata sul web o nell’app mobile; differiscono per quando si aggiornano.\n\nLa calibrazione ufficiale si aggiorna ogni %1$@ min, ma un accesso scaduto o una rete limitata possono bloccarla. La Mod non ne risente, ma si aggiorna solo dopo che invii un messaggio nell’app desktop o nella CLI.\n\nAd esempio, dopo una chat sul telefono la quota di 5 ore scende dal 90%% all’80%%: la calibrazione ufficiale di solito mostra 80%% entro %1$@ min, la Mod dopo il tuo prossimo messaggio. La sola Mod è più che sufficiente.";
+"claude.quota.sources_footnote.show" = "Vedi la differenza";
+"claude.quota.sources_footnote.hide" = "Nascondi";
+"claude.login.status.signed_in" = "Accesso effettuato";
+"claude.login.status.expired" = "Scaduto";
+"claude.login.status.signed_out" = "Accesso non effettuato";
+"claude.login.status.unreadable" = "Impossibile leggere";
+"claude.login.status.detecting" = "Verifica…";
+"claude.login.expires_at" = "Scade: %1$@";
+"claude.login.action.renew" = "Usa Claude Code una volta per rinnovarlo automaticamente";
+"claude.login.reason.rejected" = "Il servizio ufficiale ha rifiutato questo accesso";
+"claude.login.action.relogin" = "Accedi di nuovo in Claude Code";
+"claude.login.action.sign_in" = "Rilevato automaticamente dopo l’accesso a Claude Code";
+"claude.login.reason.keychain" = "Il Portachiavi non ha consentito di leggere l’accesso";
+"claude.login.action.retry" = "Fai clic su «Aggiorna ora» per consentirlo di nuovo";
 "claude.quota.calibration_off_detail" = "Le richieste ufficiali di Claude sono disattivate; questo intervallo non ha effetto.";
 "claude.quota.calibration_off_link" = "Configura IP consentiti…";
 

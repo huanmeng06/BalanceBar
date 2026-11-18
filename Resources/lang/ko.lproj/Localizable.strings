@@ -670,6 +670,21 @@
 "claude.timeline.estimate.in" = "약 %1$@ 후";
 "claude.refresh.every_minutes" = "%1$@분마다";
 "claude.quota.calibration_detail" = "일정 간격으로 공식 소스를 조회하는 대체 수단이며, 간격이 길수록 호출 제한을 피하기 쉽습니다";
+"claude.quota.sources_footnote" = "둘 다 웹이나 모바일 앱에서 쓴 할당량을 반영합니다. 다른 점은 업데이트 시점입니다.\n\n공식 보정은 %1$@분마다 업데이트되지만, 로그인이 만료되거나 네트워크가 제한되면 막힐 수 있습니다. Mod는 이 영향을 받지 않지만, 데스크톱 앱이나 CLI에서 메시지를 보낸 뒤에야 업데이트됩니다.\n\n예를 들어 휴대폰에서 대화한 뒤 5시간 할당량이 90%%에서 80%%로 줄면, 공식 보정은 보통 %1$@분 안에 80%%를 표시하고 Mod는 다음 메시지를 보낸 뒤 표시합니다. Mod만 써도 충분합니다.";
+"claude.quota.sources_footnote.show" = "차이 보기";
+"claude.quota.sources_footnote.hide" = "접기";
+"claude.login.status.signed_in" = "로그인됨";
+"claude.login.status.expired" = "만료됨";
+"claude.login.status.signed_out" = "로그인 안 됨";
+"claude.login.status.unreadable" = "읽을 수 없음";
+"claude.login.status.detecting" = "확인 중…";
+"claude.login.expires_at" = "만료: %1$@";
+"claude.login.action.renew" = "Claude Code를 한 번 사용하면 자동으로 갱신됩니다";
+"claude.login.reason.rejected" = "공식 서비스가 이 로그인을 거부했습니다";
+"claude.login.action.relogin" = "Claude Code에서 다시 로그인하세요";
+"claude.login.action.sign_in" = "Claude Code에 로그인하면 자동으로 인식합니다";
+"claude.login.reason.keychain" = "키체인이 로그인 정보 읽기를 허용하지 않았습니다";
+"claude.login.action.retry" = "‘지금 업데이트’를 클릭해 다시 허용하세요";
 "claude.quota.calibration_off_detail" = "Claude 공식 요청이 꺼져 있어 이 간격은 적용되지 않습니다.";
 "claude.quota.calibration_off_link" = "IP 허용 목록 설정…";
 
