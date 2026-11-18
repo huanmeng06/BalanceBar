@@ -21,6 +21,28 @@ enum AutomatedTestHost {
         }
     }
 
+    /// The XCTest host shares its bundle identifier with the installed app, so
+    /// `UserDefaults.standard` would read and write the user's real preferences
+    /// (language, egress IP list, ...). Redirect it to a dedicated suite that
+    /// starts empty on every run. Must run before anything touches defaults.
+    static let isolatedDefaultsSuiteName = "com.huanmeng06.BalanceBar.xctest-host"
+    fileprivate static var isolatedDefaults: UserDefaults?
+
+    static func isolateUserDefaults() {
+        guard isolatedDefaults == nil else { return }
+        let suiteName = isolatedDefaultsSuiteName
+        guard let suite = UserDefaults(suiteName: suiteName) else { return }
+        suite.removePersistentDomain(forName: suiteName)
+        isolatedDefaults = suite
+        guard let original = class_getClassMethod(UserDefaults.self, #selector(getter: UserDefaults.standard)),
+              let replacement = class_getClassMethod(
+                  UserDefaults.self,
+                  #selector(UserDefaults.balanceBar_automatedTest_standardUserDefaults)
+              )
+        else { return }
+        method_exchangeImplementations(original, replacement)
+    }
+
     private static var didSwizzle = false
 
     private static func installSwizzles() {
@@ -137,6 +159,13 @@ enum ApplicationWindowPresentation {
         window.isOpaque = false
         window.alphaValue = 0
         window.level = backgroundLevel
+    }
+}
+
+extension UserDefaults {
+    @objc fileprivate class func balanceBar_automatedTest_standardUserDefaults() -> UserDefaults {
+        // After the exchange this selector names the original implementation.
+        AutomatedTestHost.isolatedDefaults ?? balanceBar_automatedTest_standardUserDefaults()
     }
 }
 

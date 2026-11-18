@@ -9,6 +9,20 @@ final class AutomatedTestHostTests: XCTestCase {
         XCTAssertNotNil(ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"])
     }
 
+    /// The host shares the installed app's bundle identifier; tests must never read or
+    /// write the user's real preferences through `UserDefaults.standard`.
+    func testStandardDefaultsAreIsolatedFromInstalledAppDomain() throws {
+        let key = "balanceBar.xctestHostIsolationProbe"
+        let suiteName = AutomatedTestHost.isolatedDefaultsSuiteName
+        let isolated = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { UserDefaults.standard.removeObject(forKey: key) }
+        UserDefaults.standard.set("probe", forKey: key)
+        XCTAssertEqual(isolated.string(forKey: key), "probe")
+        let bundleIdentifier = try XCTUnwrap(Bundle.main.bundleIdentifier)
+        XCTAssertNil(CFPreferencesCopyAppValue(key as CFString, bundleIdentifier as CFString))
+        XCTAssertNotNil(CFPreferencesCopyAppValue(key as CFString, suiteName as CFString))
+    }
+
     func testBackgroundPresentationParksWindowOffScreenWithoutRegularPolicy() {
         _ = NSApplication.shared
         let window = NSWindow(
@@ -147,5 +161,30 @@ final class AutomatedTestHostTests: XCTestCase {
         XCTAssertEqual(window.alphaValue, 0, accuracy: 0.001)
         XCTAssertLessThan(window.level.rawValue, NSWindow.Level.normal.rawValue)
         XCTAssertFalse(NSApp.isActive)
+    }
+}
+
+/// XCTest runs a class's cases in name order: case 1 leaves a language behind on purpose,
+/// case 2 proves the bundle observer put it back before the next case started.
+final class AutomatedTestHostLanguageRestoreTests: XCTestCase {
+    private static var languageBeforeLeak: AppLanguage?
+
+    func testObserverIsRegisteredByTestBundlePrincipal() {
+        XCTAssertTrue(BackgroundTestHost.isInstalled)
+        XCTAssertEqual(Bundle(for: Self.self).infoDictionary?["NSPrincipalClass"] as? String, "BalanceBarTestPrincipal")
+    }
+
+    func testRestore1_LeavesLanguageChanged() {
+        Self.languageBeforeLeak = AppLanguage.selected
+        let leaked: AppLanguage = AppLanguage.selected == .german ? .japanese : .german
+        AppLanguage.selected = leaked
+        XCTAssertEqual(AppLanguage.selected, leaked)
+    }
+
+    func testRestore2_NextCaseSeesOriginalLanguage() throws {
+        guard let expected = Self.languageBeforeLeak else {
+            throw XCTSkip("runs only after testRestore1_LeavesLanguageChanged")
+        }
+        XCTAssertEqual(AppLanguage.selected, expected)
     }
 }
