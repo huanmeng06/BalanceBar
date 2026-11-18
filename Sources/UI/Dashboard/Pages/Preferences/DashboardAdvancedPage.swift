@@ -401,8 +401,9 @@ final class EgressIPListEditorView: NSView, NSTableViewDataSource, NSTableViewDe
     static let barTopSpacing: CGFloat = 8
     static let barHeight: CGFloat = 24
     static let bottomInset: CGFloat = 14
-    /// Puts cell text where `NSTableHeaderCell` draws the column title.
-    static let cellTextInset: CGFloat = 2
+    /// Gap between a column's edge (where the header separator sits) and its text.
+    /// Header titles and cell text share it so they line up.
+    static let cellTextInset: CGFloat = 10
 
     private let cachedCountry: (String) -> String?
     private let lookupCountry: (String, @escaping (String?) -> Void) -> Void
@@ -841,6 +842,12 @@ final class EgressIPListEditorView: NSView, NSTableViewDataSource, NSTableViewDe
     }
 
     private func configureTable() {
+        for column in [ipColumn, countryColumn, availabilityColumn] {
+            let headerCell = PaddedTableHeaderCell(textCell: "")
+            headerCell.font = column.headerCell.font
+            headerCell.horizontalInset = Self.cellTextInset
+            column.headerCell = headerCell
+        }
         ipColumn.title = tr(.keyDashboardAdvancedPageEgressGuardColumnIp)
         ipColumn.minWidth = 160
         ipColumn.resizingMask = .autoresizingMask
@@ -885,6 +892,19 @@ final class EgressIPListEditorView: NSView, NSTableViewDataSource, NSTableViewDe
         scrollView.drawsBackground = false
     }
 
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateBorderColor()
+    }
+
+    /// `CGColor` is a fixed snapshot of the dynamic `separatorColor`, so it has to be
+    /// re-resolved under the current appearance whenever light/dark mode changes.
+    private func updateBorderColor() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            tableContainer.layer?.borderColor = NSColor.separatorColor.cgColor
+        }
+    }
+
     private func configureContainer() {
         tableContainer.translatesAutoresizingMaskIntoConstraints = false
         tableContainer.boxType = .custom
@@ -896,8 +916,8 @@ final class EgressIPListEditorView: NSView, NSTableViewDataSource, NSTableViewDe
         tableContainer.layer?.cornerRadius = Self.cornerRadius
         tableContainer.layer?.cornerCurve = .continuous
         tableContainer.layer?.borderWidth = 1
-        tableContainer.layer?.borderColor = NSColor.separatorColor.cgColor
         tableContainer.layer?.masksToBounds = true
+        updateBorderColor()
         NSLayoutConstraint.activate([
             scrollView.leadingAnchor.constraint(equalTo: tableContainer.leadingAnchor, constant: 1),
             scrollView.trailingAnchor.constraint(equalTo: tableContainer.trailingAnchor, constant: -1),
@@ -997,5 +1017,37 @@ final class EgressIPListEditorView: NSView, NSTableViewDataSource, NSTableViewDe
 
     func countryTextForTesting(row: Int) -> String? {
         (tableView.view(atColumn: 1, row: row, makeIfNecessary: true) as? NSTableCellView)?.textField?.stringValue
+    }
+}
+
+/// Header cell that draws its title `horizontalInset` points from the column edge
+/// (where the header separator sits), so it lines up with the row text.
+/// The stock `NSTableHeaderCell` leaves only ~2pt there, which looks cramped.
+private final class PaddedTableHeaderCell: NSTableHeaderCell {
+    var horizontalInset: CGFloat = 0
+
+    private var titleAttributes: [NSAttributedString.Key: Any] {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = alignment
+        paragraph.lineBreakMode = .byTruncatingTail
+        return [
+            .font: font ?? NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
+            .foregroundColor: textColor ?? NSColor.headerTextColor,
+            .paragraphStyle: paragraph,
+        ]
+    }
+
+    override func titleRect(forBounds rect: NSRect) -> NSRect {
+        let insetRect = rect.insetBy(dx: horizontalInset, dy: 0)
+        let height = ceil((stringValue as NSString).size(withAttributes: titleAttributes).height)
+        return NSRect(x: insetRect.minX, y: rect.midY - height / 2, width: max(0, insetRect.width), height: height)
+    }
+
+    override func drawInterior(withFrame cellFrame: NSRect, in controlView: NSView) {
+        (stringValue as NSString).draw(
+            with: titleRect(forBounds: cellFrame),
+            options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine],
+            attributes: titleAttributes
+        )
     }
 }
