@@ -65,7 +65,6 @@ enum ModMenuAttention: Equatable {
     /// The plugin is current but an old session still writes the old format.
     case restartRequired
     case accountMismatch
-    case silent
 }
 
 /// What the status menu shows for the realtime boost.
@@ -78,7 +77,9 @@ enum ModMenuRow: Equatable {
 
     /// Official Claude provider only, and a dismissed prompt stays hidden for every state.
     /// `.notInstalled` shows the install prompt; the installed-but-unhealthy states show a
-    /// hint. A user-disabled Mod, and every state without a clear action, show nothing.
+    /// hint. A user-disabled Mod, and every state without a clear action, show nothing —
+    /// including `.silent`: an idle Claude Code session or an expired Claude login also
+    /// produces no Mod data, so the menu would warn about a healthy Mod (settings still show it).
     static func resolve(
         isOfficialDirect: Bool,
         status: ModSyncStatus,
@@ -92,8 +93,6 @@ enum ModMenuRow: Equatable {
             return .attention(ModVersion.isCurrent(installed) ? .restartRequired : .updateRequired(installedVersion: installed))
         case let .snapshotRejected(event):
             return event.rejection == .accountMismatch ? .attention(.accountMismatch) : .none
-        case .silent:
-            return .attention(.silent)
         default:
             return .none
         }
