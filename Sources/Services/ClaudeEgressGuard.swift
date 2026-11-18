@@ -114,12 +114,12 @@ enum IPCountryCode {
         return text
     }
 
-    /// "🇺🇸 United States" in the app language, with the app's naming for CN, HK, MO and TW. TW gets
-    /// no flag so the title stays consistent with that naming.
+    /// "🇺🇸 United States" in the app language, with the app's naming for CN, HK, MO and TW.
+    /// TW ("中国台湾") shows the Chinese flag to match that naming.
     static func displayTitle(_ code: String, locale: Locale = TimeZoneCityCatalog.locale) -> String {
         let name = TimeZoneCityCatalog.countryTitle(for: code, locale: locale)
-        guard code != "TW" else { return name }
-        let flag = code.unicodeScalars
+        let flagCode = code == "TW" ? "CN" : code
+        let flag = flagCode.unicodeScalars
             .compactMap { Unicode.Scalar(0x1F1E6 + $0.value - 0x41) }
             .map(String.init).joined()
         return "\(flag) \(name)"

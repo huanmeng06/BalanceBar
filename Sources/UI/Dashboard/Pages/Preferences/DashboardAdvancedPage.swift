@@ -401,8 +401,9 @@ final class EgressIPListEditorView: NSView, NSTableViewDataSource, NSTableViewDe
     static let barTopSpacing: CGFloat = 8
     static let barHeight: CGFloat = 24
     static let bottomInset: CGFloat = 14
-    /// Puts cell text where `NSTableHeaderCell` draws the column title.
-    static let cellTextInset: CGFloat = 2
+    /// Gap between a column's edge (where the header separator sits) and its text field.
+    /// Header titles use it too so they line up with the row text.
+    static let cellTextInset: CGFloat = 10
 
     private let cachedCountry: (String) -> String?
     private let lookupCountry: (String, @escaping (String?) -> Void) -> Void
@@ -841,6 +842,8 @@ final class EgressIPListEditorView: NSView, NSTableViewDataSource, NSTableViewDe
     }
 
     private func configureTable() {
+        PaddedTableHeaderCell.install(
+            on: [ipColumn, countryColumn, availabilityColumn], horizontalInset: Self.cellTextInset)
         ipColumn.title = tr(.keyDashboardAdvancedPageEgressGuardColumnIp)
         ipColumn.minWidth = 160
         ipColumn.resizingMask = .autoresizingMask
@@ -885,6 +888,19 @@ final class EgressIPListEditorView: NSView, NSTableViewDataSource, NSTableViewDe
         scrollView.drawsBackground = false
     }
 
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateBorderColor()
+    }
+
+    /// `CGColor` is a fixed snapshot of the dynamic `separatorColor`, so it has to be
+    /// re-resolved under the current appearance whenever light/dark mode changes.
+    private func updateBorderColor() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            tableContainer.layer?.borderColor = NSColor.separatorColor.cgColor
+        }
+    }
+
     private func configureContainer() {
         tableContainer.translatesAutoresizingMaskIntoConstraints = false
         tableContainer.boxType = .custom
@@ -896,8 +912,8 @@ final class EgressIPListEditorView: NSView, NSTableViewDataSource, NSTableViewDe
         tableContainer.layer?.cornerRadius = Self.cornerRadius
         tableContainer.layer?.cornerCurve = .continuous
         tableContainer.layer?.borderWidth = 1
-        tableContainer.layer?.borderColor = NSColor.separatorColor.cgColor
         tableContainer.layer?.masksToBounds = true
+        updateBorderColor()
         NSLayoutConstraint.activate([
             scrollView.leadingAnchor.constraint(equalTo: tableContainer.leadingAnchor, constant: 1),
             scrollView.trailingAnchor.constraint(equalTo: tableContainer.trailingAnchor, constant: -1),

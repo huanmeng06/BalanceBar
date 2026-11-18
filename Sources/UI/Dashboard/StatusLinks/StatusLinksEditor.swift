@@ -79,9 +79,28 @@ final class StatusLinksEditorHostingView: NSView,
     NSTextFieldDelegate,
     NSMenuDelegate
 {
-    static let fixedHeight: CGFloat = 190
-    static let tableViewportHeight: CGFloat = 134
-    static let tableRowHeight: CGFloat = 22
+    static let tableHeaderHeight: CGFloat = 28
+    static let tableRowHeight: CGFloat = 24
+    /// The table grows with its rows within this range, then scrolls.
+    static let minimumVisibleRows = 2
+    static let maximumVisibleRows = 6
+    static let tableTopInset: CGFloat = 12
+    static let actionsTopSpacing: CGFloat = 8
+    static let actionsHeight: CGFloat = 24
+    static let bottomInset: CGFloat = 12
+    /// Editor height at `maximumVisibleRows`, the tallest it gets.
+    static let maximumHeight: CGFloat = layoutHeight(rowCount: maximumVisibleRows)
+
+    /// Header, the visible rows and the border on each side.
+    static func tableViewportHeight(rowCount: Int) -> CGFloat {
+        let visibleRows = min(max(rowCount, minimumVisibleRows), maximumVisibleRows)
+        return tableHeaderHeight + CGFloat(visibleRows) * tableRowHeight + 2 * tableBorderWidth
+    }
+
+    /// Built from the parts so the action buttons always stay inside the editor.
+    static func layoutHeight(rowCount: Int) -> CGFloat {
+        tableTopInset + tableViewportHeight(rowCount: rowCount) + actionsTopSpacing + actionsHeight + bottomInset
+    }
     static let tableRowMoveAnimationDuration: TimeInterval = 0.16
     static let tableFieldFont = NSFont.systemFont(ofSize: 13)
     static let horizontalOverflowTolerance: CGFloat = 0.5
@@ -128,6 +147,9 @@ final class StatusLinksEditorHostingView: NSView,
     private var pendingMoveSelection: Int?
     private var pendingDuplicateSelection: Int?
     private var defersTableGeometryUpdate = false
+    private var tableHeightConstraint: NSLayoutConstraint?
+    /// Called after the editor's height changes with its row count, so the host can resize.
+    var onLayoutHeightChange: (() -> Void)?
     private var moreActionResetWorkItem: DispatchWorkItem?
     private var moreActionFeedbackGeneration = 0
 
@@ -147,7 +169,7 @@ final class StatusLinksEditorHostingView: NSView,
     var removeButtonForTesting: NSSegmentedControl { actionsControl }
 
     var rowCount: Int { links.count }
-    var layoutHeight: CGFloat { Self.fixedHeight }
+    var layoutHeight: CGFloat { Self.layoutHeight(rowCount: links.count) }
     var currentHeight: CGFloat { max(0, heightConstraint?.constant ?? layoutHeight) }
     var isVisible: Bool { currentHeight > 0 && alphaValue > 0 }
 
@@ -237,15 +259,19 @@ final class StatusLinksEditorHostingView: NSView,
 
         moreControl.addSubview(moreIconView)
 
+        let tableHeightConstraint = tableContainer.heightAnchor.constraint(
+            equalToConstant: Self.tableViewportHeight(rowCount: links.count)
+        )
+        self.tableHeightConstraint = tableHeightConstraint
         NSLayoutConstraint.activate([
             tableContainer.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 20),
             tableContainer.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -20),
-            tableContainer.topAnchor.constraint(equalTo: topAnchor, constant: 12),
-            tableContainer.heightAnchor.constraint(equalToConstant: Self.tableViewportHeight),
+            tableContainer.topAnchor.constraint(equalTo: topAnchor, constant: Self.tableTopInset),
+            tableHeightConstraint,
 
             actionsControl.leadingAnchor.constraint(equalTo: tableContainer.leadingAnchor),
-            actionsControl.topAnchor.constraint(equalTo: tableContainer.bottomAnchor, constant: 8),
-            actionsControl.heightAnchor.constraint(equalToConstant: 24),
+            actionsControl.topAnchor.constraint(equalTo: tableContainer.bottomAnchor, constant: Self.actionsTopSpacing),
+            actionsControl.heightAnchor.constraint(equalToConstant: Self.actionsHeight),
 
             moveControl.leadingAnchor.constraint(equalTo: actionsControl.trailingAnchor, constant: 8),
             moveControl.topAnchor.constraint(equalTo: actionsControl.topAnchor),
@@ -269,7 +295,7 @@ final class StatusLinksEditorHostingView: NSView,
             resetButton.centerYAnchor.constraint(equalTo: actionsControl.centerYAnchor)
         ])
 
-        let heightConstraint = heightAnchor.constraint(equalToConstant: Self.fixedHeight)
+        let heightConstraint = heightAnchor.constraint(equalToConstant: layoutHeight)
         heightConstraint.isActive = true
         self.heightConstraint = heightConstraint
 
@@ -373,6 +399,7 @@ final class StatusLinksEditorHostingView: NSView,
         let mutationGeneration = editingGeneration
         defersTableGeometryUpdate = isAddMutation
         links = newLinks
+        applyRowCountHeight()
 
         let finishMutation = { [weak self] in
             guard let self,
@@ -435,7 +462,7 @@ final class StatusLinksEditorHostingView: NSView,
 
     func setVisible(_ visible: Bool, animated: Bool) {
         guard !isTornDown else { return }
-        let targetHeight = visible ? Self.fixedHeight : 0
+        let targetHeight = visible ? layoutHeight : 0
         let generation = editingGeneration
 
         // Keep the native controls pinned to the top while the outer row is
@@ -493,6 +520,7 @@ final class StatusLinksEditorHostingView: NSView,
         openLinkMenuItem?.target = nil
         copyURLMenuItem?.target = nil
         duplicateMenuItem?.target = nil
+        onLayoutHeightChange = nil
         heightConstraint?.isActive = false
         heightConstraint = nil
     }
@@ -748,6 +776,7 @@ final class StatusLinksEditorHostingView: NSView,
         nameColumn: NSTableColumn,
         urlColumn: NSTableColumn
     ) {
+        PaddedTableHeaderCell.install(on: [nameColumn, urlColumn], horizontalInset: Self.fieldHorizontalInset)
         nameColumn.title = tr(.keyStatusLinksEditorName)
         nameColumn.minWidth = Self.nameColumnMinimumWidth
         nameColumn.resizingMask = .autoresizingMask
@@ -757,7 +786,7 @@ final class StatusLinksEditorHostingView: NSView,
 
         table.addTableColumn(nameColumn)
         table.addTableColumn(urlColumn)
-        table.headerView = nil
+        table.headerView = NSTableHeaderView(frame: NSRect(x: 0, y: 0, width: 0, height: Self.tableHeaderHeight))
         table.delegate = self
         table.dataSource = self
         table.identifier = NSUserInterfaceItemIdentifier("statusLinks.table")
@@ -767,7 +796,7 @@ final class StatusLinksEditorHostingView: NSView,
         table.allowsColumnReordering = false
         table.allowsColumnResizing = true
         table.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
-        table.rowSizeStyle = .medium
+        table.rowSizeStyle = .custom
         table.rowHeight = Self.tableRowHeight
         table.intercellSpacing = NSSize(width: 0, height: 0)
         table.style = .fullWidth
@@ -801,6 +830,19 @@ final class StatusLinksEditorHostingView: NSView,
         documentView.autoresizingMask = []
     }
 
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateTableBorderColor(tableContainer)
+    }
+
+    /// `CGColor` is a fixed snapshot of the dynamic `separatorColor`, so it has to be
+    /// re-resolved under the current appearance whenever light/dark mode changes.
+    private func updateTableBorderColor(_ container: NSBox) {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            container.layer?.borderColor = NSColor.separatorColor.cgColor
+        }
+    }
+
     private func configureTableContainer(_ container: NSBox, contentView: NSView) {
         container.translatesAutoresizingMaskIntoConstraints = false
         container.boxType = .custom
@@ -816,8 +858,8 @@ final class StatusLinksEditorHostingView: NSView,
         container.layer?.cornerRadius = Self.tableCornerRadius
         container.layer?.cornerCurve = .continuous
         container.layer?.borderWidth = Self.tableBorderWidth
-        container.layer?.borderColor = NSColor.separatorColor.cgColor
         container.layer?.masksToBounds = true
+        updateTableBorderColor(container)
 
         let borderInset = Self.tableBorderWidth
         NSLayoutConstraint.activate([
@@ -1181,9 +1223,12 @@ final class StatusLinksEditorHostingView: NSView,
             rowsHeight = 0
         }
 
-        let shouldScroll = rowsHeight > viewportSize.height + 0.5
+        // The header floats over the clip view, which reserves it as a top content inset.
+        let insets = scrollView.contentView.contentInsets
+        let rowsViewportHeight = max(0, viewportSize.height - insets.top - insets.bottom)
+        let shouldScroll = rowsHeight > rowsViewportHeight + 0.5
         scrollView.allowsVerticalScrolling = shouldScroll
-        let documentHeight = max(viewportSize.height, rowsHeight)
+        let documentHeight = max(rowsViewportHeight, rowsHeight)
         if abs(tableView.frame.height - documentHeight) > 0.001 {
             var frame = tableView.frame
             frame.size.height = documentHeight
@@ -1311,6 +1356,21 @@ final class StatusLinksEditorHostingView: NSView,
             links[row].url = value
         }
         onChange(row, statusField, value)
+    }
+
+    /// Grows or shrinks the table between `minimumVisibleRows` and `maximumVisibleRows`.
+    private func applyRowCountHeight() {
+        let viewportHeight = Self.tableViewportHeight(rowCount: links.count)
+        guard let tableHeightConstraint,
+              abs(tableHeightConstraint.constant - viewportHeight) > 0.5 else { return }
+        tableHeightConstraint.constant = viewportHeight
+        // A hidden editor keeps its zero height; setVisible picks up the new height.
+        if let heightConstraint, heightConstraint.constant > 0 {
+            heightConstraint.constant = layoutHeight
+            synchronizeAncestorCardHeight(animated: false)
+            onLayoutHeightChange?()
+        }
+        layoutSubtreeIfNeeded()
     }
 
     private func updateHorizontalScrollingIfURLField(_ field: NSTextField) {
