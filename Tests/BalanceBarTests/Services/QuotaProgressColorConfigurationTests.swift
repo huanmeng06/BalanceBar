@@ -3,6 +3,35 @@ import XCTest
 @testable import BalanceBar
 
 final class QuotaProgressColorConfigurationTests: XCTestCase {
+    func testUsedAxisMirrorsKnobsTrackAndTooltipWithoutChangingStorage() throws {
+        let slider = QuotaColorThresholdSlider(configuration: .default)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 480, height: 120),
+                              styleMask: .borderless, backing: .buffered, defer: false)
+        slider.frame = NSRect(x: 20, y: 30, width: 440, height: 48)
+        window.contentView?.addSubview(slider)
+        window.contentView?.layoutSubtreeIfNeeded()
+        defer { slider.teardown() }
+        let remainingCenters = slider.debugRenderedColorBoundaryCenters
+        slider.axis = .used
+        slider.layoutSubtreeIfNeeded()
+        let usedCenters = slider.debugRenderedColorBoundaryCenters
+        for color in [.red, .orange, .yellow] as [QuotaProgressColor] {
+            let remaining = try XCTUnwrap(remainingCenters[color])
+            let used = try XCTUnwrap(usedCenters[color])
+            XCTAssertEqual(remaining + used, slider.bounds.width, accuracy: 1)
+        }
+        XCTAssertEqual(slider.debugRenderedColorTrackSegments.map(\.color), [.green, .yellow, .orange, .red])
+        XCTAssertEqual(slider.configuration, .default)
+        slider.beginTrackingForTesting(.red)
+        defer { slider.finishTrackingForTesting(.red) }
+        slider.applyRawThumbValueForTesting(80, after: .red)
+        XCTAssertEqual(slider.configuration.redUpperBound, 20)
+        XCTAssertEqual(slider.debugTooltipText, "80%")
+        slider.applyRawThumbValueForTesting(90, after: .red)
+        XCTAssertEqual(slider.configuration.redUpperBound, 10)
+        XCTAssertEqual(slider.debugTooltipText, "90%")
+    }
+
     func testDefaultPreservesExistingBoundarySemantics() {
         XCTAssertTrue(QuotaProgressView.progressColor(for: 9.99).isEqual(NSColor.systemRed))
         XCTAssertTrue(QuotaProgressView.progressColor(for: 10).isEqual(NSColor.systemOrange))

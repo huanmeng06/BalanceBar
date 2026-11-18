@@ -4022,7 +4022,7 @@ extension DashboardPageSearchTests {
                 isSortAlphabetically: { false }, setSortAlphabetically: { _ in }, onToggle: { _, _ in },
                 onLaunchAtLogin: { _ in }, onLaunchWithChatGPT: { _ in }, onOpenLaunchWithChatGPTSettings: {},
                 onInterval: { _, _ in }, onBalanceDisplayThresholdChanged: { _ in },
-                onQuotaProgressColorConfigurationChanged: { _ in }, onOffsetAdjust: { _, _ in },
+                onQuotaProgressColorConfigurationChanged: { _, _ in }, onOffsetAdjust: { _, _ in },
                 onOffsetValue: { _, _ in }, onOffsetValueEnded: { _, _ in }, onOffsetReset: { _ in },
                 onLanguage: { _ in }, onMenuBarFontSizePreset: { _ in }, onMenuBarIconSizePreset: { _ in },
                 onMenuBarIconDisplayModeChanged: { _ in }, onMenuBarIconDisplayDelayChanged: { _ in },

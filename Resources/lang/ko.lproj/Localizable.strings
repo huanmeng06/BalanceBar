@@ -497,6 +497,8 @@
 "codex.banked_reset.confidence_medium" = "중간";
 "codex.banked_reset.confidence_high" = "높음";
 "dashboard.menu.page.progress_color_ranges" = "진행률 막대 색상 범위";
+"dashboard.menu.page.progress_color_editing_mode" = "편집 모드";
+"dashboard.menu.page.progress_color_ranges_used_description" = "경계점을 드래그하여 사용한 비율에 따른 색상을 조정합니다";
 "dashboard.menu.page.progress_color_ranges_description" = "임계값을 드래그하여 남은 백분율 구간별 색상을 조정합니다";
 "dashboard.menu.page.displayed_colors" = "표시 색상";
 "dashboard.menu.page.displayed_colors_description" = "색상을 두 개 이상 활성화하세요";

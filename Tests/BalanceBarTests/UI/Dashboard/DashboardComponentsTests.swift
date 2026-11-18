@@ -2733,6 +2733,21 @@ final class DashboardComponentsTests: XCTestCase {
         XCTAssertTrue(QuotaProgressView.progressColor(for: 50.01).isEqual(NSColor.systemGreen))
     }
 
+    func testQuotaProgressUsesThePaletteForItsOwnDisplayMode() {
+        let used = QuotaProgressColorConfiguration.default.settingEnabled(.red, to: false)
+        let progress = QuotaProgressView(percentage: 5, usedColorConfiguration: used)
+        XCTAssertEqual(progress.displayColor, .systemRed)
+        progress.quotaValueMode = .used
+        XCTAssertEqual(progress.displayColor, .systemOrange)
+        XCTAssertEqual(progress.colorPercentage, 5)
+        progress.setColorConfiguration(.default)
+        XCTAssertEqual(progress.displayColor, .systemOrange)
+        progress.setColorConfigurations(remaining: .default, used: .default)
+        XCTAssertEqual(progress.displayColor, .systemRed)
+        let balanceProgress = QuotaProgressView(percentage: 5, usedColorConfiguration: used)
+        XCTAssertEqual(balanceProgress.displayColor, .systemRed)
+    }
+
     func testQuotaProgressTrailingFillGrowsFromTheRight() throws {
         let bounds = NSRect(x: 0, y: 0, width: 100, height: 5)
         XCTAssertNil(

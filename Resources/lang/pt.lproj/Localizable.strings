@@ -497,6 +497,8 @@
 "codex.banked_reset.confidence_medium" = "Média";
 "codex.banked_reset.confidence_high" = "Alta";
 "dashboard.menu.page.progress_color_ranges" = "Faixas de cor da barra";
+"dashboard.menu.page.progress_color_editing_mode" = "Modo de edição";
+"dashboard.menu.page.progress_color_ranges_used_description" = "Arraste os limites para ajustar as cores de acordo com a porcentagem usada";
 "dashboard.menu.page.progress_color_ranges_description" = "Arraste os limites para escolher a cor de cada faixa de percentagem restante";
 "dashboard.menu.page.displayed_colors" = "Cores exibidas";
 "dashboard.menu.page.displayed_colors_description" = "Mantenha pelo menos duas cores ativadas";

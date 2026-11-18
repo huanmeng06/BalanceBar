@@ -306,6 +306,11 @@ final class QuotaProgressView: NSView {
     private var fillPercentage: Double { quotaValueMode == .used ? 100 - percentage : percentage }
     var fillRatio: Double { fillPercentage / 100 }
     private(set) var colorConfiguration: QuotaProgressColorConfiguration
+    private(set) var usedColorConfiguration: QuotaProgressColorConfiguration
+    var displayColor: NSColor {
+        Self.progressColor(for: colorPercentage,
+                           configuration: quotaValueMode == .used ? usedColorConfiguration : colorConfiguration)
+    }
     let fillOrigin: QuotaProgressFillOrigin
     private var interpolator: OverviewNumericInterpolator?
     private var pendingAnimatedPercentage: Double?
@@ -316,10 +321,12 @@ final class QuotaProgressView: NSView {
     init(
         percentage: Double,
         colorConfiguration: QuotaProgressColorConfiguration = .default,
+        usedColorConfiguration: QuotaProgressColorConfiguration = .default,
         fillOrigin: QuotaProgressFillOrigin = .leading
     ) {
         self.percentage = min(100, max(0, percentage))
         self.colorConfiguration = colorConfiguration.normalized()
+        self.usedColorConfiguration = usedColorConfiguration.normalized()
         self.fillOrigin = fillOrigin
         super.init(frame: .zero)
     }
@@ -334,6 +341,14 @@ final class QuotaProgressView: NSView {
         let normalized = configuration.normalized()
         guard colorConfiguration != normalized else { return }
         colorConfiguration = normalized
+        needsDisplay = true
+    }
+
+    func setColorConfigurations(remaining: QuotaProgressColorConfiguration, used: QuotaProgressColorConfiguration) {
+        setColorConfiguration(remaining)
+        let normalized = used.normalized()
+        guard usedColorConfiguration != normalized else { return }
+        usedColorConfiguration = normalized
         needsDisplay = true
     }
 
@@ -399,7 +414,7 @@ final class QuotaProgressView: NSView {
         guard let fill = Self.fillRect(in: track, percentage: fillPercentage, fillOrigin: fillOrigin) else {
             return
         }
-        Self.progressColor(for: colorPercentage, configuration: colorConfiguration).setFill()
+        displayColor.setFill()
         NSBezierPath(roundedRect: fill, xRadius: radius, yRadius: radius).fill()
     }
 
@@ -660,11 +675,13 @@ final class QuotaProgressPaceView: NSView, NSPopoverDelegate {
         identity: OverviewNumericIdentity,
         now: Date,
         colorConfiguration: QuotaProgressColorConfiguration,
+        usedColorConfiguration: QuotaProgressColorConfiguration = .default,
         cycleStart: Date? = nil,
         timeZone: TimeZone = .autoupdatingCurrent,
         quotaValueMode: MenuBarQuotaValueMode = .defaultValue
     ) {
-        self.progress = QuotaProgressView(percentage: percentage, colorConfiguration: colorConfiguration)
+        self.progress = QuotaProgressView(percentage: percentage, colorConfiguration: colorConfiguration,
+                                          usedColorConfiguration: usedColorConfiguration)
         self.quotaWindow = window
         self.numericIdentity = identity
         super.init(frame: .zero)

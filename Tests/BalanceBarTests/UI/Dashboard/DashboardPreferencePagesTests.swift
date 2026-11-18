@@ -4291,9 +4291,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     thresholdChanges.append(value)
                     preferences.balanceDisplayThreshold = value
                 },
-                onQuotaProgressColorConfigurationChanged: { configuration in
+                onQuotaProgressColorConfigurationChanged: { mode, configuration in
                     colorChanges.append(configuration)
-                    preferences.quotaProgressColorConfiguration = configuration
+                    preferences.setQuotaProgressColorConfiguration(configuration, for: mode)
                 }
             ))
             defer {
@@ -4453,6 +4453,99 @@ final class DashboardPreferencePagesTests: XCTestCase {
         }
     }
 
+    func testQuotaColorPickerEditsOnlySelectedPaletteWithoutChangingDisplayMode() throws {
+        let suite = "DashboardPreferencePagesTests.QuotaColorPicker.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.menuBarQuotaValueMode = .used
+        let remaining = QuotaProgressColorConfiguration.default.settingBoundary(after: .red, to: 15)
+        preferences.quotaProgressColorConfiguration = remaining
+        let controller = DashboardMenuPage()
+        defer { controller.teardown() }
+        var editedModes: [MenuBarQuotaValueMode] = []
+        let page = controller.make(.init(
+            preferences: preferences, relay: DashboardPreferencePageRelay(),
+            makeStatusLinksEditor: {
+                StatusLinksEditorHostingView(links: [], onChange: { _, _, _ in }, onAdd: { _ in }, onRemove: { _ in }, onReset: {})
+            },
+            onBalanceDisplayThresholdChanged: { _ in },
+            onQuotaProgressColorConfigurationChanged: { mode, configuration in
+                editedModes.append(mode)
+                preferences.setQuotaProgressColorConfiguration(configuration, for: mode)
+            }
+        ))
+        let views = descendants(of: page)
+        let picker = try XCTUnwrap(views.compactMap { $0 as? NSPopUpButton }.first {
+            $0.identifier?.rawValue == "quotaProgressColorEditingMode"
+        })
+        let slider = try XCTUnwrap(views.compactMap { $0 as? QuotaColorThresholdSlider }.first)
+        let button = try XCTUnwrap(views.compactMap { $0 as? NSButton }.first { $0.title == tr(.keyCommonRestoreDefaults) })
+        let green = try XCTUnwrap(views.compactMap { $0 as? NSButton }.first { $0.identifier?.rawValue == "quotaProgressColor.green" })
+        func select(_ index: Int) throws {
+            picker.selectItem(at: index)
+            XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(picker.action), to: picker.target, from: picker))
+        }
+        XCTAssertEqual(picker.indexOfSelectedItem, 1)
+        XCTAssertEqual(slider.axis, .used)
+        try select(0)
+        controller.refresh(preferences: preferences)
+        XCTAssertEqual(picker.indexOfSelectedItem, 0)
+        XCTAssertEqual(slider.axis, .remaining)
+        XCTAssertEqual(slider.configuration, remaining)
+        XCTAssertEqual(preferences.menuBarQuotaValueMode, .used)
+        XCTAssertTrue(editedModes.isEmpty)
+        try select(1)
+        slider.applyRawThumbValueForTesting(80, after: .red)
+        XCTAssertEqual(preferences.quotaProgressColorConfiguration(for: .used).redUpperBound, 20)
+        green.state = .off
+        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(green.action), to: green.target, from: green))
+        XCTAssertFalse(preferences.quotaProgressColorConfiguration(for: .used).enabledColors.contains(.green))
+        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(button.action), to: button.target, from: button))
+        XCTAssertEqual(preferences.quotaProgressColorConfiguration(for: .used), .default)
+        XCTAssertEqual(preferences.quotaProgressColorConfiguration, remaining)
+        XCTAssertEqual(editedModes, [.used, .used, .used])
+    }
+
+    func testQuotaColorEditControlsFitNarrowGermanAndRussianLayouts() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        let suite = "DashboardPreferencePagesTests.QuotaColorWidth.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.menuBarQuotaValueMode = .used
+        for language in [AppLanguage.german, .russian] {
+            AppLanguage.selected = language
+            let controller = DashboardMenuPage()
+            defer { controller.teardown() }
+            let page = controller.make(.init(
+                preferences: preferences, relay: DashboardPreferencePageRelay(),
+                makeStatusLinksEditor: {
+                    StatusLinksEditorHostingView(links: [], onChange: { _, _, _ in }, onAdd: { _ in }, onRemove: { _ in }, onReset: {})
+                },
+                onBalanceDisplayThresholdChanged: { _ in }
+            ))
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 516, height: 900),
+                                  styleMask: .borderless, backing: .buffered, defer: false)
+            defer { window.contentView = nil }
+            pinMenuPage(page, in: window, width: 516, height: 900)
+            let picker = try XCTUnwrap(descendants(of: page).compactMap { $0 as? NSPopUpButton }.first {
+                $0.identifier?.rawValue == "quotaProgressColorEditingMode"
+            })
+            let controls = try XCTUnwrap(picker.superview as? NSStackView)
+            let reset = try XCTUnwrap(controls.arrangedSubviews.last as? NSButton)
+            let row = try XCTUnwrap(controls.superview)
+            let detail = try XCTUnwrap(descendants(of: row).compactMap { $0 as? NSTextField }.first {
+                $0.stringValue == tr(.keyDashboardMenuPageProgressColorRangesUsedDescription)
+            })
+            XCTAssertLessThan(detail.convert(detail.bounds, to: row).maxX, picker.convert(picker.bounds, to: row).minX)
+            XCTAssertLessThan(picker.convert(picker.bounds, to: row).maxX, reset.convert(reset.bounds, to: row).minX)
+            XCTAssertLessThan(reset.convert(reset.bounds, to: row).maxX, row.bounds.maxX)
+            XCTAssertGreaterThan(detail.bounds.height, 0)
+        }
+    }
+
     func testProgressBarMasterSwitchHidesDependentRowsWithoutResettingConfiguration() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
@@ -4481,9 +4574,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 StatusLinksEditorHostingView(links: [], onChange: { _, _, _ in }, onAdd: { _ in }, onRemove: { _ in }, onReset: {})
             },
             onBalanceDisplayThresholdChanged: { _ in },
-            onQuotaProgressColorConfigurationChanged: { configuration in
+            onQuotaProgressColorConfigurationChanged: { mode, configuration in
                 colorChanges.append(configuration)
-                preferences.quotaProgressColorConfiguration = configuration
+                preferences.setQuotaProgressColorConfiguration(configuration, for: mode)
             }
         ))
         page.frame = NSRect(x: 0, y: 0, width: 516, height: 900)
@@ -4585,7 +4678,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
         XCTAssertEqual(resetButton.controlSize, .regular)
         XCTAssertEqual(resetButton.bezelStyle, .rounded)
-        let row = try XCTUnwrap(resetButton.superview)
+        let row = try XCTUnwrap(resetButton.superview?.superview)
         let title = try XCTUnwrap(
             descendants(of: row)
                 .compactMap { $0 as? NSTextField }
@@ -4684,7 +4777,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 .compactMap { $0 as? NSButton }
                 .first { $0.title == tr(.keyCommonRestoreDefaults) }
         )
-        let dedicatedRow = try XCTUnwrap(resetButton.superview)
+        let dedicatedRow = try XCTUnwrap(resetButton.superview?.superview)
         let dedicatedTitle = try XCTUnwrap(
             descendants(of: dedicatedRow)
                 .compactMap { $0 as? NSTextField }

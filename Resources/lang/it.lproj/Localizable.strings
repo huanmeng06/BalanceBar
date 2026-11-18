@@ -497,6 +497,8 @@
 "codex.banked_reset.confidence_medium" = "Media";
 "codex.banked_reset.confidence_high" = "Alta";
 "dashboard.menu.page.progress_color_ranges" = "Intervalli colore della barra";
+"dashboard.menu.page.progress_color_editing_mode" = "Modalità di modifica";
+"dashboard.menu.page.progress_color_ranges_used_description" = "Trascina i limiti per regolare i colori in base alla percentuale utilizzata";
 "dashboard.menu.page.progress_color_ranges_description" = "Trascina le soglie per scegliere il colore di ogni intervallo della percentuale rimanente";
 "dashboard.menu.page.displayed_colors" = "Colori visualizzati";
 "dashboard.menu.page.displayed_colors_description" = "Mantieni attivi almeno due colori";

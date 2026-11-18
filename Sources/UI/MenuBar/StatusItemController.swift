@@ -2301,6 +2301,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let autoSwitchLunaReserve: Bool
         let lunaReserveResetTimeMode: LunaReserveResetTimeMode
         let quotaProgressColorConfiguration: QuotaProgressColorConfiguration
+        let quotaProgressUsedColorConfiguration: QuotaProgressColorConfiguration
         let showQuotaProgressBar: Bool
         let showQuotaPaceIndicator: Bool
         let showBankedReset: Bool
@@ -2329,6 +2330,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             autoSwitchLunaReserve: Bool = false,
             lunaReserveResetTimeMode: LunaReserveResetTimeMode = .defaultValue,
             quotaProgressColorConfiguration: QuotaProgressColorConfiguration = .default,
+            quotaProgressUsedColorConfiguration: QuotaProgressColorConfiguration = .default,
             showQuotaProgressBar: Bool = true,
             showQuotaPaceIndicator: Bool = true,
             showBankedReset: Bool = true,
@@ -2354,6 +2356,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             self.autoSwitchLunaReserve = autoSwitchLunaReserve
             self.lunaReserveResetTimeMode = lunaReserveResetTimeMode
             self.quotaProgressColorConfiguration = quotaProgressColorConfiguration.normalized()
+            self.quotaProgressUsedColorConfiguration = quotaProgressUsedColorConfiguration.normalized()
             self.showQuotaProgressBar = showQuotaProgressBar
             self.showQuotaPaceIndicator = showQuotaPaceIndicator
             self.showBankedReset = showBankedReset
@@ -6821,7 +6824,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let amounts = overviewNumericTextViews(in: card)
         let links = overviewNumericLinkFields(in: card)
         let progressViews = overviewNumericProgressViews(in: card)
-        progressViews.forEach { $0.setColorConfiguration(settings.quotaProgressColorConfiguration) }
+        progressViews.forEach {
+            $0.setColorConfigurations(remaining: settings.quotaProgressColorConfiguration,
+                                      used: settings.quotaProgressUsedColorConfiguration)
+        }
         for sample in numericSamples(for: context) {
             let progress = progressViews.first {
                 $0.identifier == OverviewNumericPresentation.progressIdentifier(for: sample.identity)
@@ -8389,6 +8395,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             identity: plan.identity,
             now: now,
             colorConfiguration: settings.quotaProgressColorConfiguration,
+            usedColorConfiguration: settings.quotaProgressUsedColorConfiguration,
             cycleStart: cycleStart,
             timeZone: settings.displayTimeZone,
             quotaValueMode: settings.quotaValueMode
@@ -8414,7 +8421,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let start = plan.startProgress ?? plan.toProgress ?? 0
         let progress = QuotaProgressView(
             percentage: start,
-            colorConfiguration: settings.quotaProgressColorConfiguration
+            colorConfiguration: settings.quotaProgressColorConfiguration,
+            usedColorConfiguration: settings.quotaProgressUsedColorConfiguration
         )
         progress.frame = frame
         progress.identifier = OverviewNumericPresentation.progressIdentifier(for: plan.identity)
@@ -8717,7 +8725,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let amountViews = overviewNumericTextViews(in: overview)
         let linkViews = overviewNumericLinkFields(in: overview)
         let progressViews = overviewNumericProgressViews(in: overview)
-        progressViews.forEach { $0.setColorConfiguration(settings.quotaProgressColorConfiguration) }
+        progressViews.forEach {
+            $0.setColorConfigurations(remaining: settings.quotaProgressColorConfiguration,
+                                      used: settings.quotaProgressUsedColorConfiguration)
+        }
         for sample in samples {
             let displayed: OverviewNumericSample?
             let matchingAmounts = amountViews.filter { $0.sample?.identity == sample.identity }

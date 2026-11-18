@@ -601,6 +601,8 @@ enum DashboardSettingsSearchCatalog {
                 .keyCodexBankedResetTitle,
                 .keyDashboardMenuPageShowQuotaProgressBar,
                 .keyDashboardMenuPageProgressColorRanges,
+                .keyDashboardMenuPageProgressColorEditingMode,
+                .keyDashboardMenuPageProgressColorRangesUsedDescription,
                 .keyDashboardMenuPageDisplayedColors,
                 .keyDashboardMenuPageLowBalanceDisplayThreshold,
                 .keyDashboardMenuPageProgressBar,

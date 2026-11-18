@@ -474,6 +474,8 @@
     case keyDashboardMenuPageShowQuotaProgressBarDescription = "dashboard.menu.page.show_quota_progress_bar_description"
     case keyDashboardMenuPageShowQuotaPaceIndicator = "dashboard.menu.page.show_quota_pace_indicator"
     case keyDashboardMenuPageShowQuotaPaceIndicatorDescription = "dashboard.menu.page.show_quota_pace_indicator_description"
+    case keyDashboardMenuPageProgressColorEditingMode = "dashboard.menu.page.progress_color_editing_mode"
+    case keyDashboardMenuPageProgressColorRangesUsedDescription = "dashboard.menu.page.progress_color_ranges_used_description"
     case keyDashboardMenuPageProgressColorRanges = "dashboard.menu.page.progress_color_ranges"
     case keyDashboardMenuPageProgressColorRangesDescription = "dashboard.menu.page.progress_color_ranges_description"
     case keyDashboardMenuPageDisplayedColors = "dashboard.menu.page.displayed_colors"

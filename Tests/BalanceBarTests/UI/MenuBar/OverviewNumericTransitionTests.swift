@@ -933,9 +933,11 @@ final class OverviewNumericPresentationControllerTests: XCTestCase {
             defer { controller.teardown() }
             controller.quotaPaceNowForTesting = now
             controller.overviewNumericReduceMotionForTesting = true
+            let usedPalette = QuotaProgressColorConfiguration.default.settingEnabled(.green, to: false)
             func settings(_ mode: MenuBarQuotaValueMode) -> StatusItemController.MenuBarSettings {
                 .init(showIcon: true, showAmount: true, showReset: true, horizontalPadding: 6,
-                      keepMenuOpenAfterRefresh: true, quotaValueMode: mode, showQuotaPaceIndicator: showPace)
+                      keepMenuOpenAfterRefresh: true, quotaValueMode: mode,
+                      quotaProgressUsedColorConfiguration: usedPalette, showQuotaPaceIndicator: showPace)
             }
             controller.start(snapshot: snapshot, refreshDate: now, menuInput: input, settings: settings(.remaining))
             let host = try XCTUnwrap(controller.menuItemsForTesting.first?.view as? MenuHoverLinkHostView)
@@ -947,11 +949,13 @@ final class OverviewNumericPresentationControllerTests: XCTestCase {
             XCTAssertEqual(pace != nil, showPace)
             XCTAssertEqual(amountTexts(in: host), ["72%"])
             XCTAssertEqual(progress.fillRatio, 0.726, accuracy: 0.0001)
+            XCTAssertEqual(progress.displayColor, .systemGreen)
 
             controller.update(snapshot: snapshot, refreshDate: now, menuInput: input, settings: settings(.used))
             XCTAssertEqual(amountTexts(in: host), ["28%"])
             XCTAssertEqual(progress.fillRatio, 0.274, accuracy: 0.0001)
             XCTAssertEqual(progress.colorPercentage, 72.6, accuracy: 0.0001)
+            XCTAssertEqual(progress.displayColor, .systemYellow)
             if let pace, let markerBefore {
                 XCTAssertEqual(pace.markerCenterX + markerBefore, pace.bounds.width, accuracy: 0.01)
             }
@@ -959,6 +963,7 @@ final class OverviewNumericPresentationControllerTests: XCTestCase {
             controller.update(snapshot: snapshot, refreshDate: now, menuInput: input, settings: settings(.remaining))
             XCTAssertEqual(amountTexts(in: host), ["72%"])
             XCTAssertEqual(progress.fillRatio, 0.726, accuracy: 0.0001)
+            XCTAssertEqual(progress.displayColor, .systemGreen)
             XCTAssertEqual(pace?.markerCenterX, markerBefore)
         }
     }

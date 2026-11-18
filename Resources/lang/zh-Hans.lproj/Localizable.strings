@@ -497,6 +497,8 @@
 "codex.banked_reset.confidence_medium" = "中";
 "codex.banked_reset.confidence_high" = "高";
 "dashboard.menu.page.progress_color_ranges" = "进度条颜色区间";
+"dashboard.menu.page.progress_color_editing_mode" = "编辑模式";
+"dashboard.menu.page.progress_color_ranges_used_description" = "拖动分界点，调整不同已用百分比对应的颜色";
 "dashboard.menu.page.progress_color_ranges_description" = "拖动分界点，调整不同剩余百分比对应的颜色";
 "dashboard.menu.page.displayed_colors" = "显示颜色";
 "dashboard.menu.page.displayed_colors_description" = "至少保留两种颜色";

@@ -7,7 +7,7 @@ struct DashboardPreferencePageActions {
     let onOpenLaunchWithChatGPTSettings: () -> Void
     let onInterval: (String, TimeInterval) -> Void
     let onBalanceDisplayThresholdChanged: (Double) -> Void
-    let onQuotaProgressColorConfigurationChanged: (QuotaProgressColorConfiguration) -> Void
+    let onQuotaProgressColorConfigurationChanged: (MenuBarQuotaValueMode, QuotaProgressColorConfiguration) -> Void
     let onOffsetAdjust: (String, Int) -> Void
     let onOffsetValue: (String, Double) -> Void
     let onOffsetValueEnded: (String, Double) -> Void

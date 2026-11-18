@@ -131,6 +131,23 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertEqual(preferences.menuBarQuotaWindowPreference, .fiveHour)
     }
 
+    func testQuotaColorConfigurationsPersistIndependently() {
+        let (preferences, defaults, suite) = makePreferences()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let remaining = QuotaProgressColorConfiguration.default.settingBoundary(after: .red, to: 15)
+        let used = QuotaProgressColorConfiguration.default.settingBoundary(after: .red, to: 20)
+            .settingEnabled(.green, to: false)
+        preferences.quotaProgressColorConfiguration = remaining
+        XCTAssertEqual(preferences.quotaProgressColorConfiguration(for: .used), .default)
+        preferences.setQuotaProgressColorConfiguration(used, for: .used)
+        let reloaded = AppPreferences(defaults: defaults)
+        XCTAssertEqual(reloaded.quotaProgressColorConfiguration(for: .remaining), remaining)
+        XCTAssertEqual(reloaded.quotaProgressColorConfiguration(for: .used), used)
+        XCTAssertEqual(defaults.integer(forKey: AppPreferences.quotaProgressRedUpperBoundKey), 15)
+        XCTAssertEqual(defaults.integer(forKey: AppPreferences.quotaProgressUsedRedUpperBoundKey), 20)
+        XCTAssertEqual(PreferencesMigrationPlan.quotaProgressKeys.count, 8)
+    }
+
     func testMenuBarQuotaValueModeDefaultsPersistsAndRejectsUnknownValues() {
         let (preferences, defaults, suite) = makePreferences()
         defer { defaults.removePersistentDomain(forName: suite) }

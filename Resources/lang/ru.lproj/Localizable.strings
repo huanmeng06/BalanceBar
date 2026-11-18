@@ -497,6 +497,8 @@
 "codex.banked_reset.confidence_medium" = "Средняя";
 "codex.banked_reset.confidence_high" = "Высокая";
 "dashboard.menu.page.progress_color_ranges" = "Цветовые диапазоны индикатора";
+"dashboard.menu.page.progress_color_editing_mode" = "Режим редактирования";
+"dashboard.menu.page.progress_color_ranges_used_description" = "Перетащите границы, чтобы настроить цвета для разных процентов использования";
 "dashboard.menu.page.progress_color_ranges_description" = "Перетаскивайте пороги, чтобы выбрать цвет для каждого диапазона оставшегося процента";
 "dashboard.menu.page.displayed_colors" = "Отображаемые цвета";
 "dashboard.menu.page.displayed_colors_description" = "Оставьте включёнными не менее двух цветов";
