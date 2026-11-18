@@ -284,7 +284,8 @@
 "dashboard.menu.bar.page.quota_display_priority_description" = "Выберите, какой квоте отдавать приоритет в строке меню и в меню «Быстрое переключение»: 5-часовой или 7-дневной";
 "dashboard.menu.bar.page.five_hour_quota" = "Квота на 5 часов";
 "dashboard.menu.bar.page.seven_day_quota" = "Квота на 7 дней";
-"dashboard.menu.bar.page.quota_value_mode" = "Отображение квоты";
+"dashboard.menu.bar.page.quota_value_mode" = "Процент квоты";
+"dashboard.menu.bar.page.quota_value_mode_description" = "Выберите, какой процент показывать в строке меню и раскрывающемся меню: оставшийся или использованный";
 "dashboard.menu.bar.page.quota_value_remaining" = "Оставшаяся квота";
 "dashboard.menu.bar.page.quota_value_used" = "Использованная квота";
 "dashboard.menu.bar.page.quota_reset_display_mode" = "Отображение времени сброса";

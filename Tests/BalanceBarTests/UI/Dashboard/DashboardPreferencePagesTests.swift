@@ -6610,6 +6610,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
             $0.identifier?.rawValue == DashboardMenuBarPage.previewPrimaryIdentifier
         })
         let row = try XCTUnwrap(SettingsRowView.enclosing(popup))
+        XCTAssertEqual(row.titleLabel.stringValue, tr(.keyDashboardMenuBarPageQuotaValueMode))
+        XCTAssertEqual(row.detailLabel.stringValue, tr(.keyDashboardMenuBarPageQuotaValueModeDescription))
         XCTAssertEqual(popup.itemTitles, [tr(.keyDashboardMenuBarPageQuotaValueRemaining), tr(.keyDashboardMenuBarPageQuotaValueUsed)])
         XCTAssertEqual(primary.stringValue, "72%")
         XCTAssertFalse(row.isHidden)

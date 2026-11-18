@@ -394,6 +394,7 @@
     case keyDashboardMenuBarPageFiveHourQuota = "dashboard.menu.bar.page.five_hour_quota"
     case keyDashboardMenuBarPageSevenDayQuota = "dashboard.menu.bar.page.seven_day_quota"
     case keyDashboardMenuBarPageQuotaValueMode = "dashboard.menu.bar.page.quota_value_mode"
+    case keyDashboardMenuBarPageQuotaValueModeDescription = "dashboard.menu.bar.page.quota_value_mode_description"
     case keyDashboardMenuBarPageQuotaValueRemaining = "dashboard.menu.bar.page.quota_value_remaining"
     case keyDashboardMenuBarPageQuotaValueUsed = "dashboard.menu.bar.page.quota_value_used"
     case keyDashboardMenuBarPageQuotaResetDisplayMode = "dashboard.menu.bar.page.quota_reset_display_mode"

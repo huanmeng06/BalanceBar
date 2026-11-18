@@ -926,7 +926,8 @@ final class DashboardPageSearchTests: XCTestCase {
         defer { AppLanguage.selected = previousLanguage }
         AppLanguage.selected = .simplifiedChinese
         let titles = DashboardSettingsSearchCatalog.titles(for: .menuBar)
-        XCTAssertTrue(titles.contains("额度显示数值"))
+        XCTAssertTrue(titles.contains("额度百分比"))
+        XCTAssertTrue(titles.contains("选择菜单栏和下拉菜单显示剩余百分比还是已用百分比"))
         XCTAssertTrue(titles.contains { $0.contains("已用") })
         XCTAssertTrue(titles.contains { $0.contains("剩余") })
     }

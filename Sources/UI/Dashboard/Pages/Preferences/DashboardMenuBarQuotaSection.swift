@@ -91,6 +91,7 @@ final class DashboardMenuBarQuotaSection {
         self.quotaValueModeControl = quotaValueModeControl
         let quotaValueModeRow = SettingsRowView(
             title: tr(.keyDashboardMenuBarPageQuotaValueMode),
+            detail: tr(.keyDashboardMenuBarPageQuotaValueModeDescription),
             accessoryView: quotaValueModeControl
         )
         self.quotaValueModeRow = quotaValueModeRow

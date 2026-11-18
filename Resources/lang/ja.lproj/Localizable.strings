@@ -284,7 +284,8 @@
 "dashboard.menu.bar.page.quota_display_priority_description" = "メニューバーと「クイック切り替え」メニューで、5時間クォータと7日間クォータのどちらを優先表示するか選択";
 "dashboard.menu.bar.page.five_hour_quota" = "5時間クォータ";
 "dashboard.menu.bar.page.seven_day_quota" = "7日間クォータ";
-"dashboard.menu.bar.page.quota_value_mode" = "使用枠の表示";
+"dashboard.menu.bar.page.quota_value_mode" = "使用枠の割合";
+"dashboard.menu.bar.page.quota_value_mode_description" = "メニューバーとドロップダウンメニューに残りの割合と使用済みの割合のどちらを表示するかを選択します";
 "dashboard.menu.bar.page.quota_value_remaining" = "残りの使用枠";
 "dashboard.menu.bar.page.quota_value_used" = "使用済みの使用枠";
 "dashboard.menu.bar.page.quota_reset_display_mode" = "リセット時刻の表示形式";
