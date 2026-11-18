@@ -3633,6 +3633,44 @@ extension StatusItemControllerTests {
     }
 
     @MainActor
+    func testColdWalletShowsCredentialRecoveryRegardlessOfMemberOrder() throws {
+        let keyReason = ProviderRefreshCoordinator.balanceHTTPErrorReason(401, language: .selected)
+        let serverReason = ProviderRefreshCoordinator.balanceHTTPErrorReason(503, language: .selected)
+        func member(_ id: String, reason: String, recovery: FailureRecovery) -> AggregatedProviderDisplay {
+            let source = ProviderSummarySource(id: id, name: "Shared Wallet", isOfficial: false,
+                query: nil, officialAccessToken: nil)
+            var snapshot = Snapshot.providerError(source.name, reason: reason, cachedBalance: nil)
+            snapshot.failureRecovery = recovery
+            return .init(entry: .init(source: source, role: .member),
+                identity: .init(providerID: id, accountScope: "fixture", configurationRevision: "fixture"),
+                snapshot: snapshot, account: nil, status: .error, reason: reason, fetchedAt: nil)
+        }
+        let server = member("server", reason: serverReason, recovery: .none)
+        let auth = member("auth", reason: keyReason, recovery: .openCCSwitch)
+        for members in [[server, auth], [auth, server]] {
+            let controller = makeController()
+            defer { controller.teardown() }
+            let input = StatusItemController.MenuInput(choices: [], quickSwitchSummaries: [:], activeClient: .codex,
+                openAIAccount: nil, statusLinks: [], showQuickSwitchMenu: false, showOpenChatGPTMenu: false,
+                showOpenCCSwitchMenu: false, showStatusMenu: false, aggregatedProviders: members)
+            controller.start(snapshot: .placeholder, refreshDate: nil, menuInput: input, settings: makeSettings())
+            let scroll = try XCTUnwrap(controller.statusMenuForTesting.items.first?.view as? NSScrollView)
+            let document = try XCTUnwrap(scroll.documentView)
+            XCTAssertEqual(document.subviews.count, 1, "same-name cold members share a wallet")
+            let wallet = try XCTUnwrap(document.subviews.first?.subviews.first)
+            let failure = try XCTUnwrap(wallet.subviews.compactMap { $0 as? FailureStateView }.first,
+                "credential recovery is required for member order \(members.map(\.entry.providerID))")
+            XCTAssertEqual(failure.reasonForTesting.replacingOccurrences(of: "\u{200B}", with: ""), keyReason)
+            XCTAssertEqual(failure.actionButton.title, tr(.keyStatusItemControllerOpenCcSwitch))
+            let time = try XCTUnwrap(wallet.subviews.compactMap { $0 as? NSTextField }.first {
+                $0.identifier?.rawValue == "overview.refreshTime"
+            })
+            XCTAssertTrue(time.isHidden)
+            XCTAssertTrue(time.stringValue.isEmpty)
+        }
+    }
+
+    @MainActor
     func testCachedBalanceFailureUsesWarningTimeAndAddsOnlyOneRecoveryRow() throws {
         var opens = 0
         let controller = makeController(openCCSwitch: { opens += 1 })
