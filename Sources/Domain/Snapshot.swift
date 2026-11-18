@@ -370,7 +370,6 @@ enum OfficialQuotaUsagePrediction: Equatable {
 enum OfficialQuotaWindowResolution: Equatable {
     case selected(OfficialQuotaWindow)
     case legacy(OfficialQuotaWindow?)
-    case unavailable
 }
 
 enum OfficialQuotaWindowResolver {
@@ -379,23 +378,10 @@ enum OfficialQuotaWindowResolver {
         preference: OfficialQuotaWindowPreference
     ) -> OfficialQuotaWindowResolution {
         let recognized = windows.filter { $0.kind != .other }
-        guard !recognized.isEmpty else {
+        guard let fallback = recognized.first else {
             return .legacy(windows.first)
         }
-
-        switch preference {
-        case .fiveHour:
-            guard let window = recognized.first(where: { $0.kind == .fiveHour })
-                    ?? recognized.first(where: { $0.kind == .sevenDay }) else {
-                return .unavailable
-            }
-            return .selected(window)
-        case .sevenDay:
-            guard let window = recognized.first(where: { $0.kind == .sevenDay }) else {
-                return .unavailable
-            }
-            return .selected(window)
-        }
+        return .selected(recognized.first(where: { $0.kind == preference.kind }) ?? fallback)
     }
 }
 
@@ -1069,6 +1055,7 @@ struct Snapshot: Equatable {
     /// Claude official requests are turned off by the egress guard (Issue #686): the card
     /// explains it, but the menu bar shows a neutral dash instead of the "!" failure mark.
     var officialSourceDisabled = false
+    private var isOfficialQuotaError = false
     /// Opaque identity of the account this official quota belongs to, so
     /// notification progress and stored samples never cross accounts.
     var notificationAccountScope: String? = nil
@@ -1283,6 +1270,12 @@ struct Snapshot: Equatable {
         return snapshot
     }
 
+    static func officialQuotaError(_ provider: String, reason: String) -> Snapshot {
+        var snapshot = providerError(provider, reason: reason, cachedBalance: nil)
+        snapshot.isOfficialQuotaError = true
+        return snapshot
+    }
+
     /// Only recognized Codex windows participate in the expanded menu card.
     /// Unknown/legacy windows remain available through the normal single-row
     /// snapshot presentation instead of being mistaken for a 5-hour or 7-day
@@ -1399,12 +1392,6 @@ struct Snapshot: Equatable {
             selectedSnapshot = replacingOfficialWindow(selected)
         case .legacy:
             selectedSnapshot = self
-        case .unavailable:
-            return .providerError(
-                provider,
-                reason: tr(.keyProviderModelsQuotaUnavailable),
-                cachedBalance: nil
-            )
         }
         // The setting only permits the automatic takeover. Codex enters
         // Reserve after an identified original quota is exhausted; it must
@@ -1527,6 +1514,13 @@ struct Snapshot: Equatable {
     var menuBarToolTip: String { menuBarToolTip(timeZone: .autoupdatingCurrent) }
 
     func menuBarToolTip(timeZone: TimeZone) -> String {
+        if kind == .error {
+            let reason = officialRetryReason(timeZone: timeZone) ?? detail(timeZone: timeZone)
+            let failure = isOfficialQuotaError
+                ? tr(.keySnapshotFailedToLoadQuotaReason, arguments: [reason])
+                : reason
+            return tr(.keySnapshotValueValue, arguments: [overviewProvider, failure])
+        }
         guard kind == .official else { return title }
         let reset = String(describing: officialResetDisplayValue(timeZone: timeZone) ?? tr(.keyLocalizationUnknown))
         guard LunaReserveUserFacing.isCurrentlyEnabled, let lunaReserve else {

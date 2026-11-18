@@ -70,6 +70,7 @@
 "snapshot.value_remaining_value_value" = "%1$@ restante: %2$@%% (%3$@)";
 "snapshot.value_remaining_value" = "%1$@ restante: %2$@";
 "snapshot.failed_to_load_balance.2" = "Falha ao carregar o saldo";
+"snapshot.failed_to_load_quota_reason" = "Não foi possível carregar a cota: %1$@";
 "snapshot.value_remaining_value.2" = "%1$@ restante: %2$@%%";
 "snapshot.reset_value.2" = "%1$@";
 "snapshot.updated_value_follows_cc_switch_automatically" = "Atualizado: %1$@ · Sincronização automática com o CC Switch";

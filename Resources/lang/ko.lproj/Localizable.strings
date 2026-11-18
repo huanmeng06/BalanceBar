@@ -70,6 +70,7 @@
 "snapshot.value_remaining_value_value" = "%1$@ 남음: %2$@%% (%3$@)";
 "snapshot.value_remaining_value" = "%1$@ 남음: %2$@";
 "snapshot.failed_to_load_balance.2" = "잔액을 불러오지 못했습니다";
+"snapshot.failed_to_load_quota_reason" = "사용 한도를 불러오지 못했습니다: %1$@";
 "snapshot.value_remaining_value.2" = "%1$@ 남음: %2$@%%";
 "snapshot.reset_value.2" = "%1$@";
 "snapshot.updated_value_follows_cc_switch_automatically" = "업데이트: %1$@ · CC Switch와 자동으로 동기화 중";
