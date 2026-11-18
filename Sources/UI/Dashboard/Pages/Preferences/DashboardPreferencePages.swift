@@ -39,6 +39,10 @@ struct DashboardPreferencePageActions {
     var onInstallModSync: ((NSView) -> Void)? = nil
     var modPanelStateProvider: () -> ModPanelState? = { nil }
     var claudeSourceTimelineProvider: () -> ClaudeSourceTimelineView.Content = { .empty }
+    var claudeLoginStatusProvider: () -> ClaudeLoginStatus = { .unknown }
+    /// The General page changed searchable copy on its own — the login line passed its expiry
+    /// time, or the footnote link flipped between "How they differ" and "Hide".
+    var onSearchableCopyChanged: () -> Void = {}
     var claudeEgressGuard = ClaudeEgressGuardPageActions()
 }
 
@@ -57,7 +61,7 @@ final class DashboardPreferencePages {
     private let notificationsPage: DashboardNotificationPages?
     // Global Search projects content into a detached tree. Keep its page
     // models separate from the cached production pages.
-    private let searchGeneralPage = DashboardGeneralPage()
+    private let searchGeneralPage = DashboardGeneralPage(expandsClaudeSourcesFootnote: true)
     private let searchMenuPage = DashboardMenuPage()
     private let searchMenuBarPage = DashboardMenuBarPage()
     private let searchAdvancedPage = DashboardAdvancedPage()
@@ -137,6 +141,7 @@ final class DashboardPreferencePages {
         forSearch: Bool = false
     ) -> NSView {
         let generalPage = forSearch ? searchGeneralPage : self.generalPage
+        generalPage.onSearchableCopyChanged = actions.onSearchableCopyChanged
         let menuBarPage = forSearch ? searchMenuBarPage : self.menuBarPage
         let menuPage = forSearch ? searchMenuPage : self.menuPage
         let advancedPage = forSearch ? searchAdvancedPage : self.advancedPage
@@ -150,7 +155,8 @@ final class DashboardPreferencePages {
                 launchAtLoginState: launchAtLoginController.currentState(),
                 launchWithChatGPTState: launchWithChatGPTController.currentState(),
                 modSyncStatus: actions.modSyncStatusProvider() ?? .detecting,
-                modPanelState: actions.modPanelStateProvider() ?? .intro(dismissChecked: false)
+                modPanelState: actions.modPanelStateProvider() ?? .intro(dismissChecked: false),
+                claudeLoginStatus: actions.claudeLoginStatusProvider()
             ))
         case .menuBar:
             return menuBarPage.make(.init(
@@ -242,6 +248,8 @@ final class DashboardPreferencePages {
     func refreshClaudeSourceValidity() {
         advancedPage.refreshOAuthValidity(preferences: preferences)
         searchAdvancedPage.refreshOAuthValidity(preferences: preferences)
+        generalPage.refreshClaudeSourcesFootnote(calibrationInterval: preferences.claudeCalibrationInterval)
+        searchGeneralPage.refreshClaudeSourcesFootnote(calibrationInterval: preferences.claudeCalibrationInterval)
     }
 
     func refreshClaudeEgressGuard() {
@@ -251,9 +259,23 @@ final class DashboardPreferencePages {
         searchGeneralPage.refreshClaudeOfficialEnabled(preferences.claudeEgressGuardEnabled)
     }
 
-    func refreshClaudeSourceTimeline() {
+    /// Runs after each official request: the timeline and the login line (whose facts come
+    /// from that request's credential read) both move on.
+    /// Returns whether the login line's copy changed, which search has indexed.
+    @discardableResult
+    func refreshClaudeSourceTimeline() -> Bool {
         advancedPage.refreshSourceTimeline()
         searchAdvancedPage.refreshSourceTimeline()
+        return refreshClaudeLogin()
+    }
+
+    @discardableResult
+    func refreshClaudeLogin() -> Bool {
+        let status = actions.claudeLoginStatusProvider()
+        let timeZone = preferences.effectiveDisplayTimeZone
+        let changed = generalPage.refreshClaudeLogin(status, timeZone: timeZone)
+        let searchChanged = searchGeneralPage.refreshClaudeLogin(status, timeZone: timeZone)
+        return changed || searchChanged
     }
 
     func refreshDisplayTimeZone() {
@@ -263,6 +285,7 @@ final class DashboardPreferencePages {
         notificationsPage?.refreshDisplayTimeZone()
         advancedPage.refreshDisplayTimeZone(preferences.effectiveDisplayTimeZone)
         searchAdvancedPage.refreshDisplayTimeZone(preferences.effectiveDisplayTimeZone)
+        refreshClaudeLogin()
     }
 
     func refreshNotifications() {

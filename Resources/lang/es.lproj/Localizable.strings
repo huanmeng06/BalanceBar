@@ -664,6 +664,21 @@
 "claude.timeline.estimate.in" = "en unos %1$@";
 "claude.refresh.every_minutes" = "Cada %1$@ min";
 "claude.quota.calibration_detail" = "Consulta la fuente oficial periódicamente como respaldo; intervalos largos evitan límites de uso";
+"claude.quota.sources_footnote" = "Ambos recogen la cuota que usas en la web o en la app móvil; se diferencian en cuándo se actualizan.\n\nLa calibración oficial se actualiza cada %1$@ min, pero una sesión caducada o una red restringida pueden bloquearla. El Mod no se ve afectado, pero solo se actualiza después de que envíes un mensaje en la app de escritorio o la CLI.\n\nPor ejemplo, tras chatear en el móvil tu cuota de 5 horas baja del 90 %% al 80 %%: la calibración oficial suele mostrar 80 %% en menos de %1$@ min y el Mod tras tu siguiente mensaje. Con el Mod solo es más que suficiente.";
+"claude.quota.sources_footnote.show" = "Ver la diferencia";
+"claude.quota.sources_footnote.hide" = "Ocultar";
+"claude.login.status.signed_in" = "Sesión iniciada";
+"claude.login.status.expired" = "Caducada";
+"claude.login.status.signed_out" = "Sin sesión";
+"claude.login.status.unreadable" = "No se puede leer";
+"claude.login.status.detecting" = "Comprobando…";
+"claude.login.expires_at" = "Caduca: %1$@";
+"claude.login.action.renew" = "Usa Claude Code una vez para renovarla automáticamente";
+"claude.login.reason.rejected" = "El servicio oficial rechazó esta sesión";
+"claude.login.action.relogin" = "Vuelve a iniciar sesión en Claude Code";
+"claude.login.action.sign_in" = "Se detecta automáticamente al iniciar sesión en Claude Code";
+"claude.login.reason.keychain" = "El llavero no permitió leer la sesión";
+"claude.login.action.retry" = "Haz clic en «Actualizar ahora» para permitirlo de nuevo";
 "claude.quota.calibration_off_detail" = "Las solicitudes oficiales de Claude están desactivadas; este intervalo no tiene efecto.";
 "claude.quota.calibration_off_link" = "Configurar IP permitidas…";
 

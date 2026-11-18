@@ -2,6 +2,20 @@ import CryptoKit
 import Foundation
 import AppKit
 
+/// Claude Code's login as official calibration depends on it (Settings › Refresh status line).
+enum ClaudeLoginStatus: Equatable {
+    /// No credential read yet this launch.
+    case unknown
+    /// The keychain refused or timed out; the login may well exist.
+    case unreadable
+    case signedOut
+    /// A token is present and the official API has not rejected it. Past `expiresAt` it is
+    /// expired until Claude Code renews it.
+    case signedIn(expiresAt: Date?)
+    /// The official API answered 401 for the current token.
+    case rejected(expiresAt: Date?)
+}
+
 /// Why the latest Claude official refresh did not produce new data.
 enum ClaudeQuotaFailure: Equatable {
     /// A subscription account is recorded but its token is empty or absent: Claude Code is signed out.
@@ -370,6 +384,15 @@ final class ClaudeQuotaPipeline {
     /// Reads the scheduler's queue-protected snapshot so the menu agrees with the actual decision.
     func isLoginExpired() -> Bool {
         scheduler.statusSnapshot().isUnauthorizedPaused
+    }
+
+    /// Claude Code login as the official calibration sees it, from the last credential read and
+    /// the 401 pause. Display only: never reads the keychain.
+    func loginStatus() -> ClaudeLoginStatus {
+        guard let login = client.cachedClaudeLogin() else { return .unknown }
+        if login.keychainUnreadable { return .unreadable }
+        guard login.hasToken else { return .signedOut }
+        return isLoginExpired() ? .rejected(expiresAt: login.expiresAt) : .signedIn(expiresAt: login.expiresAt)
     }
 
     enum ModUnavailableReason: String {

@@ -155,7 +155,8 @@ struct CredentialReader {
         if let result, result.terminationStatus == 0,
            let token = Self.claudeAccessToken(from: result.standardOutput) {
             keychainCooldown.clear()
-            return ClaudeStoredCredentials(accessToken: token, planType: Self.claudePlanType(from: result.standardOutput))
+            return ClaudeStoredCredentials(accessToken: token, planType: Self.claudePlanType(from: result.standardOutput),
+                                           expiresAt: Self.claudeExpiresAt(from: result.standardOutput))
         }
         // Read succeeded (empty token = signed out) or the item does not exist: not a keychain problem.
         // Anything else (timeout, denied prompt, locked keychain, `security` not runnable) means the
@@ -171,7 +172,8 @@ struct CredentialReader {
         }
         let token = Self.claudeAccessToken(from: data)
         return ClaudeStoredCredentials(accessToken: token, planType: Self.claudePlanType(from: data),
-                                       keychainUnreadable: token == nil && keychainUnreadable)
+                                       keychainUnreadable: token == nil && keychainUnreadable,
+                                       expiresAt: token == nil ? nil : Self.claudeExpiresAt(from: data))
     }
 
     /// Claude Code records the signed-in account in `~/.claude.json`.
@@ -261,6 +263,15 @@ struct CredentialReader {
         if tier.contains("20x") { return "max_20x" }
         if tier.contains("5x") { return "max_5x" }
         return subscription
+    }
+
+    /// `claudeAiOauth.expiresAt` is epoch milliseconds (as read by other Claude Code tools); a value
+    /// small enough to be seconds is taken as seconds.
+    static func claudeExpiresAt(from data: Data) -> Date? {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        let oauth = (object["claudeAiOauth"] as? [String: Any]) ?? (object["claude.ai_oauth"] as? [String: Any])
+        guard let raw = (oauth?["expiresAt"] as? NSNumber)?.doubleValue, raw > 0, raw.isFinite else { return nil }
+        return Date(timeIntervalSince1970: raw >= 100_000_000_000 ? raw / 1000 : raw)
     }
 
     static func claudeAccessToken(from data: Data) -> String? {

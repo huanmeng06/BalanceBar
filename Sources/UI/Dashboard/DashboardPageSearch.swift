@@ -367,6 +367,7 @@ enum DashboardSettingsSearchCatalog {
     ]
     private static var cachedCatalogLanguageKey: String?
     private static var cachedTitlesBySection: [DashboardSection: [String]] = [:]
+    private static var cachedSupportingTitlesBySection: [DashboardSection: [String]] = [:]
 
     /// The language row is the one intentional cross-language entry point.
     /// Every other catalog value comes from the currently selected UI locale.
@@ -384,8 +385,23 @@ enum DashboardSettingsSearchCatalog {
             cachedTitlesBySection = Dictionary(uniqueKeysWithValues: DashboardSection.allCases.map {
                 ($0, buildTitles(for: $0))
             })
+            cachedSupportingTitlesBySection = Dictionary(uniqueKeysWithValues: DashboardSection.allCases.map {
+                ($0, buildSupportingTitles(for: $0))
+            })
         }
         return cachedTitlesBySection[section] ?? []
+    }
+
+    /// Explanatory prose that should still find its page, but rank below any page whose own
+    /// settings carry the words: the Claude footnote's example mentions "5-hour quota", which
+    /// belongs to the menu bar page first.
+    static func supportingTitles(for section: DashboardSection) -> [String] {
+        _ = titles(for: section) // refreshes both caches for the current language
+        return cachedSupportingTitlesBySection[section] ?? []
+    }
+
+    private static func buildSupportingTitles(for section: DashboardSection) -> [String] {
+        section == .general ? DashboardGeneralPage.claudeSourcesFootnoteSearchCopy() : []
     }
 
     private static func buildTitles(for section: DashboardSection) -> [String] {
@@ -401,6 +417,7 @@ enum DashboardSettingsSearchCatalog {
             values.append(contentsOf: AppPreferences.claudeCalibrationIntervals.map {
                 tr(.keyClaudeRefreshEveryMinutes, arguments: [String(Int($0 / 60))])
             })
+            values.append(contentsOf: DashboardGeneralPage.claudeLoginSearchKeys.map { tr($0) })
         }
         if section == .advanced {
             let minutes = AppPreferences.claudeOAuthValidityOptions + AppPreferences.claudeLocalValidityOptions
@@ -456,7 +473,9 @@ enum DashboardSettingsSearchCatalog {
             let match = DashboardPageSearch.bestMatch(
                 texts: titles(for: section) + (runtimeTexts[section] ?? []),
                 query: query
-            )
+            ) ?? DashboardPageSearch.bestMatch(texts: supportingTitles(for: section), query: query).map {
+                DashboardPageSearch.Match(kind: $0.kind, relevance: $0.relevance / 2)
+            }
             if let match {
                 scored.append((section: section, match: match))
             }
@@ -475,7 +494,9 @@ enum DashboardSettingsSearchCatalog {
         return DashboardPageSearch.bestMatch(
             texts: titles(for: section),
             query: query
-        )
+        ) ?? DashboardPageSearch.bestMatch(texts: supportingTitles(for: section), query: query).map {
+            DashboardPageSearch.Match(kind: $0.kind, relevance: $0.relevance / 2)
+        }
     }
 
     static func firstMatchingSection(query: String) -> DashboardSection? {
@@ -1213,9 +1234,7 @@ final class DashboardPageSearchFilter {
         switch mode {
         case .titles:
             for section in collectSections(in: root) {
-                if let heading = sectionHeading(section) {
-                    keepBest(DashboardPageSearch.bestMatch(texts: [heading] + sectionFootnote(section), query: needle))
-                }
+                keepBest(DashboardPageSearch.bestMatch(texts: sectionWideTexts(section), query: needle))
                 for row in rows(in: section) {
                     keepBest(rowMatch(row, query: needle, includeVisibleCopy: false, sectionHeading: sectionHeading(section)))
                 }
@@ -1223,9 +1242,7 @@ final class DashboardPageSearchFilter {
         case .visibleCopy:
             let sections = collectSections(in: root)
             for section in sections {
-                if let heading = sectionHeading(section) {
-                    keepBest(DashboardPageSearch.bestMatch(texts: [heading] + sectionFootnote(section), query: needle))
-                }
+                keepBest(DashboardPageSearch.bestMatch(texts: sectionWideTexts(section), query: needle))
                 for row in rows(in: section) {
                     keepBest(rowMatch(row, query: needle, includeVisibleCopy: true, sectionHeading: sectionHeading(section)))
                 }
@@ -1318,7 +1335,7 @@ final class DashboardPageSearchFilter {
            let sectionID = activeSearchIndex?.documentIDByView[ObjectIdentifier(section)] {
             headingMatches = activeDocumentMatches.contains(sectionID)
         } else {
-            headingMatches = ((sectionHeading(section).map { [$0] } ?? []) + sectionFootnote(section))
+            headingMatches = sectionWideTexts(section)
                 .contains { DashboardPageSearch.bestMatch(texts: [$0], query: query) != nil }
         }
         if headingMatches {
@@ -1513,12 +1530,14 @@ final class DashboardPageSearchFilter {
             documentIDByView[ObjectIdentifier(section)] = sectionID
             // The footnote sits outside the rows but describes the whole section,
             // so it matches like the heading and keeps every row visible.
-            if let heading = sectionHeading(section), !heading.isEmpty {
+            // Untitled sections still get a document when they carry a footnote.
+            let sectionTexts = sectionWideTexts(section)
+            if !sectionTexts.isEmpty {
                 documents.append(
                     DashboardSearchDocument(
                         id: sectionID,
                         sectionID: nil,
-                        texts: [heading] + sectionFootnote(section),
+                        texts: sectionTexts,
                         supportingTexts: [],
                         businessVisible: !DashboardSearchVisibility.isBusinessHidden(section),
                         order: documentOrder
@@ -1585,9 +1604,19 @@ final class DashboardPageSearchFilter {
         return index
     }
 
+    /// Copy that describes the whole section — its heading and footnote. A match keeps every
+    /// row visible. Untitled sections (the Claude sources card) still count their footnote.
+    private func sectionWideTexts(_ section: NSView) -> [String] {
+        (sectionHeading(section).map { [$0] } ?? []) + sectionFootnote(section)
+    }
+
     private func sectionFootnote(_ section: NSView) -> [String] {
-        guard let text = (section as? SettingsSectionView)?.footnoteLabel?.stringValue, !text.isEmpty else { return [] }
-        return [text]
+        // The expandable detail belongs to the footnote too, so its words match even
+        // while it is collapsed.
+        guard let native = section as? SettingsSectionView else { return [] }
+        return [native.footnoteLabel?.stringValue, native.footnoteDetailLabel?.stringValue]
+            .compactMap { $0 }
+            .filter { !$0.isEmpty }
     }
 
     private func searchDocumentID(for view: NSView, prefix: String) -> String {

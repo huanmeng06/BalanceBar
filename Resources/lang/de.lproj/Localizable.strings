@@ -664,6 +664,21 @@
 "claude.timeline.estimate.in" = "in ca. %1$@";
 "claude.refresh.every_minutes" = "Alle %1$@ Min.";
 "claude.quota.calibration_detail" = "Fragt die offizielle Quelle zeitgesteuert als Rückfall ab; längere Intervalle vermeiden Rate-Limits";
+"claude.quota.sources_footnote" = "Beide erfassen Kontingent, das du im Web oder in der Mobil-App verbrauchst; sie unterscheiden sich darin, wann sie aktualisieren.\n\nDer offizielle Abgleich aktualisiert alle %1$@ Min., kann aber durch eine abgelaufene Anmeldung oder ein eingeschränktes Netzwerk blockiert werden. Die Mod ist davon nicht betroffen, aktualisiert aber erst, wenn du in der Desktop-App oder CLI eine Nachricht sendest.\n\nBeispiel: Nach einem Chat am Handy fällt dein 5-Stunden-Kontingent von 90 %% auf 80 %%. Der offizielle Abgleich zeigt meist innerhalb von %1$@ Min. 80 %% an, die Mod nach deiner nächsten Nachricht. Die Mod allein reicht völlig aus.";
+"claude.quota.sources_footnote.show" = "Unterschied ansehen";
+"claude.quota.sources_footnote.hide" = "Ausblenden";
+"claude.login.status.signed_in" = "Angemeldet";
+"claude.login.status.expired" = "Abgelaufen";
+"claude.login.status.signed_out" = "Nicht angemeldet";
+"claude.login.status.unreadable" = "Nicht lesbar";
+"claude.login.status.detecting" = "Wird geprüft…";
+"claude.login.expires_at" = "Läuft ab: %1$@";
+"claude.login.action.renew" = "Einmal Claude Code verwenden, um sie automatisch zu verlängern";
+"claude.login.reason.rejected" = "Der offizielle Dienst hat diese Anmeldung abgelehnt";
+"claude.login.action.relogin" = "In Claude Code erneut anmelden";
+"claude.login.action.sign_in" = "Wird nach der Anmeldung in Claude Code automatisch erkannt";
+"claude.login.reason.keychain" = "Der Schlüsselbund hat das Lesen der Anmeldung nicht erlaubt";
+"claude.login.action.retry" = "„Jetzt aktualisieren“ klicken, um es erneut zu erlauben";
 "claude.quota.calibration_off_detail" = "Offizielle Claude-Anfragen sind aus; dieses Intervall ist wirkungslos.";
 "claude.quota.calibration_off_link" = "IP-Zulassungsliste einrichten …";
 
