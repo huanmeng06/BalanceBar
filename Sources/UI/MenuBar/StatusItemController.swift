@@ -6823,6 +6823,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let progressViews = overviewNumericProgressViews(in: card)
         progressViews.forEach { $0.setColorConfiguration(settings.quotaProgressColorConfiguration) }
         for sample in numericSamples(for: context) {
+            let progress = progressViews.first {
+                $0.identifier == OverviewNumericPresentation.progressIdentifier(for: sample.identity)
+            }
+            if sample.identity.isOfficialQuota { progress?.quotaValueMode = settings.quotaValueMode }
             let matchingAmounts = amounts.filter { $0.sample?.identity == sample.identity }
             let matchingLinks = links.filter { $0.sample?.identity == sample.identity }
             guard matchingAmounts.contains(where: { $0.sample != sample })
@@ -6830,9 +6834,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             let plan = overviewNumericPlan(for: sample)
             matchingAmounts.forEach { $0.configure(plan: plan, sample: sample) }
             matchingLinks.forEach { $0.configure(plan: plan, sample: sample) }
-            if let target = sample.progressPercentage, let progress = progressViews.first(where: {
-                $0.identifier == OverviewNumericPresentation.progressIdentifier(for: sample.identity)
-            }) {
+            if let target = sample.progressPercentage, let progress {
                 progress.preparePercentage(from: plan.startProgress ?? target, to: target,
                     duration: OverviewNumericTransition.duration(for: sample.format))
             }
@@ -7264,14 +7266,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 let window = context.paceClient == .claude ? rawWindow.projectingIdleReset(now: quotaPaceNow) : rawWindow
                 guard let section = layout.sectionLayouts.first(where: { $0.id == id }),
                       let row = section.row, let sectionView = sectionViews[id] as? OpenCodexMetricSectionView else { continue }
-                let sample = OverviewNumericSample(
-                    identity: OverviewNumericPresentation.identity(
-                        for: window,
-                        provider: context.identity
-                    ),
-                    format: .integerPercent,
-                    value: window.remaining,
-                    progressPercentage: window.remaining
+                let sample = OverviewNumericPresentation.quotaSample(
+                    identity: OverviewNumericPresentation.identity(for: window, provider: context.identity),
+                    remaining: window.remaining, valueMode: settings.quotaValueMode
                 )
                 let plan = overviewNumericPlan(for: sample)
                 let progress = settings.showQuotaProgressBar
@@ -7323,11 +7320,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 var progress: NSView?
                 let marqueeAmountText: String
                 if let remaining = lunaReserve.remaining {
-                    let sample = OverviewNumericSample(
+                    let sample = OverviewNumericPresentation.quotaSample(
                         identity: .lunaReserve(provider: context.identity),
-                        format: .integerPercent,
-                        value: remaining,
-                        progressPercentage: remaining
+                        remaining: remaining, valueMode: settings.quotaValueMode
                     )
                     let plan = overviewNumericPlan(for: sample)
                     if settings.showQuotaProgressBar {
@@ -7852,6 +7847,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
             hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota,
             showBankedReset: settings.showBankedReset,
+            quotaValueMode: settings.quotaValueMode,
             now: bankedResetCountdownNow()
         )
     }
@@ -7899,7 +7895,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     OverviewNumericPresentation.identity(for: $0, provider: context.identity) == view.numericIdentity
                 }).map({ context.paceClient == .claude ? $0.projectingIdleReset(now: now) : $0 }) {
                     view.update(window: window, now: now, cycleStart: quotaPaceCycleStart(for: window, context: context),
-                        timeZone: settings.displayTimeZone)
+                        timeZone: settings.displayTimeZone, quotaValueMode: settings.quotaValueMode)
                 } else {
                     view.invalidatePresentation()
                 }
@@ -8394,7 +8390,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             now: now,
             colorConfiguration: settings.quotaProgressColorConfiguration,
             cycleStart: cycleStart,
-            timeZone: settings.displayTimeZone
+            timeZone: settings.displayTimeZone,
+            quotaValueMode: settings.quotaValueMode
         )
         host.frame = frame.insetBy(dx: 0, dy: -6.5)
         if plan.animates, let target = plan.toProgress {
@@ -8421,6 +8418,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         )
         progress.frame = frame
         progress.identifier = OverviewNumericPresentation.progressIdentifier(for: plan.identity)
+        if plan.identity.isOfficialQuota { progress.quotaValueMode = settings.quotaValueMode }
         if plan.animates, let target = plan.toProgress {
             progress.setPercentage(
                 target,
@@ -8758,6 +8756,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             if let progress = progressViews.first(where: {
                 $0.identifier == OverviewNumericPresentation.progressIdentifier(for: sample.identity)
             }), let target = sample.progressPercentage {
+                if sample.identity.isOfficialQuota { progress.quotaValueMode = settings.quotaValueMode }
                 progress.setPercentage(
                     target,
                     animated: !reduceMotion,

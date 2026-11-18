@@ -284,7 +284,7 @@
 "dashboard.menu.bar.page.quota_display_priority_description" = "Escolha se a barra de menus e o menu “Troca rápida” devem priorizar a cota de 5 horas ou de 7 dias";
 "dashboard.menu.bar.page.five_hour_quota" = "Cota de 5 horas";
 "dashboard.menu.bar.page.seven_day_quota" = "Cota de 7 dias";
-"dashboard.menu.bar.page.quota_value_mode" = "Cota na barra de menus";
+"dashboard.menu.bar.page.quota_value_mode" = "Exibição da cota";
 "dashboard.menu.bar.page.quota_value_remaining" = "Cota restante";
 "dashboard.menu.bar.page.quota_value_used" = "Cota usada";
 "dashboard.menu.bar.page.quota_reset_display_mode" = "Exibição do horário de redefinição";

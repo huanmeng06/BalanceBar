@@ -63,6 +63,10 @@ enum MenuBarQuotaValueMode: String, CaseIterable, Equatable {
     case used
 
     static let defaultValue: Self = .remaining
+
+    func displayPercentage(remaining: Double) -> Double {
+        self == .used ? 100 - min(100, max(0, remaining.rounded(.towardZero))) : remaining
+    }
 }
 
 enum OfficialQuotaResetDisplayMode: String, CaseIterable, Equatable {

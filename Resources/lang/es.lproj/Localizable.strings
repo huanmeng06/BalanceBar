@@ -284,7 +284,7 @@
 "dashboard.menu.bar.page.quota_display_priority_description" = "Elige si la barra de menús y el menú «Cambio rápido» deben priorizar la cuota de 5 horas o la de 7 días";
 "dashboard.menu.bar.page.five_hour_quota" = "Cuota de 5 horas";
 "dashboard.menu.bar.page.seven_day_quota" = "Cuota de 7 días";
-"dashboard.menu.bar.page.quota_value_mode" = "Cuota en la barra de menús";
+"dashboard.menu.bar.page.quota_value_mode" = "Visualización de cuota";
 "dashboard.menu.bar.page.quota_value_remaining" = "Cuota restante";
 "dashboard.menu.bar.page.quota_value_used" = "Cuota usada";
 "dashboard.menu.bar.page.quota_reset_display_mode" = "Formato de la hora de reinicio";

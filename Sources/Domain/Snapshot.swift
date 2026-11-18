@@ -1487,8 +1487,7 @@ struct Snapshot: Equatable {
         switch kind {
         case .placeholder: return "…"
         case .official:
-            let remaining = Int(amount ?? 0)
-            let percentage = valueMode == .used ? 100 - min(100, max(0, remaining)) : remaining
+            let percentage = Int(valueMode.displayPercentage(remaining: amount ?? 0))
             return "\(percentage)%\(menuBarUsesLunaReserve ? " 🌙" : "")"
         case .balance: return format(amount ?? 0, unit ?? "USD")
         case .error: return officialSourceDisabled ? "–" : "!"

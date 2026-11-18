@@ -300,7 +300,11 @@ final class QuotaProgressView: NSView {
             }
         }
     }
-    var fillRatio: Double { percentage / 100 }
+    var quotaValueMode: MenuBarQuotaValueMode = .defaultValue {
+        didSet { if oldValue != quotaValueMode { needsDisplay = true } }
+    }
+    private var fillPercentage: Double { quotaValueMode == .used ? 100 - percentage : percentage }
+    var fillRatio: Double { fillPercentage / 100 }
     private(set) var colorConfiguration: QuotaProgressColorConfiguration
     let fillOrigin: QuotaProgressFillOrigin
     private var interpolator: OverviewNumericInterpolator?
@@ -392,7 +396,7 @@ final class QuotaProgressView: NSView {
         NSColor.quaternaryLabelColor.setFill()
         NSBezierPath(roundedRect: track, xRadius: radius, yRadius: radius).fill()
 
-        guard let fill = Self.fillRect(in: track, percentage: percentage, fillOrigin: fillOrigin) else {
+        guard let fill = Self.fillRect(in: track, percentage: fillPercentage, fillOrigin: fillOrigin) else {
             return
         }
         Self.progressColor(for: colorPercentage, configuration: colorConfiguration).setFill()
@@ -657,7 +661,8 @@ final class QuotaProgressPaceView: NSView, NSPopoverDelegate {
         now: Date,
         colorConfiguration: QuotaProgressColorConfiguration,
         cycleStart: Date? = nil,
-        timeZone: TimeZone = .autoupdatingCurrent
+        timeZone: TimeZone = .autoupdatingCurrent,
+        quotaValueMode: MenuBarQuotaValueMode = .defaultValue
     ) {
         self.progress = QuotaProgressView(percentage: percentage, colorConfiguration: colorConfiguration)
         self.quotaWindow = window
@@ -669,7 +674,7 @@ final class QuotaProgressPaceView: NSView, NSPopoverDelegate {
         addSubview(progress)
         addSubview(marker)
         setAccessibilityRole(.staticText)
-        update(window: window, now: now, cycleStart: cycleStart, timeZone: timeZone)
+        update(window: window, now: now, cycleStart: cycleStart, timeZone: timeZone, quotaValueMode: quotaValueMode)
     }
 
     required init?(coder: NSCoder) { nil }
@@ -687,7 +692,10 @@ final class QuotaProgressPaceView: NSView, NSPopoverDelegate {
         progress.setPercentage(value, animated: animated, duration: duration)
     }
 
-    func update(window: OfficialQuotaWindow, now: Date, cycleStart: Date? = nil, timeZone: TimeZone = .autoupdatingCurrent) {
+    func update(
+        window: OfficialQuotaWindow, now: Date, cycleStart: Date? = nil,
+        timeZone: TimeZone = .autoupdatingCurrent, quotaValueMode: MenuBarQuotaValueMode = .defaultValue
+    ) {
         guard !isMenuDismissalSuspended else { return }
         let next = OfficialQuotaUsagePace.make(for: window, now: now)
         if quotaWindow.resetAt != window.resetAt || quotaWindow.kind != window.kind
@@ -698,6 +706,7 @@ final class QuotaProgressPaceView: NSView, NSPopoverDelegate {
         quotaWindow = window
         presentationNow = now
         displayTimeZone = timeZone
+        progress.quotaValueMode = quotaValueMode
         pace = next
         prediction = OfficialQuotaUsagePrediction.make(for: window, cycleStart: cycleStart, now: now)
         marker.isHidden = next == nil
@@ -711,7 +720,9 @@ final class QuotaProgressPaceView: NSView, NSPopoverDelegate {
     }
 
     var markerCenterX: CGFloat {
-        1 + max(0, bounds.width - 2) * CGFloat((pace?.expectedRemaining ?? 0) / 100)
+        let remaining = pace?.expectedRemaining ?? 0
+        let alignedPercentage = progress.quotaValueMode == .used ? 100 - remaining : remaining
+        return 1 + max(0, bounds.width - 2) * CGFloat(alignedPercentage / 100)
     }
 
     var markerHitRect: NSRect {

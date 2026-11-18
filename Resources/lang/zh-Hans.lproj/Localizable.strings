@@ -284,7 +284,7 @@
 "dashboard.menu.bar.page.quota_display_priority_description" = "选择菜单栏和“快速切换”菜单中优先显示 5 小时额度还是 7 日额度";
 "dashboard.menu.bar.page.five_hour_quota" = "5 小时额度";
 "dashboard.menu.bar.page.seven_day_quota" = "7 日额度";
-"dashboard.menu.bar.page.quota_value_mode" = "菜单栏显示数值";
+"dashboard.menu.bar.page.quota_value_mode" = "额度显示数值";
 "dashboard.menu.bar.page.quota_value_remaining" = "剩余额度";
 "dashboard.menu.bar.page.quota_value_used" = "已用额度";
 "dashboard.menu.bar.page.quota_reset_display_mode" = "重置时间样式";
