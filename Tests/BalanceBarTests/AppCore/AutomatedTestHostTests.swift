@@ -163,3 +163,28 @@ final class AutomatedTestHostTests: XCTestCase {
         XCTAssertFalse(NSApp.isActive)
     }
 }
+
+/// XCTest runs a class's cases in name order: case 1 leaves a language behind on purpose,
+/// case 2 proves the bundle observer put it back before the next case started.
+final class AutomatedTestHostLanguageRestoreTests: XCTestCase {
+    private static var languageBeforeLeak: AppLanguage?
+
+    func testObserverIsRegisteredByTestBundlePrincipal() {
+        XCTAssertTrue(BackgroundTestHost.isInstalled)
+        XCTAssertEqual(Bundle(for: Self.self).infoDictionary?["NSPrincipalClass"] as? String, "BalanceBarTestPrincipal")
+    }
+
+    func testRestore1_LeavesLanguageChanged() {
+        Self.languageBeforeLeak = AppLanguage.selected
+        let leaked: AppLanguage = AppLanguage.selected == .german ? .japanese : .german
+        AppLanguage.selected = leaked
+        XCTAssertEqual(AppLanguage.selected, leaked)
+    }
+
+    func testRestore2_NextCaseSeesOriginalLanguage() throws {
+        guard let expected = Self.languageBeforeLeak else {
+            throw XCTSkip("runs only after testRestore1_LeavesLanguageChanged")
+        }
+        XCTAssertEqual(AppLanguage.selected, expected)
+    }
+}
