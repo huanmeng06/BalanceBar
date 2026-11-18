@@ -1385,6 +1385,46 @@ final class StatusItemControllerTests: XCTestCase {
         XCTAssertTrue(cache.image(forSourceFrame: sourceFrames[0]) === firstCompleteFrame)
     }
 
+    func testQuotaValueModeUpdatesSingleLineTextAndWidthWithoutSnapshotChange() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        let input = makeMenuInput(activeClient: .codex)
+        let snapshot = Snapshot.official("OpenAI", 0, "5-hour", nil, Date(timeIntervalSince1970: 1))
+        func settings(_ mode: MenuBarQuotaValueMode) -> StatusItemController.MenuBarSettings {
+            .init(
+                showIcon: true,
+                showAmount: true,
+                showReset: false,
+                horizontalPadding: 6,
+                keepMenuOpenAfterRefresh: true,
+                quotaValueMode: mode
+            )
+        }
+        func expectedLength(_ text: String, adjustment: CGFloat = 0) -> CGFloat {
+            MenuBarLayout.singleLineStatusItemLength(
+                primaryText: text, showIcon: true, isBalance: false,
+                horizontalPadding: 6, widthAdjustment: adjustment
+            )
+        }
+        controller.start(snapshot: snapshot, refreshDate: nil, menuInput: input, settings: settings(.remaining))
+        let remainingLength = try XCTUnwrap(controller.statusItemLengthForTesting)
+        XCTAssertEqual(controller.menuBarPrimaryTextForTesting, "0%")
+        XCTAssertEqual(remainingLength, expectedLength("0%"), accuracy: 0.01)
+
+        controller.update(snapshot: snapshot, refreshDate: nil, menuInput: input, settings: settings(.used))
+        let usedLength = try XCTUnwrap(controller.statusItemLengthForTesting)
+        XCTAssertEqual(controller.menuBarPrimaryTextForTesting, "100%")
+        XCTAssertEqual(usedLength, expectedLength("100%"), accuracy: 0.01)
+        XCTAssertGreaterThan(usedLength, remainingLength)
+
+        controller.updateWidthAdjustment(4)
+        XCTAssertEqual(try XCTUnwrap(controller.statusItemLengthForTesting),
+                       expectedLength("100%", adjustment: 4), accuracy: 0.01)
+        controller.update(snapshot: snapshot, refreshDate: nil, menuInput: input, settings: settings(.remaining))
+        XCTAssertEqual(controller.menuBarPrimaryTextForTesting, "0%")
+        XCTAssertEqual(try XCTUnwrap(controller.statusItemLengthForTesting), remainingLength, accuracy: 0.01)
+    }
+
     func testCodexAnimationCacheInvalidatesForVisualSignatureAndSourceChanges() {
         let sourceFrames = (0..<RotatingTemplateImageView.frameCount).map { _ in
             NSImage(size: NSSize(width: 16, height: 16))

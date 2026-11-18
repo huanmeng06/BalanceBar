@@ -284,6 +284,9 @@
 "dashboard.menu.bar.page.quota_display_priority_description" = "Auswählen, ob in der Menüleiste und im Menü „Schnellwechsel“ das 5-Stunden- oder das 7-Tage-Kontingent bevorzugt angezeigt wird";
 "dashboard.menu.bar.page.five_hour_quota" = "5-Stunden-Kontingent";
 "dashboard.menu.bar.page.seven_day_quota" = "7-Tage-Kontingent";
+"dashboard.menu.bar.page.quota_value_mode" = "Kontingentwert in der Menüleiste";
+"dashboard.menu.bar.page.quota_value_remaining" = "Verbleibendes Kontingent";
+"dashboard.menu.bar.page.quota_value_used" = "Verbrauchtes Kontingent";
 "dashboard.menu.bar.page.quota_reset_display_mode" = "Format der Rücksetzzeit";
 "dashboard.menu.bar.page.quota_reset_display_mode_description" = "Auswählen, ob die verbleibende Zeit, die genaue Rücksetzzeit oder beides angezeigt wird";
 "dashboard.menu.bar.page.quota_reset_display_remaining" = "Verbleibende Zeit";

@@ -921,6 +921,16 @@ final class DashboardPageSearchTests: XCTestCase {
         XCTAssertNil(DashboardSettingsSearchCatalog.firstMatchingSection(query: "zzznomatch"))
     }
 
+    func testMenuBarQuotaValueOptionsAreSearchable() {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
+        let titles = DashboardSettingsSearchCatalog.titles(for: .menuBar)
+        XCTAssertTrue(titles.contains("菜单栏显示数值"))
+        XCTAssertTrue(titles.contains { $0.contains("已用") })
+        XCTAssertTrue(titles.contains { $0.contains("剩余") })
+    }
+
     func testSearchMatcherUsesNativeLocalizedSubstringSemantics() {
         XCTAssertTrue(DashboardPageSearch.matches("Language", query: "language"))
         XCTAssertTrue(DashboardPageSearch.matches("Menu Bar Font Size", query: "Font"))
@@ -4018,6 +4028,7 @@ extension DashboardPageSearchTests {
                 onMenuBarIconDisplayModeChanged: { _ in }, onMenuBarIconDisplayDelayChanged: { _ in },
                 onMenuBarRightClickActionChanged: { _ in }, onMenuBarAnimationModeChanged: { _ in },
                 onMenuBarAnimationFrameRateChanged: { _ in }, onMenuBarQuotaWindowPreferenceChanged: { _ in },
+                onMenuBarQuotaValueModeChanged: { _ in },
                 onMenuBarQuotaResetDisplayModeChanged: { _ in }, onMenuBarLunaReserveResetTimeModeChanged: { _ in },
                 onLunaReserveDisplayModeChanged: { _ in }, onBankedResetDisplayModeChanged: { _ in },
                 onUpdateChannelChanged: { _ in }, onOpenCCSwitch: {}, onOpenSystemMenuBarSettings: {},

@@ -6474,6 +6474,44 @@ final class DashboardPreferencePagesTests: XCTestCase {
         }
     }
 
+    func testQuotaValueModeSelectorRefreshesPreviewAndHidesWhenAmountIsOff() throws {
+        let suite = "DashboardPreferencePagesTests.QuotaValueMode.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        let snapshot = Snapshot.official("Claude", 72.6, "5-hour", "1h", Date())
+        let controller = DashboardMenuBarPage()
+        let relay = DashboardPreferencePageRelay()
+        relay.onMenuBarQuotaValueModeChanged = { mode in
+            preferences.menuBarQuotaValueMode = mode
+            controller.refresh(snapshot: snapshot, preferences: preferences, menuBarSnapshot: { $0 }, iconImage: nil)
+        }
+        let page = controller.make(.init(
+            preferences: preferences, snapshot: snapshot, menuBarSnapshot: { $0 }, iconImage: nil, relay: relay
+        ))
+        let popup = try XCTUnwrap(descendants(of: page).compactMap { $0 as? NSPopUpButton }.first {
+            $0.identifier?.rawValue == DashboardMenuBarPage.quotaValueModeIdentifier
+        })
+        let primary = try XCTUnwrap(descendants(of: page).compactMap { $0 as? NSTextField }.first {
+            $0.identifier?.rawValue == DashboardMenuBarPage.previewPrimaryIdentifier
+        })
+        let row = try XCTUnwrap(SettingsRowView.enclosing(popup))
+        XCTAssertEqual(popup.itemTitles, [tr(.keyDashboardMenuBarPageQuotaValueRemaining), tr(.keyDashboardMenuBarPageQuotaValueUsed)])
+        XCTAssertEqual(primary.stringValue, "72%")
+        XCTAssertFalse(row.isHidden)
+
+        popup.selectItem(at: 1)
+        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(popup.action), to: popup.target, from: popup))
+        XCTAssertEqual(preferences.menuBarQuotaValueMode, .used)
+        XCTAssertEqual(primary.stringValue, "28%")
+
+        preferences.showMenuBarAmount = false
+        preferences.menuBarQuotaValueMode = .remaining
+        controller.refresh(snapshot: snapshot, preferences: preferences, menuBarSnapshot: { $0 }, iconImage: nil)
+        XCTAssertTrue(row.isHidden)
+        XCTAssertEqual(popup.selectedItem?.representedObject as? String, "remaining")
+    }
+
     func testQuotaResetDisplayModeSelectorUsesLocalizedOptionsPersistsAndRefreshesPreview() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }

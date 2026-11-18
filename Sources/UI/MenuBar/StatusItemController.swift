@@ -2296,6 +2296,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         var fontSize: CGFloat
         /// Logical point size for the client icon slot and redrawn mark.
         var iconSize: CGFloat
+        let quotaValueMode: MenuBarQuotaValueMode
         let quotaResetDisplayMode: OfficialQuotaResetDisplayMode
         let autoSwitchLunaReserve: Bool
         let lunaReserveResetTimeMode: LunaReserveResetTimeMode
@@ -2323,6 +2324,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             fontSize: CGFloat = MenuBarLayout.primaryFontPointSize,
             iconSize: CGFloat = MenuBarLayout.iconSlotWidth,
             quotaWindowPreference: OfficialQuotaWindowPreference = .defaultValue,
+            quotaValueMode: MenuBarQuotaValueMode = .defaultValue,
             quotaResetDisplayMode: OfficialQuotaResetDisplayMode = .defaultValue,
             autoSwitchLunaReserve: Bool = false,
             lunaReserveResetTimeMode: LunaReserveResetTimeMode = .defaultValue,
@@ -2347,6 +2349,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             self.amountOffsetY = amountOffsetY
             self.widthAdjustment = widthAdjustment
             self.quotaWindowPreference = quotaWindowPreference
+            self.quotaValueMode = quotaValueMode
             self.quotaResetDisplayMode = quotaResetDisplayMode
             self.autoSwitchLunaReserve = autoSwitchLunaReserve
             self.lunaReserveResetTimeMode = lunaReserveResetTimeMode
@@ -3226,7 +3229,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             geometry: geometry
         ) {
             requestedLength = MenuBarLayout.singleLineStatusItemLength(
-                primaryText: lastMenuBarEffectiveSnapshot.menuBarPrimary,
+                primaryText: lastMenuBarEffectiveSnapshot.menuBarPrimary(valueMode: settings.quotaValueMode),
                 showIcon: settings.showIcon,
                 isBalance: lastMenuBarEffectiveSnapshot.kind == .balance,
                 horizontalPadding: settings.horizontalPadding,
@@ -4695,7 +4698,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             && !reservedSecondary.isEmpty
 
         MenuBarLayout.applyPrimaryText(
-            settings.showAmount ? effectiveSnapshot.menuBarPrimary : "",
+            settings.showAmount ? effectiveSnapshot.menuBarPrimary(valueMode: settings.quotaValueMode) : "",
             to: menuBarPrimaryLabel
         )
         if menuBarSecondaryLabel.stringValue != reservedSecondary {
@@ -4730,7 +4733,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             geometry: geometry
         ) {
             requestedLength = MenuBarLayout.singleLineStatusItemLength(
-                primaryText: effectiveSnapshot.menuBarPrimary,
+                primaryText: effectiveSnapshot.menuBarPrimary(valueMode: settings.quotaValueMode),
                 showIcon: settings.showIcon,
                 isBalance: effectiveSnapshot.kind == .balance,
                 horizontalPadding: settings.horizontalPadding,
@@ -4913,7 +4916,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             if let primaryInk = menuBarPrimaryInkBounds(in: menuBarContentCoordinateSpace) {
                 let targetX = MenuBarLayout.singleLinePrimaryAnchorX(
                     backgroundBounds: backgroundBounds,
-                    primaryText: effectiveSnapshot.menuBarPrimary,
+                    primaryText: effectiveSnapshot.menuBarPrimary(valueMode: settings.quotaValueMode),
                     showIcon: settings.showIcon,
                     isBalance: effectiveSnapshot.kind == .balance,
                     iconSlotWidth: settings.iconSize

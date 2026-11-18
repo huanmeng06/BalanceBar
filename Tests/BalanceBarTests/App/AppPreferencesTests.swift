@@ -131,6 +131,18 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertEqual(preferences.menuBarQuotaWindowPreference, .fiveHour)
     }
 
+    func testMenuBarQuotaValueModeDefaultsPersistsAndRejectsUnknownValues() {
+        let (preferences, defaults, suite) = makePreferences()
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        XCTAssertEqual(preferences.menuBarQuotaValueMode, .remaining)
+        preferences.menuBarQuotaValueMode = .used
+        XCTAssertEqual(defaults.string(forKey: AppPreferences.menuBarQuotaValueModeKey), "used")
+        XCTAssertEqual(AppPreferences(defaults: defaults).menuBarQuotaValueMode, .used)
+        defaults.set("unsupported", forKey: AppPreferences.menuBarQuotaValueModeKey)
+        XCTAssertEqual(preferences.menuBarQuotaValueMode, .remaining)
+    }
+
     func testMenuBarQuotaResetDisplayModeDefaultsPersistsAcrossReloadAndRejectsUnknownValues() {
         let (preferences, defaults, suite) = makePreferences()
         defer { defaults.removePersistentDomain(forName: suite) }

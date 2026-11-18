@@ -284,6 +284,9 @@
 "dashboard.menu.bar.page.quota_display_priority_description" = "Choisissez si la barre des menus et le menu « Changement rapide » doivent privilégier le quota de 5 heures ou celui de 7 jours";
 "dashboard.menu.bar.page.five_hour_quota" = "Quota sur 5 heures";
 "dashboard.menu.bar.page.seven_day_quota" = "Quota sur 7 jours";
+"dashboard.menu.bar.page.quota_value_mode" = "Quota dans la barre des menus";
+"dashboard.menu.bar.page.quota_value_remaining" = "Quota restant";
+"dashboard.menu.bar.page.quota_value_used" = "Quota utilisé";
 "dashboard.menu.bar.page.quota_reset_display_mode" = "Format de l’heure de réinitialisation";
 "dashboard.menu.bar.page.quota_reset_display_mode_description" = "Choisissez d’afficher le temps restant, l’heure exacte de réinitialisation ou les deux";
 "dashboard.menu.bar.page.quota_reset_display_remaining" = "Temps restant";

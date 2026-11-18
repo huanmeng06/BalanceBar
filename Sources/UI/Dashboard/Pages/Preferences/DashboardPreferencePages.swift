@@ -21,6 +21,7 @@ struct DashboardPreferencePageActions {
     let onMenuBarAnimationModeChanged: (MenuBarAnimationMode) -> Void
     let onMenuBarAnimationFrameRateChanged: (Int) -> Void
     let onMenuBarQuotaWindowPreferenceChanged: (OfficialQuotaWindowPreference) -> Void
+    let onMenuBarQuotaValueModeChanged: (MenuBarQuotaValueMode) -> Void
     let onMenuBarQuotaResetDisplayModeChanged: (OfficialQuotaResetDisplayMode) -> Void
     let onMenuBarLunaReserveResetTimeModeChanged: (LunaReserveResetTimeMode) -> Void
     let onLunaReserveDisplayModeChanged: (LunaReserveDisplayMode) -> Void
@@ -105,6 +106,7 @@ final class DashboardPreferencePages {
         relay.onMenuBarAnimationModeChanged = actions.onMenuBarAnimationModeChanged
         relay.onMenuBarAnimationFrameRateChanged = actions.onMenuBarAnimationFrameRateChanged
         relay.onMenuBarQuotaWindowPreferenceChanged = actions.onMenuBarQuotaWindowPreferenceChanged
+        relay.onMenuBarQuotaValueModeChanged = actions.onMenuBarQuotaValueModeChanged
         relay.onMenuBarQuotaResetDisplayModeChanged = actions.onMenuBarQuotaResetDisplayModeChanged
         relay.onMenuBarLunaReserveResetTimeModeChanged = actions.onMenuBarLunaReserveResetTimeModeChanged
         relay.onLunaReserveDisplayModeChanged = actions.onLunaReserveDisplayModeChanged

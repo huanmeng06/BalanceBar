@@ -58,6 +58,13 @@ struct QuotaProgressColorConfiguration: Equatable {
     }
 }
 
+enum MenuBarQuotaValueMode: String, CaseIterable, Equatable {
+    case remaining
+    case used
+
+    static let defaultValue: Self = .remaining
+}
+
 enum OfficialQuotaResetDisplayMode: String, CaseIterable, Equatable {
     case remaining
     case resetAt
@@ -411,6 +418,7 @@ final class AppPreferences {
     static let balanceDisplayThresholdKey = "balanceDisplayThreshold"
     static let menuBarQuotaWindowPreferenceKey = "menuBarQuotaWindowPreference"
     static let menuBarQuotaWindowPreferenceDefault: OfficialQuotaWindowPreference = .defaultValue
+    static let menuBarQuotaValueModeKey = "menuBarQuotaValueMode"
     static let menuBarQuotaResetDisplayModeKey = "menuBarQuotaResetDisplayMode"
     static let menuBarQuotaResetDisplayModeDefault: OfficialQuotaResetDisplayMode = .defaultValue
     static let menuBarAutoSwitchLunaReserveKey = "menuBarAutoSwitchLunaReserve"
@@ -588,6 +596,16 @@ final class AppPreferences {
         set {
             defaults.set(newValue.rawValue, forKey: Self.menuBarQuotaWindowPreferenceKey)
         }
+    }
+    var menuBarQuotaValueMode: MenuBarQuotaValueMode {
+        get {
+            guard let rawValue = defaults.string(forKey: Self.menuBarQuotaValueModeKey),
+                  let mode = MenuBarQuotaValueMode(rawValue: rawValue) else {
+                return .defaultValue
+            }
+            return mode
+        }
+        set { defaults.set(newValue.rawValue, forKey: Self.menuBarQuotaValueModeKey) }
     }
     var menuBarQuotaResetDisplayMode: OfficialQuotaResetDisplayMode {
         get {
