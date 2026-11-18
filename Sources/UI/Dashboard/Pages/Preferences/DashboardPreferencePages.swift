@@ -39,6 +39,7 @@ struct DashboardPreferencePageActions {
     var onInstallModSync: ((NSView) -> Void)? = nil
     var modPanelStateProvider: () -> ModPanelState? = { nil }
     var claudeSourceTimelineProvider: () -> ClaudeSourceTimelineView.Content = { .empty }
+    var claudeLoginStatusProvider: () -> ClaudeLoginStatus = { .unknown }
     var claudeEgressGuard = ClaudeEgressGuardPageActions()
 }
 
@@ -57,7 +58,7 @@ final class DashboardPreferencePages {
     private let notificationsPage: DashboardNotificationPages?
     // Global Search projects content into a detached tree. Keep its page
     // models separate from the cached production pages.
-    private let searchGeneralPage = DashboardGeneralPage()
+    private let searchGeneralPage = DashboardGeneralPage(expandsClaudeSourcesFootnote: true)
     private let searchMenuPage = DashboardMenuPage()
     private let searchMenuBarPage = DashboardMenuBarPage()
     private let searchAdvancedPage = DashboardAdvancedPage()
@@ -150,7 +151,8 @@ final class DashboardPreferencePages {
                 launchAtLoginState: launchAtLoginController.currentState(),
                 launchWithChatGPTState: launchWithChatGPTController.currentState(),
                 modSyncStatus: actions.modSyncStatusProvider() ?? .detecting,
-                modPanelState: actions.modPanelStateProvider() ?? .intro(dismissChecked: false)
+                modPanelState: actions.modPanelStateProvider() ?? .intro(dismissChecked: false),
+                claudeLoginStatus: actions.claudeLoginStatusProvider()
             ))
         case .menuBar:
             return menuBarPage.make(.init(
@@ -242,6 +244,8 @@ final class DashboardPreferencePages {
     func refreshClaudeSourceValidity() {
         advancedPage.refreshOAuthValidity(preferences: preferences)
         searchAdvancedPage.refreshOAuthValidity(preferences: preferences)
+        generalPage.refreshClaudeSourcesFootnote(calibrationInterval: preferences.claudeCalibrationInterval)
+        searchGeneralPage.refreshClaudeSourcesFootnote(calibrationInterval: preferences.claudeCalibrationInterval)
     }
 
     func refreshClaudeEgressGuard() {
@@ -251,9 +255,19 @@ final class DashboardPreferencePages {
         searchGeneralPage.refreshClaudeOfficialEnabled(preferences.claudeEgressGuardEnabled)
     }
 
+    /// Runs after each official request: the timeline and the login line (whose facts come
+    /// from that request's credential read) both move on.
     func refreshClaudeSourceTimeline() {
         advancedPage.refreshSourceTimeline()
         searchAdvancedPage.refreshSourceTimeline()
+        refreshClaudeLogin()
+    }
+
+    func refreshClaudeLogin() {
+        let status = actions.claudeLoginStatusProvider()
+        let timeZone = preferences.effectiveDisplayTimeZone
+        generalPage.refreshClaudeLogin(status, timeZone: timeZone)
+        searchGeneralPage.refreshClaudeLogin(status, timeZone: timeZone)
     }
 
     func refreshDisplayTimeZone() {
@@ -263,6 +277,7 @@ final class DashboardPreferencePages {
         notificationsPage?.refreshDisplayTimeZone()
         advancedPage.refreshDisplayTimeZone(preferences.effectiveDisplayTimeZone)
         searchAdvancedPage.refreshDisplayTimeZone(preferences.effectiveDisplayTimeZone)
+        refreshClaudeLogin()
     }
 
     func refreshNotifications() {

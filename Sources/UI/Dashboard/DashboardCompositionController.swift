@@ -26,6 +26,7 @@ struct DashboardCompositionState {
     let modSyncStatus: () -> ModSyncStatus?
     let modPanelState: () -> ModPanelState?
     let claudeSourceTimeline: () -> ClaudeSourceTimelineView.Content
+    let claudeLoginStatus: () -> ClaudeLoginStatus
 
     init(
         preferences: AppPreferences,
@@ -50,7 +51,8 @@ struct DashboardCompositionState {
         isAggregationMode: @escaping () -> Bool = { false },
         modSyncStatus: @escaping () -> ModSyncStatus? = { nil },
         modPanelState: @escaping () -> ModPanelState? = { nil },
-        claudeSourceTimeline: @escaping () -> ClaudeSourceTimelineView.Content = { .empty }
+        claudeSourceTimeline: @escaping () -> ClaudeSourceTimelineView.Content = { .empty },
+        claudeLoginStatus: @escaping () -> ClaudeLoginStatus = { .unknown }
     ) {
         self.preferences = preferences
         self.devBundleIdentifier = devBundleIdentifier
@@ -75,6 +77,7 @@ struct DashboardCompositionState {
         self.modSyncStatus = modSyncStatus
         self.modPanelState = modPanelState
         self.claudeSourceTimeline = claudeSourceTimeline
+        self.claudeLoginStatus = claudeLoginStatus
     }
 }
 
@@ -300,6 +303,7 @@ final class DashboardCompositionController {
             onInstallModSync: actions.onInstallModSync,
             modPanelStateProvider: state.modPanelState,
             claudeSourceTimelineProvider: state.claudeSourceTimeline,
+            claudeLoginStatusProvider: state.claudeLoginStatus,
             claudeEgressGuard: actions.claudeEgressGuard
         ),
         launchAtLoginController: launchAtLoginController,
@@ -734,7 +738,8 @@ final class DashboardCompositionController {
         dashboardPreferencePages.refreshClaudeEgressGuard()
     }
 
-    /// The calibration interval bounds the official-validity choices on the Advanced page.
+    /// The calibration interval bounds the official-validity choices on the Advanced page and is
+    /// quoted in the Claude sources footnote on the General page.
     func refreshClaudeSourceValidity() {
         dashboardPreferencePages.refreshClaudeSourceValidity()
     }
@@ -1220,7 +1225,16 @@ final class DashboardCompositionController {
         return content
     }
 
+    /// The cached texts plus the live Claude login line (its time changes with every credential
+    /// read, so it stays out of the cache identity).
     private func settingsSearchRuntimeTexts() -> [DashboardSection: [String]] {
+        var texts = cachedOrBuiltSettingsSearchRuntimeTexts()
+        texts[.general, default: []].append(DashboardGeneralPage.claudeLoginLine(
+            state.claudeLoginStatus(), timeZone: state.preferences.effectiveDisplayTimeZone).text)
+        return texts
+    }
+
+    private func cachedOrBuiltSettingsSearchRuntimeTexts() -> [DashboardSection: [String]] {
         let preferences = state.preferences
         let snapshot = state.snapshot()
         let presentation = DashboardMenuBarPage.presentation(

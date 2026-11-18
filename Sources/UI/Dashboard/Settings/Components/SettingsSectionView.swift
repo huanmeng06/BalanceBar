@@ -21,6 +21,13 @@ final class SettingsSectionView: NSView {
     let contentStack = NSStackView()
     /// Section-wide caption under the card, aligned with row text.
     let footnoteLabel: NSTextField?
+    /// Optional longer explanation revealed under the footnote on demand (hidden at first).
+    /// Same width as the footnote; paragraphs are set apart by a small gap instead of a blank line.
+    let footnoteDetailLabel: NSTextField?
+    static let footnoteToDetailSpacing: CGFloat = 6
+    static let footnoteDetailParagraphSpacing: CGFloat = 6
+    static let footnoteDetailAnimationDuration: TimeInterval = 0.2
+    private(set) var isFootnoteDetailExpanded = false
     /// Section-wide view in its own card under the rows' card (e.g. a live chart).
     let footerView: NSView?
     /// The second card hosting `footerView`; unused without one.
@@ -41,15 +48,18 @@ final class SettingsSectionView: NSView {
         contentViews: [NSView],
         separatorIndices: Set<Int>? = nil,
         footnote: String? = nil,
+        footnoteDetail: String? = nil,
         footerView: NSView? = nil
     ) {
         headingLabel = NSTextField(labelWithString: title)
         cardView = SettingsSectionCardView()
         footnoteLabel = footnote.map { NSTextField(wrappingLabelWithString: $0) }
+        footnoteDetailLabel = footnote == nil ? nil : footnoteDetail.map { _ in NSTextField(wrappingLabelWithString: "") }
         self.footerView = footerView
         self.contentViews = contentViews
         super.init(frame: .zero)
         configure(title: title, separatorIndices: separatorIndices)
+        if let footnoteDetail { setFootnoteDetailText(footnoteDetail) }
     }
 
     convenience init(
@@ -57,6 +67,7 @@ final class SettingsSectionView: NSView {
         contentViews: [NSView],
         separatorIndices: Set<Int>? = nil,
         footnote: String? = nil,
+        footnoteDetail: String? = nil,
         footerView: NSView? = nil
     ) {
         self.init(
@@ -64,8 +75,71 @@ final class SettingsSectionView: NSView {
             contentViews: contentViews,
             separatorIndices: separatorIndices,
             footnote: footnote,
+            footnoteDetail: footnoteDetail,
             footerView: footerView
         )
+    }
+
+    /// Replaces the detail copy; "\n" separates paragraphs.
+    func setFootnoteDetailText(_ text: String) {
+        guard let footnoteDetailLabel else { return }
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.paragraphSpacing = Self.footnoteDetailParagraphSpacing
+        footnoteDetailLabel.attributedStringValue = NSAttributedString(string: text, attributes: [
+            .font: NSFont.systemFont(ofSize: 12),
+            .foregroundColor: NSColor.secondaryLabelColor,
+            .paragraphStyle: paragraph
+        ])
+        DashboardSettingsComponents.invalidateHostedSettingsRowHeight(for: footnoteDetailLabel)
+    }
+
+    /// Shows or hides the detail under the footnote. The page reflows at once (frames are
+    /// never animated: the page measures section heights itself, and a never-laid-out label
+    /// would fly in from the origin); only the text fades — in after the space opens, out
+    /// before it closes. Reduce Motion skips the fade.
+    func setFootnoteDetailExpanded(_ expanded: Bool, animated: Bool) {
+        guard let label = footnoteDetailLabel, expanded != isFootnoteDetailExpanded else { return }
+        isFootnoteDetailExpanded = expanded
+        let animate = animated && window != nil
+            && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        let reflow = { [weak self] in
+            guard let self else { return }
+            DashboardSettingsComponents.invalidateHostedSettingsRowHeight(for: label)
+            self.window?.layoutIfNeeded()
+        }
+        guard animate else {
+            label.alphaValue = 1
+            label.isHidden = !expanded
+            reflow()
+            return
+        }
+        let duration = Self.footnoteDetailAnimationDuration
+        if expanded {
+            label.alphaValue = 1
+            label.isHidden = false
+            reflow()
+            // An explicit 0 → 1 fade: setting alpha to 0 and animating back to 1 in the same
+            // transaction never renders the 0, so an implicit animation has nothing to animate.
+            let fade = CABasicAnimation(keyPath: "opacity")
+            fade.fromValue = 0
+            fade.toValue = 1
+            fade.duration = duration
+            fade.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            label.layer?.removeAnimation(forKey: "opacity")
+            label.layer?.add(fade, forKey: "footnoteDetailFadeIn")
+        } else {
+            NSAnimationContext.runAnimationGroup({ context in
+                context.duration = duration * 0.6
+                context.timingFunction = CAMediaTimingFunction(name: .easeIn)
+                label.animator().alphaValue = 0
+            }, completionHandler: {
+                // A quick re-open during the fade wins.
+                guard !self.isFootnoteDetailExpanded else { return }
+                label.isHidden = true
+                label.alphaValue = 1
+                reflow()
+            })
+        }
     }
 
     required init?(coder: NSCoder) {
@@ -161,6 +235,17 @@ final class SettingsSectionView: NSView {
             footnoteLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             contentStack.addView(footnoteLabel, in: .top)
             contentStack.setCustomSpacing(Self.cardToFootnoteSpacing, after: cardView)
+            if let footnoteDetailLabel {
+                footnoteDetailLabel.isSelectable = false
+                footnoteDetailLabel.isHidden = true
+                footnoteDetailLabel.wantsLayer = true
+                footnoteDetailLabel.translatesAutoresizingMaskIntoConstraints = false
+                footnoteDetailLabel.setContentHuggingPriority(.required, for: .vertical)
+                footnoteDetailLabel.setContentCompressionResistancePriority(.required, for: .vertical)
+                footnoteDetailLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+                contentStack.addView(footnoteDetailLabel, in: .top)
+                contentStack.setCustomSpacing(Self.footnoteToDetailSpacing, after: footnoteLabel)
+            }
         }
         if let footerView {
             // A second card of the same chrome, set apart from the rows but in the same section.
@@ -172,7 +257,8 @@ final class SettingsSectionView: NSView {
             footerView.widthAnchor.constraint(
                 equalTo: footerCardView.widthAnchor, constant: -2 * SettingsLayout.rowHorizontalInset).isActive = true
             contentStack.addView(footerCardView, in: .top)
-            contentStack.setCustomSpacing(Self.cardToFooterCardSpacing, after: footnoteLabel ?? cardView)
+            contentStack.setCustomSpacing(
+                Self.cardToFooterCardSpacing, after: footnoteDetailLabel ?? footnoteLabel ?? cardView)
         }
 
         addSubview(contentStack)
@@ -189,6 +275,12 @@ final class SettingsSectionView: NSView {
                 footnoteLabel.leadingAnchor.constraint(equalTo: contentStack.leadingAnchor, constant: inset),
                 footnoteLabel.trailingAnchor.constraint(equalTo: contentStack.trailingAnchor, constant: -inset)
             ])
+            if let footnoteDetailLabel {
+                NSLayoutConstraint.activate([
+                    footnoteDetailLabel.leadingAnchor.constraint(equalTo: contentStack.leadingAnchor, constant: inset),
+                    footnoteDetailLabel.trailingAnchor.constraint(equalTo: contentStack.trailingAnchor, constant: -inset)
+                ])
+            }
         }
         if footerView != nil {
             footerCardView.widthAnchor.constraint(equalTo: contentStack.widthAnchor).isActive = true
@@ -286,10 +378,21 @@ final class SettingsSectionView: NSView {
     private func updateFootnoteWrapWidth() {
         guard let footnoteLabel else { return }
         let width = max(0, bounds.width - 2 * SettingsLayout.rowHorizontalInset)
-        guard width > 1, abs(footnoteLabel.preferredMaxLayoutWidth - width) > 0.5 else { return }
-        footnoteLabel.preferredMaxLayoutWidth = width
-        footnoteLabel.invalidateIntrinsicContentSize()
-        invalidateIntrinsicContentSize()
+        guard width > 1 else { return }
+        var changed = false
+        if abs(footnoteLabel.preferredMaxLayoutWidth - width) > 0.5 {
+            footnoteLabel.preferredMaxLayoutWidth = width
+            footnoteLabel.invalidateIntrinsicContentSize()
+            changed = true
+        }
+        if let footnoteDetailLabel {
+            if abs(footnoteDetailLabel.preferredMaxLayoutWidth - width) > 0.5 {
+                footnoteDetailLabel.preferredMaxLayoutWidth = width
+                footnoteDetailLabel.invalidateIntrinsicContentSize()
+                changed = true
+            }
+        }
+        if changed { invalidateIntrinsicContentSize() }
     }
 
     func updateSearchNaturalHeightConstraintForCurrentVisibility() {

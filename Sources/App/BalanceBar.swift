@@ -484,7 +484,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 return ClaudeSourceTimelineView.Content(
                     timeline: DevelopmentClaudeFailuresDemo.decorate(self.claudeQuota.sourceTimeline.snapshot()),
                     status: self.claudeQuota.latestState?.status)
-            }
+            },
+            claudeLoginStatus: { [weak self] in self?.claudeQuota.loginStatus() ?? .unknown }
         ),
         actions: DashboardCompositionActions(
             onManualRefresh: { [weak self] in self?.performManualRefresh(source: "dashboard") },

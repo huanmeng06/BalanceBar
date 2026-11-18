@@ -664,6 +664,21 @@
 "claude.timeline.estimate.in" = "約 %1$@後";
 "claude.refresh.every_minutes" = "每 %1$@ 分鐘";
 "claude.quota.calibration_detail" = "定時向官方查詢作為備援；間隔越長越不容易被限流";
+"claude.quota.sources_footnote" = "兩者都能同步你在網頁、手機 App 上用掉的額度，只是更新時機不同。\n\n官方校準每 %1$@ 分鐘更新一次，但登入過期或網路受限時會受阻。Mod 不受這些影響，但要等你在桌面端或 CLI 發訊息後才會更新。\n\n比如你在手機上聊完，5 小時額度從 90%% 降到 80%%：官方校準通常在 %1$@ 分鐘內顯示 80%%，Mod 等你下次發訊息後顯示 80%%。只開 Mod 也完全夠用。";
+"claude.quota.sources_footnote.show" = "了解差異";
+"claude.quota.sources_footnote.hide" = "收合";
+"claude.login.status.signed_in" = "已登入";
+"claude.login.status.expired" = "已失效";
+"claude.login.status.signed_out" = "未登入";
+"claude.login.status.unreadable" = "無法讀取";
+"claude.login.status.detecting" = "偵測中…";
+"claude.login.expires_at" = "失效時間：%1$@";
+"claude.login.action.renew" = "使用一次 Claude Code 即可自動續期";
+"claude.login.reason.rejected" = "官方拒絕了目前的登入";
+"claude.login.action.relogin" = "在 Claude Code 中重新登入";
+"claude.login.action.sign_in" = "在 Claude Code 中登入後自動辨識";
+"claude.login.reason.keychain" = "鑰匙圈未允許讀取登入資訊";
+"claude.login.action.retry" = "點「立即刷新」重新授權";
 "claude.quota.calibration_off_detail" = "Claude 官方請求已關閉，此間隔暫不生效。";
 "claude.quota.calibration_off_link" = "前往 IP 白名單設定…";
 

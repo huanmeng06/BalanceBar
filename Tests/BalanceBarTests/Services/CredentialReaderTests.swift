@@ -225,6 +225,14 @@ final class CredentialReaderTests: XCTestCase {
         XCTAssertEqual(plan(#"{"claudeAiOauth":{"subscriptionType":"max","rateLimitTier":"default_claude_max_5x"}}"#), "max_5x")
         XCTAssertEqual(plan(#"{"claudeAiOauth":{"subscriptionType":"max"}}"#), "max")
         XCTAssertNil(plan(#"{"claudeAiOauth":{"accessToken":"x"}}"#))
+
+        func expiry(_ json: String) -> Date? { CredentialReader.claudeExpiresAt(from: Data(json.utf8)) }
+        XCTAssertEqual(expiry(#"{"claudeAiOauth":{"expiresAt":1800000000000}}"#),
+                       Date(timeIntervalSince1970: 1_800_000_000), "epoch milliseconds")
+        XCTAssertEqual(expiry(#"{"claudeAiOauth":{"expiresAt":1800000000}}"#),
+                       Date(timeIntervalSince1970: 1_800_000_000), "seconds are taken as seconds")
+        XCTAssertNil(expiry(#"{"claudeAiOauth":{"accessToken":"x"}}"#))
+        XCTAssertNil(expiry(#"{"claudeAiOauth":{"expiresAt":"soon"}}"#))
         XCTAssertNil(CredentialReader(homeDirectoryURL: home, fileReader: FixtureFileReader(dataByPath: [:]),
             processRunner: processRunner).claudeAccountEmail())
     }

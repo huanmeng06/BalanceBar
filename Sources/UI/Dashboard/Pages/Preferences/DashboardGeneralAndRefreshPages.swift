@@ -363,6 +363,7 @@ final class DashboardGeneralPage {
         let launchWithChatGPTState: LaunchWithChatGPTState
         let modSyncStatus: ModSyncStatus
         let modPanelState: ModPanelState
+        let claudeLoginStatus: ClaudeLoginStatus
 
         init(
             preferences: AppPreferences,
@@ -372,7 +373,8 @@ final class DashboardGeneralPage {
             launchAtLoginState: LaunchAtLoginState = LaunchAtLoginState(status: .notRegistered),
             launchWithChatGPTState: LaunchWithChatGPTState = LaunchWithChatGPTState(status: .notRegistered),
             modSyncStatus: ModSyncStatus = .detecting,
-            modPanelState: ModPanelState = .intro(dismissChecked: false)
+            modPanelState: ModPanelState = .intro(dismissChecked: false),
+            claudeLoginStatus: ClaudeLoginStatus = .unknown
         ) {
             self.preferences = preferences
             self.connectionSummaries = connectionSummaries
@@ -382,6 +384,7 @@ final class DashboardGeneralPage {
             self.launchWithChatGPTState = launchWithChatGPTState
             self.modSyncStatus = modSyncStatus
             self.modPanelState = modPanelState
+            self.claudeLoginStatus = claudeLoginStatus
         }
     }
 
@@ -394,7 +397,21 @@ final class DashboardGeneralPage {
     /// "Claude official calibration": dimmed while the IP allowlist keeps official requests off.
     private(set) var claudeCalibrationRow: SettingsRowView?
     private(set) var claudeCalibrationPopup: NSPopUpButton?
+    /// The Claude card's section; its footnote summary toggles the comparison detail.
+    private(set) var claudeSourcesSection: SettingsSectionView?
+    private var claudeSourcesFootnoteLink: SettingsSubtitleLink?
+    private var claudeSourcesFootnoteInterval: TimeInterval = 0
+    /// The search projection shows the detail open so matched words are on screen.
+    private let expandsClaudeSourcesFootnote: Bool
+
+    init(expandsClaudeSourcesFootnote: Bool = false) {
+        self.expandsClaudeSourcesFootnote = expandsClaudeSourcesFootnote
+    }
     private var claudeCalibrationLink: SettingsSubtitleLink?
+    private var claudeOfficialEnabled = true
+    private(set) var claudeLoginStatus: ClaudeLoginStatus = .unknown
+    private var claudeLoginTimeZone: TimeZone = .autoupdatingCurrent
+    private var claudeLoginExpiryTimer: Timer?
     private weak var relay: DashboardPreferencePageRelay?
     private var updateButton: NSButton?
     private var updateNotesButton: NSButton?
@@ -577,14 +594,23 @@ final class DashboardGeneralPage {
         claudeCalibrationRow = calibrationRow
         self.claudeCalibrationPopup = claudeCalibrationPopup
         relay = input.relay
+        claudeLoginStatus = input.claudeLoginStatus
+        claudeLoginTimeZone = input.preferences.effectiveDisplayTimeZone
         refreshClaudeOfficialEnabled(input.preferences.claudeEgressGuardEnabled)
         let refreshingClaude = SettingsSectionView(
             title: "",
             contentViews: [
                 calibrationRow,
                 modRows.statusRow
-            ]
+            ],
+            footnote: "",
+            footnoteDetail: ""
         )
+        claudeSourcesSection = refreshingClaude
+        claudeSourcesFootnoteLink?.remove()
+        claudeSourcesFootnoteLink = nil
+        refreshingClaude.setFootnoteDetailExpanded(expandsClaudeSourcesFootnote, animated: false)
+        refreshClaudeSourcesFootnote(calibrationInterval: input.preferences.claudeCalibrationInterval)
         let refreshNow = SettingsSectionView(
             title: tr(.keyDashboardGeneralAndRefreshPagesRefreshNow),
             contentViews: [
@@ -723,6 +749,159 @@ final class DashboardGeneralPage {
         realtimeBoostRows?.update(status: status ?? .detecting, operation: operation ?? .intro(dismissChecked: false))
     }
 
+    /// Footnote under the Claude card comparing official calibration and the Mod. Its first
+    /// paragraph is the always-visible summary; the rest (which quotes the chosen interval)
+    /// opens under it from an inline link. The copy is one localized string with "\n\n"
+    /// between paragraphs.
+    static func claudeSourcesFootnoteParts(calibrationInterval: TimeInterval) -> (summary: String, detail: String) {
+        let full = tr(.keyClaudeQuotaSourcesFootnote, arguments: [String(Int(calibrationInterval / 60))])
+        var paragraphs = full.components(separatedBy: "\n\n")
+        let summary = paragraphs.removeFirst()
+        return (summary, paragraphs.joined(separator: "\n"))
+    }
+
+    /// The summary with its trailing show/hide link; CJK full stops already carry their own gap.
+    static func claudeSourcesFootnoteSummaryLine(_ summary: String, expanded: Bool) -> (text: String, link: String) {
+        let link = tr(expanded ? .keyClaudeQuotaSourcesFootnoteHide : .keyClaudeQuotaSourcesFootnoteShow)
+        let separator = summary.last.map { "。！？".contains($0) } == true ? "" : " "
+        return (summary + separator + link, link)
+    }
+
+    /// Every rendering of the footnote, for the settings search corpus.
+    static func claudeSourcesFootnoteSearchCopy() -> [String] {
+        AppPreferences.claudeCalibrationIntervals.flatMap { interval -> [String] in
+            let parts = claudeSourcesFootnoteParts(calibrationInterval: interval)
+            return [
+                claudeSourcesFootnoteSummaryLine(parts.summary, expanded: false).text,
+                claudeSourcesFootnoteSummaryLine(parts.summary, expanded: true).text,
+                parts.detail
+            ]
+        }
+    }
+
+    /// Rewrites the footnote in place, e.g. when the calibration interval changes.
+    func refreshClaudeSourcesFootnote(calibrationInterval: TimeInterval) {
+        claudeSourcesFootnoteInterval = calibrationInterval
+        guard let section = claudeSourcesSection, let label = section.footnoteLabel else { return }
+        let parts = Self.claudeSourcesFootnoteParts(calibrationInterval: calibrationInterval)
+        let line = Self.claudeSourcesFootnoteSummaryLine(parts.summary, expanded: section.isFootnoteDetailExpanded)
+        section.setFootnoteDetailText(parts.detail)
+        guard label.stringValue != line.text || claudeSourcesFootnoteLink == nil else { return }
+        claudeSourcesFootnoteLink?.remove()
+        label.stringValue = line.text
+        claudeSourcesFootnoteLink = SettingsSubtitleLink(
+            label: label, linkText: line.link, restrictsHitAreaToLinkText: true
+        ) { [weak self] in
+            self?.toggleClaudeSourcesFootnote()
+        }
+        DashboardSettingsComponents.invalidateHostedSettingsRowHeight(for: label)
+    }
+
+    private func toggleClaudeSourcesFootnote() {
+        guard let section = claudeSourcesSection else { return }
+        section.setFootnoteDetailExpanded(!section.isFootnoteDetailExpanded, animated: true)
+        refreshClaudeSourcesFootnote(calibrationInterval: claudeSourcesFootnoteInterval)
+    }
+
+    func toggleClaudeSourcesFootnoteForTesting() { claudeSourcesFootnoteLink?.performClickForTesting() }
+    var claudeSourcesFootnoteLinkForTesting: SettingsSubtitleLink? { claudeSourcesFootnoteLink }
+
+    /// The login line under the calibration row's description, worded like the Mod row's
+    /// status line: a coloured dot, a status word, then " · "-joined facts and what to do.
+    struct ClaudeLoginLine: Equatable {
+        enum Tone: Equatable { case good, warning, neutral }
+        let tone: Tone
+        let text: String
+    }
+
+    static func claudeLoginLine(_ status: ClaudeLoginStatus, now: Date = Date(),
+                                timeZone: TimeZone = .autoupdatingCurrent) -> ClaudeLoginLine {
+        func time(_ date: Date) -> String {
+            tr(.keyClaudeLoginExpiresAt, arguments: [
+                OfficialQuotaResetFormatter.bankedResetString(
+                    for: date, relativeTo: now, timeZone: timeZone, includeExpired: true) ?? ""
+            ])
+        }
+        func line(_ tone: ClaudeLoginLine.Tone, _ parts: [String]) -> ClaudeLoginLine {
+            ClaudeLoginLine(tone: tone, text: parts.joined(separator: " · "))
+        }
+        let expired = [tr(.keyClaudeLoginStatusExpired)]
+        switch status {
+        case .unknown:
+            return line(.neutral, [tr(.keyClaudeLoginStatusDetecting)])
+        case .unreadable:
+            return line(.warning, [tr(.keyClaudeLoginStatusUnreadable), tr(.keyClaudeLoginReasonKeychain),
+                                   tr(.keyClaudeLoginActionRetry)])
+        case .signedOut:
+            return line(.neutral, [tr(.keyClaudeLoginStatusSignedOut), tr(.keyClaudeLoginActionSignIn)])
+        case let .signedIn(expiresAt?) where expiresAt <= now,
+             let .rejected(expiresAt?) where expiresAt <= now:
+            // Expired by time: Claude Code renews the token the next time it is used.
+            return line(.warning, expired + [time(expiresAt), tr(.keyClaudeLoginActionRenew)])
+        case .rejected:
+            // Refused before its expiry: the login itself was revoked.
+            return line(.warning, expired + [tr(.keyClaudeLoginReasonRejected), tr(.keyClaudeLoginActionRelogin)])
+        case let .signedIn(expiresAt):
+            return line(.good, [tr(.keyClaudeLoginStatusSignedIn)] + (expiresAt.map { [time($0)] } ?? []))
+        }
+    }
+
+    /// Every fixed piece of the login line, for the settings search corpus.
+    static let claudeLoginSearchKeys: [LocalizationKey] = [
+        .keyClaudeLoginStatusDetecting, .keyClaudeLoginStatusUnreadable, .keyClaudeLoginReasonKeychain,
+        .keyClaudeLoginActionRetry, .keyClaudeLoginStatusSignedOut, .keyClaudeLoginActionSignIn,
+        .keyClaudeLoginStatusExpired, .keyClaudeLoginActionRenew, .keyClaudeLoginReasonRejected,
+        .keyClaudeLoginActionRelogin, .keyClaudeLoginStatusSignedIn
+    ]
+
+    /// New login facts (after each official request) or a new display time zone.
+    func refreshClaudeLogin(_ status: ClaudeLoginStatus, timeZone: TimeZone) {
+        guard status != claudeLoginStatus || timeZone != claudeLoginTimeZone else { return }
+        claudeLoginStatus = status
+        claudeLoginTimeZone = timeZone
+        guard claudeOfficialEnabled else { return }
+        applyClaudeLoginDetail()
+    }
+
+    private func applyClaudeLoginDetail() {
+        guard let row = claudeCalibrationRow else { return }
+        let now = Date()
+        let line = Self.claudeLoginLine(claudeLoginStatus, now: now, timeZone: claudeLoginTimeZone)
+        let description = tr(.keyClaudeQuotaCalibrationDetail)
+        row.updateDetail(description + "\n" + RealtimeBoostSettingsRows.dotPrefix + line.text)
+        let label = row.detailLabel
+        let font = label.font ?? .systemFont(ofSize: NSFont.smallSystemFontSize)
+        let text = NSMutableAttributedString(string: label.stringValue, attributes: [
+            .font: font, .foregroundColor: label.textColor ?? NSColor.secondaryLabelColor])
+        let dotFont = NSFont.systemFont(ofSize: font.pointSize * 0.7)
+        let dotColor: NSColor = switch line.tone {
+        case .good: .systemGreen
+        case .warning: .systemOrange
+        case .neutral: .tertiaryLabelColor
+        }
+        text.addAttributes([
+            .font: dotFont, .foregroundColor: dotColor,
+            .baselineOffset: (font.capHeight - dotFont.capHeight) / 2,
+        ], range: NSRange(location: (description as NSString).length + 1, length: 1))
+        label.attributedStringValue = text
+        row.invalidateAfterContentChange()
+        scheduleClaudeLoginExpiryRedraw(now: now)
+    }
+
+    /// A signed-in line turns into the expired one when its time passes, even with no request
+    /// in between (e.g. calibration paused while the Mod is live).
+    private func scheduleClaudeLoginExpiryRedraw(now: Date) {
+        claudeLoginExpiryTimer?.invalidate()
+        claudeLoginExpiryTimer = nil
+        guard case let .signedIn(expiresAt?) = claudeLoginStatus, expiresAt > now else { return }
+        let timer = Timer(fire: expiresAt.addingTimeInterval(1), interval: 0, repeats: false) { [weak self] _ in
+            guard let self, self.claudeOfficialEnabled else { return }
+            self.applyClaudeLoginDetail()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        claudeLoginExpiryTimer = timer
+    }
+
     /// With the IP allowlist off no official request is sent, so the calibration interval does
     /// nothing: the row is dimmed like a dependent System Settings control and says where to turn
     /// requests back on. The saved interval is kept.
@@ -733,10 +912,13 @@ final class DashboardGeneralPage {
         row.titleAccessory?.alphaValue = enabled ? 1 : 0.45
         claudeCalibrationLink?.remove()
         claudeCalibrationLink = nil
+        claudeOfficialEnabled = enabled
         guard !enabled else {
-            row.updateDetail(tr(.keyClaudeQuotaCalibrationDetail))
+            applyClaudeLoginDetail()
             return
         }
+        claudeLoginExpiryTimer?.invalidate()
+        claudeLoginExpiryTimer = nil
         // The explanation, then on its own line a link to Settings › Advanced.
         let link = tr(.keyClaudeQuotaCalibrationOffLink)
         row.updateDetail("\(tr(.keyClaudeQuotaCalibrationOffDetail))\n\(link)")
@@ -1450,17 +1632,23 @@ final class SettingsSubtitleLink: NSResponder {
     private let action: () -> Void
     private var recognizer: NSClickGestureRecognizer?
     private var trackingArea: NSTrackingArea?
+    /// Only the link words take the pointing hand and the click, not the whole label; for
+    /// links that trail ordinary sentences.
+    private let restrictsHitAreaToLinkText: Bool
 
-    init(label: NSTextField, linkText: String, action: @escaping () -> Void) {
+    init(label: NSTextField, linkText: String, restrictsHitAreaToLinkText: Bool = false,
+         action: @escaping () -> Void) {
         self.label = label
         self.linkText = linkText
+        self.restrictsHitAreaToLinkText = restrictsHitAreaToLinkText
         self.action = action
         super.init()
         let recognizer = NSClickGestureRecognizer(target: self, action: #selector(clicked))
         label.addGestureRecognizer(recognizer)
         self.recognizer = recognizer
-        let area = NSTrackingArea(
-            rect: .zero, options: [.cursorUpdate, .activeInKeyWindow, .inVisibleRect], owner: self, userInfo: nil)
+        var options: NSTrackingArea.Options = [.cursorUpdate, .activeInKeyWindow, .inVisibleRect]
+        if restrictsHitAreaToLinkText { options.insert(.mouseMoved) }
+        let area = NSTrackingArea(rect: .zero, options: options, owner: self, userInfo: nil)
         label.addTrackingArea(area)
         trackingArea = area
         label.setAccessibilityRole(.link)
@@ -1488,15 +1676,46 @@ final class SettingsSubtitleLink: NSResponder {
         label.attributedStringValue = attributed
     }
 
+    /// The link words' box in label coordinates, padded a little for an easier hit.
+    var linkHitRect: NSRect? {
+        guard let label, let range = displayedLinkRange, let cell = label.cell else { return nil }
+        let textRect = cell.titleRect(forBounds: label.bounds)
+        let storage = NSTextStorage(attributedString: label.attributedStringValue)
+        let layout = NSLayoutManager()
+        let container = NSTextContainer(size: NSSize(width: textRect.width, height: .greatestFiniteMagnitude))
+        container.lineFragmentPadding = 2
+        layout.addTextContainer(container)
+        storage.addLayoutManager(layout)
+        let glyphs = layout.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
+        let box = layout.boundingRect(forGlyphRange: glyphs, in: container)
+        let y = label.isFlipped ? textRect.minY + box.minY : textRect.maxY - box.maxY
+        return NSRect(x: textRect.minX + box.minX, y: y, width: box.width, height: box.height)
+            .insetBy(dx: -3, dy: -2)
+    }
+
+    private func isOverLink(_ event: NSEvent) -> Bool {
+        guard restrictsHitAreaToLinkText else { return true }
+        guard let label, let rect = linkHitRect else { return false }
+        return rect.contains(label.convert(event.locationInWindow, from: nil))
+    }
+
     override func cursorUpdate(with event: NSEvent) {
-        NSCursor.pointingHand.set()
+        (isOverLink(event) ? NSCursor.pointingHand : NSCursor.arrow).set()
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        guard restrictsHitAreaToLinkText else { return }
+        (isOverLink(event) ? NSCursor.pointingHand : NSCursor.arrow).set()
     }
 
     @objc private func clicked() {
+        if restrictsHitAreaToLinkText, let label, let recognizer, let rect = linkHitRect,
+           !rect.contains(recognizer.location(in: label)) { return }
         action()
     }
 
-    func performClickForTesting() { clicked() }
+    /// Runs the action as a click on the link words would.
+    func performClickForTesting() { action() }
 
     func remove() {
         guard let label else { return }

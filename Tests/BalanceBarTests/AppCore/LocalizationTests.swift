@@ -555,6 +555,17 @@ final class LocalizationTests: XCTestCase {
         }
     }
 
+    func testClaudeSourcesFootnoteRendersIntervalAndPercentsInEveryLanguage() {
+        for language in allLanguages {
+            let text = tr(.keyClaudeQuotaSourcesFootnote, arguments: ["15"], language: language)
+            XCTAssertFalse(text.hasPrefix("⟦"), "\(language)")
+            XCTAssertEqual(text.components(separatedBy: "15").count - 1, 2, "\(language)")
+            XCTAssertTrue(text.contains("90%") && text.contains("80%") || text.contains("90 %"), "\(language)")
+            XCTAssertFalse(text.contains("%%"), "\(language)")
+            XCTAssertEqual(text.components(separatedBy: "\n\n").count, 3, "\(language)")
+        }
+    }
+
     func testZeroSecondIconDisplayDelayCopyExistsInEverySupportedLanguage() {
         let key = LocalizationKey.keyDashboardMenuBarPageIconDisplayDelayZeroSeconds
         let expected: [AppLanguage: String] = [
@@ -1280,7 +1291,7 @@ final class LocalizationTests: XCTestCase {
     func testAllTypedKeysExistInEveryBundledLanguage() throws {
         let expectedKeys = Set(LocalizationKey.allCases.map(\.rawKey))
         XCTAssertEqual(expectedKeys.count, LocalizationKey.allCases.count)
-        XCTAssertEqual(expectedKeys.count, 826)
+        XCTAssertEqual(expectedKeys.count, 841)
         let newLanguages: Set<AppLanguage> = [.portuguese, .russian, .italian]
 
         func keySequence(from text: String) -> [String] {

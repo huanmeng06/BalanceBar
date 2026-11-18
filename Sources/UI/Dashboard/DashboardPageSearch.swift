@@ -401,6 +401,8 @@ enum DashboardSettingsSearchCatalog {
             values.append(contentsOf: AppPreferences.claudeCalibrationIntervals.map {
                 tr(.keyClaudeRefreshEveryMinutes, arguments: [String(Int($0 / 60))])
             })
+            values.append(contentsOf: DashboardGeneralPage.claudeSourcesFootnoteSearchCopy())
+            values.append(contentsOf: DashboardGeneralPage.claudeLoginSearchKeys.map { tr($0) })
         }
         if section == .advanced {
             let minutes = AppPreferences.claudeOAuthValidityOptions + AppPreferences.claudeLocalValidityOptions

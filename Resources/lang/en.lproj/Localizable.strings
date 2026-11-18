@@ -664,6 +664,21 @@
 "claude.timeline.estimate.in" = "in about %1$@";
 "claude.refresh.every_minutes" = "Every %1$@ min";
 "claude.quota.calibration_detail" = "Polls the official source on a timer as a fallback; longer intervals avoid rate limits";
+"claude.quota.sources_footnote" = "Both pick up quota you use on the web or the mobile app; they differ in when they update.\n\nOfficial calibration updates every %1$@ min, but an expired sign-in or a restricted network can block it. The Mod isn’t affected by either, but only updates after you send a message in the desktop app or CLI.\n\nFor example, after a chat on your phone your 5-hour quota drops from 90%% to 80%%: official calibration usually shows 80%% within %1$@ min, while the Mod shows it after your next message. The Mod alone is perfectly enough.";
+"claude.quota.sources_footnote.show" = "How they differ";
+"claude.quota.sources_footnote.hide" = "Hide";
+"claude.login.status.signed_in" = "Signed in";
+"claude.login.status.expired" = "Expired";
+"claude.login.status.signed_out" = "Not signed in";
+"claude.login.status.unreadable" = "Can’t read";
+"claude.login.status.detecting" = "Checking…";
+"claude.login.expires_at" = "Expires: %1$@";
+"claude.login.action.renew" = "Use Claude Code once to renew it automatically";
+"claude.login.reason.rejected" = "The official service rejected this sign-in";
+"claude.login.action.relogin" = "Sign in again in Claude Code";
+"claude.login.action.sign_in" = "Detected automatically after you sign in to Claude Code";
+"claude.login.reason.keychain" = "Keychain didn’t allow reading the sign-in";
+"claude.login.action.retry" = "Click “Refresh Now” to allow it again";
 "claude.quota.calibration_off_detail" = "Claude official requests are off, so this interval has no effect.";
 "claude.quota.calibration_off_link" = "Set Up IP Allowlist…";
 

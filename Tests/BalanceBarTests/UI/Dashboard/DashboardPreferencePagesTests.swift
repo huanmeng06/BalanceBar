@@ -2054,6 +2054,102 @@ final class DashboardPreferencePagesTests: XCTestCase {
         }
     }
 
+    func testClaudeSourcesFootnoteSummaryLineJoinsLinkPerScript() {
+        let chinese = DashboardGeneralPage.claudeSourcesFootnoteSummaryLine("只是更新时机不同。", expanded: false)
+        XCTAssertFalse(chinese.text.contains("。 "), "a CJK full stop needs no extra space")
+        XCTAssertTrue(chinese.text.hasSuffix(chinese.link))
+        let latin = DashboardGeneralPage.claudeSourcesFootnoteSummaryLine("They differ.", expanded: true)
+        XCTAssertEqual(latin.text, "They differ. \(latin.link)")
+    }
+
+    /// Copy is compared against the localized helpers, not literals: this suite's shared
+    /// language state is not stable across tests.
+    func testClaudeSourcesFootnoteShowsSummaryAndTogglesIntervalAwareDetail() throws {
+        let suite = "SourcesFootnote.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.claudeCalibrationInterval = 300
+        let generalPage = DashboardGeneralPage()
+        _ = generalPage.make(.init(preferences: preferences, relay: DashboardPreferencePageRelay(),
+            updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6")))))
+        let section = try XCTUnwrap(generalPage.claudeSourcesSection)
+        let summary = try XCTUnwrap(section.footnoteLabel)
+        let detail = try XCTUnwrap(section.footnoteDetailLabel)
+
+        func expected(_ interval: TimeInterval, expanded: Bool) -> (summary: String, detail: String) {
+            let parts = DashboardGeneralPage.claudeSourcesFootnoteParts(calibrationInterval: interval)
+            return (DashboardGeneralPage.claudeSourcesFootnoteSummaryLine(parts.summary, expanded: expanded).text,
+                    parts.detail)
+        }
+
+        XCTAssertEqual(summary.stringValue, expected(300, expanded: false).summary)
+        XCTAssertEqual(detail.stringValue, expected(300, expanded: false).detail)
+        XCTAssertTrue(detail.isHidden, "the comparison starts collapsed")
+        XCTAssertFalse(detail.stringValue.contains("\n\n"), "paragraphs use spacing, not blank lines")
+        XCTAssertEqual(detail.stringValue.components(separatedBy: "\n").count, 2)
+
+        generalPage.toggleClaudeSourcesFootnoteForTesting()
+        XCTAssertTrue(section.isFootnoteDetailExpanded)
+        XCTAssertFalse(detail.isHidden)
+        XCTAssertEqual(summary.stringValue, expected(300, expanded: true).summary)
+
+        generalPage.refreshClaudeSourcesFootnote(calibrationInterval: 900)
+        XCTAssertEqual(detail.stringValue, expected(900, expanded: true).detail)
+        XCTAssertEqual(detail.stringValue.components(separatedBy: "15").count - 1, 2)
+        XCTAssertEqual(summary.stringValue, expected(900, expanded: true).summary,
+                       "an interval change keeps the open state")
+
+        generalPage.toggleClaudeSourcesFootnoteForTesting()
+        XCTAssertFalse(section.isFootnoteDetailExpanded)
+        XCTAssertEqual(summary.stringValue, expected(900, expanded: false).summary)
+    }
+
+    /// The pointing hand and the click belong to the trailing link words, not to the whole
+    /// summary label or the blank space beside it.
+    func testClaudeSourcesFootnoteLinkHitAreaCoversOnlyTheLinkWords() throws {
+        let suite = "SourcesFootnoteHit.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let generalPage = DashboardGeneralPage()
+        let page = generalPage.make(.init(preferences: AppPreferences(defaults: defaults),
+            relay: DashboardPreferencePageRelay(),
+            updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6")))))
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1000, height: 3000),
+                              styleMask: [.borderless], backing: .buffered, defer: false)
+        defer { window.orderOut(nil) }
+        page.translatesAutoresizingMaskIntoConstraints = false
+        let host = NSView()
+        window.contentView = host
+        host.addSubview(page)
+        NSLayoutConstraint.activate([
+            page.leadingAnchor.constraint(equalTo: host.leadingAnchor),
+            page.trailingAnchor.constraint(equalTo: host.trailingAnchor),
+            page.topAnchor.constraint(equalTo: host.topAnchor)
+        ])
+        window.layoutIfNeeded()
+        let label = try XCTUnwrap(generalPage.claudeSourcesSection?.footnoteLabel)
+        let link = try XCTUnwrap(generalPage.claudeSourcesFootnoteLinkForTesting)
+        let rect = try XCTUnwrap(link.linkHitRect)
+
+        XCTAssertGreaterThan(rect.width, 0)
+        XCTAssertLessThan(rect.width, label.bounds.width / 3, "only the link words, not the sentence")
+        XCTAssertGreaterThan(rect.minX, label.bounds.width / 4, "the link trails the sentence")
+        XCTAssertLessThanOrEqual(rect.height, label.bounds.height + 4)
+    }
+
+    func testClaudeSourcesFootnoteStartsExpandedInSearchProjection() throws {
+        let suite = "SourcesFootnoteSearch.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let generalPage = DashboardGeneralPage(expandsClaudeSourcesFootnote: true)
+        _ = generalPage.make(.init(preferences: AppPreferences(defaults: defaults), relay: DashboardPreferencePageRelay(),
+            updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6")))))
+        let section = try XCTUnwrap(generalPage.claudeSourcesSection)
+        XCTAssertTrue(section.isFootnoteDetailExpanded)
+        XCTAssertEqual(section.footnoteDetailLabel?.isHidden, false)
+    }
+
     func testCalibrationRowDimsAndLinksToAllowlistWhileOfficialRequestsAreOff() throws {
         let suite = "CalibrationOff.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
@@ -2079,8 +2175,68 @@ final class DashboardPreferencePagesTests: XCTestCase {
         generalPage.refreshClaudeOfficialEnabled(true)
         XCTAssertTrue(popup.isEnabled)
         XCTAssertEqual(row.titleLabel.textColor, .labelColor)
-        XCTAssertEqual(row.detailLabel.stringValue, tr(.keyClaudeQuotaCalibrationDetail))
+        XCTAssertEqual(row.detailLabel.stringValue, tr(.keyClaudeQuotaCalibrationDetail) + "\n"
+            + RealtimeBoostSettingsRows.dotPrefix + DashboardGeneralPage.claudeLoginLine(.unknown).text)
         XCTAssertNil(generalPage.claudeCalibrationLinkForTesting)
+    }
+
+    func testClaudeLoginLineWordsEachStateLikeTheModStatusLine() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let utc = TimeZone(identifier: "UTC")!
+        func line(_ status: ClaudeLoginStatus) -> DashboardGeneralPage.ClaudeLoginLine {
+            DashboardGeneralPage.claudeLoginLine(status, now: now, timeZone: utc)
+        }
+        func time(_ date: Date) -> String {
+            tr(.keyClaudeLoginExpiresAt, arguments: [OfficialQuotaResetFormatter.bankedResetString(
+                for: date, relativeTo: now, timeZone: utc, includeExpired: true) ?? ""])
+        }
+        let later = now.addingTimeInterval(3_600)
+        let earlier = now.addingTimeInterval(-3_600)
+
+        XCTAssertEqual(line(.signedIn(expiresAt: later)),
+                       .init(tone: .good, text: tr(.keyClaudeLoginStatusSignedIn) + " · " + time(later)))
+        XCTAssertEqual(line(.signedIn(expiresAt: nil)), .init(tone: .good, text: tr(.keyClaudeLoginStatusSignedIn)))
+        let expiredByTime = DashboardGeneralPage.ClaudeLoginLine(tone: .warning, text: [
+            tr(.keyClaudeLoginStatusExpired), time(earlier), tr(.keyClaudeLoginActionRenew)].joined(separator: " · "))
+        XCTAssertEqual(line(.signedIn(expiresAt: earlier)), expiredByTime, "past its time even before any 401")
+        XCTAssertEqual(line(.rejected(expiresAt: earlier)), expiredByTime)
+        XCTAssertEqual(line(.rejected(expiresAt: later)), .init(tone: .warning, text: [
+            tr(.keyClaudeLoginStatusExpired), tr(.keyClaudeLoginReasonRejected),
+            tr(.keyClaudeLoginActionRelogin)].joined(separator: " · ")), "refused before expiry: sign in again")
+        XCTAssertEqual(line(.signedOut).tone, .neutral)
+        XCTAssertEqual(line(.unreadable).tone, .warning)
+        XCTAssertEqual(line(.unknown).text, tr(.keyClaudeLoginStatusDetecting))
+    }
+
+    func testCalibrationRowShowsLoginLineAndFollowsUpdatesUntilRequestsAreOff() throws {
+        let suite = "CalibrationLogin.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.claudeEgressGuardEnabled = true
+        let expiry = Date().addingTimeInterval(7_200)
+        let generalPage = DashboardGeneralPage()
+        _ = generalPage.make(.init(preferences: preferences, relay: DashboardPreferencePageRelay(),
+            updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6"))),
+            claudeLoginStatus: .signedIn(expiresAt: expiry)))
+        let row = try XCTUnwrap(generalPage.claudeCalibrationRow)
+        let zone = preferences.effectiveDisplayTimeZone
+        func expectedDetail(_ status: ClaudeLoginStatus) -> String {
+            tr(.keyClaudeQuotaCalibrationDetail) + "\n" + RealtimeBoostSettingsRows.dotPrefix
+                + DashboardGeneralPage.claudeLoginLine(status, timeZone: zone).text
+        }
+        XCTAssertEqual(row.detailLabel.stringValue, expectedDetail(.signedIn(expiresAt: expiry)))
+
+        generalPage.refreshClaudeLogin(.rejected(expiresAt: expiry), timeZone: zone)
+        XCTAssertEqual(row.detailLabel.stringValue, expectedDetail(.rejected(expiresAt: expiry)))
+
+        generalPage.refreshClaudeOfficialEnabled(false)
+        XCTAssertFalse(row.detailLabel.stringValue.contains(RealtimeBoostSettingsRows.dotPrefix),
+                       "with official requests off the row explains that instead")
+        generalPage.refreshClaudeLogin(.signedOut, timeZone: zone)
+        XCTAssertFalse(row.detailLabel.stringValue.contains(RealtimeBoostSettingsRows.dotPrefix))
+        generalPage.refreshClaudeOfficialEnabled(true)
+        XCTAssertEqual(row.detailLabel.stringValue, expectedDetail(.signedOut))
     }
 
     func testRefreshCardHasOneSelectorPerSourceAndRefreshNowLivesInItsOwnCard() throws {
