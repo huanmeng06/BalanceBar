@@ -286,6 +286,10 @@
 "dashboard.menu.bar.page.quota_display_priority_description" = "メニューバーと「クイック切り替え」メニューで、5時間クォータと7日間クォータのどちらを優先表示するか選択";
 "dashboard.menu.bar.page.five_hour_quota" = "5時間クォータ";
 "dashboard.menu.bar.page.seven_day_quota" = "7日間クォータ";
+"dashboard.menu.bar.page.quota_value_mode" = "使用枠の割合";
+"dashboard.menu.bar.page.quota_value_mode_description" = "メニューバーとドロップダウンメニューに残りの割合と使用済みの割合のどちらを表示するかを選択します";
+"dashboard.menu.bar.page.quota_value_remaining" = "残りの使用枠";
+"dashboard.menu.bar.page.quota_value_used" = "使用済みの使用枠";
 "dashboard.menu.bar.page.quota_reset_display_mode" = "リセット時刻の表示形式";
 "dashboard.menu.bar.page.quota_reset_display_mode_description" = "残り時間、具体的なリセット時刻、または両方を表示するか選択";
 "dashboard.menu.bar.page.quota_reset_display_remaining" = "残り時間";
@@ -496,6 +500,8 @@
 "codex.banked_reset.confidence_medium" = "中";
 "codex.banked_reset.confidence_high" = "高";
 "dashboard.menu.page.progress_color_ranges" = "進行状況バーの色範囲";
+"dashboard.menu.page.progress_color_editing_mode" = "編集モード";
+"dashboard.menu.page.progress_color_ranges_used_description" = "境界をドラッグして、使用済みの割合に応じた色を調整します";
 "dashboard.menu.page.progress_color_ranges_description" = "しきい値をドラッグして、残りの割合ごとの色を調整します";
 "dashboard.menu.page.displayed_colors" = "表示する色";
 "dashboard.menu.page.displayed_colors_description" = "2 色以上を有効にしてください";

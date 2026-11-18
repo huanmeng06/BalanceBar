@@ -188,13 +188,20 @@ final class OverviewNumericTransitionTests: XCTestCase {
             officialSamples.map(\.identity),
             [fiveHour, sevenDay]
         )
+        let usedSamples = OverviewNumericPresentation.samples(
+            snapshot: official, lunaReserveDisplayMode: .disabled,
+            hideExhaustedQuota: false, showBankedReset: false, quotaValueMode: .used
+        )
+        XCTAssertEqual(usedSamples.map(\.displayText), ["16%", "55%"])
+        XCTAssertEqual(usedSamples.map(\.progressPercentage), officialSamples.map(\.progressPercentage))
 
         let balance = Snapshot.balance("Provider", 1.7, "CNY", nil, date, progressPercentage: 40)
         let balanceSamples = OverviewNumericPresentation.samples(
             snapshot: balance,
             lunaReserveDisplayMode: .disabled,
             hideExhaustedQuota: false,
-            showBankedReset: false
+            showBankedReset: false,
+            quotaValueMode: .used
         )
         XCTAssertEqual(balanceSamples.count, 1)
         XCTAssertEqual(
@@ -915,6 +922,50 @@ final class OverviewNumericPresentationControllerTests: XCTestCase {
             "the Claude five-hour and seven-day cards both show an exhaustion estimate")
         controller.menuDidClose(controller.statusMenuForTesting)
         XCTAssertNil(controller.quotaPaceTimerForTesting)
+    }
+
+    func testOfficialCardSwitchesNumbersFillAndPaceTogetherWhileTracking() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let snapshot = timedPaceSnapshot(now: now, remaining: 72.6, resetAt: now.addingTimeInterval(13_500))
+        let input = makeMenuInput()
+        for showPace in [true, false] {
+            let controller = makeController()
+            defer { controller.teardown() }
+            controller.quotaPaceNowForTesting = now
+            controller.overviewNumericReduceMotionForTesting = true
+            let usedPalette = QuotaProgressColorConfiguration.default.settingEnabled(.green, to: false)
+            func settings(_ mode: MenuBarQuotaValueMode) -> StatusItemController.MenuBarSettings {
+                .init(showIcon: true, showAmount: true, showReset: true, horizontalPadding: 6,
+                      keepMenuOpenAfterRefresh: true, quotaValueMode: mode,
+                      quotaProgressUsedColorConfiguration: usedPalette, showQuotaPaceIndicator: showPace)
+            }
+            controller.start(snapshot: snapshot, refreshDate: now, menuInput: input, settings: settings(.remaining))
+            let host = try XCTUnwrap(controller.menuItemsForTesting.first?.view as? MenuHoverLinkHostView)
+            controller.menuWillOpen(controller.statusMenuForTesting)
+            defer { controller.menuDidClose(controller.statusMenuForTesting) }
+            let progress = try XCTUnwrap(progressViews(in: host).first)
+            let pace = host.paceViews.first
+            let markerBefore = pace?.markerCenterX
+            XCTAssertEqual(pace != nil, showPace)
+            XCTAssertEqual(amountTexts(in: host), ["72%"])
+            XCTAssertEqual(progress.fillRatio, 0.726, accuracy: 0.0001)
+            XCTAssertEqual(progress.displayColor, .systemGreen)
+
+            controller.update(snapshot: snapshot, refreshDate: now, menuInput: input, settings: settings(.used))
+            XCTAssertEqual(amountTexts(in: host), ["28%"])
+            XCTAssertEqual(progress.fillRatio, 0.274, accuracy: 0.0001)
+            XCTAssertEqual(progress.colorPercentage, 72.6, accuracy: 0.0001)
+            XCTAssertEqual(progress.displayColor, .systemYellow)
+            if let pace, let markerBefore {
+                XCTAssertEqual(pace.markerCenterX + markerBefore, pace.bounds.width, accuracy: 0.01)
+            }
+
+            controller.update(snapshot: snapshot, refreshDate: now, menuInput: input, settings: settings(.remaining))
+            XCTAssertEqual(amountTexts(in: host), ["72%"])
+            XCTAssertEqual(progress.fillRatio, 0.726, accuracy: 0.0001)
+            XCTAssertEqual(progress.displayColor, .systemGreen)
+            XCTAssertEqual(pace?.markerCenterX, markerBefore)
+        }
     }
 
     func testPaceMinuteTickAndQuotaRefreshKeepExistingProgressAndView() throws {

@@ -71,6 +71,7 @@ final class DashboardPreferencePageRelay: NSObject {
     var onMenuBarAnimationModeChanged: ((MenuBarAnimationMode) -> Void)?
     var onMenuBarAnimationFrameRateChanged: ((Int) -> Void)?
     var onMenuBarQuotaWindowPreferenceChanged: ((OfficialQuotaWindowPreference) -> Void)?
+    var onMenuBarQuotaValueModeChanged: ((MenuBarQuotaValueMode) -> Void)?
     var onMenuBarQuotaResetDisplayModeChanged: ((OfficialQuotaResetDisplayMode) -> Void)?
     var onMenuBarLunaReserveResetTimeModeChanged: ((LunaReserveResetTimeMode) -> Void)?
     var onLunaReserveDisplayModeChanged: ((LunaReserveDisplayMode) -> Void)?
@@ -177,6 +178,12 @@ final class DashboardPreferencePageRelay: NSObject {
         guard let rawValue = sender.selectedItem?.representedObject as? String,
               let preference = OfficialQuotaWindowPreference(rawValue: rawValue) else { return }
         onMenuBarQuotaWindowPreferenceChanged?(preference)
+    }
+
+    @objc func menuBarQuotaValueMode(_ sender: NSPopUpButton) {
+        guard let rawValue = sender.selectedItem?.representedObject as? String,
+              let mode = MenuBarQuotaValueMode(rawValue: rawValue) else { return }
+        onMenuBarQuotaValueModeChanged?(mode)
     }
 
     @objc func menuBarQuotaResetDisplayMode(_ sender: NSPopUpButton) {

@@ -410,8 +410,13 @@ private enum DevelopmentReleaseFixture {
 }
 
 struct PreferencesMigrationPlan {
-    static let quotaProgressKeys = ["quotaProgressEnabledColors", "quotaProgressRedUpperBound", "quotaProgressOrangeUpperBound", "quotaProgressYellowUpperBound"]
-    static let keys = [AppPreferences.displayTimeZoneKey, AppPreferences.lastManualDisplayTimeZoneKey, AppPreferences.updateChannelKey, AppPreferences.silentLaunchKey, "appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "officialUsageRefreshInterval", AppPreferences.claudeCalibrationIntervalKey, AppPreferences.claudeOAuthValidityKey, AppPreferences.claudeModValidityKey, "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", AppPreferences.balanceDisplayThresholdKey, AppPreferences.showQuotaProgressBarKey, AppPreferences.showQuotaPaceIndicatorKey, AppPreferences.menuLunaReserveDisplayModeKey, AppPreferences.menuLunaReserveHideExhaustedQuotaKey, AppPreferences.menuBankedResetDisplayModeKey, AppPreferences.showBankedResetKey, "sortProvidersAlphabetically", "menuBarHorizontalPadding", AppPreferences.menuBarIconDisplayModeKey, AppPreferences.menuBarIconDisplayDelayKey, AppPreferences.menuBarRightClickActionKey, AppPreferences.menuBarReverseMouseButtonsKey, AppPreferences.menuBarAnimationModeKey, AppPreferences.menuBarAnimationFrameRateKey, AppPreferences.menuBarQuotaWindowPreferenceKey, AppPreferences.menuBarQuotaResetDisplayModeKey, AppPreferences.menuBarAutoSwitchLunaReserveKey, AppPreferences.menuBarLunaReserveResetTimeModeKey, AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey, AppPreferences.menuBarFontSizePresetKey, AppPreferences.menuBarFontSizeKey, AppPreferences.menuBarPrimaryFontSizeKey, AppPreferences.menuBarSecondaryFontSizeKey, AppPreferences.menuBarIconSizePresetKey, AppPreferences.notificationSettingsKey]
+    static let quotaProgressKeys = [
+        AppPreferences.quotaProgressEnabledColorsKey, AppPreferences.quotaProgressRedUpperBoundKey,
+        AppPreferences.quotaProgressOrangeUpperBoundKey, AppPreferences.quotaProgressYellowUpperBoundKey,
+        AppPreferences.quotaProgressUsedEnabledColorsKey, AppPreferences.quotaProgressUsedRedUpperBoundKey,
+        AppPreferences.quotaProgressUsedOrangeUpperBoundKey, AppPreferences.quotaProgressUsedYellowUpperBoundKey
+    ]
+    static let keys = [AppPreferences.displayTimeZoneKey, AppPreferences.lastManualDisplayTimeZoneKey, AppPreferences.updateChannelKey, AppPreferences.silentLaunchKey, "appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "officialUsageRefreshInterval", AppPreferences.claudeCalibrationIntervalKey, AppPreferences.claudeOAuthValidityKey, AppPreferences.claudeModValidityKey, "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", AppPreferences.balanceDisplayThresholdKey, AppPreferences.showQuotaProgressBarKey, AppPreferences.showQuotaPaceIndicatorKey, AppPreferences.menuLunaReserveDisplayModeKey, AppPreferences.menuLunaReserveHideExhaustedQuotaKey, AppPreferences.menuBankedResetDisplayModeKey, AppPreferences.showBankedResetKey, "sortProvidersAlphabetically", "menuBarHorizontalPadding", AppPreferences.menuBarIconDisplayModeKey, AppPreferences.menuBarIconDisplayDelayKey, AppPreferences.menuBarRightClickActionKey, AppPreferences.menuBarReverseMouseButtonsKey, AppPreferences.menuBarAnimationModeKey, AppPreferences.menuBarAnimationFrameRateKey, AppPreferences.menuBarQuotaWindowPreferenceKey, AppPreferences.menuBarQuotaValueModeKey, AppPreferences.menuBarQuotaResetDisplayModeKey, AppPreferences.menuBarAutoSwitchLunaReserveKey, AppPreferences.menuBarLunaReserveResetTimeModeKey, AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey, AppPreferences.menuBarFontSizePresetKey, AppPreferences.menuBarFontSizeKey, AppPreferences.menuBarPrimaryFontSizeKey, AppPreferences.menuBarSecondaryFontSizeKey, AppPreferences.menuBarIconSizePresetKey, AppPreferences.notificationSettingsKey]
 
     static func selectedValues(target: [String: Any], production: [String: Any], local: [String: Any]) -> [String: Any] {
         var selected: [String: Any] = [:]
@@ -502,8 +507,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             onBalanceDisplayThresholdChanged: { [weak self] value in
                 self?.handleDashboardBalanceDisplayThresholdChanged(value)
             },
-            onQuotaProgressColorConfigurationChanged: { [weak self] configuration in
-                self?.handleQuotaProgressColorConfigurationChanged(configuration)
+            onQuotaProgressColorConfigurationChanged: { [weak self] mode, configuration in
+                self?.handleQuotaProgressColorConfigurationChanged(mode: mode, configuration: configuration)
             },
             onOffsetAdjust: { [weak self] identifier, delta in
                 self?.handleDashboardOffsetAdjust(identifier: identifier, delta: delta)
@@ -541,6 +546,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             },
             onMenuBarQuotaWindowPreferenceChanged: { [weak self] preference in
                 self?.handleDashboardQuotaWindowPreferenceChanged(preference)
+            },
+            onMenuBarQuotaValueModeChanged: { [weak self] mode in
+                self?.handleDashboardQuotaValueModeChanged(mode)
             },
             onMenuBarQuotaResetDisplayModeChanged: { [weak self] mode in
                 self?.handleDashboardQuotaResetDisplayModeChanged(mode)
@@ -1267,11 +1275,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             fontSize: CGFloat(menuBarFontSize),
             iconSize: preferences.menuBarIconSize,
             quotaWindowPreference: menuBarQuotaWindowPreference,
+            quotaValueMode: preferences.menuBarQuotaValueMode,
             quotaResetDisplayMode: menuBarQuotaResetDisplayMode,
             autoSwitchLunaReserve: LunaReserveUserFacing.isCurrentlyEnabled
                 && preferences.menuBarAutoSwitchLunaReserve,
             lunaReserveResetTimeMode: preferences.menuBarLunaReserveResetTimeMode,
             quotaProgressColorConfiguration: preferences.quotaProgressColorConfiguration,
+            quotaProgressUsedColorConfiguration: preferences.quotaProgressColorConfiguration(for: .used),
             showQuotaProgressBar: preferences.showQuotaProgressBar,
             showQuotaPaceIndicator: preferences.showQuotaPaceIndicator,
             showBankedReset: preferences.showBankedReset,
@@ -1760,8 +1770,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         refresh(reason: .configurationChanged)
     }
 
-    private func handleQuotaProgressColorConfigurationChanged(_ configuration: QuotaProgressColorConfiguration) {
-        preferences.quotaProgressColorConfiguration = configuration
+    private func handleQuotaProgressColorConfigurationChanged(
+        mode: MenuBarQuotaValueMode, configuration: QuotaProgressColorConfiguration
+    ) {
+        preferences.setQuotaProgressColorConfiguration(configuration, for: mode)
+        let key = mode == .used ? "quotaProgressUsedColorConfiguration" : "quotaProgressColorConfiguration"
+        let colors = configuration.enabledColorsInOrder.map(\.rawValue).joined(separator: ",")
+        SwitchLog.write(
+            "preference changed; key=\(key); value=\(colors)/\(configuration.redUpperBound)/\(configuration.orangeUpperBound)/\(configuration.yellowUpperBound)",
+            category: "configuration"
+        )
         updateStatusItem(for: snapshot, refreshDashboard: false)
         updateDashboard(for: snapshot, refreshDate: refreshDate(for: snapshot))
     }
@@ -1833,6 +1851,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         )
         statusItemController.setAnimationFrameRate(clamped)
         refreshDashboardMenuBarPage()
+    }
+
+    private func handleDashboardQuotaValueModeChanged(_ mode: MenuBarQuotaValueMode) {
+        preferences.menuBarQuotaValueMode = mode
+        SwitchLog.write(
+            "preference changed; key=\(AppPreferences.menuBarQuotaValueModeKey); value=\(mode.rawValue)",
+            category: "configuration"
+        )
+        updateStatusItem(for: snapshot)
     }
 
     private func handleDashboardQuotaResetDisplayModeChanged(

@@ -286,6 +286,10 @@
 "dashboard.menu.bar.page.quota_display_priority_description" = "Escolha se a barra de menus e o menu “Troca rápida” devem priorizar a cota de 5 horas ou de 7 dias";
 "dashboard.menu.bar.page.five_hour_quota" = "Cota de 5 horas";
 "dashboard.menu.bar.page.seven_day_quota" = "Cota de 7 dias";
+"dashboard.menu.bar.page.quota_value_mode" = "Porcentagem da cota";
+"dashboard.menu.bar.page.quota_value_mode_description" = "Escolha se a barra de menus e o menu suspenso exibem a porcentagem restante ou usada";
+"dashboard.menu.bar.page.quota_value_remaining" = "Cota restante";
+"dashboard.menu.bar.page.quota_value_used" = "Cota usada";
 "dashboard.menu.bar.page.quota_reset_display_mode" = "Exibição do horário de redefinição";
 "dashboard.menu.bar.page.quota_reset_display_mode_description" = "Escolha se deseja mostrar o tempo restante, um horário específico de redefinição ou ambos";
 "dashboard.menu.bar.page.quota_reset_display_remaining" = "Tempo restante";
@@ -496,6 +500,8 @@
 "codex.banked_reset.confidence_medium" = "Média";
 "codex.banked_reset.confidence_high" = "Alta";
 "dashboard.menu.page.progress_color_ranges" = "Faixas de cor da barra";
+"dashboard.menu.page.progress_color_editing_mode" = "Modo de edição";
+"dashboard.menu.page.progress_color_ranges_used_description" = "Arraste os limites para ajustar as cores de acordo com a porcentagem usada";
 "dashboard.menu.page.progress_color_ranges_description" = "Arraste os limites para escolher a cor de cada faixa de percentagem restante";
 "dashboard.menu.page.displayed_colors" = "Cores exibidas";
 "dashboard.menu.page.displayed_colors_description" = "Mantenha pelo menos duas cores ativadas";

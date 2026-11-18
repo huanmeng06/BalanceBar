@@ -20,6 +20,7 @@ final class DashboardMenuBarPage {
     static let animationFrameRateRowIdentifier = AppPreferences.menuBarAnimationFrameRateKey + "Row"
     static let animationFallbackWarningIdentifier = "menuBarAnimationFallbackWarning"
     static let quotaWindowPreferenceIdentifier = AppPreferences.menuBarQuotaWindowPreferenceKey
+    static let quotaValueModeIdentifier = AppPreferences.menuBarQuotaValueModeKey
     static let quotaResetDisplayModeIdentifier = AppPreferences.menuBarQuotaResetDisplayModeKey
     static let autoSwitchLunaReserveIdentifier = AppPreferences.menuBarAutoSwitchLunaReserveKey
     static let lunaReserveResetTimeModeIdentifier = AppPreferences.menuBarLunaReserveResetTimeModeKey
@@ -76,6 +77,7 @@ final class DashboardMenuBarPage {
         for snapshot: Snapshot,
         showAmount: Bool,
         showReset: Bool,
+        quotaValueMode: MenuBarQuotaValueMode = .defaultValue,
         quotaResetDisplayMode: OfficialQuotaResetDisplayMode = .defaultValue,
         lunaReserveResetTimeMode: LunaReserveResetTimeMode = .defaultValue,
         timeZone: TimeZone = .autoupdatingCurrent,
@@ -90,7 +92,7 @@ final class DashboardMenuBarPage {
             )
             : ""
         return Presentation(
-            primary: showAmount ? effective.menuBarPrimary : "",
+            primary: showAmount ? effective.menuBarPrimary(valueMode: quotaValueMode) : "",
             secondary: secondary,
             hasSecondary: showAmount
                 && showReset
@@ -228,6 +230,7 @@ final class DashboardMenuBarPage {
         let iconOffsetY: Double
         let amountOffsetY: Double
         let quotaWindowPreference: String
+        let quotaValueMode: MenuBarQuotaValueMode
         let quotaResetDisplayMode: String
         let autoSwitchLunaReserve: Bool
         let lunaReserveResetTimeMode: String
@@ -470,6 +473,7 @@ final class DashboardMenuBarPage {
             for: snapshot,
             showAmount: preferences.showMenuBarAmount,
             showReset: preferences.showMenuBarReset,
+            quotaValueMode: preferences.menuBarQuotaValueMode,
             quotaResetDisplayMode: preferences.menuBarQuotaResetDisplayMode,
             lunaReserveResetTimeMode: preferences.menuBarLunaReserveResetTimeMode,
             timeZone: preferences.effectiveDisplayTimeZone,
@@ -492,6 +496,7 @@ final class DashboardMenuBarPage {
             iconOffsetY: preferences.menuBarIconOffsetY,
             amountOffsetY: preferences.menuBarAmountOffsetY,
             quotaWindowPreference: preferences.menuBarQuotaWindowPreference.rawValue,
+            quotaValueMode: preferences.menuBarQuotaValueMode,
             quotaResetDisplayMode: preferences.menuBarQuotaResetDisplayMode.rawValue,
             autoSwitchLunaReserve: preferences.menuBarAutoSwitchLunaReserve,
             lunaReserveResetTimeMode: preferences.menuBarLunaReserveResetTimeMode.rawValue,
@@ -583,6 +588,7 @@ final class DashboardMenuBarPage {
             for: snapshot,
             showAmount: preferences.showMenuBarAmount,
             showReset: preferences.showMenuBarReset,
+            quotaValueMode: preferences.menuBarQuotaValueMode,
             quotaResetDisplayMode: preferences.menuBarQuotaResetDisplayMode,
             lunaReserveResetTimeMode: preferences.menuBarLunaReserveResetTimeMode,
             timeZone: preferences.effectiveDisplayTimeZone,

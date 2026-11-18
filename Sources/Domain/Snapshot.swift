@@ -1474,10 +1474,14 @@ struct Snapshot: Equatable {
         }
     }
 
-    var menuBarPrimary: String {
+    var menuBarPrimary: String { menuBarPrimary(valueMode: .remaining) }
+
+    func menuBarPrimary(valueMode: MenuBarQuotaValueMode) -> String {
         switch kind {
         case .placeholder: return "…"
-        case .official: return "\(Int(amount ?? 0))%\(menuBarUsesLunaReserve ? " 🌙" : "")"
+        case .official:
+            let percentage = Int(valueMode.displayPercentage(remaining: amount ?? 0))
+            return "\(percentage)%\(menuBarUsesLunaReserve ? " 🌙" : "")"
         case .balance: return format(amount ?? 0, unit ?? "USD")
         case .error: return officialSourceDisabled ? "–" : "!"
         }

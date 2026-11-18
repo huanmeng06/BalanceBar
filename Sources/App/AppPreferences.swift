@@ -58,6 +58,17 @@ struct QuotaProgressColorConfiguration: Equatable {
     }
 }
 
+enum MenuBarQuotaValueMode: String, CaseIterable, Equatable {
+    case remaining
+    case used
+
+    static let defaultValue: Self = .remaining
+
+    func displayPercentage(remaining: Double) -> Double {
+        self == .used ? 100 - min(100, max(0, remaining.rounded(.towardZero))) : remaining
+    }
+}
+
 enum OfficialQuotaResetDisplayMode: String, CaseIterable, Equatable {
     case remaining
     case resetAt
@@ -400,6 +411,10 @@ final class AppPreferences {
     static let quotaProgressRedUpperBoundKey = "quotaProgressRedUpperBound"
     static let quotaProgressOrangeUpperBoundKey = "quotaProgressOrangeUpperBound"
     static let quotaProgressYellowUpperBoundKey = "quotaProgressYellowUpperBound"
+    static let quotaProgressUsedEnabledColorsKey = "quotaProgressUsedEnabledColors"
+    static let quotaProgressUsedRedUpperBoundKey = "quotaProgressUsedRedUpperBound"
+    static let quotaProgressUsedOrangeUpperBoundKey = "quotaProgressUsedOrangeUpperBound"
+    static let quotaProgressUsedYellowUpperBoundKey = "quotaProgressUsedYellowUpperBound"
     static let showQuotaProgressBarKey = "showQuotaProgressBar"
     static let showQuotaProgressBarDefault = true
     static let showQuotaPaceIndicatorKey = "showQuotaPaceIndicator"
@@ -411,6 +426,7 @@ final class AppPreferences {
     static let balanceDisplayThresholdKey = "balanceDisplayThreshold"
     static let menuBarQuotaWindowPreferenceKey = "menuBarQuotaWindowPreference"
     static let menuBarQuotaWindowPreferenceDefault: OfficialQuotaWindowPreference = .defaultValue
+    static let menuBarQuotaValueModeKey = "menuBarQuotaValueMode"
     static let menuBarQuotaResetDisplayModeKey = "menuBarQuotaResetDisplayMode"
     static let menuBarQuotaResetDisplayModeDefault: OfficialQuotaResetDisplayMode = .defaultValue
     static let menuBarAutoSwitchLunaReserveKey = "menuBarAutoSwitchLunaReserve"
@@ -589,6 +605,16 @@ final class AppPreferences {
             defaults.set(newValue.rawValue, forKey: Self.menuBarQuotaWindowPreferenceKey)
         }
     }
+    var menuBarQuotaValueMode: MenuBarQuotaValueMode {
+        get {
+            guard let rawValue = defaults.string(forKey: Self.menuBarQuotaValueModeKey),
+                  let mode = MenuBarQuotaValueMode(rawValue: rawValue) else {
+                return .defaultValue
+            }
+            return mode
+        }
+        set { defaults.set(newValue.rawValue, forKey: Self.menuBarQuotaValueModeKey) }
+    }
     var menuBarQuotaResetDisplayMode: OfficialQuotaResetDisplayMode {
         get {
             guard let rawValue = defaults.string(forKey: Self.menuBarQuotaResetDisplayModeKey),
@@ -762,26 +788,51 @@ final class AppPreferences {
         }
     }
     var quotaProgressColorConfiguration: QuotaProgressColorConfiguration {
-        get {
-            let fallback = QuotaProgressColorConfiguration.default
-            let stored = defaults.stringArray(forKey: Self.quotaProgressEnabledColorsKey)
-            let colors = stored.map { Set($0.compactMap(QuotaProgressColor.init(rawValue:))) } ?? fallback.enabledColors
-            let integer: (String, Int) -> Int = { key, fallback in (self.defaults.object(forKey: key) as? NSNumber)?.intValue ?? fallback }
-            let normalized = QuotaProgressColorConfiguration(
-                enabledColors: colors,
-                redUpperBound: integer(Self.quotaProgressRedUpperBoundKey, fallback.redUpperBound),
-                orangeUpperBound: integer(Self.quotaProgressOrangeUpperBoundKey, fallback.orangeUpperBound),
-                yellowUpperBound: integer(Self.quotaProgressYellowUpperBoundKey, fallback.yellowUpperBound)
-            ).normalized()
-            return normalized
-        }
-        set { persistQuotaProgressColorConfiguration(newValue.normalized()) }
+        get { quotaProgressColorConfiguration(for: .remaining) }
+        set { setQuotaProgressColorConfiguration(newValue, for: .remaining) }
     }
-    private func persistQuotaProgressColorConfiguration(_ configuration: QuotaProgressColorConfiguration) {
-        defaults.set(configuration.enabledColorsInOrder.map(\.rawValue), forKey: Self.quotaProgressEnabledColorsKey)
-        defaults.set(configuration.redUpperBound, forKey: Self.quotaProgressRedUpperBoundKey)
-        defaults.set(configuration.orangeUpperBound, forKey: Self.quotaProgressOrangeUpperBoundKey)
-        defaults.set(configuration.yellowUpperBound, forKey: Self.quotaProgressYellowUpperBoundKey)
+
+    private struct QuotaProgressColorKeys {
+        let enabledColors: String
+        let red: String
+        let orange: String
+        let yellow: String
+    }
+
+    private static func quotaProgressColorKeys(for mode: MenuBarQuotaValueMode) -> QuotaProgressColorKeys {
+        switch mode {
+        case .remaining:
+            QuotaProgressColorKeys(enabledColors: quotaProgressEnabledColorsKey, red: quotaProgressRedUpperBoundKey,
+                                   orange: quotaProgressOrangeUpperBoundKey, yellow: quotaProgressYellowUpperBoundKey)
+        case .used:
+            QuotaProgressColorKeys(enabledColors: quotaProgressUsedEnabledColorsKey, red: quotaProgressUsedRedUpperBoundKey,
+                                   orange: quotaProgressUsedOrangeUpperBoundKey, yellow: quotaProgressUsedYellowUpperBoundKey)
+        }
+    }
+
+    func quotaProgressColorConfiguration(for mode: MenuBarQuotaValueMode) -> QuotaProgressColorConfiguration {
+        let keys = Self.quotaProgressColorKeys(for: mode)
+        let fallback = QuotaProgressColorConfiguration.default
+        let colors = defaults.stringArray(forKey: keys.enabledColors)
+            .map { Set($0.compactMap(QuotaProgressColor.init(rawValue:))) } ?? fallback.enabledColors
+        func integer(_ key: String, fallback: Int) -> Int {
+            (defaults.object(forKey: key) as? NSNumber)?.intValue ?? fallback
+        }
+        return QuotaProgressColorConfiguration(
+            enabledColors: colors,
+            redUpperBound: integer(keys.red, fallback: fallback.redUpperBound),
+            orangeUpperBound: integer(keys.orange, fallback: fallback.orangeUpperBound),
+            yellowUpperBound: integer(keys.yellow, fallback: fallback.yellowUpperBound)
+        ).normalized()
+    }
+
+    func setQuotaProgressColorConfiguration(_ configuration: QuotaProgressColorConfiguration, for mode: MenuBarQuotaValueMode) {
+        let keys = Self.quotaProgressColorKeys(for: mode)
+        let normalized = configuration.normalized()
+        defaults.set(normalized.enabledColorsInOrder.map(\.rawValue), forKey: keys.enabledColors)
+        defaults.set(normalized.redUpperBound, forKey: keys.red)
+        defaults.set(normalized.orangeUpperBound, forKey: keys.orange)
+        defaults.set(normalized.yellowUpperBound, forKey: keys.yellow)
     }
     var sortProvidersAlphabetically: Bool { get { defaults.bool(forKey: "sortProvidersAlphabetically") } set { defaults.set(newValue, forKey: "sortProvidersAlphabetically") } }
     var menuBarHorizontalPadding: CGFloat { get { CGFloat(positiveDouble("menuBarHorizontalPadding", default: 10)) } set { defaults.set(Double(newValue), forKey: "menuBarHorizontalPadding") } }

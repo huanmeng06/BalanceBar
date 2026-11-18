@@ -11,6 +11,13 @@ enum OverviewNumericIdentity: Hashable {
     case bankedResetProbability48h(provider: String)
     case bankedResetProbabilitySignal(provider: String)
     case bankedResetProbabilityCountdown(provider: String)
+
+    var isOfficialQuota: Bool {
+        switch self {
+        case .officialWindow, .officialOther, .lunaReserve: return true
+        default: return false
+        }
+    }
 }
 
 enum OverviewNumericFormat: Equatable {
@@ -172,12 +179,25 @@ enum OverviewNumericTransition {
 }
 
 enum OverviewNumericPresentation {
+    static func quotaSample(
+        identity: OverviewNumericIdentity, remaining: Double, valueMode: MenuBarQuotaValueMode
+    ) -> OverviewNumericSample {
+        OverviewNumericSample(
+            identity: identity,
+            format: .integerPercent,
+            value: valueMode.displayPercentage(remaining: remaining),
+            // Keep the real remaining percentage for color thresholds and progress animation.
+            progressPercentage: remaining
+        )
+    }
+
     static func samples(
         snapshot: Snapshot,
         providerIdentity: String? = nil,
         lunaReserveDisplayMode: LunaReserveDisplayMode,
         hideExhaustedQuota: Bool,
         showBankedReset: Bool,
+        quotaValueMode: MenuBarQuotaValueMode = .defaultValue,
         now: Date = Date()
     ) -> [OverviewNumericSample] {
         let provider = providerIdentity ?? snapshot.provider
@@ -200,20 +220,16 @@ enum OverviewNumericPresentation {
                 hideExhaustedQuota: hideExhaustedQuota
             )
             var samples: [OverviewNumericSample] = presentation.windows.map { window in
-                OverviewNumericSample(
+                quotaSample(
                     identity: identity(for: window, provider: provider),
-                    format: .integerPercent,
-                    value: window.remaining,
-                    progressPercentage: window.remaining
+                    remaining: window.remaining, valueMode: quotaValueMode
                 )
             }
             if let remaining = presentation.lunaReserve?.remaining {
                 samples.append(
-                    OverviewNumericSample(
+                    quotaSample(
                         identity: .lunaReserve(provider: provider),
-                        format: .integerPercent,
-                        value: remaining,
-                        progressPercentage: remaining
+                        remaining: remaining, valueMode: quotaValueMode
                     )
                 )
             }

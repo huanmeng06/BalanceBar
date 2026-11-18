@@ -1928,6 +1928,7 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertEqual(reservePresentation.unit, tr(.keyLunaReserveTitle))
         XCTAssertTrue(reservePresentation.menuBarUsesLunaReserve)
         XCTAssertEqual(reservePresentation.menuBarPrimary, "61% 🌙")
+        XCTAssertEqual(reservePresentation.menuBarPrimary(valueMode: .used), "39% 🌙")
         XCTAssertEqual(reservePresentation.menuBarTitle, " 61% 🌙")
         XCTAssertEqual(
             reservePresentation.menuBarSecondary(
@@ -2364,6 +2365,22 @@ final class DomainModelsTests: XCTestCase {
             ),
             "later"
         )
+    }
+
+    func testMenuBarQuotaValueUsesTruncatedRemainingAndClampsUsedPercentage() {
+        let date = Date(timeIntervalSince1970: 1)
+        for (amount, remaining, used) in [
+            (0.0, "0%", "100%"), (100.0, "100%", "0%"), (72.6, "72%", "28%"),
+            (-1.0, "-1%", "100%"), (101.0, "101%", "0%")
+        ] {
+            let snapshot = Snapshot.official("OpenAI", amount, "5-hour", nil, date)
+            XCTAssertEqual(snapshot.menuBarPrimary(valueMode: .remaining), remaining)
+            XCTAssertEqual(snapshot.menuBarPrimary(valueMode: .used), used)
+        }
+
+        for snapshot in [Snapshot.placeholder, .balance("API", 72.6, "USD", nil, date), .error("failed")] {
+            XCTAssertEqual(snapshot.menuBarPrimary(valueMode: .used), snapshot.menuBarPrimary)
+        }
     }
 
     func testCompactQuotaResetDisplayModesUseSelectedWindowAndSafeFallbacks() throws {

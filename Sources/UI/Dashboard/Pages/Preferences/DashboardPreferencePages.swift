@@ -7,7 +7,7 @@ struct DashboardPreferencePageActions {
     let onOpenLaunchWithChatGPTSettings: () -> Void
     let onInterval: (String, TimeInterval) -> Void
     let onBalanceDisplayThresholdChanged: (Double) -> Void
-    let onQuotaProgressColorConfigurationChanged: (QuotaProgressColorConfiguration) -> Void
+    let onQuotaProgressColorConfigurationChanged: (MenuBarQuotaValueMode, QuotaProgressColorConfiguration) -> Void
     let onOffsetAdjust: (String, Int) -> Void
     let onOffsetValue: (String, Double) -> Void
     let onOffsetValueEnded: (String, Double) -> Void
@@ -21,6 +21,7 @@ struct DashboardPreferencePageActions {
     let onMenuBarAnimationModeChanged: (MenuBarAnimationMode) -> Void
     let onMenuBarAnimationFrameRateChanged: (Int) -> Void
     let onMenuBarQuotaWindowPreferenceChanged: (OfficialQuotaWindowPreference) -> Void
+    let onMenuBarQuotaValueModeChanged: (MenuBarQuotaValueMode) -> Void
     let onMenuBarQuotaResetDisplayModeChanged: (OfficialQuotaResetDisplayMode) -> Void
     let onMenuBarLunaReserveResetTimeModeChanged: (LunaReserveResetTimeMode) -> Void
     let onLunaReserveDisplayModeChanged: (LunaReserveDisplayMode) -> Void
@@ -105,6 +106,7 @@ final class DashboardPreferencePages {
         relay.onMenuBarAnimationModeChanged = actions.onMenuBarAnimationModeChanged
         relay.onMenuBarAnimationFrameRateChanged = actions.onMenuBarAnimationFrameRateChanged
         relay.onMenuBarQuotaWindowPreferenceChanged = actions.onMenuBarQuotaWindowPreferenceChanged
+        relay.onMenuBarQuotaValueModeChanged = actions.onMenuBarQuotaValueModeChanged
         relay.onMenuBarQuotaResetDisplayModeChanged = actions.onMenuBarQuotaResetDisplayModeChanged
         relay.onMenuBarLunaReserveResetTimeModeChanged = actions.onMenuBarLunaReserveResetTimeModeChanged
         relay.onLunaReserveDisplayModeChanged = actions.onLunaReserveDisplayModeChanged

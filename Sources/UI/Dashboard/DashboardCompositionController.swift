@@ -191,7 +191,7 @@ struct DashboardCompositionActions {
     let onOpenLaunchWithChatGPTSettings: () -> Void
     let onInterval: (String, TimeInterval) -> Void
     let onBalanceDisplayThresholdChanged: (Double) -> Void
-    let onQuotaProgressColorConfigurationChanged: (QuotaProgressColorConfiguration) -> Void
+    let onQuotaProgressColorConfigurationChanged: (MenuBarQuotaValueMode, QuotaProgressColorConfiguration) -> Void
     let onOffsetAdjust: (String, Int) -> Void
     let onOffsetValue: (String, Double) -> Void
     let onOffsetValueEnded: (String, Double) -> Void
@@ -205,6 +205,7 @@ struct DashboardCompositionActions {
     let onMenuBarAnimationModeChanged: (MenuBarAnimationMode) -> Void
     let onMenuBarAnimationFrameRateChanged: (Int) -> Void
     let onMenuBarQuotaWindowPreferenceChanged: (OfficialQuotaWindowPreference) -> Void
+    let onMenuBarQuotaValueModeChanged: (MenuBarQuotaValueMode) -> Void
     let onMenuBarQuotaResetDisplayModeChanged: (OfficialQuotaResetDisplayMode) -> Void
     let onMenuBarLunaReserveResetTimeModeChanged: (LunaReserveResetTimeMode) -> Void
     let onLunaReserveDisplayModeChanged: (LunaReserveDisplayMode) -> Void
@@ -282,6 +283,7 @@ final class DashboardCompositionController {
             onMenuBarAnimationModeChanged: actions.onMenuBarAnimationModeChanged,
             onMenuBarAnimationFrameRateChanged: actions.onMenuBarAnimationFrameRateChanged,
             onMenuBarQuotaWindowPreferenceChanged: actions.onMenuBarQuotaWindowPreferenceChanged,
+            onMenuBarQuotaValueModeChanged: actions.onMenuBarQuotaValueModeChanged,
             onMenuBarQuotaResetDisplayModeChanged: actions.onMenuBarQuotaResetDisplayModeChanged,
             onMenuBarLunaReserveResetTimeModeChanged: actions.onMenuBarLunaReserveResetTimeModeChanged,
             onLunaReserveDisplayModeChanged: actions.onLunaReserveDisplayModeChanged,
@@ -1250,6 +1252,7 @@ final class DashboardCompositionController {
             for: snapshot,
             showAmount: preferences.showMenuBarAmount,
             showReset: preferences.showMenuBarReset,
+            quotaValueMode: preferences.menuBarQuotaValueMode,
             quotaResetDisplayMode: preferences.menuBarQuotaResetDisplayMode,
             lunaReserveResetTimeMode: preferences.menuBarLunaReserveResetTimeMode,
             timeZone: preferences.effectiveDisplayTimeZone,

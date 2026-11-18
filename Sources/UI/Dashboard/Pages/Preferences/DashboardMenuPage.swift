@@ -387,14 +387,14 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         let relay: DashboardPreferencePageRelay
         let makeStatusLinksEditor: () -> StatusLinksEditorHostingView
         let onBalanceDisplayThresholdChanged: (Double) -> Void
-        let onQuotaProgressColorConfigurationChanged: (QuotaProgressColorConfiguration) -> Void
+        let onQuotaProgressColorConfigurationChanged: (MenuBarQuotaValueMode, QuotaProgressColorConfiguration) -> Void
 
         init(
             preferences: AppPreferences,
             relay: DashboardPreferencePageRelay,
             makeStatusLinksEditor: @escaping () -> StatusLinksEditorHostingView,
             onBalanceDisplayThresholdChanged: @escaping (Double) -> Void,
-            onQuotaProgressColorConfigurationChanged: @escaping (QuotaProgressColorConfiguration) -> Void = { _ in }
+            onQuotaProgressColorConfigurationChanged: @escaping (MenuBarQuotaValueMode, QuotaProgressColorConfiguration) -> Void = { _, _ in }
         ) {
             self.preferences = preferences
             self.relay = relay
@@ -416,10 +416,16 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
     private var statusLinksVisible = false
     private var balanceDisplayThresholdValue = AppPreferences.defaultBalanceDisplayThreshold
     private var onBalanceDisplayThresholdChanged: ((Double) -> Void)?
-    private var onQuotaProgressColorConfigurationChanged: ((QuotaProgressColorConfiguration) -> Void)?
+    private var onQuotaProgressColorConfigurationChanged: ((MenuBarQuotaValueMode, QuotaProgressColorConfiguration) -> Void)?
     private weak var quotaColorSlider: QuotaColorThresholdSlider?
     private var quotaColorButtons: [QuotaProgressColor: NSButton] = [:]
-    private var quotaColorConfiguration: QuotaProgressColorConfiguration = .default
+    private var editingMode: MenuBarQuotaValueMode = .defaultValue
+    private var quotaColorConfigurations: [MenuBarQuotaValueMode: QuotaProgressColorConfiguration] = [:]
+    private weak var colorRangesRow: MenuDedicatedControlRow?
+    private var quotaColorConfiguration: QuotaProgressColorConfiguration {
+        get { quotaColorConfigurations[editingMode] ?? .default }
+        set { quotaColorConfigurations[editingMode] = newValue }
+    }
     private weak var showQuotaProgressBarSwitch: NSSwitch?
     private weak var showQuotaPaceIndicatorSwitch: NSSwitch?
     private var progressBarDetailRows: [NSView] = []
@@ -432,7 +438,8 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         onQuotaProgressColorConfigurationChanged = input.onQuotaProgressColorConfigurationChanged
         makeStatusLinksEditor = input.makeStatusLinksEditor
         statusLinksVisible = input.preferences.showStatusMenu
-        quotaColorConfiguration = input.preferences.quotaProgressColorConfiguration
+        editingMode = input.preferences.menuBarQuotaValueMode
+        readQuotaColorConfigurations(from: input.preferences)
         lunaReserveDisplayModeControl = nil
         lunaReserveHideExhaustedQuotaRow = nil
         lunaReserveHideExhaustedQuotaSwitch = nil
@@ -491,12 +498,13 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         balanceDisplayThresholdField = balanceDisplayThreshold.field
 
         let slider = QuotaColorThresholdSlider(configuration: quotaColorConfiguration)
+        slider.axis = editingMode
         slider.onChange = { [weak self] configuration in
             guard let self else { return }
             let normalized = configuration.normalized()
             self.quotaColorConfiguration = normalized
             self.updateQuotaColorButtons()
-            self.onQuotaProgressColorConfigurationChanged?(normalized)
+            self.onQuotaProgressColorConfigurationChanged?(self.editingMode, normalized)
         }
         quotaColorSlider = slider
         let resetButton = NSButton(
@@ -505,6 +513,32 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
             action: #selector(resetQuotaProgressColors(_:))
         )
         Self.configureQuotaColorResetButton(resetButton)
+        let modePicker = DashboardSettingsComponents.makePopUpButton(
+            identifier: "quotaProgressColorEditingMode",
+            items: MenuBarQuotaValueMode.allCases.map { mode in
+                .init(title: tr(mode == .used ? .keyDashboardMenuBarPageQuotaValueUsed : .keyDashboardMenuBarPageQuotaValueRemaining),
+                      representedObject: mode.rawValue)
+            },
+            selectedIndex: MenuBarQuotaValueMode.allCases.firstIndex(of: editingMode),
+            target: self,
+            action: #selector(changeQuotaColorEditingMode(_:))
+        )
+        let editingModeLabel = tr(.keyDashboardMenuPageProgressColorEditingMode)
+        modePicker.setAccessibilityLabel(editingModeLabel)
+        modePicker.toolTip = editingModeLabel
+        let colorRangeControls = NSStackView(views: [modePicker, resetButton])
+        colorRangeControls.orientation = .horizontal
+        colorRangeControls.alignment = .centerY
+        colorRangeControls.spacing = 8
+        // The header reserves the whole accessory width for wrapping. Keep the
+        // native stack from stretching its trailing gravity area on resize.
+        let pickerWidth = ceil(modePicker.fittingSize.width)
+        let resetWidth = ceil(resetButton.fittingSize.width)
+        NSLayoutConstraint.activate([
+            modePicker.widthAnchor.constraint(equalToConstant: pickerWidth),
+            resetButton.widthAnchor.constraint(equalToConstant: resetWidth),
+            colorRangeControls.widthAnchor.constraint(equalToConstant: pickerWidth + colorRangeControls.spacing + resetWidth)
+        ])
         let colorControls = QuotaColorSelectionStack()
         colorControls.orientation = .horizontal
         colorControls.alignment = .centerY
@@ -608,11 +642,12 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         )
         let colorRangesRow = MenuDedicatedControlRow(
             title: tr(.keyDashboardMenuPageProgressColorRanges),
-            detail: tr(.keyDashboardMenuPageProgressColorRangesDescription),
-            trailingControl: resetButton,
+            detail: quotaColorRangesDescription,
+            trailingControl: colorRangeControls,
             control: slider,
             minimumHeight: 90
         )
+        self.colorRangesRow = colorRangesRow
         let displayedColorsRow = makeRow(
             tr(.keyDashboardMenuPageDisplayedColors),
             subtitle: tr(.keyDashboardMenuPageDisplayedColorsDescription),
@@ -765,7 +800,7 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
     }
 
     func refresh(preferences: AppPreferences) {
-        quotaColorConfiguration = preferences.quotaProgressColorConfiguration
+        readQuotaColorConfigurations(from: preferences)
         quotaColorSlider?.configuration = quotaColorConfiguration
         updateQuotaColorButtons()
         showQuotaProgressBarSwitch?.state = preferences.showQuotaProgressBar ? .on : .off
@@ -862,6 +897,7 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         quotaColorButtons = [:]
         quotaColorSlider?.teardown()
         quotaColorSlider = nil
+        colorRangesRow = nil
         showQuotaProgressBarSwitch = nil
         progressBarDetailRows = []
         statusLinksEditor?.teardown()
@@ -870,6 +906,32 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         makeStatusLinksEditor = nil
         statusLinksVisible = false
         statusSubtitleLabel = nil
+    }
+
+    private func readQuotaColorConfigurations(from preferences: AppPreferences) {
+        quotaColorConfigurations = Dictionary(uniqueKeysWithValues: MenuBarQuotaValueMode.allCases.map {
+            ($0, preferences.quotaProgressColorConfiguration(for: $0))
+        })
+    }
+
+    private var quotaColorRangesDescription: String {
+        tr(editingMode == .used ? .keyDashboardMenuPageProgressColorRangesUsedDescription
+                               : .keyDashboardMenuPageProgressColorRangesDescription)
+    }
+
+    @objc private func changeQuotaColorEditingMode(_ sender: NSPopUpButton) {
+        guard let raw = sender.selectedItem?.representedObject as? String,
+              let mode = MenuBarQuotaValueMode(rawValue: raw), mode != editingMode else { return }
+        editingMode = mode
+        quotaColorSlider?.axis = mode
+        quotaColorSlider?.configuration = quotaColorConfiguration
+        updateQuotaColorButtons()
+        if let row = colorRangesRow {
+            row.detailLabel.stringValue = quotaColorRangesDescription
+            row.detailLabel.invalidateIntrinsicContentSize()
+            row.invalidateIntrinsicContentSize()
+            invalidateHostedSection(for: row)
+        }
     }
 
     @objc private func toggleQuotaColor(_ sender: NSButton) {
@@ -886,7 +948,7 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         quotaColorConfiguration = configuration.normalized()
         quotaColorSlider?.configuration = quotaColorConfiguration
         updateQuotaColorButtons()
-        onQuotaProgressColorConfigurationChanged?(quotaColorConfiguration)
+        onQuotaProgressColorConfigurationChanged?(editingMode, quotaColorConfiguration)
     }
 
     private func updateQuotaColorButtons() {

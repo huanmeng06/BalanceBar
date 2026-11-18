@@ -7,6 +7,8 @@ final class DashboardMenuBarQuotaSection {
     private weak var amountSwitch: NSSwitch?
     private weak var amountDisplayRow: NSView?
     private weak var resetCountdownRow: NSView?
+    private weak var quotaValueModeRow: NSView?
+    private weak var quotaValueModeControl: NSPopUpButton?
     private weak var quotaWindowPreferenceRow: NSView?
     private weak var autoSwitchLunaReserveRow: NSView?
     private weak var lunaReserveResetTimeRow: NSView?
@@ -82,6 +84,17 @@ final class DashboardMenuBarQuotaSection {
             accessoryView: quotaWindowPreferenceControl
         )
         self.quotaWindowPreferenceRow = quotaWindowPreferenceRow
+        let quotaValueModeControl = makeQuotaValueModeControl(
+            value: input.preferences.menuBarQuotaValueMode,
+            relay: input.relay
+        )
+        self.quotaValueModeControl = quotaValueModeControl
+        let quotaValueModeRow = SettingsRowView(
+            title: tr(.keyDashboardMenuBarPageQuotaValueMode),
+            detail: tr(.keyDashboardMenuBarPageQuotaValueModeDescription),
+            accessoryView: quotaValueModeControl
+        )
+        self.quotaValueModeRow = quotaValueModeRow
         autoSwitchLunaReserveRow = nil
         lunaReserveResetTimeRow = nil
         let autoSwitchLunaReserveRow: NSView?
@@ -129,6 +142,7 @@ final class DashboardMenuBarQuotaSection {
                 amountDisplayRow,
                 resetCountdownRow,
                 quotaWindowPreferenceRow,
+                quotaValueModeRow,
                 quotaResetDisplayModeRow,
                 autoSwitchLunaReserveRow,
                 lunaReserveResetTimeRow
@@ -151,6 +165,13 @@ final class DashboardMenuBarQuotaSection {
             autoSwitchLunaReserve: LunaReserveUserFacing.isCurrentlyEnabled
                 && preferences.menuBarAutoSwitchLunaReserve
         )
+        if let quotaValueModeControl,
+           let selectedIndex = MenuBarQuotaValueMode.allCases.firstIndex(of: preferences.menuBarQuotaValueMode) {
+            if quotaValueModeControl.indexOfSelectedItem != selectedIndex {
+                quotaValueModeControl.selectItem(at: selectedIndex)
+            }
+            quotaValueModeControl.synchronizeTitleAndSelectedItem()
+        }
         if let quotaWindowPreferenceControl,
            let selectedIndex = OfficialQuotaWindowPreference.allCases.firstIndex(
                of: preferences.menuBarQuotaWindowPreference
@@ -191,6 +212,7 @@ final class DashboardMenuBarQuotaSection {
         let signature = [showAmount, showReset, autoSwitchLunaReserve]
         guard signature != lastQuotaVisibilitySignature else { return }
         lastQuotaVisibilitySignature = signature
+        quotaValueModeRow?.isHidden = !showAmount
         resetCountdownRow?.isHidden = !showAmount
         let showResetDetails = showAmount && showReset
         quotaWindowPreferenceRow?.isHidden = !showResetDetails
@@ -231,6 +253,30 @@ final class DashboardMenuBarQuotaSection {
             greaterThanOrEqualToConstant: max(minimumWidth, ceil(control.fittingSize.width))
         ).isActive = true
         control.toolTip = tr(.keyDashboardMenuBarPageQuotaDisplayPriorityDescription)
+        return control
+    }
+
+    private func makeQuotaValueModeControl(
+        value: MenuBarQuotaValueMode,
+        relay: DashboardPreferencePageRelay
+    ) -> NSPopUpButton {
+        let control = DashboardSettingsComponents.makePopUpButton(
+            identifier: DashboardMenuBarPage.quotaValueModeIdentifier,
+            items: MenuBarQuotaValueMode.allCases.map { mode in
+                DashboardSettingsComponents.PopUpItem(
+                    title: tr(mode == .remaining
+                        ? .keyDashboardMenuBarPageQuotaValueRemaining
+                        : .keyDashboardMenuBarPageQuotaValueUsed),
+                    representedObject: mode.rawValue
+                )
+            },
+            selectedIndex: MenuBarQuotaValueMode.allCases.firstIndex(of: value),
+            target: relay,
+            action: #selector(DashboardPreferencePageRelay.menuBarQuotaValueMode(_:))
+        )
+        control.widthAnchor.constraint(
+            greaterThanOrEqualToConstant: max(108, ceil(control.fittingSize.width))
+        ).isActive = true
         return control
     }
 

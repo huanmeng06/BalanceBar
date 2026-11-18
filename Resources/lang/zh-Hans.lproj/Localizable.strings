@@ -286,6 +286,10 @@
 "dashboard.menu.bar.page.quota_display_priority_description" = "选择菜单栏和“快速切换”菜单中优先显示 5 小时额度还是 7 日额度";
 "dashboard.menu.bar.page.five_hour_quota" = "5 小时额度";
 "dashboard.menu.bar.page.seven_day_quota" = "7 日额度";
+"dashboard.menu.bar.page.quota_value_mode" = "额度百分比";
+"dashboard.menu.bar.page.quota_value_mode_description" = "选择菜单栏和下拉菜单显示剩余百分比还是已用百分比";
+"dashboard.menu.bar.page.quota_value_remaining" = "剩余额度";
+"dashboard.menu.bar.page.quota_value_used" = "已用额度";
 "dashboard.menu.bar.page.quota_reset_display_mode" = "重置时间样式";
 "dashboard.menu.bar.page.quota_reset_display_mode_description" = "选择显示剩余时长、具体时间，或同时显示两者";
 "dashboard.menu.bar.page.quota_reset_display_remaining" = "剩余时长";
@@ -496,6 +500,8 @@
 "codex.banked_reset.confidence_medium" = "中";
 "codex.banked_reset.confidence_high" = "高";
 "dashboard.menu.page.progress_color_ranges" = "进度条颜色区间";
+"dashboard.menu.page.progress_color_editing_mode" = "编辑模式";
+"dashboard.menu.page.progress_color_ranges_used_description" = "拖动分界点，调整不同已用百分比对应的颜色";
 "dashboard.menu.page.progress_color_ranges_description" = "拖动分界点，调整不同剩余百分比对应的颜色";
 "dashboard.menu.page.displayed_colors" = "显示颜色";
 "dashboard.menu.page.displayed_colors_description" = "至少保留两种颜色";

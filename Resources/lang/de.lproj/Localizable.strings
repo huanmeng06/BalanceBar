@@ -286,6 +286,10 @@
 "dashboard.menu.bar.page.quota_display_priority_description" = "Auswählen, ob in der Menüleiste und im Menü „Schnellwechsel“ das 5-Stunden- oder das 7-Tage-Kontingent bevorzugt angezeigt wird";
 "dashboard.menu.bar.page.five_hour_quota" = "5-Stunden-Kontingent";
 "dashboard.menu.bar.page.seven_day_quota" = "7-Tage-Kontingent";
+"dashboard.menu.bar.page.quota_value_mode" = "Kontingent in Prozent";
+"dashboard.menu.bar.page.quota_value_mode_description" = "Wählen Sie, ob in der Menüleiste und im Dropdown-Menü der verbleibende oder der verbrauchte Anteil in Prozent angezeigt wird";
+"dashboard.menu.bar.page.quota_value_remaining" = "Verbleibendes Kontingent";
+"dashboard.menu.bar.page.quota_value_used" = "Verbrauchtes Kontingent";
 "dashboard.menu.bar.page.quota_reset_display_mode" = "Format der Rücksetzzeit";
 "dashboard.menu.bar.page.quota_reset_display_mode_description" = "Auswählen, ob die verbleibende Zeit, die genaue Rücksetzzeit oder beides angezeigt wird";
 "dashboard.menu.bar.page.quota_reset_display_remaining" = "Verbleibende Zeit";
@@ -496,6 +500,8 @@
 "codex.banked_reset.confidence_medium" = "Mittel";
 "codex.banked_reset.confidence_high" = "Hoch";
 "dashboard.menu.page.progress_color_ranges" = "Farbbereiche der Fortschrittsleiste";
+"dashboard.menu.page.progress_color_editing_mode" = "Bearbeitungsmodus";
+"dashboard.menu.page.progress_color_ranges_used_description" = "Ziehen Sie die Grenzen, um die Farben je nach verbrauchtem Anteil anzupassen";
 "dashboard.menu.page.progress_color_ranges_description" = "Ziehe die Schwellenwerte, um die Farbe für jeden verbleibenden Prozentbereich festzulegen";
 "dashboard.menu.page.displayed_colors" = "Angezeigte Farben";
 "dashboard.menu.page.displayed_colors_description" = "Mindestens zwei Farben müssen aktiviert bleiben";

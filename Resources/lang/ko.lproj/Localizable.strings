@@ -286,6 +286,10 @@
 "dashboard.menu.bar.page.quota_display_priority_description" = "메뉴 막대와 ‘빠른 전환’ 메뉴에서 5시간 할당량과 7일 할당량 중 어느 것을 우선 표시할지 선택하세요";
 "dashboard.menu.bar.page.five_hour_quota" = "5시간 할당량";
 "dashboard.menu.bar.page.seven_day_quota" = "7일 할당량";
+"dashboard.menu.bar.page.quota_value_mode" = "한도 비율";
+"dashboard.menu.bar.page.quota_value_mode_description" = "메뉴 막대와 드롭다운 메뉴에 남은 비율과 사용한 비율 중 어느 쪽을 표시할지 선택합니다";
+"dashboard.menu.bar.page.quota_value_remaining" = "남은 한도";
+"dashboard.menu.bar.page.quota_value_used" = "사용한 한도";
 "dashboard.menu.bar.page.quota_reset_display_mode" = "재설정 시간 표시 방식";
 "dashboard.menu.bar.page.quota_reset_display_mode_description" = "남은 시간, 정확한 재설정 시간 또는 둘 다 표시할지 선택하세요";
 "dashboard.menu.bar.page.quota_reset_display_remaining" = "남은 시간";
@@ -496,6 +500,8 @@
 "codex.banked_reset.confidence_medium" = "중간";
 "codex.banked_reset.confidence_high" = "높음";
 "dashboard.menu.page.progress_color_ranges" = "진행률 막대 색상 범위";
+"dashboard.menu.page.progress_color_editing_mode" = "편집 모드";
+"dashboard.menu.page.progress_color_ranges_used_description" = "경계점을 드래그하여 사용한 비율에 따른 색상을 조정합니다";
 "dashboard.menu.page.progress_color_ranges_description" = "임계값을 드래그하여 남은 백분율 구간별 색상을 조정합니다";
 "dashboard.menu.page.displayed_colors" = "표시 색상";
 "dashboard.menu.page.displayed_colors_description" = "색상을 두 개 이상 활성화하세요";

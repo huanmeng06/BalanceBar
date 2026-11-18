@@ -3629,6 +3629,16 @@ final class DashboardPreferencePagesTests: XCTestCase {
             defer: false
         )
         defer { window.orderOut(nil) }
+        // Measure the document at an exact width without letting AppKit widen
+        // the window's root content view to accommodate another settings row.
+        let viewport = NSView(frame: NSRect(x: 0, y: 0, width: 720, height: 1400))
+        window.contentView?.addSubview(viewport)
+        viewport.addSubview(page)
+        NSLayoutConstraint.activate([
+            page.leadingAnchor.constraint(equalTo: viewport.leadingAnchor),
+            page.trailingAnchor.constraint(equalTo: viewport.trailingAnchor),
+            page.topAnchor.constraint(equalTo: viewport.topAnchor)
+        ])
 
         func leftoverLabelWidth() -> CGFloat {
             let available = max(0, row.bounds.width - SettingsRowView.horizontalPadding * 2)
@@ -3636,7 +3646,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
         }
 
         func layout(at width: CGFloat) {
-            pinMenuPage(page, in: window, width: width)
+            viewport.setFrameSize(NSSize(width: width, height: 1400))
+            for _ in 0..<3 { settleNativeSettingsLayout(page, window: window) }
+            XCTAssertEqual(row.bounds.width, width, accuracy: 1)
         }
 
         func assertLabelsStayReadable(at width: CGFloat) {
@@ -3703,7 +3715,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(
             row.contentStack.orientation,
             .vertical,
-            "narrow Displayed Colors must move the color group below the labels"
+            "narrow Displayed Colors must move the color group below the labels; row=\(row.bounds.width), page=\(page.bounds.width), accessory=\(adaptive.naturalAccessoryWidth), label space=\(leftoverLabelWidth())"
         )
         XCTAssertGreaterThanOrEqual(
             row.labelsStack.bounds.width + 0.5,
@@ -4291,9 +4303,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     thresholdChanges.append(value)
                     preferences.balanceDisplayThreshold = value
                 },
-                onQuotaProgressColorConfigurationChanged: { configuration in
+                onQuotaProgressColorConfigurationChanged: { mode, configuration in
                     colorChanges.append(configuration)
-                    preferences.quotaProgressColorConfiguration = configuration
+                    preferences.setQuotaProgressColorConfiguration(configuration, for: mode)
                 }
             ))
             defer {
@@ -4453,6 +4465,120 @@ final class DashboardPreferencePagesTests: XCTestCase {
         }
     }
 
+    func testQuotaColorPickerEditsOnlySelectedPaletteWithoutChangingDisplayMode() throws {
+        let suite = "DashboardPreferencePagesTests.QuotaColorPicker.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.menuBarQuotaValueMode = .used
+        let remaining = QuotaProgressColorConfiguration.default.settingBoundary(after: .red, to: 15)
+        preferences.quotaProgressColorConfiguration = remaining
+        let controller = DashboardMenuPage()
+        defer { controller.teardown() }
+        var editedModes: [MenuBarQuotaValueMode] = []
+        let page = controller.make(.init(
+            preferences: preferences, relay: DashboardPreferencePageRelay(),
+            makeStatusLinksEditor: {
+                StatusLinksEditorHostingView(links: [], onChange: { _, _, _ in }, onAdd: { _ in }, onRemove: { _ in }, onReset: {})
+            },
+            onBalanceDisplayThresholdChanged: { _ in },
+            onQuotaProgressColorConfigurationChanged: { mode, configuration in
+                editedModes.append(mode)
+                preferences.setQuotaProgressColorConfiguration(configuration, for: mode)
+            }
+        ))
+        let views = descendants(of: page)
+        let picker = try XCTUnwrap(views.compactMap { $0 as? NSPopUpButton }.first {
+            $0.identifier?.rawValue == "quotaProgressColorEditingMode"
+        })
+        let slider = try XCTUnwrap(views.compactMap { $0 as? QuotaColorThresholdSlider }.first)
+        let button = try XCTUnwrap(views.compactMap { $0 as? NSButton }.first { $0.title == tr(.keyCommonRestoreDefaults) })
+        let green = try XCTUnwrap(views.compactMap { $0 as? NSButton }.first { $0.identifier?.rawValue == "quotaProgressColor.green" })
+        func select(_ index: Int) throws {
+            picker.selectItem(at: index)
+            XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(picker.action), to: picker.target, from: picker))
+        }
+        XCTAssertEqual(picker.indexOfSelectedItem, 1)
+        XCTAssertEqual(slider.axis, .used)
+        try select(0)
+        controller.refresh(preferences: preferences)
+        XCTAssertEqual(picker.indexOfSelectedItem, 0)
+        XCTAssertEqual(slider.axis, .remaining)
+        XCTAssertEqual(slider.configuration, remaining)
+        XCTAssertEqual(preferences.menuBarQuotaValueMode, .used)
+        XCTAssertTrue(editedModes.isEmpty)
+        try select(1)
+        slider.applyRawThumbValueForTesting(80, after: .red)
+        XCTAssertEqual(preferences.quotaProgressColorConfiguration(for: .used).redUpperBound, 20)
+        green.state = .off
+        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(green.action), to: green.target, from: green))
+        XCTAssertFalse(preferences.quotaProgressColorConfiguration(for: .used).enabledColors.contains(.green))
+        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(button.action), to: button.target, from: button))
+        XCTAssertEqual(preferences.quotaProgressColorConfiguration(for: .used), .default)
+        XCTAssertEqual(preferences.quotaProgressColorConfiguration, remaining)
+        XCTAssertEqual(editedModes, [.used, .used, .used])
+    }
+
+    func testQuotaColorEditControlsFitNarrowGermanAndRussianLayouts() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        let suite = "DashboardPreferencePagesTests.QuotaColorWidth.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.menuBarQuotaValueMode = .used
+        for language in [AppLanguage.german, .russian] {
+            AppLanguage.selected = language
+            let controller = DashboardMenuPage()
+            defer { controller.teardown() }
+            let page = controller.make(.init(
+                preferences: preferences, relay: DashboardPreferencePageRelay(),
+                makeStatusLinksEditor: {
+                    StatusLinksEditorHostingView(links: [], onChange: { _, _, _ in }, onAdd: { _ in }, onRemove: { _ in }, onReset: {})
+                },
+                onBalanceDisplayThresholdChanged: { _ in }
+            ))
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 516, height: 900),
+                                  styleMask: .borderless, backing: .buffered, defer: false)
+            defer { window.contentView = nil }
+            pinMenuPage(page, in: window, width: 516, height: 900)
+            let picker = try XCTUnwrap(descendants(of: page).compactMap { $0 as? NSPopUpButton }.first {
+                $0.identifier?.rawValue == "quotaProgressColorEditingMode"
+            })
+            let controls = try XCTUnwrap(picker.superview as? NSStackView)
+            let reset = try XCTUnwrap(controls.arrangedSubviews.last as? NSButton)
+            let row = try XCTUnwrap(controls.superview)
+            let detail = try XCTUnwrap(descendants(of: row).compactMap { $0 as? NSTextField }.first {
+                $0.stringValue == tr(.keyDashboardMenuPageProgressColorRangesUsedDescription)
+            })
+            let slider = try XCTUnwrap(descendants(of: row).compactMap { $0 as? QuotaColorThresholdSlider }.first)
+            let initialControlsWidth = controls.bounds.width
+            func assertLayout() {
+                let detailFrame = detail.convert(detail.bounds, to: row)
+                let pickerFrame = picker.convert(picker.bounds, to: row)
+                let resetFrame = reset.convert(reset.bounds, to: row)
+                XCTAssertLessThan(detailFrame.maxX, pickerFrame.minX)
+                XCTAssertEqual(resetFrame.minX - pickerFrame.maxX, 8, accuracy: 1)
+                XCTAssertEqual(resetFrame.maxX, row.bounds.maxX - SettingsRowView.horizontalPadding, accuracy: 1)
+                XCTAssertEqual(controls.bounds.width, initialControlsWidth, accuracy: 1)
+                XCTAssertGreaterThan(detailFrame.height, 0)
+            }
+            for width: CGFloat in [516, 960, 516] {
+                window.setContentSize(NSSize(width: width, height: 900))
+                window.layoutIfNeeded()
+                page.layoutSubtreeIfNeeded()
+                assertLayout()
+                let detailFrame = detail.convert(detail.bounds, to: row)
+                slider.applyRawThumbValueForTesting(80, after: .red)
+                slider.applyRawThumbValueForTesting(90, after: .red)
+                window.layoutIfNeeded()
+                page.layoutSubtreeIfNeeded()
+                XCTAssertEqual(detail.convert(detail.bounds, to: row), detailFrame)
+                assertLayout()
+            }
+        }
+    }
+
     func testProgressBarMasterSwitchHidesDependentRowsWithoutResettingConfiguration() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
@@ -4481,9 +4607,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 StatusLinksEditorHostingView(links: [], onChange: { _, _, _ in }, onAdd: { _ in }, onRemove: { _ in }, onReset: {})
             },
             onBalanceDisplayThresholdChanged: { _ in },
-            onQuotaProgressColorConfigurationChanged: { configuration in
+            onQuotaProgressColorConfigurationChanged: { mode, configuration in
                 colorChanges.append(configuration)
-                preferences.quotaProgressColorConfiguration = configuration
+                preferences.setQuotaProgressColorConfiguration(configuration, for: mode)
             }
         ))
         page.frame = NSRect(x: 0, y: 0, width: 516, height: 900)
@@ -4585,7 +4711,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
         XCTAssertEqual(resetButton.controlSize, .regular)
         XCTAssertEqual(resetButton.bezelStyle, .rounded)
-        let row = try XCTUnwrap(resetButton.superview)
+        let row = try XCTUnwrap(resetButton.superview?.superview)
         let title = try XCTUnwrap(
             descendants(of: row)
                 .compactMap { $0 as? NSTextField }
@@ -4684,7 +4810,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 .compactMap { $0 as? NSButton }
                 .first { $0.title == tr(.keyCommonRestoreDefaults) }
         )
-        let dedicatedRow = try XCTUnwrap(resetButton.superview)
+        let dedicatedRow = try XCTUnwrap(resetButton.superview?.superview)
         let dedicatedTitle = try XCTUnwrap(
             descendants(of: dedicatedRow)
                 .compactMap { $0 as? NSTextField }
@@ -6143,6 +6269,11 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let autoSwitchRow = try XCTUnwrap(SettingsRowView.enclosing(autoSwitch))
         let quotaWindowRow = try XCTUnwrap(SettingsRowView.enclosing(quotaWindowPopup))
         let lunaReserveResetTimeRow = try XCTUnwrap(SettingsRowView.enclosing(lunaReserveResetTimePopup))
+        let quotaValueRow = try XCTUnwrap(
+            descendants(of: page).compactMap { $0 as? NSPopUpButton }
+                .first { $0.identifier?.rawValue == DashboardMenuBarPage.quotaValueModeIdentifier }
+                .flatMap(SettingsRowView.enclosing)
+        )
         let quotaResetRow = try XCTUnwrap(SettingsRowView.enclosing(quotaResetPopup))
         let quotaSection = try XCTUnwrap(SettingsSectionView.enclosing(amountRow))
         let card = quotaSection.cardView
@@ -6150,12 +6281,13 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertTrue(
             zip(
                 rowViews,
-                [amountRow, resetRow, quotaWindowRow, quotaResetRow, autoSwitchRow, lunaReserveResetTimeRow]
+                [amountRow, resetRow, quotaWindowRow, quotaValueRow, quotaResetRow, autoSwitchRow, lunaReserveResetTimeRow]
             )
                 .allSatisfy { $0.0 === $0.1 }
         )
+        XCTAssertEqual(rowViews.count, 7)
         let separators = quotaSection.separators
-        XCTAssertEqual(separators.count, 5)
+        XCTAssertEqual(separators.count, 6)
 
         func assertCardLayout() {
             window.layoutIfNeeded()
@@ -6164,7 +6296,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             assertNativeSectionCardLayout(quotaSection)
         }
 
-        XCTAssertTrue([amountRow, resetRow, quotaWindowRow, autoSwitchRow, quotaResetRow].allSatisfy { !$0.isHidden })
+        XCTAssertTrue([amountRow, resetRow, quotaWindowRow, quotaValueRow, autoSwitchRow, quotaResetRow].allSatisfy { !$0.isHidden })
         XCTAssertTrue(lunaReserveResetTimeRow.isHidden)
         XCTAssertTrue(separators.dropLast().allSatisfy { !$0.isHidden })
         XCTAssertTrue(separators.last?.isHidden == true)
@@ -6196,6 +6328,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         relay.toggle(amountSwitch)
         XCTAssertFalse(amountRow.isHidden)
         XCTAssertTrue(resetRow.isHidden)
+        XCTAssertTrue(quotaValueRow.isHidden)
         XCTAssertTrue(quotaWindowRow.isHidden)
         XCTAssertTrue(autoSwitchRow.isHidden)
         XCTAssertTrue(lunaReserveResetTimeRow.isHidden)
@@ -6207,6 +6340,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         amountSwitch.state = .on
         relay.toggle(amountSwitch)
         XCTAssertFalse(resetRow.isHidden)
+        XCTAssertFalse(quotaValueRow.isHidden)
         XCTAssertFalse(quotaWindowRow.isHidden)
         XCTAssertFalse(autoSwitchRow.isHidden)
         XCTAssertTrue(lunaReserveResetTimeRow.isHidden)
@@ -6218,6 +6352,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         relay.toggle(resetSwitch)
         XCTAssertFalse(amountRow.isHidden)
         XCTAssertFalse(resetRow.isHidden)
+        XCTAssertFalse(quotaValueRow.isHidden)
         XCTAssertTrue(quotaWindowRow.isHidden)
         XCTAssertFalse(autoSwitchRow.isHidden)
         XCTAssertTrue(lunaReserveResetTimeRow.isHidden)
@@ -6225,13 +6360,14 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertFalse(separators[0].isHidden)
         XCTAssertFalse(separators[1].isHidden)
         XCTAssertTrue(separators[2].isHidden)
-        XCTAssertTrue(separators[3].isHidden)
+        XCTAssertFalse(separators[3].isHidden)
         XCTAssertTrue(separators[4].isHidden)
+        XCTAssertTrue(separators[5].isHidden)
         assertCardLayout()
 
         resetSwitch.state = .on
         relay.toggle(resetSwitch)
-        XCTAssertTrue([amountRow, resetRow, quotaWindowRow, autoSwitchRow, quotaResetRow].allSatisfy { !$0.isHidden })
+        XCTAssertTrue([amountRow, resetRow, quotaWindowRow, quotaValueRow, autoSwitchRow, quotaResetRow].allSatisfy { !$0.isHidden })
         XCTAssertTrue(lunaReserveResetTimeRow.isHidden)
         XCTAssertTrue(separators.dropLast().allSatisfy { !$0.isHidden })
         XCTAssertTrue(separators.last?.isHidden == true)
@@ -6369,7 +6505,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             )
             let quotaSection = try XCTUnwrap(SettingsSectionView.enclosing(selectorRow))
             let quotaRows = quotaSection.contentViews
-            XCTAssertEqual(quotaRows.count, 4)
+            XCTAssertEqual(quotaRows.count, 5)
             XCTAssertTrue(
                 zip(
                     quotaRows,
@@ -6390,12 +6526,18 @@ final class DashboardPreferencePagesTests: XCTestCase {
                         try XCTUnwrap(
                             descendants(of: page)
                                 .compactMap { $0 as? NSPopUpButton }
+                                .first { $0.identifier?.rawValue == DashboardMenuBarPage.quotaValueModeIdentifier }
+                                .flatMap(SettingsRowView.enclosing)
+                        ),
+                        try XCTUnwrap(
+                            descendants(of: page)
+                                .compactMap { $0 as? NSPopUpButton }
                                 .first { $0.identifier?.rawValue == DashboardMenuBarPage.quotaResetDisplayModeIdentifier }
                                 .flatMap(SettingsRowView.enclosing)
                         )
                     ]
                 ).allSatisfy { $0.0 === $0.1 },
-                "quota rows follow usage, reset countdown, priority, reset display without Reserve controls"
+                "quota rows follow usage, reset countdown, priority, percentage, reset display without Reserve controls"
             )
             XCTAssertTrue(
                 descendants(of: selectorRow)
@@ -6472,6 +6614,46 @@ final class DashboardPreferencePagesTests: XCTestCase {
             )
             window.contentView = nil
         }
+    }
+
+    func testQuotaValueModeSelectorRefreshesPreviewAndHidesWhenAmountIsOff() throws {
+        let suite = "DashboardPreferencePagesTests.QuotaValueMode.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        let snapshot = Snapshot.official("Claude", 72.6, "5-hour", "1h", Date())
+        let controller = DashboardMenuBarPage()
+        let relay = DashboardPreferencePageRelay()
+        relay.onMenuBarQuotaValueModeChanged = { mode in
+            preferences.menuBarQuotaValueMode = mode
+            controller.refresh(snapshot: snapshot, preferences: preferences, menuBarSnapshot: { $0 }, iconImage: nil)
+        }
+        let page = controller.make(.init(
+            preferences: preferences, snapshot: snapshot, menuBarSnapshot: { $0 }, iconImage: nil, relay: relay
+        ))
+        let popup = try XCTUnwrap(descendants(of: page).compactMap { $0 as? NSPopUpButton }.first {
+            $0.identifier?.rawValue == DashboardMenuBarPage.quotaValueModeIdentifier
+        })
+        let primary = try XCTUnwrap(descendants(of: page).compactMap { $0 as? NSTextField }.first {
+            $0.identifier?.rawValue == DashboardMenuBarPage.previewPrimaryIdentifier
+        })
+        let row = try XCTUnwrap(SettingsRowView.enclosing(popup))
+        XCTAssertEqual(row.titleLabel.stringValue, tr(.keyDashboardMenuBarPageQuotaValueMode))
+        XCTAssertEqual(row.detailLabel.stringValue, tr(.keyDashboardMenuBarPageQuotaValueModeDescription))
+        XCTAssertEqual(popup.itemTitles, [tr(.keyDashboardMenuBarPageQuotaValueRemaining), tr(.keyDashboardMenuBarPageQuotaValueUsed)])
+        XCTAssertEqual(primary.stringValue, "72%")
+        XCTAssertFalse(row.isHidden)
+
+        popup.selectItem(at: 1)
+        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(popup.action), to: popup.target, from: popup))
+        XCTAssertEqual(preferences.menuBarQuotaValueMode, .used)
+        XCTAssertEqual(primary.stringValue, "28%")
+
+        preferences.showMenuBarAmount = false
+        preferences.menuBarQuotaValueMode = .remaining
+        controller.refresh(snapshot: snapshot, preferences: preferences, menuBarSnapshot: { $0 }, iconImage: nil)
+        XCTAssertTrue(row.isHidden)
+        XCTAssertEqual(popup.selectedItem?.representedObject as? String, "remaining")
     }
 
     func testQuotaResetDisplayModeSelectorUsesLocalizedOptionsPersistsAndRefreshesPreview() throws {

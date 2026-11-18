@@ -921,6 +921,17 @@ final class DashboardPageSearchTests: XCTestCase {
         XCTAssertNil(DashboardSettingsSearchCatalog.firstMatchingSection(query: "zzznomatch"))
     }
 
+    func testMenuBarQuotaValueOptionsAreSearchable() {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
+        let titles = DashboardSettingsSearchCatalog.titles(for: .menuBar)
+        XCTAssertTrue(titles.contains("额度百分比"))
+        XCTAssertTrue(titles.contains("选择菜单栏和下拉菜单显示剩余百分比还是已用百分比"))
+        XCTAssertTrue(titles.contains { $0.contains("已用") })
+        XCTAssertTrue(titles.contains { $0.contains("剩余") })
+    }
+
     func testSearchMatcherUsesNativeLocalizedSubstringSemantics() {
         XCTAssertTrue(DashboardPageSearch.matches("Language", query: "language"))
         XCTAssertTrue(DashboardPageSearch.matches("Menu Bar Font Size", query: "Font"))
@@ -4012,12 +4023,13 @@ extension DashboardPageSearchTests {
                 isSortAlphabetically: { false }, setSortAlphabetically: { _ in }, onToggle: { _, _ in },
                 onLaunchAtLogin: { _ in }, onLaunchWithChatGPT: { _ in }, onOpenLaunchWithChatGPTSettings: {},
                 onInterval: { _, _ in }, onBalanceDisplayThresholdChanged: { _ in },
-                onQuotaProgressColorConfigurationChanged: { _ in }, onOffsetAdjust: { _, _ in },
+                onQuotaProgressColorConfigurationChanged: { _, _ in }, onOffsetAdjust: { _, _ in },
                 onOffsetValue: { _, _ in }, onOffsetValueEnded: { _, _ in }, onOffsetReset: { _ in },
                 onLanguage: { _ in }, onMenuBarFontSizePreset: { _ in }, onMenuBarIconSizePreset: { _ in },
                 onMenuBarIconDisplayModeChanged: { _ in }, onMenuBarIconDisplayDelayChanged: { _ in },
                 onMenuBarRightClickActionChanged: { _ in }, onMenuBarAnimationModeChanged: { _ in },
                 onMenuBarAnimationFrameRateChanged: { _ in }, onMenuBarQuotaWindowPreferenceChanged: { _ in },
+                onMenuBarQuotaValueModeChanged: { _ in },
                 onMenuBarQuotaResetDisplayModeChanged: { _ in }, onMenuBarLunaReserveResetTimeModeChanged: { _ in },
                 onLunaReserveDisplayModeChanged: { _ in }, onBankedResetDisplayModeChanged: { _ in },
                 onUpdateChannelChanged: { _ in }, onOpenCCSwitch: {}, onOpenSystemMenuBarSettings: {},
