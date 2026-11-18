@@ -602,6 +602,8 @@ enum DashboardSettingsSearchCatalog {
                 .keyDashboardMenuPageShowQuotaProgressBar,
                 .keyDashboardMenuPageProgressColorRanges,
                 .keyDashboardMenuPageProgressColorEditingMode,
+                .keyDashboardMenuBarPageQuotaValueRemaining,
+                .keyDashboardMenuBarPageQuotaValueUsed,
                 .keyDashboardMenuPageProgressColorRangesUsedDescription,
                 .keyDashboardMenuPageDisplayedColors,
                 .keyDashboardMenuPageLowBalanceDisplayThreshold,

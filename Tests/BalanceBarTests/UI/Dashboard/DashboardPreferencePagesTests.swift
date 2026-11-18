@@ -3629,6 +3629,16 @@ final class DashboardPreferencePagesTests: XCTestCase {
             defer: false
         )
         defer { window.orderOut(nil) }
+        // Measure the document at an exact width without letting AppKit widen
+        // the window's root content view to accommodate another settings row.
+        let viewport = NSView(frame: NSRect(x: 0, y: 0, width: 720, height: 1400))
+        window.contentView?.addSubview(viewport)
+        viewport.addSubview(page)
+        NSLayoutConstraint.activate([
+            page.leadingAnchor.constraint(equalTo: viewport.leadingAnchor),
+            page.trailingAnchor.constraint(equalTo: viewport.trailingAnchor),
+            page.topAnchor.constraint(equalTo: viewport.topAnchor)
+        ])
 
         func leftoverLabelWidth() -> CGFloat {
             let available = max(0, row.bounds.width - SettingsRowView.horizontalPadding * 2)
@@ -3636,7 +3646,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
         }
 
         func layout(at width: CGFloat) {
-            pinMenuPage(page, in: window, width: width)
+            viewport.setFrameSize(NSSize(width: width, height: 1400))
+            for _ in 0..<3 { settleNativeSettingsLayout(page, window: window) }
+            XCTAssertEqual(row.bounds.width, width, accuracy: 1)
         }
 
         func assertLabelsStayReadable(at width: CGFloat) {
@@ -3703,7 +3715,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(
             row.contentStack.orientation,
             .vertical,
-            "narrow Displayed Colors must move the color group below the labels"
+            "narrow Displayed Colors must move the color group below the labels; row=\(row.bounds.width), page=\(page.bounds.width), accessory=\(adaptive.naturalAccessoryWidth), label space=\(leftoverLabelWidth())"
         )
         XCTAssertGreaterThanOrEqual(
             row.labelsStack.bounds.width + 0.5,
@@ -6257,6 +6269,11 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let autoSwitchRow = try XCTUnwrap(SettingsRowView.enclosing(autoSwitch))
         let quotaWindowRow = try XCTUnwrap(SettingsRowView.enclosing(quotaWindowPopup))
         let lunaReserveResetTimeRow = try XCTUnwrap(SettingsRowView.enclosing(lunaReserveResetTimePopup))
+        let quotaValueRow = try XCTUnwrap(
+            descendants(of: page).compactMap { $0 as? NSPopUpButton }
+                .first { $0.identifier?.rawValue == DashboardMenuBarPage.quotaValueModeIdentifier }
+                .flatMap(SettingsRowView.enclosing)
+        )
         let quotaResetRow = try XCTUnwrap(SettingsRowView.enclosing(quotaResetPopup))
         let quotaSection = try XCTUnwrap(SettingsSectionView.enclosing(amountRow))
         let card = quotaSection.cardView
@@ -6264,12 +6281,13 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertTrue(
             zip(
                 rowViews,
-                [amountRow, resetRow, quotaWindowRow, quotaResetRow, autoSwitchRow, lunaReserveResetTimeRow]
+                [amountRow, resetRow, quotaWindowRow, quotaValueRow, quotaResetRow, autoSwitchRow, lunaReserveResetTimeRow]
             )
                 .allSatisfy { $0.0 === $0.1 }
         )
+        XCTAssertEqual(rowViews.count, 7)
         let separators = quotaSection.separators
-        XCTAssertEqual(separators.count, 5)
+        XCTAssertEqual(separators.count, 6)
 
         func assertCardLayout() {
             window.layoutIfNeeded()
@@ -6278,7 +6296,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             assertNativeSectionCardLayout(quotaSection)
         }
 
-        XCTAssertTrue([amountRow, resetRow, quotaWindowRow, autoSwitchRow, quotaResetRow].allSatisfy { !$0.isHidden })
+        XCTAssertTrue([amountRow, resetRow, quotaWindowRow, quotaValueRow, autoSwitchRow, quotaResetRow].allSatisfy { !$0.isHidden })
         XCTAssertTrue(lunaReserveResetTimeRow.isHidden)
         XCTAssertTrue(separators.dropLast().allSatisfy { !$0.isHidden })
         XCTAssertTrue(separators.last?.isHidden == true)
@@ -6310,6 +6328,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         relay.toggle(amountSwitch)
         XCTAssertFalse(amountRow.isHidden)
         XCTAssertTrue(resetRow.isHidden)
+        XCTAssertTrue(quotaValueRow.isHidden)
         XCTAssertTrue(quotaWindowRow.isHidden)
         XCTAssertTrue(autoSwitchRow.isHidden)
         XCTAssertTrue(lunaReserveResetTimeRow.isHidden)
@@ -6321,6 +6340,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         amountSwitch.state = .on
         relay.toggle(amountSwitch)
         XCTAssertFalse(resetRow.isHidden)
+        XCTAssertFalse(quotaValueRow.isHidden)
         XCTAssertFalse(quotaWindowRow.isHidden)
         XCTAssertFalse(autoSwitchRow.isHidden)
         XCTAssertTrue(lunaReserveResetTimeRow.isHidden)
@@ -6332,6 +6352,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         relay.toggle(resetSwitch)
         XCTAssertFalse(amountRow.isHidden)
         XCTAssertFalse(resetRow.isHidden)
+        XCTAssertFalse(quotaValueRow.isHidden)
         XCTAssertTrue(quotaWindowRow.isHidden)
         XCTAssertFalse(autoSwitchRow.isHidden)
         XCTAssertTrue(lunaReserveResetTimeRow.isHidden)
@@ -6339,13 +6360,14 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertFalse(separators[0].isHidden)
         XCTAssertFalse(separators[1].isHidden)
         XCTAssertTrue(separators[2].isHidden)
-        XCTAssertTrue(separators[3].isHidden)
+        XCTAssertFalse(separators[3].isHidden)
         XCTAssertTrue(separators[4].isHidden)
+        XCTAssertTrue(separators[5].isHidden)
         assertCardLayout()
 
         resetSwitch.state = .on
         relay.toggle(resetSwitch)
-        XCTAssertTrue([amountRow, resetRow, quotaWindowRow, autoSwitchRow, quotaResetRow].allSatisfy { !$0.isHidden })
+        XCTAssertTrue([amountRow, resetRow, quotaWindowRow, quotaValueRow, autoSwitchRow, quotaResetRow].allSatisfy { !$0.isHidden })
         XCTAssertTrue(lunaReserveResetTimeRow.isHidden)
         XCTAssertTrue(separators.dropLast().allSatisfy { !$0.isHidden })
         XCTAssertTrue(separators.last?.isHidden == true)
@@ -6483,7 +6505,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             )
             let quotaSection = try XCTUnwrap(SettingsSectionView.enclosing(selectorRow))
             let quotaRows = quotaSection.contentViews
-            XCTAssertEqual(quotaRows.count, 4)
+            XCTAssertEqual(quotaRows.count, 5)
             XCTAssertTrue(
                 zip(
                     quotaRows,
@@ -6504,12 +6526,18 @@ final class DashboardPreferencePagesTests: XCTestCase {
                         try XCTUnwrap(
                             descendants(of: page)
                                 .compactMap { $0 as? NSPopUpButton }
+                                .first { $0.identifier?.rawValue == DashboardMenuBarPage.quotaValueModeIdentifier }
+                                .flatMap(SettingsRowView.enclosing)
+                        ),
+                        try XCTUnwrap(
+                            descendants(of: page)
+                                .compactMap { $0 as? NSPopUpButton }
                                 .first { $0.identifier?.rawValue == DashboardMenuBarPage.quotaResetDisplayModeIdentifier }
                                 .flatMap(SettingsRowView.enclosing)
                         )
                     ]
                 ).allSatisfy { $0.0 === $0.1 },
-                "quota rows follow usage, reset countdown, priority, reset display without Reserve controls"
+                "quota rows follow usage, reset countdown, priority, percentage, reset display without Reserve controls"
             )
             XCTAssertTrue(
                 descendants(of: selectorRow)
