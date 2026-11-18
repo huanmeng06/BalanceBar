@@ -107,6 +107,12 @@
 "provider.refresh.coordinator.the_balance_response_could_not_be_parsed" = "Не удалось разобрать ответ о балансе";
 "provider.refresh.coordinator.official_value_local_sign_in_credentials_were_not_found" = "Официальный аккаунт %1$@: локальные учетные данные для входа не найдены";
 "provider.refresh.coordinator.official_value_value" = "Официальный аккаунт %1$@: %2$@";
+"provider.refresh.coordinator.official_possible_proxy" = "%1$@. Возможно, нужен прокси.";
+"provider.refresh.coordinator.official_rate_limited" = "Официальный сервис временно ограничивает запросы (HTTP 429). BalanceBar повторит попытку автоматически позже.";
+"provider.refresh.coordinator.official_rate_limited_until" = "Официальный сервис временно ограничивает запросы (HTTP 429). BalanceBar повторит попытку автоматически после %1$@.";
+"provider.refresh.coordinator.official_http_error" = "Не удалось запросить официальную квоту %1$@ (HTTP %2$@).";
+"provider.refresh.coordinator.official_server_error" = "Официальный сервис временно недоступен (HTTP %1$@). BalanceBar повторит попытку автоматически позже.";
+"provider.refresh.coordinator.official_invalid_response" = "Формат ответа официального сервиса не распознан. Возможно, нужно обновить BalanceBar.";
 "provider.refresh.coordinator.official_value_the_quota_endpoint_returned_an_error" = "Официальный аккаунт %1$@: эндпоинт квоты вернул ошибку";
 "provider.refresh.coordinator.network_request_failed" = "Сетевой запрос не выполнен";
 "provider.refresh.coordinator.network_request_timed_out" = "Сетевой запрос превысил время ожидания";

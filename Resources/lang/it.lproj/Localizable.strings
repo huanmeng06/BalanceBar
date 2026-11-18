@@ -107,6 +107,12 @@
 "provider.refresh.coordinator.the_balance_response_could_not_be_parsed" = "Impossibile analizzare la risposta del saldo";
 "provider.refresh.coordinator.official_value_local_sign_in_credentials_were_not_found" = "Account ufficiale %1$@: le credenziali di accesso locali non sono state trovate";
 "provider.refresh.coordinator.official_value_value" = "Account ufficiale %1$@: %2$@";
+"provider.refresh.coordinator.official_possible_proxy" = "%1$@. Potrebbe essere necessario un proxy.";
+"provider.refresh.coordinator.official_rate_limited" = "Il servizio ufficiale limita temporaneamente le richieste (HTTP 429). BalanceBar riproverà automaticamente più tardi.";
+"provider.refresh.coordinator.official_rate_limited_until" = "Il servizio ufficiale limita temporaneamente le richieste (HTTP 429). BalanceBar riproverà automaticamente dopo le %1$@.";
+"provider.refresh.coordinator.official_http_error" = "Richiesta della quota ufficiale di %1$@ non riuscita (HTTP %2$@).";
+"provider.refresh.coordinator.official_server_error" = "Il servizio ufficiale è temporaneamente non disponibile (HTTP %1$@). BalanceBar riproverà automaticamente più tardi.";
+"provider.refresh.coordinator.official_invalid_response" = "Il formato della risposta ufficiale non è riconosciuto. Potrebbe essere necessario aggiornare BalanceBar.";
 "provider.refresh.coordinator.official_value_the_quota_endpoint_returned_an_error" = "Account ufficiale %1$@: l'endpoint della quota ha restituito un errore";
 "provider.refresh.coordinator.network_request_failed" = "Richiesta di rete non riuscita";
 "provider.refresh.coordinator.network_request_timed_out" = "La richiesta di rete è scaduta";

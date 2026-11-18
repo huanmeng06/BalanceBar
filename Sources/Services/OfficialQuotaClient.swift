@@ -13,28 +13,15 @@ enum OfficialQuotaClientError: Error {
     /// Claude only: the egress guard kept the request on this machine (Issue #686).
     case egressGuard(ClaudeEgressGuardBlock)
     case transport(OfficialQuotaTransportError)
-    case httpStatus(statusCode: Int, dataSize: Int)
+    case httpStatus(statusCode: Int, dataSize: Int, retryAt: Date? = nil)
     case invalidJSON(dataSize: Int)
     case unsupportedFormat(dataSize: Int)
 }
 
-enum OfficialQuotaTransportError: Error {
+enum OfficialQuotaTransportError: Error, Equatable {
     case urlError(URLError.Code)
     case possibleProxy(URLError.Code)
     case unknown
-}
-
-extension OfficialQuotaTransportError: LocalizedError {
-    var errorDescription: String? {
-        switch self {
-        case .urlError(let code):
-            return URLError(code).localizedDescription
-        case .possibleProxy(let code):
-            return "Possible proxy required: \(URLError(code).localizedDescription)"
-        case .unknown:
-            return "The network request failed"
-        }
-    }
 }
 
 struct OfficialQuotaResult {
@@ -147,6 +134,12 @@ final class OfficialQuotaClient {
     /// Keeps request cleanup independent from the client instance. A task can
     /// finish after its client has been released without retaining UI state.
     private final class InFlightRegistry {
+        enum Registration {
+            case started(UUID)
+            case coalesced
+            case coolingDown(until: Date)
+        }
+
         struct Consumer {
             let providerID: String
             let id: UUID
@@ -161,18 +154,21 @@ final class OfficialQuotaClient {
 
         private let lock = NSLock()
         private var entries: [String: Entry] = [:]
+        private var cooldowns: [String: Date] = [:]
 
-        func register(key: String, consumer: Consumer, startedAt: Date, completion: @escaping Completion) -> UUID? {
+        func register(key: String, consumer: Consumer, startedAt: Date, completion: @escaping Completion) -> Registration {
             lock.lock()
             defer { lock.unlock() }
+            if !cooldowns.isEmpty { cooldowns = cooldowns.filter { $0.value > startedAt } }
+            if let until = cooldowns[key] { return .coolingDown(until: until) }
             if entries[key] != nil {
                 entries[key]?.completions.append((consumer, completion))
-                return nil
+                return .coalesced
             }
             let generation = UUID()
             entries[key] = Entry(generation: generation, startedAt: startedAt,
                 completions: [(consumer, completion)], task: nil)
-            return generation
+            return .started(generation)
         }
 
         func startedAt(key: String) -> Date? {
@@ -201,10 +197,13 @@ final class OfficialQuotaClient {
 
         /// Removes a finished request. Returns nil when it was cancelled or
         /// replaced, so a late response cannot reach consumers or caches.
-        func take(key: String, generation: UUID) -> [Completion]? {
+        func take(key: String, generation: UUID, retryAt: Date?) -> [Completion]? {
             lock.lock()
             defer { lock.unlock() }
             guard entries[key]?.generation == generation else { return nil }
+            // Install the cooldown before releasing the request, including when
+            // a consumer immediately requests another refresh from its callback.
+            if let retryAt { cooldowns[key] = retryAt }
             return entries.removeValue(forKey: key)?.completions.map(\.completion)
         }
 
@@ -511,32 +510,45 @@ final class OfficialQuotaClient {
         let registry = inFlight
         let startedAt = now()
         let consumer = InFlightRegistry.Consumer(providerID: providerID, id: consumerID)
-        guard let generation = registry.register(key: key, consumer: consumer, startedAt: startedAt, completion: completion) else {
+        let generation: UUID
+        switch registry.register(key: key, consumer: consumer, startedAt: startedAt, completion: completion) {
+        case .started(let id):
+            generation = id
+        case .coalesced:
             SwitchLog.write("official-quota transport coalesced; scope_omitted=true", level: .debug, category: "refresh.transport")
             return false
+        case .coolingDown(let until):
+            completion(.failure(.httpStatus(statusCode: 429, dataSize: 0, retryAt: until)))
+            return true
         }
         SwitchLog.write("official-quota transport started; client=\(client.rawValue); scope_omitted=true", level: .debug, category: "refresh.transport")
 
         let parser = self.parser
+        let now = self.now
         let task = session.dataTask(with: request) { data, response, error in
             let result: Result<OfficialQuotaResult, OfficialQuotaClientError>
+            var retryAt: Date?
             if let error {
                 result = .failure(.transport(Self.transportError(from: error, client: client)))
-            } else if let http = response as? HTTPURLResponse,
-                      (200..<300).contains(http.statusCode),
-                      let data {
-                result = Self.parse(data: data, client: client, parser: parser)
+            } else if let http = response as? HTTPURLResponse {
+                if (200..<300).contains(http.statusCode) {
+                    result = Self.parse(data: data ?? Data(), client: client, parser: parser)
+                } else {
+                    if client == .codex, http.statusCode == 429 {
+                        let receivedAt = now()
+                        if let seconds = RetryAfterParser.seconds(from: http.value(forHTTPHeaderField: "Retry-After"), now: receivedAt),
+                           seconds.isFinite {
+                            retryAt = receivedAt.addingTimeInterval(seconds)
+                        }
+                    }
+                    result = .failure(.httpStatus(statusCode: http.statusCode, dataSize: data?.count ?? 0, retryAt: retryAt))
+                    SwitchLog.write("official quota request failed; client=\(client.rawValue); http_status=\(http.statusCode)",
+                        level: .warning, category: "refresh.transport")
+                }
             } else {
-                result = .failure(.httpStatus(
-                    statusCode: (response as? HTTPURLResponse)?.statusCode ?? -1,
-                    dataSize: data?.count ?? 0
-                ))
+                result = .failure(.unsupportedFormat(dataSize: data?.count ?? 0))
             }
-            if case .failure(.httpStatus(let status, _)) = result {
-                SwitchLog.write("official quota request failed; client=\(client.rawValue); http_status=\(status)",
-                    level: .warning, category: "refresh.transport")
-            }
-            registry.take(key: key, generation: generation)?.forEach { $0(result) }
+            registry.take(key: key, generation: generation, retryAt: retryAt)?.forEach { $0(result) }
         }
         registry.attach(task: task, to: key, generation: generation)
         task.resume()
@@ -580,13 +592,17 @@ final class OfficialQuotaClient {
                 completion(.failure("transport"), failure)
                 return
             }
-            let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+            guard let http = response as? HTTPURLResponse else {
+                completion(.failure("invalid_response"), .unsupportedFormat(dataSize: data?.count ?? 0))
+                return
+            }
+            let status = http.statusCode
             switch status {
             case 200..<300:
                 completion(.success(data ?? Data()), nil)
             case 429:
                 SwitchLog.write("official quota request failed; client=claude; http_status=429", level: .warning, category: "refresh.transport")
-                let retryAfter = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Retry-After")
+                let retryAfter = http.value(forHTTPHeaderField: "Retry-After")
                 completion(.rateLimited(retryAfter: retryAfter), .httpStatus(statusCode: 429, dataSize: data?.count ?? 0))
             case 401:
                 SwitchLog.write("official quota request failed; client=claude; http_status=401", level: .warning, category: "refresh.transport")

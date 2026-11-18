@@ -107,6 +107,12 @@
 "provider.refresh.coordinator.the_balance_response_could_not_be_parsed" = "余额响应无法解析";
 "provider.refresh.coordinator.official_value_local_sign_in_credentials_were_not_found" = "%1$@ 官方账户：未找到本机登录信息";
 "provider.refresh.coordinator.official_value_value" = "%1$@ 官方账户：%2$@";
+"provider.refresh.coordinator.official_possible_proxy" = "%1$@。可能需要使用代理。";
+"provider.refresh.coordinator.official_rate_limited" = "官方暂时限流（HTTP 429），稍后将自动重试。";
+"provider.refresh.coordinator.official_rate_limited_until" = "官方暂时限流（HTTP 429），将在 %1$@ 后自动重试。";
+"provider.refresh.coordinator.official_http_error" = "%1$@ 官方额度请求失败（HTTP %2$@）。";
+"provider.refresh.coordinator.official_server_error" = "官方服务暂时异常（HTTP %1$@），稍后将自动重试。";
+"provider.refresh.coordinator.official_invalid_response" = "官方返回格式无法识别，可能需要更新 BalanceBar。";
 "provider.refresh.coordinator.official_value_the_quota_endpoint_returned_an_error" = "%1$@ 官方账户：额度服务返回错误";
 "provider.refresh.coordinator.network_request_failed" = "网络请求失败";
 "provider.refresh.coordinator.network_request_timed_out" = "网络请求超时";

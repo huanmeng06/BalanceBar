@@ -672,8 +672,8 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         clock.advance(by: 180)
         pipeline.requestFetch(reason: .scheduled)
         let failed = try XCTUnwrap(waitForState(pipeline) { $0.failure != nil })
-        guard case .transport(let possibleProxy, _)? = failed.failure else { return XCTFail("expected a transport failure") }
-        XCTAssertTrue(possibleProxy, "connection failures carry the proxy hint")
+        XCTAssertEqual(failed.failure, .transport(.possibleProxy(.notConnectedToInternet)),
+            "connection failures carry both the proxy hint and the original error code")
         XCTAssertEqual(failed.windows.map(\.remaining), [77, 59], "offline keeps the last official numbers")
         XCTAssertEqual(failed.status, .error(at: Self.start, source: .oauthAPI))
 

@@ -559,12 +559,58 @@ final class OfficialQuotaClientTests: XCTestCase {
                 clientName: .codex,
                 providerID: "status-\(statusCode)"
             )
-            guard case .failure(.httpStatus(let actualStatus, let dataSize)) = result else {
+            guard case .failure(.httpStatus(let actualStatus, let dataSize, let retryAt)) = result else {
                 return XCTFail("expected HTTP status \(statusCode), got \(result)")
             }
             XCTAssertEqual(actualStatus, statusCode)
             XCTAssertGreaterThan(dataSize, 0)
+            XCTAssertNil(retryAt)
             XCTAssertFalse(client.isRequestInFlight(client: .codex, providerID: "status-\(statusCode)"))
+        }
+    }
+
+    func testCodexRateLimitHonorsRetryAfterWithinTheRequestScope() throws {
+        let lock = NSLock()
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        var currentTime = start
+        let client = makeClient(codexToken: "fixture-codex-value", now: { lock.withLock { currentTime } })
+        StubURLProtocol.setHandler { _ in
+            StubResult(statusCode: 429, headers: ["Retry-After": "120"])
+        }
+
+        let first = try waitForResult(client, clientName: .codex, providerID: "limited")
+        guard case .failure(.httpStatus(429, _, let until)) = first else { return XCTFail("expected rate limiting") }
+        XCTAssertEqual(until, start.addingTimeInterval(120))
+
+        lock.withLock { currentTime = start.addingTimeInterval(119) }
+        StubURLProtocol.setHandler { _ in StubResult(statusCode: 500) }
+        let paused = try waitForResult(client, clientName: .codex, providerID: "limited")
+        guard case .failure(.httpStatus(429, _, let stillUntil)) = paused else { return XCTFail("refresh bypassed cooldown") }
+        XCTAssertEqual(stillUntil, until)
+        XCTAssertEqual(StubURLProtocol.requestCount, 1)
+        _ = try waitForResult(client, clientName: .codex, providerID: "other")
+        XCTAssertEqual(StubURLProtocol.requestCount, 2, "unrelated request scopes remain eligible")
+
+        lock.withLock { currentTime = start.addingTimeInterval(120) }
+        let resumed = try waitForResult(client, clientName: .codex, providerID: "limited")
+        guard case .failure(.httpStatus(500, _, nil)) = resumed else { return XCTFail("cooldown should have expired") }
+        XCTAssertEqual(StubURLProtocol.requestCount, 3)
+    }
+
+    func testCodexRateLimitUsesHTTPDateAndOmitsAnUnusableRetryAfter() throws {
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        let client = makeClient(codexToken: "fixture-codex-value", now: { start })
+        let cases: [(String?, Date?)] = [
+            ("Tue, 14 Nov 2023 22:15:20 GMT", start.addingTimeInterval(120)),
+            (nil, nil), ("invalid", nil), ("0", nil), ("Tue, 14 Nov 2023 22:13:19 GMT", nil),
+        ]
+        for (index, fixture) in cases.enumerated() {
+            StubURLProtocol.setHandler { _ in
+                StubResult(statusCode: 429, headers: fixture.0.map { ["Retry-After": $0] } ?? [:])
+            }
+            let result = try waitForResult(client, clientName: .codex, providerID: "limited-\(index)")
+            guard case .failure(.httpStatus(429, _, let retryAt)) = result else { return XCTFail("expected HTTP 429") }
+            XCTAssertEqual(retryAt, fixture.1, "header: \(fixture.0 ?? "missing")")
         }
     }
 

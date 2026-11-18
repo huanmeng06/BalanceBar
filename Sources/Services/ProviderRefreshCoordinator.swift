@@ -1451,6 +1451,9 @@ final class ProviderRefreshCoordinator {
         if state.failure != nil { actions.notificationSamplesInvalidated?(.claude, claudeOfficialProviderIDs) }
         applyClaudeSummaries(state)
         guard let target = claudeStandardTarget else { return }
+        let failureReason = state.failure.map {
+            Self.claudeFailureReason($0, retryAt: claudeQuota?.manualRefreshBlockedUntil())
+        }
         let snapshot: Snapshot
         if !state.windows.isEmpty {
             let representative = state.windows.first(where: { $0.kind == .sevenDay })
@@ -1473,7 +1476,7 @@ final class ProviderRefreshCoordinator {
             official.notificationAccountScope = state.accountScope
             official.quotaStatus = state.status
             // Keep the account's last data visible; the reason rides on the refresh time.
-            official.staleReason = state.officialDisabled ? nil : state.failure.map(Self.claudeFailureReason)
+            official.staleReason = state.officialDisabled ? nil : failureReason
             snapshot = official
         } else if state.officialDisabled {
             // Official requests are turned off (Issue #686): say so with a way to the settings,
@@ -1484,8 +1487,8 @@ final class ProviderRefreshCoordinator {
             off.failureRecovery = .openEgressGuardSettings
             off.officialSourceDisabled = true
             snapshot = off
-        } else if let failure = state.failure {
-            var error = Snapshot.providerError(target.providerName, reason: Self.claudeFailureReason(failure), cachedBalance: nil)
+        } else if let failure = state.failure, let failureReason {
+            var error = Snapshot.providerError(target.providerName, reason: failureReason, cachedBalance: nil)
             error.quotaStatus = state.status
             error.failureRecovery = Self.claudeFailureRecovery(failure)
             snapshot = error
@@ -1542,35 +1545,37 @@ final class ProviderRefreshCoordinator {
         }
     }
 
-    static func claudeFailureReason(_ failure: ClaudeQuotaFailure) -> String {
+    static func claudeFailureReason(_ failure: ClaudeQuotaFailure, retryAt: Date? = nil,
+                                    language: AppLanguage = .resolved) -> String {
         let name = String(describing: AssistantClient.claude.displayName)
         switch failure {
         case .missingCredentials:
             // A recorded account with an empty token: the CLI is signed out; say how to recover.
-            return tr(.keyClaudeRefreshLoginExpired)
+            return tr(.keyClaudeRefreshLoginExpired, language: language)
         case .credentialsUnreadable:
-            return tr(.keyClaudeRefreshCredentialsUnreadable)
+            return tr(.keyClaudeRefreshCredentialsUnreadable, language: language)
         case .noAccount:
-            return tr(.keyClaudeRefreshNoSubscriptionAccount)
-        case let .transport(_, description):
-            return tr(.keyProviderRefreshCoordinatorOfficialValueValue, arguments: [name, description])
+            return tr(.keyClaudeRefreshNoSubscriptionAccount, language: language)
+        case let .transport(error):
+            return officialTransportReason(error, name: name, language: language)
         case .unauthorized:
-            return tr(.keyClaudeRefreshLoginExpired)
-        case .rateLimited, .http(429):
-            return tr(.keyDashboardGeneralAndRefreshPagesUpdateCheckFailureReasonHttpTooManyRequestsValue,
-                arguments: ["429"]) + "\n" + tr(.keyDashboardGeneralAndRefreshPagesUpdateCheckFailureSuggestionHttpTooManyRequests)
-        case .http, .invalidResponse:
-            return tr(.keyProviderRefreshCoordinatorOfficialValueTheQuotaEndpointReturnedAnError, arguments: [name])
+            return tr(.keyClaudeRefreshLoginExpired, language: language) + " (HTTP 401)"
+        case .rateLimited:
+            return officialHTTPReason(429, name: name, retryAt: retryAt, language: language)
+        case .http(let status):
+            return officialHTTPReason(status, name: name, retryAt: retryAt, language: language)
+        case .invalidResponse:
+            return tr(.keyProviderRefreshCoordinatorOfficialInvalidResponse, language: language)
         case .egressGuard(.mismatch):
-            return tr(.keyClaudeRefreshEgressGuardMismatch)
+            return tr(.keyClaudeRefreshEgressGuardMismatch, language: language)
         case .egressGuard(.checkFailed):
-            return tr(.keyClaudeRefreshEgressGuardCheckFailed)
+            return tr(.keyClaudeRefreshEgressGuardCheckFailed, language: language)
         case .egressGuard(.noTargets):
-            return tr(.keyClaudeRefreshEgressGuardNoTargets)
+            return tr(.keyClaudeRefreshEgressGuardNoTargets, language: language)
         case .egressGuard(.unsupportedRegion):
-            return tr(.keyClaudeRefreshEgressGuardUnsupportedRegion)
+            return tr(.keyClaudeRefreshEgressGuardUnsupportedRegion, language: language)
         case .egressGuard(.disabled):
-            return tr(.keyClaudeRefreshEgressGuardDisabled)
+            return tr(.keyClaudeRefreshEgressGuardDisabled, language: language)
         }
     }
 
@@ -1777,7 +1782,7 @@ final class ProviderRefreshCoordinator {
                     // login guidance, the recovery button and the kept data (Issue #674).
                     let direct = client == .codex && source == nil
                     let recovery = direct ? Self.codexOfficialFailure(error) : nil
-                    let reason = recovery?.reason ?? self.officialFailureReason(error, client: client)
+                    let reason = recovery?.reason ?? Self.officialFailureReason(error, client: client)
                     if direct, let kept = self.keptCodexOfficialSnapshot(providerID: providerID,
                         revision: configurationRevision, accountKey: accountKey, error: error) {
                         if isValid(), isCurrentRequest() { self.officialSampleUnavailable(client: client, providerID: providerID) }
@@ -1798,17 +1803,50 @@ final class ProviderRefreshCoordinator {
 
     /// The failure text every official quota client shares (Codex direct login failures
     /// replace it with `codexOfficialFailure`).
-    private func officialFailureReason(_ error: OfficialQuotaClientError, client: AssistantClient) -> String {
+    static func officialFailureReason(_ error: OfficialQuotaClientError, client: AssistantClient,
+                                      language: AppLanguage = .resolved) -> String {
+        let name = String(describing: client.displayName)
         switch error {
         case .missingCredentials:
-            return tr(.keyProviderRefreshCoordinatorOfficialValueLocalSignInCredentialsWereNotFound, arguments: [String(describing: client.displayName)])
+            return tr(.keyProviderRefreshCoordinatorOfficialValueLocalSignInCredentialsWereNotFound, arguments: [name], language: language)
         case .transport(let transport):
-            return tr(.keyProviderRefreshCoordinatorOfficialValueValue, arguments: [String(describing: client.displayName), String(describing: transport.localizedDescription)])
-        case .httpStatus(let status, _) where status == 429:
-            return tr(.keyDashboardGeneralAndRefreshPagesUpdateCheckFailureReasonHttpTooManyRequestsValue,
-                arguments: [String(status)]) + "\n" + tr(.keyDashboardGeneralAndRefreshPagesUpdateCheckFailureSuggestionHttpTooManyRequests)
+            return officialTransportReason(transport, name: name, language: language)
+        case .httpStatus(let status, _, let retryAt):
+            return officialHTTPReason(status, name: name, retryAt: retryAt, language: language)
+        case .invalidJSON, .unsupportedFormat:
+            return tr(.keyProviderRefreshCoordinatorOfficialInvalidResponse, language: language)
         default:
-            return tr(.keyProviderRefreshCoordinatorOfficialValueTheQuotaEndpointReturnedAnError, arguments: [String(describing: client.displayName)])
+            return tr(.keyProviderRefreshCoordinatorOfficialValueTheQuotaEndpointReturnedAnError, arguments: [name], language: language)
+        }
+    }
+
+    private static func officialTransportReason(_ error: OfficialQuotaTransportError, name: String, language: AppLanguage) -> String {
+        let reason: String
+        switch error {
+        case .urlError(let code):
+            reason = localizedBalanceNetworkErrorReason(URLError(code), language: language)
+        case .possibleProxy(let code):
+            let networkReason = localizedBalanceNetworkErrorReason(URLError(code), language: language)
+            reason = tr(.keyProviderRefreshCoordinatorOfficialPossibleProxy, arguments: [networkReason], language: language)
+        case .unknown:
+            reason = localizedBalanceNetworkErrorReason(error, language: language)
+        }
+        return tr(.keyProviderRefreshCoordinatorOfficialValueValue, arguments: [name, reason], language: language)
+    }
+
+    private static func officialHTTPReason(_ status: Int, name: String, retryAt: Date?, language: AppLanguage) -> String {
+        switch status {
+        case 429:
+            guard let retryAt else { return tr(.keyProviderRefreshCoordinatorOfficialRateLimited, language: language) }
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.dateFormat = "HH:mm"
+            return tr(.keyProviderRefreshCoordinatorOfficialRateLimitedUntil,
+                arguments: [formatter.string(from: retryAt)], language: language)
+        case 500..<600:
+            return tr(.keyProviderRefreshCoordinatorOfficialServerError, arguments: [String(status)], language: language)
+        default:
+            return tr(.keyProviderRefreshCoordinatorOfficialHTTPError, arguments: [name, String(status)], language: language)
         }
     }
 
@@ -1820,8 +1858,8 @@ final class ProviderRefreshCoordinator {
         case .missingCredentials:
             return CodexOfficialFailure(reason: tr(.keyCodexRefreshSignedOut), action: .copySignInCommand,
                 accountReason: .codexSignedOut)
-        case .httpStatus(let status, _) where status == 401 || status == 403:
-            return CodexOfficialFailure(reason: tr(.keyCodexRefreshLoginExpired), action: .copySignInCommand,
+        case .httpStatus(let status, _, _) where status == 401 || status == 403:
+            return CodexOfficialFailure(reason: tr(.keyCodexRefreshLoginExpired) + " (HTTP \(status))", action: .copySignInCommand,
                 accountReason: .codexLoginExpired)
         default:
             return nil

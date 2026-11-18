@@ -107,6 +107,12 @@
 "provider.refresh.coordinator.the_balance_response_could_not_be_parsed" = "The balance response could not be parsed";
 "provider.refresh.coordinator.official_value_local_sign_in_credentials_were_not_found" = "Official %1$@: Local sign-in credentials were not found";
 "provider.refresh.coordinator.official_value_value" = "Official %1$@: %2$@";
+"provider.refresh.coordinator.official_possible_proxy" = "%1$@. A proxy may be needed.";
+"provider.refresh.coordinator.official_rate_limited" = "The official service is temporarily rate-limiting requests (HTTP 429). BalanceBar will retry automatically.";
+"provider.refresh.coordinator.official_rate_limited_until" = "The official service is temporarily rate-limiting requests (HTTP 429). BalanceBar will retry automatically after %1$@.";
+"provider.refresh.coordinator.official_http_error" = "Official %1$@ quota request failed (HTTP %2$@).";
+"provider.refresh.coordinator.official_server_error" = "The official service is temporarily unavailable (HTTP %1$@). BalanceBar will retry later.";
+"provider.refresh.coordinator.official_invalid_response" = "The official response format was not recognized. BalanceBar may need an update.";
 "provider.refresh.coordinator.official_value_the_quota_endpoint_returned_an_error" = "Official %1$@: The quota endpoint returned an error";
 "provider.refresh.coordinator.network_request_failed" = "Network request failed";
 "provider.refresh.coordinator.network_request_timed_out" = "Network request timed out";

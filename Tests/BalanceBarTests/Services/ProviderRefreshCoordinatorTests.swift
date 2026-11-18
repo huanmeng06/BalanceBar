@@ -66,7 +66,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         )
         XCTAssertEqual(
             ProviderRefreshCoordinator.claudeFailureReason(.unauthorized),
-            tr(.keyClaudeRefreshLoginExpired)
+            tr(.keyClaudeRefreshLoginExpired) + " (HTTP 401)"
         )
         XCTAssertEqual(
             ProviderRefreshCoordinator.claudeFailureReason(.credentialsUnreadable),
@@ -102,7 +102,59 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
             .map { ProviderRefreshCoordinator.claudeFailureReason(.egressGuard($0)) }
         XCTAssertEqual(Set(reasons).count, 4, "each block has its own reason, distinct from network errors")
         XCTAssertFalse(reasons.contains(ProviderRefreshCoordinator.claudeFailureReason(
-            .transport(possibleProxy: true, description: "x"))))
+            .transport(.possibleProxy(.timedOut)))))
+    }
+
+    func testOfficialNetworkErrorsReuseBalanceLocalizationInEveryLanguage() {
+        let codes: [URLError.Code] = [.timedOut, .notConnectedToInternet, .networkConnectionLost,
+            .cannotFindHost, .cannotConnectToHost, .secureConnectionFailed, .cancelled]
+        let errors = codes.map { (OfficialQuotaTransportError.urlError($0), URLError($0) as Error) }
+            + [(.unknown, NSError(domain: "fixture", code: 1))]
+        for language in AppLanguage.allCases where language != .system {
+            for (error, input) in errors {
+                let reason = ProviderRefreshCoordinator.localizedBalanceNetworkErrorReason(input, language: language)
+                for client in [AssistantClient.claude, .codex] {
+                    let actual = client == .claude
+                        ? ProviderRefreshCoordinator.claudeFailureReason(.transport(error), language: language)
+                        : ProviderRefreshCoordinator.officialFailureReason(.transport(error), client: client, language: language)
+                    XCTAssertEqual(actual, tr(.keyProviderRefreshCoordinatorOfficialValueValue,
+                        arguments: [client.displayName, reason], language: language), "\(language), \(client), \(error)")
+                }
+            }
+            let reason = ProviderRefreshCoordinator.localizedBalanceNetworkErrorReason(URLError(.timedOut), language: language)
+            let proxy = tr(.keyProviderRefreshCoordinatorOfficialPossibleProxy, arguments: [reason], language: language)
+            XCTAssertNotEqual(proxy, reason)
+            XCTAssertTrue(proxy.contains(reason))
+            XCTAssertEqual(ProviderRefreshCoordinator.claudeFailureReason(.transport(.possibleProxy(.timedOut)), language: language),
+                tr(.keyProviderRefreshCoordinatorOfficialValueValue, arguments: [AssistantClient.claude.displayName, proxy], language: language))
+        }
+    }
+
+    func testOfficialHTTPAndParseFailuresAreDistinctInEveryLanguage() throws {
+        let retryAt = try XCTUnwrap(Calendar.current.date(bySettingHour: 12, minute: 34, second: 0, of: Date()))
+        for language in AppLanguage.allCases where language != .system {
+            let cases: [(ClaudeQuotaFailure, OfficialQuotaClientError, LocalizationKey, [String])] = [
+                (.rateLimited, .httpStatus(statusCode: 429, dataSize: 0, retryAt: retryAt),
+                    .keyProviderRefreshCoordinatorOfficialRateLimitedUntil, ["12:34"]),
+                (.rateLimited, .httpStatus(statusCode: 429, dataSize: 0), .keyProviderRefreshCoordinatorOfficialRateLimited, []),
+                (.http(403), .httpStatus(statusCode: 403, dataSize: 0), .keyProviderRefreshCoordinatorOfficialHTTPError, ["Codex", "403"]),
+                (.http(500), .httpStatus(statusCode: 500, dataSize: 0), .keyProviderRefreshCoordinatorOfficialServerError, ["500"]),
+                (.http(502), .httpStatus(statusCode: 502, dataSize: 0), .keyProviderRefreshCoordinatorOfficialServerError, ["502"]),
+                (.invalidResponse, .invalidJSON(dataSize: 1), .keyProviderRefreshCoordinatorOfficialInvalidResponse, []),
+                (.invalidResponse, .unsupportedFormat(dataSize: 1), .keyProviderRefreshCoordinatorOfficialInvalidResponse, []),
+            ]
+            var rendered = Set<String>()
+            for (claude, codex, key, arguments) in cases {
+                let expected = tr(key, arguments: arguments, language: language)
+                let claudeArguments = arguments.map { $0 == "Codex" ? AssistantClient.claude.displayName : $0 }
+                XCTAssertEqual(ProviderRefreshCoordinator.claudeFailureReason(claude,
+                    retryAt: arguments == ["12:34"] ? retryAt : nil, language: language),
+                    tr(key, arguments: claudeArguments, language: language))
+                XCTAssertEqual(ProviderRefreshCoordinator.officialFailureReason(codex, client: .codex, language: language), expected)
+                rendered.insert(expected)
+            }
+            XCTAssertEqual(rendered.count, 6, "only the two equivalent parse errors share a reason in \(language)")
+        }
     }
 
     func testOfficialRequestsTurnedOffShowADashInsteadOfTheFailureMark() {
@@ -3134,7 +3186,7 @@ extension ProviderRefreshCoordinatorTests {
         let coordinator = try observationCoordinator(fixture, store: try observationStore())
         let error = try observationRefresh(coordinator, fixture: fixture)
         XCTAssertEqual(error.kind, .error)
-        XCTAssertEqual(error.message, tr(.keyCodexRefreshLoginExpired))
+        XCTAssertEqual(error.message, tr(.keyCodexRefreshLoginExpired) + " (HTTP 401)")
         XCTAssertFalse(error.message?.contains(tr(.keyProviderRefreshCoordinatorOfficialValueTheQuotaEndpointReturnedAnError,
             arguments: ["Codex"])) == true, "a rejected token is not a server error")
         XCTAssertEqual(error.failureClient, .codex)
@@ -3142,7 +3194,9 @@ extension ProviderRefreshCoordinatorTests {
         XCTAssertEqual(error.accountUnavailableReason, .codexLoginExpired)
 
         fixture.update { $0.quotaStatus = 403 }
-        XCTAssertEqual(try observationRefresh(coordinator, fixture: fixture).accountUnavailableReason, .codexLoginExpired)
+        let forbidden = try observationRefresh(coordinator, fixture: fixture)
+        XCTAssertEqual(forbidden.accountUnavailableReason, .codexLoginExpired)
+        XCTAssertEqual(forbidden.message, tr(.keyCodexRefreshLoginExpired) + " (HTTP 403)")
     }
 
     func testCodexSignedOutWithoutEarlierDataPointsAtCodexLogin() throws {
@@ -3198,7 +3252,7 @@ extension ProviderRefreshCoordinatorTests {
         fixture.update { $0.quotaTransportFailure = false; $0.quotaStatus = 401 }
         let expired = try observationRefresh(coordinator, fixture: fixture)
         XCTAssertEqual(expired.kind, .official)
-        XCTAssertEqual(expired.staleReason, tr(.keyCodexRefreshLoginExpired))
+        XCTAssertEqual(expired.staleReason, tr(.keyCodexRefreshLoginExpired) + " (HTTP 401)")
         XCTAssertEqual(expired.failureRecovery, .copySignInCommand)
         XCTAssertEqual(expired.accountUnavailableReason, .codexLoginExpired)
         XCTAssertEqual(expired.date, fresh.date)
@@ -4962,6 +5016,9 @@ extension ProviderRefreshCoordinatorTests {
         XCTAssertEqual(stale.quotaStatus, .error(at: fresh.date, source: .oauthAPI))
         XCTAssertTrue(stale.staleReason?.contains("429") == true)
         let until = try XCTUnwrap(harness.pipeline.manualRefreshBlockedUntil(), "menu refresh waits for the server cooldown")
+        let clockTime = Calendar.current.dateComponents([.hour, .minute], from: until)
+        XCTAssertEqual(stale.staleReason, tr(.keyProviderRefreshCoordinatorOfficialRateLimitedUntil,
+            arguments: [String(format: "%02d:%02d", try XCTUnwrap(clockTime.hour), try XCTUnwrap(clockTime.minute))]))
         XCTAssertGreaterThanOrEqual(until.timeIntervalSince(clock.now), 300 - 1, "first 429 without Retry-After waits 5 minutes")
         settle(coordinator, harness)
         lock.lock()
@@ -5147,6 +5204,9 @@ extension ProviderRefreshCoordinatorTests {
 
     func testProxyRequiredFailureTextIsShownOnTheCardWithoutCachedData() throws {
         let current = try useClaudeOfficialProvider()
+        let hint = tr(.keyProviderRefreshCoordinatorOfficialPossibleProxy,
+            arguments: [tr(.keyProviderRefreshCoordinatorNoInternetConnection)])
+        let reason = tr(.keyProviderRefreshCoordinatorOfficialValueValue, arguments: [AssistantClient.claude.displayName, hint])
         DelayedBalanceURLProtocol.setHandler { _ in .transportFailure() }
         let clock = TestClock(date: Date(timeIntervalSince1970: 1_700_000_000))
         let official = OfficialQuotaClient(session: session,
@@ -5156,7 +5216,7 @@ extension ProviderRefreshCoordinatorTests {
         let coordinator = makeCoordinator(repository: repository, officialQuotaClient: official,
             actions: claudeActions { snapshot in
                 guard snapshot.kind == .error else { return }
-                XCTAssertTrue(snapshot.message?.contains("Possible proxy required") == true, snapshot.message ?? "")
+                XCTAssertEqual(snapshot.message, reason)
                 rendered.fulfill()
             }, claudeQuota: harness.pipeline, now: { clock.now })
         coordinator.refreshStandardProvider(current: current, client: .claude, forceBalance: false, switched: false)
