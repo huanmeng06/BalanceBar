@@ -2489,6 +2489,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let wrapper: NSView
         var card: NSView
         var snapshot: Snapshot
+        var errorRetryReason: String?
     }
     private var aggregationViewportShowsSingleCard = false
     private var closedMenuRebuildScheduled = false
@@ -6710,6 +6711,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let gap: CGFloat = 8
         for display in aggregationOverviewDisplays {
             let context = cardContext(display)
+            let errorRetryReason = display.snapshot.kind == .error
+                ? display.snapshot.officialRetryReason(timeZone: settings.displayTimeZone) : nil
             var record: AggregationCard
             if var existing = aggregationCards[display.identity], existing.snapshot.kind == display.snapshot.kind {
                 if let host = existing.card as? MenuHoverLinkHostView {
@@ -6738,12 +6741,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                             AppDisplayTime.formatter(timeZone: settings.displayTimeZone).string(from: $0)
                         } ?? "--:--:--"
                     }
-                } else if existing.snapshot != display.snapshot {
+                } else if existing.snapshot != display.snapshot || existing.errorRetryReason != errorRetryReason {
                     existing.card.removeFromSuperview()
                     existing.card = makeOverviewMenuItem(for: display.snapshot, context: context).view!
                     existing.wrapper.addSubview(existing.card)
                 }
                 existing.snapshot = display.snapshot
+                existing.errorRetryReason = errorRetryReason
                 record = existing
             } else {
                 if let old = aggregationCards[display.identity] {
@@ -6754,7 +6758,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 let card = makeOverviewMenuItem(for: display.snapshot, context: context).view!
                 wrapper.addSubview(card)
                 document.addSubview(wrapper)
-                record = AggregationCard(wrapper: wrapper, card: card, snapshot: display.snapshot)
+                record = AggregationCard(wrapper: wrapper, card: card, snapshot: display.snapshot, errorRetryReason: errorRetryReason)
                 needsPlacement = true
             }
             if record.wrapper.superview !== document {
@@ -7074,10 +7078,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }) else { return }
         let text = display.fetchedAt.map { AppDisplayTime.formatter(timeZone: settings.displayTimeZone).string(from: $0) } ?? "--:--:--"
         let isStale = display.status == .stale || (display.status == .loading && display.reason != nil && display.fetchedAt != nil)
+        let reason = isStale ? display.snapshot.officialRetryReason(timeZone: settings.displayTimeZone) ?? display.reason : nil
         time.stringValue = isStale ? "⚠︎ " + text : text
         time.textColor = isStale ? .systemOrange : .secondaryLabelColor
-        time.toolTip = isStale ? display.reason ?? tr(.keyAggregationStale) : nil
-        time.setAccessibilityLabel(isStale ? tr(.keyAggregationStale) + " · " + text + " · " + (display.reason ?? "") : text)
+        time.toolTip = isStale ? reason ?? tr(.keyAggregationStale) : nil
+        time.setAccessibilityLabel(isStale ? tr(.keyAggregationStale) + " · " + text + " · " + (reason ?? "") : text)
     }
 
     private func makeOverviewCardLayout(for snapshot: Snapshot,
@@ -7215,10 +7220,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         provider.identifier = NSUserInterfaceItemIdentifier("overview.providerTitle")
         provider.frame = headerFrame(layout.title)
 
+        let staleReason = snapshot.displayedStaleReason(timeZone: settings.displayTimeZone)
         if snapshot.kind == .official, let quotaStatus = snapshot.quotaStatus {
             // Claude official quota: BB-07's status slot replaces the plain refresh time.
             let slot = StatusSlotView(localize: StatusSlotText.appLocalize, timeZone: settings.displayTimeZone)
-            applyQuotaStatus(quotaStatus, reason: snapshot.staleReason, to: slot)
+            applyQuotaStatus(quotaStatus, reason: staleReason, to: slot)
             slot.identifier = NSUserInterfaceItemIdentifier("overview.refreshTime")
             slot.frame = Self.statusSlotFrame(in: headerFrame(layout.refreshTime))
             // The slot extends left of the refresh-time column; the title yields the space.
@@ -7227,7 +7233,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         } else if snapshot.kind == .official || snapshot.kind == .balance {
             let refreshTime = makeOverviewLabel("", font: .monospacedDigitSystemFont(ofSize: 12, weight: .regular))
             refreshTime.alignment = .right
-            applyRefreshTime(to: refreshTime, date: context.date, staleReason: snapshot.staleReason)
+            applyRefreshTime(to: refreshTime, date: context.date, staleReason: staleReason)
             refreshTime.identifier = NSUserInterfaceItemIdentifier("overview.refreshTime")
             refreshTime.frame = headerFrame(layout.refreshTime)
             headerHost.addSubview(refreshTime)
@@ -8583,13 +8589,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         if let header = host.subviews.compactMap({ $0 as? OpenCodexAccountSectionView }).first {
             let labels = header.subviews.compactMap { $0 as? NSTextField }
+            let staleReason = snapshot.displayedStaleReason(timeZone: settings.displayTimeZone)
             labels.first { $0.font?.pointSize == 15 }?.stringValue = snapshot.overviewProvider
             if let refreshTime = labels.first(where: { $0.identifier?.rawValue == "overview.refreshTime" }) {
-                applyRefreshTime(to: refreshTime, date: context.date, staleReason: snapshot.staleReason)
+                applyRefreshTime(to: refreshTime, date: context.date, staleReason: staleReason)
             }
             if let slot = header.subviews.compactMap({ $0 as? StatusSlotView }).first,
                let quotaStatus = snapshot.quotaStatus {
-                applyQuotaStatus(quotaStatus, reason: snapshot.staleReason, to: slot)
+                slot.updateTimeZone(settings.displayTimeZone)
+                applyQuotaStatus(quotaStatus, reason: staleReason, to: slot)
             }
             if let account = context.account, case .available(let email) = account.state {
                 descendantViews(of: header, as: AccountEmailView.self).first?.updateText(email)

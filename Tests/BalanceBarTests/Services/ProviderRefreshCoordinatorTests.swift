@@ -131,11 +131,10 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
     }
 
     func testOfficialHTTPAndParseFailuresAreDistinctInEveryLanguage() throws {
-        let retryAt = try XCTUnwrap(Calendar.current.date(bySettingHour: 12, minute: 34, second: 0, of: Date()))
+        let retryAt = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-01-01T12:34:00Z"))
+        let shanghai = try XCTUnwrap(TimeZone(identifier: "Asia/Shanghai"))
         for language in AppLanguage.allCases where language != .system {
             let cases: [(ClaudeQuotaFailure, OfficialQuotaClientError, LocalizationKey, [String])] = [
-                (.rateLimited, .httpStatus(statusCode: 429, dataSize: 0, retryAt: retryAt),
-                    .keyProviderRefreshCoordinatorOfficialRateLimitedUntil, ["12:34"]),
                 (.rateLimited, .httpStatus(statusCode: 429, dataSize: 0), .keyProviderRefreshCoordinatorOfficialRateLimited, []),
                 (.http(403), .httpStatus(statusCode: 403, dataSize: 0), .keyProviderRefreshCoordinatorOfficialHTTPError, ["Codex", "403"]),
                 (.http(500), .httpStatus(statusCode: 500, dataSize: 0), .keyProviderRefreshCoordinatorOfficialServerError, ["500"]),
@@ -147,12 +146,17 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
             for (claude, codex, key, arguments) in cases {
                 let expected = tr(key, arguments: arguments, language: language)
                 let claudeArguments = arguments.map { $0 == "Codex" ? AssistantClient.claude.displayName : $0 }
-                XCTAssertEqual(ProviderRefreshCoordinator.claudeFailureReason(claude,
-                    retryAt: arguments == ["12:34"] ? retryAt : nil, language: language),
+                XCTAssertEqual(ProviderRefreshCoordinator.claudeFailureReason(claude, language: language),
                     tr(key, arguments: claudeArguments, language: language))
                 XCTAssertEqual(ProviderRefreshCoordinator.officialFailureReason(codex, client: .codex, language: language), expected)
                 rendered.insert(expected)
             }
+            var snapshot = Snapshot.providerError("Official", reason: tr(.keyProviderRefreshCoordinatorOfficialRateLimited, language: language), cachedBalance: nil)
+            XCTAssertNil(snapshot.officialRetryReason(timeZone: shanghai, language: language))
+            snapshot.officialRetryAt = retryAt
+            let timed = try XCTUnwrap(snapshot.officialRetryReason(timeZone: shanghai, language: language))
+            XCTAssertEqual(timed, tr(.keyProviderRefreshCoordinatorOfficialRateLimitedUntil, arguments: ["20:34"], language: language))
+            rendered.insert(timed)
             XCTAssertEqual(rendered.count, 6, "only the two equivalent parse errors share a reason in \(language)")
         }
     }
@@ -2652,7 +2656,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         DelayedBalanceURLProtocol.setHandler { fixture.reply($0) }
         return makeCoordinator(
             repository: repository,
-            officialQuotaClient: OfficialQuotaClient(session: session, credentialReader: fixture, parser: fixture),
+            officialQuotaClient: OfficialQuotaClient(session: session, credentialReader: fixture, parser: fixture, now: { clock.now }),
             codexResetObservationStore: store,
             queue: DispatchQueue(label: "test.observation.\(UUID().uuidString)"),
             actions: ProviderRefreshActions(
@@ -3069,13 +3073,15 @@ private final class DelayedBalanceURLProtocol: URLProtocol {
         let data: Data
         let statusCode: Int
         let delayUntil: DispatchSemaphore?
+        let headers: [String: String]
         /// Fails the request at the transport level instead of answering.
         var transportError: URLError? = nil
 
-        init(data: Data, statusCode: Int, delayUntil: DispatchSemaphore? = nil) {
+        init(data: Data, statusCode: Int, delayUntil: DispatchSemaphore? = nil, headers: [String: String] = [:]) {
             self.data = data
             self.statusCode = statusCode
             self.delayUntil = delayUntil
+            self.headers = headers
         }
 
         static func transportFailure(_ code: URLError.Code = .notConnectedToInternet) -> Reply {
@@ -3162,7 +3168,7 @@ private final class DelayedBalanceURLProtocol: URLProtocol {
             url: request.url!,
             statusCode: reply.statusCode,
             httpVersion: "HTTP/1.1",
-            headerFields: ["Content-Type": "application/json"]
+            headerFields: ["Content-Type": "application/json"].merging(reply.headers) { _, header in header }
         )!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: reply.data)
@@ -3180,6 +3186,31 @@ private final class DelayedBalanceURLProtocol: URLProtocol {
 // MARK: Codex official failures (Issue #674)
 
 extension ProviderRefreshCoordinatorTests {
+    func testCodexRetryDeadlineReachesErrorAndRetainedQuotaSnapshots() throws {
+        let until = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-01-01T12:34:00Z"))
+        let clock = TestClock(date: until.addingTimeInterval(-120))
+        let fixture = ObservationFixture()
+        fixture.update { $0.quotaStatus = 429; $0.quotaRetryAfter = "120" }
+        let coordinator = try observationCoordinator(fixture, store: try observationStore(), clock: clock)
+        let error = try observationRefresh(coordinator, fixture: fixture)
+        XCTAssertEqual(error.kind, .error)
+        XCTAssertEqual(error.officialRetryAt, until)
+        XCTAssertEqual(error.message, tr(.keyProviderRefreshCoordinatorOfficialRateLimited))
+
+        clock.advance(by: 120)
+        fixture.update { $0.quotaStatus = 200 }
+        let fresh = try observationRefresh(coordinator, fixture: fixture, renders: 2)
+        XCTAssertNil(fresh.officialRetryAt)
+
+        clock.advance(by: 120)
+        fixture.update { $0.quotaStatus = 429; $0.quotaRetryAfter = "180" }
+        let stale = try observationRefresh(coordinator, fixture: fixture)
+        XCTAssertEqual(stale.kind, .official)
+        XCTAssertEqual(stale.officialQuotaWindows.map(\.remaining), fresh.officialQuotaWindows.map(\.remaining))
+        XCTAssertEqual(stale.staleReason, tr(.keyProviderRefreshCoordinatorOfficialRateLimited))
+        XCTAssertEqual(stale.officialRetryAt, until.addingTimeInterval(300))
+    }
+
     func testCodexRejectedTokenWithoutEarlierDataShowsLoginExpiredCardWithCodexLoginButton() throws {
         let fixture = ObservationFixture()
         fixture.update { $0.quotaStatus = 401 }
@@ -3275,6 +3306,7 @@ private final class ObservationFixture: OfficialQuotaCredentialReading, Official
         var windows = ObservationFixture.windows(70, 80, cycle: 1)
         var forecast = ObservationFixture.forecast(episode: "first")
         var quotaStatus = 200
+        var quotaRetryAfter: String?
         var forecastStatus = 200
         var needsCreditList = false
         var hasBankedReset = true
@@ -3333,7 +3365,8 @@ private final class ObservationFixture: OfficialQuotaCredentialReading, Official
             return value
         }
         let data = try! JSONSerialization.data(withJSONObject: ["windows": windows, "needsCreditList": state.needsCreditList, "hasBankedReset": state.hasBankedReset])
-        return .init(data: data, statusCode: state.quotaStatus, delayUntil: state.quotaGate?.1)
+        return .init(data: data, statusCode: state.quotaStatus, delayUntil: state.quotaGate?.1,
+                     headers: state.quotaRetryAfter.map { ["Retry-After": $0] } ?? [:])
     }
     static func windows(_ five: Double, _ seven: Double, cycle: Int) -> [OfficialQuotaWindow] {
         [.init(kind: .fiveHour, remaining: five, label: "5h", daysText: "5h", reset: nil, durationSeconds: 18_000),
@@ -5016,9 +5049,8 @@ extension ProviderRefreshCoordinatorTests {
         XCTAssertEqual(stale.quotaStatus, .error(at: fresh.date, source: .oauthAPI))
         XCTAssertTrue(stale.staleReason?.contains("429") == true)
         let until = try XCTUnwrap(harness.pipeline.manualRefreshBlockedUntil(), "menu refresh waits for the server cooldown")
-        let clockTime = Calendar.current.dateComponents([.hour, .minute], from: until)
-        XCTAssertEqual(stale.staleReason, tr(.keyProviderRefreshCoordinatorOfficialRateLimitedUntil,
-            arguments: [String(format: "%02d:%02d", try XCTUnwrap(clockTime.hour), try XCTUnwrap(clockTime.minute))]))
+        XCTAssertEqual(stale.officialRetryAt, until)
+        XCTAssertEqual(stale.staleReason, tr(.keyProviderRefreshCoordinatorOfficialRateLimited))
         XCTAssertGreaterThanOrEqual(until.timeIntervalSince(clock.now), 300 - 1, "first 429 without Retry-After waits 5 minutes")
         settle(coordinator, harness)
         lock.lock()

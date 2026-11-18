@@ -586,6 +586,7 @@ final class ProviderRefreshCoordinator {
             }
             for identity in aggregationDisplays.keys {
                 aggregationDisplays[identity]?.reason = tr(.keyAggregationStale)
+                aggregationDisplays[identity]?.snapshot.officialRetryAt = nil
                 if aggregationDisplays[identity]?.fetchedAt != nil { aggregationDisplays[identity]?.status = .stale }
             }
             publishAggregation()
@@ -800,6 +801,7 @@ final class ProviderRefreshCoordinator {
                         current.reason = snapshot.message
                         current.status = current.fetchedAt == nil ? .error : .stale
                         if current.fetchedAt == nil { current.snapshot = snapshot }
+                        else { current.snapshot.officialRetryAt = snapshot.officialRetryAt }
                     } else {
                         current.snapshot = snapshot
                         current.status = .fresh
@@ -1451,8 +1453,11 @@ final class ProviderRefreshCoordinator {
         if state.failure != nil { actions.notificationSamplesInvalidated?(.claude, claudeOfficialProviderIDs) }
         applyClaudeSummaries(state)
         guard let target = claudeStandardTarget else { return }
-        let failureReason = state.failure.map {
-            Self.claudeFailureReason($0, retryAt: claudeQuota?.manualRefreshBlockedUntil())
+        let failureReason = state.failure.map { Self.claudeFailureReason($0) }
+        let retryAt: Date?
+        switch state.failure {
+        case .rateLimited?, .http(429)?: retryAt = claudeQuota?.manualRefreshBlockedUntil()
+        default: retryAt = nil
         }
         let snapshot: Snapshot
         if !state.windows.isEmpty {
@@ -1477,6 +1482,7 @@ final class ProviderRefreshCoordinator {
             official.quotaStatus = state.status
             // Keep the account's last data visible; the reason rides on the refresh time.
             official.staleReason = state.officialDisabled ? nil : failureReason
+            official.officialRetryAt = state.officialDisabled ? nil : retryAt
             snapshot = official
         } else if state.officialDisabled {
             // Official requests are turned off (Issue #686): say so with a way to the settings,
@@ -1489,6 +1495,7 @@ final class ProviderRefreshCoordinator {
             snapshot = off
         } else if let failure = state.failure, let failureReason {
             var error = Snapshot.providerError(target.providerName, reason: failureReason, cachedBalance: nil)
+            error.officialRetryAt = retryAt
             error.quotaStatus = state.status
             error.failureRecovery = Self.claudeFailureRecovery(failure)
             snapshot = error
@@ -1545,8 +1552,7 @@ final class ProviderRefreshCoordinator {
         }
     }
 
-    static func claudeFailureReason(_ failure: ClaudeQuotaFailure, retryAt: Date? = nil,
-                                    language: AppLanguage = .resolved) -> String {
+    static func claudeFailureReason(_ failure: ClaudeQuotaFailure, language: AppLanguage = .resolved) -> String {
         let name = String(describing: AssistantClient.claude.displayName)
         switch failure {
         case .missingCredentials:
@@ -1561,9 +1567,9 @@ final class ProviderRefreshCoordinator {
         case .unauthorized:
             return tr(.keyClaudeRefreshLoginExpired, language: language) + " (HTTP 401)"
         case .rateLimited:
-            return officialHTTPReason(429, name: name, retryAt: retryAt, language: language)
+            return officialHTTPReason(429, name: name, language: language)
         case .http(let status):
-            return officialHTTPReason(status, name: name, retryAt: retryAt, language: language)
+            return officialHTTPReason(status, name: name, language: language)
         case .invalidResponse:
             return tr(.keyProviderRefreshCoordinatorOfficialInvalidResponse, language: language)
         case .egressGuard(.mismatch):
@@ -1636,10 +1642,11 @@ final class ProviderRefreshCoordinator {
             }
         }
         func fail(providerID: String, providerName: String, reason: String, client: AssistantClient,
-                  directCodex: Bool = false, recovery: CodexOfficialFailure? = nil,
+                  directCodex: Bool = false, recovery: CodexOfficialFailure? = nil, retryAt: Date? = nil,
                   isCurrentRequest: @escaping () -> Bool) {
             if isValid(), isCurrentRequest() { officialSampleUnavailable(client: client, providerID: providerID) }
             var error = Snapshot.providerError(providerName, reason: reason, cachedBalance: nil)
+            error.officialRetryAt = retryAt
             // Every direct Codex error names its client, so a network or server error card
             // opens the Codex usage page instead of falling back to Claude's.
             if directCodex {
@@ -1783,17 +1790,21 @@ final class ProviderRefreshCoordinator {
                     let direct = client == .codex && source == nil
                     let recovery = direct ? Self.codexOfficialFailure(error) : nil
                     let reason = recovery?.reason ?? Self.officialFailureReason(error, client: client)
+                    let retryAt: Date?
+                    if case .httpStatus(429, _, let deadline) = error { retryAt = deadline }
+                    else { retryAt = nil }
                     if direct, let kept = self.keptCodexOfficialSnapshot(providerID: providerID,
                         revision: configurationRevision, accountKey: accountKey, error: error) {
                         if isValid(), isCurrentRequest() { self.officialSampleUnavailable(client: client, providerID: providerID) }
                         var stale = Self.staleOfficialSnapshot(kept, reason: reason, now: self.now())
+                        stale.officialRetryAt = retryAt
                         stale.failureClient = .codex
                         stale.failureRecovery = recovery?.action ?? .openUsagePage
                         stale.accountUnavailableReason = recovery?.accountReason
                         publish(stale, providerID: providerID, client: client, isCurrentRequest: isCurrentRequest)
                     } else {
                         fail(providerID: providerID, providerName: providerName, reason: reason, client: client,
-                            directCodex: direct, recovery: recovery, isCurrentRequest: isCurrentRequest)
+                            directCodex: direct, recovery: recovery, retryAt: retryAt, isCurrentRequest: isCurrentRequest)
                     }
                 }
             }
@@ -1811,8 +1822,8 @@ final class ProviderRefreshCoordinator {
             return tr(.keyProviderRefreshCoordinatorOfficialValueLocalSignInCredentialsWereNotFound, arguments: [name], language: language)
         case .transport(let transport):
             return officialTransportReason(transport, name: name, language: language)
-        case .httpStatus(let status, _, let retryAt):
-            return officialHTTPReason(status, name: name, retryAt: retryAt, language: language)
+        case .httpStatus(let status, _, _):
+            return officialHTTPReason(status, name: name, language: language)
         case .invalidJSON, .unsupportedFormat:
             return tr(.keyProviderRefreshCoordinatorOfficialInvalidResponse, language: language)
         default:
@@ -1834,15 +1845,10 @@ final class ProviderRefreshCoordinator {
         return tr(.keyProviderRefreshCoordinatorOfficialValueValue, arguments: [name, reason], language: language)
     }
 
-    private static func officialHTTPReason(_ status: Int, name: String, retryAt: Date?, language: AppLanguage) -> String {
+    private static func officialHTTPReason(_ status: Int, name: String, language: AppLanguage) -> String {
         switch status {
         case 429:
-            guard let retryAt else { return tr(.keyProviderRefreshCoordinatorOfficialRateLimited, language: language) }
-            let formatter = DateFormatter()
-            formatter.locale = Locale(identifier: "en_US_POSIX")
-            formatter.dateFormat = "HH:mm"
-            return tr(.keyProviderRefreshCoordinatorOfficialRateLimitedUntil,
-                arguments: [formatter.string(from: retryAt)], language: language)
+            return tr(.keyProviderRefreshCoordinatorOfficialRateLimited, language: language)
         case 500..<600:
             return tr(.keyProviderRefreshCoordinatorOfficialServerError, arguments: [String(status)], language: language)
         default:
