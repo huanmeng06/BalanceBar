@@ -9,6 +9,20 @@ final class AutomatedTestHostTests: XCTestCase {
         XCTAssertNotNil(ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"])
     }
 
+    /// The host shares the installed app's bundle identifier; tests must never read or
+    /// write the user's real preferences through `UserDefaults.standard`.
+    func testStandardDefaultsAreIsolatedFromInstalledAppDomain() throws {
+        let key = "balanceBar.xctestHostIsolationProbe"
+        let suiteName = AutomatedTestHost.isolatedDefaultsSuiteName
+        let isolated = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { UserDefaults.standard.removeObject(forKey: key) }
+        UserDefaults.standard.set("probe", forKey: key)
+        XCTAssertEqual(isolated.string(forKey: key), "probe")
+        let bundleIdentifier = try XCTUnwrap(Bundle.main.bundleIdentifier)
+        XCTAssertNil(CFPreferencesCopyAppValue(key as CFString, bundleIdentifier as CFString))
+        XCTAssertNotNil(CFPreferencesCopyAppValue(key as CFString, suiteName as CFString))
+    }
+
     func testBackgroundPresentationParksWindowOffScreenWithoutRegularPolicy() {
         _ = NSApplication.shared
         let window = NSWindow(

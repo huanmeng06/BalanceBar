@@ -2767,6 +2767,7 @@ final class ApplicationLifecycleState {
 enum BalanceBarMain {
     static func main() {
         if AutomatedTestHost.isRunning {
+            AutomatedTestHost.isolateUserDefaults()
             // XCTest still needs the default run loop to attach. Switch to
             // accessory and yield key focus before any window is created so
             // launch does not steal the user's input method.
