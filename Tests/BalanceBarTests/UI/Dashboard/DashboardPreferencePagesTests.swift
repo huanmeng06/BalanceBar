@@ -4539,10 +4539,31 @@ final class DashboardPreferencePagesTests: XCTestCase {
             let detail = try XCTUnwrap(descendants(of: row).compactMap { $0 as? NSTextField }.first {
                 $0.stringValue == tr(.keyDashboardMenuPageProgressColorRangesUsedDescription)
             })
-            XCTAssertLessThan(detail.convert(detail.bounds, to: row).maxX, picker.convert(picker.bounds, to: row).minX)
-            XCTAssertLessThan(picker.convert(picker.bounds, to: row).maxX, reset.convert(reset.bounds, to: row).minX)
-            XCTAssertLessThan(reset.convert(reset.bounds, to: row).maxX, row.bounds.maxX)
-            XCTAssertGreaterThan(detail.bounds.height, 0)
+            let slider = try XCTUnwrap(descendants(of: row).compactMap { $0 as? QuotaColorThresholdSlider }.first)
+            let initialControlsWidth = controls.bounds.width
+            func assertLayout() {
+                let detailFrame = detail.convert(detail.bounds, to: row)
+                let pickerFrame = picker.convert(picker.bounds, to: row)
+                let resetFrame = reset.convert(reset.bounds, to: row)
+                XCTAssertLessThan(detailFrame.maxX, pickerFrame.minX)
+                XCTAssertEqual(resetFrame.minX - pickerFrame.maxX, 8, accuracy: 1)
+                XCTAssertEqual(resetFrame.maxX, row.bounds.maxX - SettingsRowView.horizontalPadding, accuracy: 1)
+                XCTAssertEqual(controls.bounds.width, initialControlsWidth, accuracy: 1)
+                XCTAssertGreaterThan(detailFrame.height, 0)
+            }
+            for width: CGFloat in [516, 960, 516] {
+                window.setContentSize(NSSize(width: width, height: 900))
+                window.layoutIfNeeded()
+                page.layoutSubtreeIfNeeded()
+                assertLayout()
+                let detailFrame = detail.convert(detail.bounds, to: row)
+                slider.applyRawThumbValueForTesting(80, after: .red)
+                slider.applyRawThumbValueForTesting(90, after: .red)
+                window.layoutIfNeeded()
+                page.layoutSubtreeIfNeeded()
+                XCTAssertEqual(detail.convert(detail.bounds, to: row), detailFrame)
+                assertLayout()
+            }
         }
     }
 

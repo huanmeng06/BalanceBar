@@ -530,9 +530,15 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         colorRangeControls.orientation = .horizontal
         colorRangeControls.alignment = .centerY
         colorRangeControls.spacing = 8
-        colorRangeControls.setContentHuggingPriority(.required, for: .horizontal)
-        colorRangeControls.setContentCompressionResistancePriority(.required, for: .horizontal)
-        colorRangeControls.setClippingResistancePriority(.required, for: .horizontal)
+        // The header reserves the whole accessory width for wrapping. Keep the
+        // native stack from stretching its trailing gravity area on resize.
+        let pickerWidth = ceil(modePicker.fittingSize.width)
+        let resetWidth = ceil(resetButton.fittingSize.width)
+        NSLayoutConstraint.activate([
+            modePicker.widthAnchor.constraint(equalToConstant: pickerWidth),
+            resetButton.widthAnchor.constraint(equalToConstant: resetWidth),
+            colorRangeControls.widthAnchor.constraint(equalToConstant: pickerWidth + colorRangeControls.spacing + resetWidth)
+        ])
         let colorControls = QuotaColorSelectionStack()
         colorControls.orientation = .horizontal
         colorControls.alignment = .centerY
