@@ -26,7 +26,7 @@ enum ClaudeQuotaFailure: Equatable {
     case noAccount
     case rateLimited
     case unauthorized
-    case transport(possibleProxy: Bool, description: String)
+    case transport(OfficialQuotaTransportError)
     case http(Int)
     case invalidResponse
     /// The egress guard kept the request on this machine (`noTargets`, `mismatch`, `unsupportedRegion` or
@@ -1075,8 +1075,9 @@ final class ClaudeQuotaPipeline {
         case .noAccount: return "no_account"
         case .rateLimited: return "rate_limited"
         case .unauthorized: return "unauthorized"
-        case let .transport(possibleProxy, description):
-            return "transport; possible_proxy=\(possibleProxy); detail=\(description)"
+        case .transport(.possibleProxy(let code)): return "transport; possible_proxy=true; url_error=\(code.rawValue)"
+        case .transport(.urlError(let code)): return "transport; possible_proxy=false; url_error=\(code.rawValue)"
+        case .transport(.unknown): return "transport; unknown"
         case let .http(status): return "http; status=\(status)"
         case .invalidResponse: return "invalid_response"
         case let .egressGuard(block): return "egress_guard; block=\(block.rawValue)"
@@ -1403,12 +1404,8 @@ final class ClaudeQuotaPipeline {
         case .credentialsUnreadable?: return .credentialsUnreadable
         case .missingAccount?: return .noAccount
         case let .egressGuard(block)?: return .egressGuard(block)
-        case let .transport(transport)?:
-            if case .possibleProxy = transport {
-                return .transport(possibleProxy: true, description: transport.localizedDescription)
-            }
-            return .transport(possibleProxy: false, description: transport.localizedDescription)
-        case let .httpStatus(status, _)?: return .http(status)
+        case let .transport(transport)?: return .transport(transport)
+        case let .httpStatus(status, _, _)?: return .http(status)
         case .invalidJSON?, .unsupportedFormat?: return .invalidResponse
         }
     }

@@ -3262,6 +3262,71 @@ final class StatusItemControllerTests: XCTestCase {
 
 extension StatusItemControllerTests {
     @MainActor
+    func testOfficial429ReformatsExistingErrorCardsAndStaleTooltipsWhenDisplayZoneChanges() throws {
+        let until = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-01-01T12:34:00Z"))
+        let fetchedAt = until.addingTimeInterval(-300)
+        let utc = try XCTUnwrap(TimeZone(identifier: "UTC"))
+        let system = AppTimeZoneSelection.system.resolved(systemTimeZone: utc)
+        let shanghai = AppTimeZoneSelection.region(identifier: "Asia/Shanghai").resolved(systemTimeZone: utc)
+        let settings: (TimeZone) -> StatusItemController.MenuBarSettings = { zone in
+            .init(showIcon: true, showAmount: true, showReset: true, horizontalPadding: 6,
+                keepMenuOpenAfterRefresh: true, displayTimeZone: zone)
+        }
+        let reason = tr(.keyProviderRefreshCoordinatorOfficialRateLimited)
+        func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(descendants) }
+        for (client, aggregated) in [(AssistantClient.claude, false), (.codex, false), (.codex, true)] {
+            for retainedQuota in [false, true] {
+                let controller = makeController()
+                defer { controller.teardown() }
+                var snapshot = retainedQuota
+                    ? Snapshot.official(client.displayName, 86, "5h", "1h", fetchedAt, windows: [
+                        .init(kind: .fiveHour, remaining: 86, label: "5h", daysText: "5h", reset: "1h", durationSeconds: 18_000),
+                    ])
+                    : .providerError(client.displayName, reason: reason, cachedBalance: nil)
+                snapshot.officialRetryAt = until
+                if client == .claude { snapshot.quotaStatus = .error(at: retainedQuota ? fetchedAt : nil, source: .oauthAPI) }
+                if client == .codex, !aggregated { snapshot.failureClient = .codex }
+                if retainedQuota, !aggregated { snapshot.staleReason = reason }
+                let input: StatusItemController.MenuInput
+                if aggregated {
+                    let entry = AggregatedProviderEntry(source: ProviderSummarySource(id: "official", name: "Codex",
+                        isOfficial: true, query: nil, officialAccessToken: nil), role: .default)
+                    let display = AggregatedProviderDisplay(entry: entry,
+                        identity: .init(providerID: "official", accountScope: "fixture", configurationRevision: "fixture"),
+                        snapshot: snapshot, account: nil, status: retainedQuota ? .stale : .error,
+                        reason: reason, fetchedAt: retainedQuota ? fetchedAt : nil)
+                    input = .init(choices: [], quickSwitchSummaries: [:], activeClient: .codex, openAIAccount: nil,
+                        statusLinks: [], showQuickSwitchMenu: false, showOpenChatGPTMenu: false, showOpenCCSwitchMenu: false,
+                        showStatusMenu: false, aggregatedProviders: [display])
+                } else {
+                    input = makeMenuInput(activeClient: client)
+                }
+                let refreshDate = retainedQuota ? fetchedAt : nil
+                controller.start(snapshot: snapshot, refreshDate: refreshDate, menuInput: input, settings: settings(system))
+                let menu = controller.statusMenuForTesting
+                if retainedQuota { controller.menuWillOpen(menu) }
+                defer { if retainedQuota { controller.menuDidClose(menu) } }
+
+                func renderedReason() throws -> String {
+                    let root = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+                    let views = descendants((root as? NSScrollView)?.documentView ?? root)
+                    if retainedQuota {
+                        let refreshTime = try XCTUnwrap(views.first { $0.identifier?.rawValue == "overview.refreshTime" })
+                        return try XCTUnwrap(refreshTime.toolTip)
+                    }
+                    if let failure = views.compactMap({ $0 as? FailureStateView }).first { return failure.reasonForTesting }
+                    return try XCTUnwrap(views.compactMap { ($0 as? NSTextField)?.stringValue }.first { $0.contains("HTTP 429") })
+                }
+                XCTAssertTrue(try renderedReason().contains("12:34"))
+                controller.update(snapshot: snapshot, refreshDate: refreshDate, menuInput: input, settings: settings(shanghai))
+                let updated = try renderedReason()
+                XCTAssertTrue(updated.contains("20:34"), "\(client), aggregated=\(aggregated), retained=\(retainedQuota): \(updated)")
+                XCTAssertFalse(updated.contains("12:34"))
+            }
+        }
+    }
+
+    @MainActor
     func testMenuRefreshTimestampReformatsExistingSnapshotAfterZoneChange() throws {
         let date = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-01-01T23:30:00Z"))
         let snapshot = Snapshot.balance("Test", 10, "USD", nil, date)

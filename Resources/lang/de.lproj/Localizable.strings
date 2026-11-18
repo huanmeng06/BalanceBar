@@ -107,6 +107,12 @@
 "provider.refresh.coordinator.the_balance_response_could_not_be_parsed" = "Die Guthabenantwort konnte nicht analysiert werden";
 "provider.refresh.coordinator.official_value_local_sign_in_credentials_were_not_found" = "Offiziell %1$@: Lokale Anmeldedaten wurden nicht gefunden";
 "provider.refresh.coordinator.official_value_value" = "Offiziell %1$@: %2$@";
+"provider.refresh.coordinator.official_possible_proxy" = "%1$@. Möglicherweise ist ein Proxy erforderlich.";
+"provider.refresh.coordinator.official_rate_limited" = "Der offizielle Dienst begrenzt Anfragen vorübergehend (HTTP 429). BalanceBar versucht es später automatisch erneut.";
+"provider.refresh.coordinator.official_rate_limited_until" = "Der offizielle Dienst begrenzt Anfragen vorübergehend (HTTP 429). BalanceBar versucht es nach %1$@ automatisch erneut.";
+"provider.refresh.coordinator.official_http_error" = "Offizielle Kontingentabfrage für %1$@ fehlgeschlagen (HTTP %2$@).";
+"provider.refresh.coordinator.official_server_error" = "Der offizielle Dienst ist vorübergehend nicht verfügbar (HTTP %1$@). BalanceBar versucht es später automatisch erneut.";
+"provider.refresh.coordinator.official_invalid_response" = "Das offizielle Antwortformat wurde nicht erkannt. Möglicherweise muss BalanceBar aktualisiert werden.";
 "provider.refresh.coordinator.official_value_the_quota_endpoint_returned_an_error" = "Offiziell %1$@: Der Kontingent-Endpunkt hat einen Fehler zurückgegeben";
 "provider.refresh.coordinator.network_request_failed" = "Netzwerkanfrage fehlgeschlagen";
 "provider.refresh.coordinator.network_request_timed_out" = "Zeitüberschreitung bei der Netzwerkanfrage";

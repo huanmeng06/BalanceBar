@@ -107,6 +107,12 @@
 "provider.refresh.coordinator.the_balance_response_could_not_be_parsed" = "残高レスポンスを解析できません";
 "provider.refresh.coordinator.official_value_local_sign_in_credentials_were_not_found" = "%1$@ 公式アカウント：ローカルログイン情報が見つかりません";
 "provider.refresh.coordinator.official_value_value" = "%1$@ 公式アカウント：%2$@";
+"provider.refresh.coordinator.official_possible_proxy" = "%1$@。プロキシが必要な場合があります。";
+"provider.refresh.coordinator.official_rate_limited" = "公式サービスがリクエストを一時的に制限しています（HTTP 429）。後ほど自動で再試行します。";
+"provider.refresh.coordinator.official_rate_limited_until" = "公式サービスがリクエストを一時的に制限しています（HTTP 429）。%1$@ 以降に自動で再試行します。";
+"provider.refresh.coordinator.official_http_error" = "%1$@ の公式利用枠の取得に失敗しました（HTTP %2$@）。";
+"provider.refresh.coordinator.official_server_error" = "公式サービスで一時的な障害が発生しています（HTTP %1$@）。後ほど自動で再試行します。";
+"provider.refresh.coordinator.official_invalid_response" = "公式サービスの応答形式を認識できません。BalanceBar の更新が必要な場合があります。";
 "provider.refresh.coordinator.official_value_the_quota_endpoint_returned_an_error" = "%1$@ 公式アカウント：クォータエンドポイントでエラーが返されました";
 "provider.refresh.coordinator.network_request_failed" = "ネットワークリクエストに失敗しました";
 "provider.refresh.coordinator.network_request_timed_out" = "ネットワークリクエストがタイムアウトしました";

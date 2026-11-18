@@ -1051,6 +1051,8 @@ struct Snapshot: Equatable {
     /// the latest request failed (for example HTTP 429); the reason is shown
     /// on the refresh time instead of replacing the card with an error.
     var staleReason: String? = nil
+    /// Absolute deadline for an official 429. Format it with the current display zone, not at fetch time.
+    var officialRetryAt: Date? = nil
     /// Status-slot state for Claude official quota (refreshing, failed,
     /// reset pending, ...); nil for every other source, which keeps the
     /// plain refresh-time label.
@@ -1547,6 +1549,17 @@ struct Snapshot: Equatable {
         }
     }
 
+    func officialRetryReason(timeZone: TimeZone, language: AppLanguage = .selected) -> String? {
+        guard let officialRetryAt else { return nil }
+        let time = AppDisplayTime.formatter(timeZone: timeZone, dateFormat: "HH:mm").string(from: officialRetryAt)
+        return tr(.keyProviderRefreshCoordinatorOfficialRateLimitedUntil, arguments: [time], language: language)
+    }
+
+    func displayedStaleReason(timeZone: TimeZone) -> String? {
+        guard let staleReason else { return nil }
+        return officialRetryReason(timeZone: timeZone) ?? staleReason
+    }
+
     func overviewReset(refreshDate: Date?, formatter: DateFormatter) -> String {
         switch kind {
         case .official:
@@ -1556,7 +1569,7 @@ struct Snapshot: Equatable {
         case .placeholder:
             return tr(.keySnapshotLoadingTheCurrentProvider)
         case .error:
-            return message ?? tr(.keySnapshotFailedToLoadBalance)
+            return officialRetryReason(timeZone: formatter.timeZone) ?? message ?? tr(.keySnapshotFailedToLoadBalance)
         }
     }
 

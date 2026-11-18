@@ -107,6 +107,12 @@
 "provider.refresh.coordinator.the_balance_response_could_not_be_parsed" = "잔액 응답을 구문 분석할 수 없습니다";
 "provider.refresh.coordinator.official_value_local_sign_in_credentials_were_not_found" = "공식 %1$@: 로컬 로그인 자격 증명을 찾지 못했습니다";
 "provider.refresh.coordinator.official_value_value" = "공식 %1$@: %2$@";
+"provider.refresh.coordinator.official_possible_proxy" = "%1$@. 프록시가 필요할 수 있습니다.";
+"provider.refresh.coordinator.official_rate_limited" = "공식 서비스에서 일시적으로 요청을 제한하고 있습니다(HTTP 429). 잠시 후 자동으로 다시 시도합니다.";
+"provider.refresh.coordinator.official_rate_limited_until" = "공식 서비스에서 일시적으로 요청을 제한하고 있습니다(HTTP 429). %1$@ 이후에 자동으로 다시 시도합니다.";
+"provider.refresh.coordinator.official_http_error" = "%1$@ 공식 사용량을 가져오지 못했습니다(HTTP %2$@).";
+"provider.refresh.coordinator.official_server_error" = "공식 서비스에 일시적인 문제가 발생했습니다(HTTP %1$@). 잠시 후 자동으로 다시 시도합니다.";
+"provider.refresh.coordinator.official_invalid_response" = "공식 응답 형식을 인식할 수 없습니다. BalanceBar를 업데이트해야 할 수 있습니다.";
 "provider.refresh.coordinator.official_value_the_quota_endpoint_returned_an_error" = "공식 %1$@: 할당량 엔드포인트가 오류를 반환했습니다";
 "provider.refresh.coordinator.network_request_failed" = "네트워크 요청 실패";
 "provider.refresh.coordinator.network_request_timed_out" = "네트워크 요청 시간이 초과되었습니다";

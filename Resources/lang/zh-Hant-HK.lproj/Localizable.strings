@@ -107,6 +107,12 @@
 "provider.refresh.coordinator.the_balance_response_could_not_be_parsed" = "無法解析餘額回應";
 "provider.refresh.coordinator.official_value_local_sign_in_credentials_were_not_found" = "%1$@ 官方帳戶：找不到本機登入狀態";
 "provider.refresh.coordinator.official_value_value" = "%1$@ 官方帳戶：%2$@";
+"provider.refresh.coordinator.official_possible_proxy" = "%1$@。可能需要使用代理伺服器。";
+"provider.refresh.coordinator.official_rate_limited" = "官方暫時限制請求頻率（HTTP 429），稍後會自動重試。";
+"provider.refresh.coordinator.official_rate_limited_until" = "官方暫時限制請求頻率（HTTP 429），會在 %1$@ 後自動重試。";
+"provider.refresh.coordinator.official_http_error" = "%1$@ 官方額度請求失敗（HTTP %2$@）。";
+"provider.refresh.coordinator.official_server_error" = "官方服務暫時異常（HTTP %1$@），稍後會自動重試。";
+"provider.refresh.coordinator.official_invalid_response" = "未能辨識官方回應格式，可能需要更新 BalanceBar。";
 "provider.refresh.coordinator.official_value_the_quota_endpoint_returned_an_error" = "%1$@ 官方帳戶：配額介面返回異常";
 "provider.refresh.coordinator.network_request_failed" = "網絡請求失敗";
 "provider.refresh.coordinator.network_request_timed_out" = "網絡請求逾時";

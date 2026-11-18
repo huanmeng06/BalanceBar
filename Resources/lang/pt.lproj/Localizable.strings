@@ -107,6 +107,12 @@
 "provider.refresh.coordinator.the_balance_response_could_not_be_parsed" = "Não foi possível analisar a resposta de saldo";
 "provider.refresh.coordinator.official_value_local_sign_in_credentials_were_not_found" = "%1$@ oficial: as credenciais locais de login não foram encontradas";
 "provider.refresh.coordinator.official_value_value" = "%1$@ oficial: %2$@";
+"provider.refresh.coordinator.official_possible_proxy" = "%1$@. Pode ser necessário usar um proxy.";
+"provider.refresh.coordinator.official_rate_limited" = "O serviço oficial está limitando temporariamente as solicitações (HTTP 429). O BalanceBar tentará novamente de forma automática mais tarde.";
+"provider.refresh.coordinator.official_rate_limited_until" = "O serviço oficial está limitando temporariamente as solicitações (HTTP 429). O BalanceBar tentará novamente de forma automática após %1$@.";
+"provider.refresh.coordinator.official_http_error" = "Falha ao consultar a cota oficial do %1$@ (HTTP %2$@).";
+"provider.refresh.coordinator.official_server_error" = "O serviço oficial está temporariamente indisponível (HTTP %1$@). O BalanceBar tentará novamente de forma automática mais tarde.";
+"provider.refresh.coordinator.official_invalid_response" = "O formato da resposta oficial não foi reconhecido. Talvez seja necessário atualizar o BalanceBar.";
 "provider.refresh.coordinator.official_value_the_quota_endpoint_returned_an_error" = "%1$@ oficial: o endpoint de cota retornou um erro";
 "provider.refresh.coordinator.network_request_failed" = "A solicitação de rede falhou";
 "provider.refresh.coordinator.network_request_timed_out" = "A solicitação de rede expirou";

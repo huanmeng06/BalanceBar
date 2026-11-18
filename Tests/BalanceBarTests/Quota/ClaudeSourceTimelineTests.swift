@@ -128,7 +128,7 @@ final class ClaudeSourceTimelineTests: XCTestCase {
     }
 
     func testFailureKindsAreGroupedForDisplay() {
-        XCTAssertEqual(ClaudeSourceTimeline.FailureKind(.transport(possibleProxy: true, description: "x")), .network)
+        XCTAssertEqual(ClaudeSourceTimeline.FailureKind(.transport(.possibleProxy(.cannotConnectToHost))), .network)
         XCTAssertEqual(ClaudeSourceTimeline.FailureKind(.http(429)), .rateLimited)
         XCTAssertEqual(ClaudeSourceTimeline.FailureKind(.rateLimited), .rateLimited)
         XCTAssertEqual(ClaudeSourceTimeline.FailureKind(.unauthorized), .unauthorized)
