@@ -308,6 +308,41 @@ final class ClaudeEgressGuardTests: XCTestCase {
         XCTAssertEqual(editor.rows, ["2001:db8::1"], "+ does nothing while dimmed")
     }
 
+    /// The IP column is the table's first column, which `.fullWidth` pads; its header title and
+    /// the country header must both start where their row text starts. Header and row show the
+    /// same glyphs in black so only the geometry is compared.
+    @MainActor
+    func testHeaderTitlesStartAtRowTextInTextColumns() throws {
+        let text = "lllll"
+        let editor = EgressIPListEditorView(ips: ["203.0.113.7"], lookupCountry: { _, _ in }, onSave: { _ in })
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 560, height: 240),
+            styleMask: [.titled], backing: .buffered, defer: false)
+        defer { window.orderOut(nil) }
+        window.appearance = NSAppearance(named: .aqua)
+        window.contentView = editor
+        let table = editor.tableView
+        let textColumns = [0, 1]
+        for column in textColumns {
+            table.tableColumns[column].title = text
+        }
+        editor.layoutSubtreeIfNeeded()
+        for column in textColumns {
+            let cell = try XCTUnwrap(table.view(atColumn: column, row: 0, makeIfNecessary: true) as? NSTableCellView)
+            let field = try XCTUnwrap(cell.textField)
+            field.stringValue = text
+            field.textColor = .black
+        }
+        let headerView = try XCTUnwrap(table.headerView)
+        let container = editor.tableContainer
+
+        for column in textColumns {
+            let headerX = try firstTextInkX(of: headerView, in: headerView.headerRect(ofColumn: column), renderedBy: container)
+            let rowX = try firstTextInkX(of: table, in: table.frameOfCell(atColumn: column, row: 0), renderedBy: container)
+            XCTAssertEqual(headerX, rowX, accuracy: 0.5, "column \(column)")
+        }
+    }
+
     func testTableGrowsWithRowsUpToSixThenScrolls() {
         let editor = EgressIPListEditorView(ips: [], onSave: { _ in })
         let empty = editor.intrinsicContentSize.height
