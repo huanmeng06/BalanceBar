@@ -2,6 +2,27 @@ import AppKit
 import XCTest
 @testable import BalanceBar
 
+/// First x (in `container` coordinates) where dark text is drawn inside `rect` of `view`,
+/// rendered through `container` so siblings such as a table header and its rows share one
+/// coordinate space. Used to compare header titles with row text pixel for pixel.
+@MainActor
+func firstTextInkX(of view: NSView, in rect: NSRect, renderedBy container: NSView) throws -> CGFloat {
+    let rect = view.convert(rect, to: container)
+    let rep = try XCTUnwrap(container.bitmapImageRepForCachingDisplay(in: rect))
+    container.cacheDisplay(in: rect, to: rep)
+    let scale = CGFloat(rep.pixelsWide) / rect.width
+    for x in 0..<rep.pixelsWide {
+        for y in 0..<rep.pixelsHigh {
+            guard let color = rep.colorAt(x: x, y: y)?.usingColorSpace(.deviceGray) else { continue }
+            if color.whiteComponent < 0.6, color.alphaComponent > 0.5 {
+                return rect.minX + CGFloat(x) / scale
+            }
+        }
+    }
+    XCTFail("no text in \(rect)")
+    return .nan
+}
+
 @MainActor
 private final class TrackingStatusLinksTableView: NSTableView {
     private(set) var reloadCount = 0
@@ -160,6 +181,30 @@ final class StatusLinksTests: XCTestCase {
             window.appearance = NSAppearance(named: name)
             editor.viewDidChangeEffectiveAppearance()
             XCTAssertEqual(layer.borderColor, try separator(name), name.rawValue)
+        }
+    }
+
+    /// A `.fullWidth` table pads its first column's cells but not the header rect; every header
+    /// title must still start where its column's row text starts. Header and row show the same
+    /// glyphs, so the first inked pixel column of each is compared directly.
+    func testHeaderTitlesStartAtRowTextInEveryColumn() throws {
+        let text = "lllll"
+        let editor = makeEditor(links: [StatusLink(title: text, url: text)])
+        let window = makeWindow(for: editor)
+        defer { window.orderOut(nil) }
+        window.appearance = NSAppearance(named: .aqua)
+        let table = editor.tableViewForTesting
+        for column in table.tableColumns {
+            column.title = text
+        }
+        let headerView = try XCTUnwrap(table.headerView)
+        let container = editor.tableContainerForTesting
+        container.layoutSubtreeIfNeeded()
+
+        for column in table.tableColumns.indices {
+            let headerX = try firstTextInkX(of: headerView, in: headerView.headerRect(ofColumn: column), renderedBy: container)
+            let rowX = try firstTextInkX(of: table, in: table.frameOfCell(atColumn: column, row: 0), renderedBy: container)
+            XCTAssertEqual(headerX, rowX, accuracy: 0.5, "column \(column)")
         }
     }
 
