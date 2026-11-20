@@ -63,7 +63,7 @@
 "snapshot.available_balance" = "Verfügbares Guthaben";
 "snapshot.balance_status" = "Guthabenstatus";
 "snapshot.7_day_quota" = "7-Tage-Kontingent";
-"snapshot.remaining_balance" = "Verbleibendes Guthaben";
+"snapshot.remaining_balance" = "Restguthaben";
 "snapshot.waiting_to_refresh" = "Warten auf Aktualisierung";
 "snapshot.load_failed" = "Laden fehlgeschlagen";
 "snapshot.loading_cc_switch" = "CC Switch wird geladen…";
@@ -575,7 +575,7 @@
 "balance.yesterday" = "gestern";
 "balance.used" = "%1$@ verbraucht";
 "balance.recording.started_on" = "Erfasst seit %1$@";
-"balance.recording.started" = "Erfassung begonnen";
+"balance.recharge.not_recorded" = "Keine Aufladung erfasst";
 "balance.reference_on" = "Vom Guthaben am %1$@: %2$@, noch %3$@";
 "balance.reference" = "Vom Ausgangsguthaben %1$@: noch %2$@";
 "balance.reference_unavailable" = "Kein verlässlicher Guthabenbezug";
@@ -856,10 +856,10 @@
 "ccswitch.database_unreadable" = "Die CC-Switch-Datenbank kann nicht gelesen werden. Bitte CC Switch erneut öffnen und noch einmal versuchen";
 "ccswitch.database_busy" = "Die CC-Switch-Datenbank ist belegt. BalanceBar versucht es weiter";
 "aggregation.not_configured" = "Für diesen Anbieter ist keine Nutzungsabfrage eingerichtet. Bitte in CC Switch ein Nutzungsskript konfigurieren";
-"claude.refresh.egress_guard_mismatch" = "Die Ausgangs-IP steht nicht auf der Zulassungsliste; offizielle Claude-Anfragen sind pausiert.";
-"claude.refresh.egress_guard_check_failed" = "Die Ausgangs-IP konnte nicht bestätigt werden; offizielle Claude-Anfragen sind pausiert.";
-"claude.refresh.egress_guard_no_targets" = "Die IP-Zulassungsliste ist leer; offizielle Claude-Anfragen sind pausiert.";
-"claude.refresh.egress_guard_unsupported_region" = "Die Ausgangsregion wird von Anthropic nicht unterstützt oder ist unbekannt; offizielle Claude-Anfragen sind pausiert.";
+"claude.refresh.egress_guard_mismatch" = "Die Ausgangs-IP steht nicht auf der Zulassungsliste; offizielle Claude-Anfragen sind pausiert. Die IP-Zulassungsliste kannst du unter Einstellungen › Erweitert anpassen.";
+"claude.refresh.egress_guard_check_failed" = "Die Ausgangs-IP konnte nicht bestätigt werden; offizielle Claude-Anfragen sind pausiert. Die IP-Zulassungsliste kannst du unter Einstellungen › Erweitert anpassen.";
+"claude.refresh.egress_guard_no_targets" = "Die IP-Zulassungsliste ist leer; offizielle Claude-Anfragen sind pausiert. Die IP-Zulassungsliste kannst du unter Einstellungen › Erweitert anpassen.";
+"claude.refresh.egress_guard_unsupported_region" = "Die Ausgangsregion wird von Anthropic nicht unterstützt oder ist unbekannt; offizielle Claude-Anfragen sind pausiert. Die IP-Zulassungsliste kannst du unter Einstellungen › Erweitert anpassen.";
 "claude.refresh.egress_guard_disabled" = "Offizielle Claude-Anfragen sind aus. Aktiviere die IP-Zulassungsliste unter Einstellungen › Erweitert.";
 "claude.timeline.failure.egress_guard" = "Durch IP-Zulassungsliste blockiert";
 "quota.failure.open_egress_guard_settings" = "IP-Zulassungsliste einrichten";

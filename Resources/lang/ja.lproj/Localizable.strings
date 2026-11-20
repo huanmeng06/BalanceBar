@@ -575,7 +575,7 @@
 "balance.yesterday" = "昨日";
 "balance.used" = "%1$@ 使用";
 "balance.recording.started_on" = "%1$@から記録";
-"balance.recording.started" = "記録開始";
+"balance.recharge.not_recorded" = "前回のチャージ未記録";
 "balance.reference_on" = "%1$@の残高 %2$@ に対して残り %3$@";
 "balance.reference" = "基準残高 %1$@ に対して残り %2$@";
 "balance.reference_unavailable" = "残高の基準を確認できません";
@@ -856,10 +856,10 @@
 "ccswitch.database_unreadable" = "CC Switch のデータベースを読み取れません。CC Switch を開き直してからもう一度お試しください";
 "ccswitch.database_busy" = "CC Switch のデータベースが使用中です。BalanceBar は再試行を続けます";
 "aggregation.not_configured" = "このプロバイダーには使用量クエリが設定されていません。CC Switch で使用量スクリプトを設定してください";
-"claude.refresh.egress_guard_mismatch" = "出口 IP が許可リストにないため、Claude の公式リクエストを一時停止しました。";
-"claude.refresh.egress_guard_check_failed" = "出口 IP を確認できないため、Claude の公式リクエストを一時停止しました。";
-"claude.refresh.egress_guard_no_targets" = "IP 許可リストが空のため、Claude の公式リクエストを一時停止しました。";
-"claude.refresh.egress_guard_unsupported_region" = "出口の地域が Claude の提供地域外か特定できないため、Claude の公式リクエストを停止しています。";
+"claude.refresh.egress_guard_mismatch" = "出口 IP が許可リストにないため、Claude の公式リクエストを一時停止しました。設定 › 詳細 で IP 許可リストを調整できます。";
+"claude.refresh.egress_guard_check_failed" = "出口 IP を確認できないため、Claude の公式リクエストを一時停止しました。設定 › 詳細 で IP 許可リストを調整できます。";
+"claude.refresh.egress_guard_no_targets" = "IP 許可リストが空のため、Claude の公式リクエストを一時停止しました。設定 › 詳細 で IP 許可リストを調整できます。";
+"claude.refresh.egress_guard_unsupported_region" = "出口の地域が Claude の提供地域外か特定できないため、Claude の公式リクエストを停止しています。設定 › 詳細 で IP 許可リストを調整できます。";
 "claude.refresh.egress_guard_disabled" = "Claude の公式リクエストはオフです。設定 › 詳細 で IP 許可リストをオンにできます。";
 "claude.timeline.failure.egress_guard" = "IP 許可リストでブロック";
 "quota.failure.open_egress_guard_settings" = "IP 許可リストを設定";

@@ -2490,6 +2490,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         var noteTags: [String]? = nil
         /// Client that owns this card's quota prediction evidence.
         var paceClient: AssistantClient = .codex
+        /// Why a kept (stale) balance could not be refreshed; replaces the balance subtitle.
+        var staleBalanceReason: String? = nil
     }
     private struct AggregationCard {
         let wrapper: NSView
@@ -3660,7 +3662,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             menuDismissalTrace?.record("menu.rebuild.deferred", view: host,
                 details: "controller_tracking=\(isStatusMenuTracking); force=\(forceDefer)")
             scheduleClosedMenuRebuild()
-        } else if nativeItemsChanged || statusMenu.items.isEmpty || aggregationViewport != nil || statusMenuNeedsRebuild {
+        } else if nativeItemsChanged || statusMenu.items.isEmpty || aggregationViewport != nil || statusMenuNeedsRebuild
+                    // Direct → aggregation needs the aggregation viewport; swapping in a direct card
+                    // would hide the members' stale time and failure reason (Issue #710).
+                    || !menuInput.aggregatedProviders.isEmpty {
             // A rebuild still pending from a tracked update must land here;
             // swapping only the card would leave the flag set and make the
             // next open discard the fresh card.
@@ -6566,11 +6571,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func directCardContext(for snapshot: Snapshot) -> OverviewCardContext {
-        OverviewCardContext(snapshot: snapshot,
+        let kept = snapshot.keptBalanceSnapshot
+        return OverviewCardContext(snapshot: kept ?? snapshot,
             identity: menuInput.directProviderID.map { menuInput.activeClient.rawValue + "|" + $0 } ?? snapshot.provider,
             account: Self.directAccount(menuInput.openAIAccount, snapshot: snapshot, activeClient: menuInput.activeClient),
             date: refreshDate, noteTags: menuInput.directProviderNotes,
-            paceClient: menuInput.activeClient)
+            paceClient: menuInput.activeClient,
+            staleBalanceReason: kept?.staleReason)
     }
 
     /// A login failure of the shown client replaces the cached email with its short status, so
@@ -6585,8 +6592,20 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private func cardContext(_ display: AggregatedProviderDisplay) -> OverviewCardContext {
         let snapshot = display.status == .loading && display.fetchedAt == nil
             ? .loadingProvider(display.entry.source.name) : display.snapshot
+        let isStale = display.status == .stale || (display.status == .loading && display.reason != nil && display.fetchedAt != nil)
+        var staleReason = isStale && snapshot.kind == .balance
+            ? display.snapshot.officialRetryReason(timeZone: settings.displayTimeZone) ?? display.reason : nil
+        // A wallet card prefixes each failed member with its name. With one failed member that
+        // only repeats the card title, so drop it; notes and multiple members keep their labels.
+        let titlePrefix = display.entry.source.name + ": "
+        if let reason = staleReason, !reason.contains("\n"), reason.hasPrefix(titlePrefix) {
+            staleReason = String(reason.dropFirst(titlePrefix.count))
+        }
+        // The subtitle is a single line; separate several failed members inline.
+        staleReason = staleReason?.replacingOccurrences(of: "\n", with: " · ")
         return OverviewCardContext(snapshot: snapshot, identity: display.identity.numericScope,
-            account: display.account, date: display.fetchedAt, notes: display.entry.source.notes, noteTags: display.groupedNotes)
+            account: display.account, date: display.fetchedAt, notes: display.entry.source.notes, noteTags: display.groupedNotes,
+            staleBalanceReason: staleReason)
     }
 
     private func logAggregationLifecycle(reason: String) {
@@ -6733,7 +6752,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                         let presentation = snapshot.officialQuotaMenuPresentation(
                             lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
                             hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota)
-                        let layout = makeOverviewCardLayout(for: snapshot, presentation: presentation, account: context.account, aggregation: true)
+                        let layout = makeOverviewCardLayout(for: snapshot, presentation: presentation, account: context.account,
+                                                            aggregation: true, context: context)
                         reconcileBalanceLayout(in: host, next: layout)
                         if layout.progress == nil {
                             host.subviews.compactMap { $0 as? QuotaProgressView }.forEach { $0.removeFromSuperview() }
@@ -6947,6 +6967,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 child.frame = next.amount
             } else if child.identifier?.rawValue == "overview.quotaDetail" {
                 child.frame.origin.y = next.quotaDetail.minY
+            } else if child.identifier?.rawValue == "balance.staleReason" {
+                continue
             } else { child.frame.origin.y += shift }
         }
         host.frame.size = next.cardSize
@@ -6954,8 +6976,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func alignSingleLineBalance(in card: NSView, snapshot: Snapshot) {
-        guard snapshot.kind == .balance, snapshot.balanceRecharge == nil,
-              (card as? MenuHoverLinkHostView)?.overviewLayout?.balanceRecharge == nil,
+        let layout = (card as? MenuHoverLinkHostView)?.overviewLayout
+        let singleLine = snapshot.balanceRecharge == nil && layout?.balanceRecharge == nil
+        guard snapshot.kind == .balance, singleLine || layout?.balanceSubtitleIsBelowAmount == true,
               let host = card as? MenuHoverLinkHostView, host.overviewLayout?.link == nil,
               let amount = descendantViews(of: card, as: OverviewNumericTextView.self).first,
               let detail = descendantViews(of: card, as: AccountMarqueeView.self).first(where: {
@@ -6972,7 +6995,27 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         return label.convert(NSPoint(x: label.bounds.minX, y: y), to: parent).y
     }
 
+    /// Issue #710: the reason a kept balance could not be refreshed, as a full-width red row
+    /// between the subtitle and the progress bar. Removed once the balance refreshes again.
+    private func updateBalanceStaleReason(in card: NSView, context: OverviewCardContext) {
+        let id = NSUserInterfaceItemIdentifier("balance.staleReason")
+        let existing = card.subviews.first { $0.identifier == id } as? NSTextField
+        guard context.snapshot.kind == .balance, let reason = context.staleBalanceReason,
+              let frame = (card as? MenuHoverLinkHostView)?.overviewLayout?.balanceStaleReason else {
+            existing?.removeFromSuperview()
+            return
+        }
+        let text = ErrorCardLayout.detailText(for: reason, width: frame.width)
+        let label = existing ?? ErrorCardLayout.makeDetailLabel(text, textColor: .systemRed)
+        label.identifier = id
+        label.stringValue = text
+        label.frame = frame
+        label.setAccessibilityLabel(reason)
+        if existing == nil { card.addSubview(label) }
+    }
+
     private func updateBalanceSubtitle(in card: NSView, context: OverviewCardContext) {
+        updateBalanceStaleReason(in: card, context: context)
         let id = NSUserInterfaceItemIdentifier("balance.subtitle")
         let aggregation = !menuInput.aggregatedProviders.isEmpty
             || (context.snapshot.kind == .balance && !menuInput.directProviderIsOfficial)
@@ -6990,26 +7033,24 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             return
         }
         let text = context.snapshot.balanceSubtitle(timeZone: settings.displayTimeZone)
+        let textColor: NSColor = .secondaryLabelColor
         let hasRechargeHint = context.snapshot.balanceDisplayConsumedCents != nil
         let subtitleFont = NSFont.systemFont(ofSize: OpenCodexCardLayout.quotaResetPointSize)
-        let frame: NSRect
-        if let layout = (card as? MenuHoverLinkHostView)?.overviewLayout, row.intersects(layout.amount) {
-            frame = overviewMarqueeFrame(row, avoidingAmountFrame: layout.amount,
-                amountText: numericSamples(for: context).first.map { overviewNumericPlan(for: $0).layoutReservationText }
-                    ?? context.snapshot.overviewLargeAmount, amountFont: .monospacedDigitSystemFont(ofSize: OpenCodexCardLayout.quotaAmountPointSize, weight: .semibold), minimumAmountGap: 12)
-        } else { frame = row }
+        let frame = (card as? MenuHoverLinkHostView)?.overviewLayout
+            .map { balanceSubtitleFrame(row: row, layout: $0, context: context) } ?? row
         let needsMarquee = textWidth(text, font: subtitleFont) > frame.width + 0.5
         let existing = card.subviews.first { $0.identifier == id }
         let label: NSView
         if needsMarquee {
             let marquee: AccountMarqueeView
             if let existing = existing as? AccountMarqueeView,
-               (existing.accountLabel is HoverLinkTextField) == hasRechargeHint {
+               (existing.accountLabel is HoverLinkTextField) == hasRechargeHint,
+               hasRechargeHint || existing.accountLabel.textColor == textColor {
                 marquee = existing
             } else {
                 existing?.removeFromSuperview()
                 marquee = AccountMarqueeView(text: text, font: subtitleFont,
-                    textColor: .secondaryLabelColor, frame: frame,
+                    textColor: textColor, frame: frame,
                     label: hasRechargeHint ? HoverLinkTextField(text: text) : nil)
                 card.addSubview(marquee)
             }
@@ -7028,6 +7069,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 card.addSubview(textField)
             }
             textField.font = subtitleFont
+            textField.textColor = textColor
             textField.identifier = id
             textField.frame = frame
             textField.lineBreakMode = .byTruncatingTail
@@ -7036,7 +7078,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             paragraph.lineBreakMode = .byTruncatingTail
             textField.attributedStringValue = NSAttributedString(string: text, attributes: [
                 .font: subtitleFont,
-                .foregroundColor: NSColor.secondaryLabelColor, .paragraphStyle: paragraph])
+                .foregroundColor: textColor, .paragraphStyle: paragraph])
             label = textField
         }
         let tooltip: String
@@ -7097,7 +7139,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private func makeOverviewCardLayout(for snapshot: Snapshot,
                                         presentation: OfficialQuotaMenuPresentation,
                                         account: OpenAIAccountPresentation? = nil,
-                                        aggregation: Bool = false) -> OpenCodexCardFrames {
+                                        aggregation: Bool = false,
+                                        context: OverviewCardContext? = nil) -> OpenCodexCardFrames {
+        let staleReason = context?.staleBalanceReason
         let isBalance = snapshot.kind == .balance
         let unifiedBalance = isBalance && (!menuInput.directProviderIsOfficial || aggregation)
         let officialQuotaWindows = presentation.windows
@@ -7118,11 +7162,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let subscriptionTextWidth = subscription.map {
             AccountMarqueeView.textWidth(of: $0.text, font: Self.subscriptionFont)
         }
-        return OpenCodexCardLayout.frames(
+        func frames(subtitleBelowAmount: Bool) -> OpenCodexCardFrames { OpenCodexCardLayout.frames(
             for: isBalance ? .balance : .quota,
             linkPrefixWidth: AppLanguage.resolved.overviewLinkPrefixWidth,
             includesBalanceSubtitle: !unifiedBalance,
             includesBalanceRecharge: isBalance && (unifiedBalance || snapshot.balanceRecharge != nil),
+            balanceStaleReasonHeight: isBalance
+                ? staleReason.map { ErrorCardLayout.detailHeight(for: $0, width: OpenCodexCardLayout.contentWidth) } ?? 0 : 0,
+            balanceSubtitleBelowAmount: subtitleBelowAmount,
             includesAccount: snapshot.kind == .official && account != nil,
             includesSubscription: snapshot.kind == .official && subscription != nil,
             subscriptionTextWidth: snapshot.kind == .official ? subscriptionTextWidth : nil,
@@ -7146,11 +7193,33 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 && snapshot.kind == .official
                 && presentation.resetForecast.showsOfficialWindowDeadlineProgress,
             bankedResetTicketMetrics: bankedResetTicketMetrics
-        )
+        ) }
+        let inline = frames(subtitleBelowAmount: false)
+        // Long translations or large amounts: move the subtitle below the amount (Issue #710).
+        guard isBalance, let context, let row = inline.balanceRecharge, row.intersects(inline.amount) else { return inline }
+        // Size for the widest subtitle this card can show, so it does not jump between layouts
+        // when, for example, the first spend after a top-up is recorded.
+        let font = NSFont.systemFont(ofSize: OpenCodexCardLayout.quotaResetPointSize)
+        let widest = snapshot.balanceSubtitleLayoutSamples(timeZone: settings.displayTimeZone)
+            .map { textWidth($0, font: font) }.max() ?? 0
+        let available = balanceSubtitleFrame(row: row, layout: inline, context: context).width
+        return widest > available + 0.5 ? frames(subtitleBelowAmount: true) : inline
+    }
+
+    /// The subtitle's frame: beside the amount it yields to the amount's glyphs.
+    private func balanceSubtitleFrame(row: NSRect, layout: OpenCodexCardFrames, context: OverviewCardContext) -> NSRect {
+        guard !layout.balanceSubtitleIsBelowAmount, row.intersects(layout.amount) else { return row }
+        return overviewMarqueeFrame(row, avoidingAmountFrame: layout.amount,
+            amountText: numericSamples(for: context).first.map { overviewNumericPlan(for: $0).layoutReservationText }
+                ?? context.snapshot.overviewLargeAmount,
+            amountFont: .monospacedDigitSystemFont(ofSize: OpenCodexCardLayout.quotaAmountPointSize, weight: .semibold),
+            minimumAmountGap: 12)
     }
 
     private func makeOverviewMenuItem(for snapshot: Snapshot, context supplied: OverviewCardContext? = nil) -> NSMenuItem {
         let context = supplied ?? directCardContext(for: snapshot)
+        // A kept balance after a failed refresh renders as its balance card (Issue #710).
+        let snapshot = context.snapshot
         if snapshot.kind == .error || (supplied != nil && snapshot.kind == .placeholder) {
             presentedOverviewNumerics = currentOverviewNumericSamples()
             return makeOverviewStatusMenuItem(for: snapshot, context: context)
@@ -7171,7 +7240,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         let subscription = context.account?.subscription
         let layout = makeOverviewCardLayout(for: snapshot, presentation: quotaPresentation, account: context.account,
-            aggregation: supplied != nil || (snapshot.kind == .balance && !menuInput.directProviderIsOfficial))
+            aggregation: supplied != nil || (snapshot.kind == .balance && !menuInput.directProviderIsOfficial),
+            context: context)
         let view = MenuHoverLinkHostView(frame: NSRect(origin: .zero, size: layout.cardSize))
         view.quotaPaceAccount = context.account
         view.quotaPaceClient = context.paceClient
@@ -7657,10 +7727,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let message = snapshot.overviewReset(refreshDate: nil, formatter: AppDisplayTime.formatter(timeZone: settings.displayTimeZone))
         let showsFailureView = !isLoading && (snapshot.quotaStatus != nil || snapshot.failureClient != nil)
         let failureClient = snapshot.failureClient ?? .claude
-        let action: FailureRecovery = failureClient == .codex && snapshot.failureRecovery == .copySignInCommand
-            ? .none : snapshot.failureRecovery
-        let buttonShift = showsFailureView && action != .none
-            ? ErrorCardLayout.usagePageButtonHeight : 0
+        // Issue #710: error cards carry no buttons and the reason spans the card's content width.
         let baseFrames = ErrorCardLayout.errorFrames(
             for: isLoading ? tr(.keyAggregationLoading) : (hasCachedBalance ? "" : message),
             includesAccount: context.account != nil,
@@ -7668,11 +7735,17 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             subscriptionTextWidth: context.account?.subscription.map {
                 AccountMarqueeView.textWidth(of: $0.text, font: Self.subscriptionFont)
             },
-            fullWidthDetail: isLoading || showsFailureView
+            fullWidthDetail: true
         )
         // The loading card needs only the header and one detail row, not a quota row.
         let loadingInset = baseFrames.quotaDetail.minY - baseFrames.detail.maxY + ErrorCardLayout.singleLineDetailHeight
-        let frames = baseFrames.shiftedUp(by: isLoading ? -loadingInset : buttonShift)
+        // A direct Codex login failure keeps only the title and the account status ("Signed out");
+        // the orange row below already carries the reason and the command (Issue #710).
+        let promptCarriesReason = !isLoading && snapshot.kind == .error
+            && Self.codexLoginPromptTitle(snapshot: snapshot, input: menuInput) != nil
+        let accountOnlyInset = promptCarriesReason
+            ? baseFrames.account.map { $0.minY - baseFrames.detail.minY } : nil
+        let frames = baseFrames.shiftedUp(by: isLoading ? -loadingInset : -(accountOnlyInset ?? 0))
         let view = NSView(frame: NSRect(origin: .zero, size: frames.cardSize))
         let provider = makeOverviewLabel(snapshot.overviewProvider, font: ErrorCardLayout.titleFont)
         provider.frame = frames.title
@@ -7695,6 +7768,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         refreshTime.identifier = NSUserInterfaceItemIdentifier("overview.refreshTime")
         refreshTime.frame = frames.refreshTime
         view.addSubview(refreshTime)
+        if accountOnlyInset != nil {
+            updateOverviewHeaderNotes(in: view, context: context)
+            item.view = view
+            return item
+        }
         if isLoading {
             let detail = ErrorCardLayout.makeDetailLabel(baseFrames.detailText)
             detail.frame = baseFrames.detail
@@ -7711,10 +7789,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         if hasCachedBalance {
             quotaDetail.textColor = .secondaryLabelColor
             quotaDetail.frame.origin.y = frames.amount.midY - frames.quotaDetail.height / 2
+        } else {
+            // No amount shares this row, so longer translations need not be truncated.
+            quotaDetail.frame.size.width = ErrorCardLayout.contentWidth
         }
         view.addSubview(quotaDetail)
-        // Official failures have no amount.
-        if !showsFailureView {
+        // Without a cached balance there is no amount to show; the reason takes the full width.
+        if hasCachedBalance && !showsFailureView {
             let amount = makeOverviewLabel(snapshot.overviewLargeAmount, font: ErrorCardLayout.amountFont)
             amount.alignment = .right
             amount.frame = frames.amount
@@ -7723,20 +7804,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         if showsFailureView {
             let failure = FailureStateView(
                 reason: frames.detailText,
-                action: action,
+                action: .none,
                 client: failureClient,
                 // The detail frame was measured with this font; a smaller one leaves a blank gap.
                 font: ErrorCardLayout.detailFont,
-                localize: StatusSlotText.appLocalize,
-                onOpenUsagePage: { [weak self] in self?.actions.openStatusLink(FailureStateView.usageURL(for: failureClient)) },
-                onOpenEgressGuardSettings: { [weak self] in
-                    self?.cancelMenuBarTracking()
-                    // The menu is closing; open the window once it is gone.
-                    DispatchQueue.main.async { self?.actions.openEgressGuardSettings() }
-                })
+                localize: StatusSlotText.appLocalize)
             failure.identifier = NSUserInterfaceItemIdentifier("overview.failureState")
-            failure.frame = NSRect(x: frames.detail.minX, y: frames.detail.minY - buttonShift,
-                                   width: frames.detail.width, height: frames.detail.height + buttonShift)
+            failure.frame = frames.detail
             view.addSubview(failure)
         } else if !hasCachedBalance {
             let detail = ErrorCardLayout.makeDetailLabel(
@@ -8734,7 +8808,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             let presentation = snapshot.officialQuotaMenuPresentation(lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
                 hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota)
             reconcileBalanceLayout(in: host, next: makeOverviewCardLayout(for: snapshot, presentation: presentation,
-                account: context.account, aggregation: !menuInput.aggregatedProviders.isEmpty))
+                account: context.account, aggregation: !menuInput.aggregatedProviders.isEmpty,
+                context: context))
             updateBalanceSubtitle(in: host, context: context)
             alignSingleLineBalance(in: host, snapshot: context.snapshot)
         }

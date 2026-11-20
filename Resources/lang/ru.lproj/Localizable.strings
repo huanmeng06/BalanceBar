@@ -63,7 +63,7 @@
 "snapshot.available_balance" = "Доступный баланс";
 "snapshot.balance_status" = "Состояние баланса";
 "snapshot.7_day_quota" = "Квота на 7 дней";
-"snapshot.remaining_balance" = "Оставшийся баланс";
+"snapshot.remaining_balance" = "Остаток баланса";
 "snapshot.waiting_to_refresh" = "Ожидание обновления";
 "snapshot.load_failed" = "Ошибка загрузки";
 "snapshot.loading_cc_switch" = "Загрузка CC Switch…";
@@ -575,13 +575,13 @@
 "balance.yesterday" = "вчера";
 "balance.used" = "Использовано %1$@";
 "balance.recording.started_on" = "Учёт с %1$@";
-"balance.recording.started" = "Учёт начат";
+"balance.recharge.not_recorded" = "Пополнений пока нет";
 "balance.reference_on" = "От баланса на %1$@ в %2$@ осталось %3$@";
 "balance.reference" = "От начального баланса %1$@ осталось %2$@";
 "balance.reference_unavailable" = "Исходный баланс неизвестен";
 
 "balance.recharge.last" = "последнего пополнения";
-"balance.used_since_recharge" = "С %1$@ использовано %2$@";
+"balance.used_since_recharge" = "Расход с %1$@: %2$@";
 
 "balance.elapsed.ago" = "%1$@ назад";
 
@@ -856,10 +856,10 @@
 "ccswitch.database_unreadable" = "Не удаётся прочитать базу данных CC Switch. Откройте CC Switch заново и повторите попытку";
 "ccswitch.database_busy" = "База данных CC Switch занята. BalanceBar продолжит попытки";
 "aggregation.not_configured" = "Для этого провайдера не настроен запрос использования. Настройте скрипт использования в CC Switch";
-"claude.refresh.egress_guard_mismatch" = "Исходящий IP не входит в белый список, официальные запросы Claude приостановлены.";
-"claude.refresh.egress_guard_check_failed" = "Не удалось проверить исходящий IP, официальные запросы Claude приостановлены.";
-"claude.refresh.egress_guard_no_targets" = "Белый список IP пуст, официальные запросы Claude приостановлены.";
-"claude.refresh.egress_guard_unsupported_region" = "Регион выхода не поддерживается Anthropic или не определён, поэтому официальные запросы Claude приостановлены.";
+"claude.refresh.egress_guard_mismatch" = "Исходящий IP не входит в белый список, официальные запросы Claude приостановлены. Белый список IP можно изменить в разделе Настройки › Дополнительно.";
+"claude.refresh.egress_guard_check_failed" = "Не удалось проверить исходящий IP, официальные запросы Claude приостановлены. Белый список IP можно изменить в разделе Настройки › Дополнительно.";
+"claude.refresh.egress_guard_no_targets" = "Белый список IP пуст, официальные запросы Claude приостановлены. Белый список IP можно изменить в разделе Настройки › Дополнительно.";
+"claude.refresh.egress_guard_unsupported_region" = "Регион выхода не поддерживается Anthropic или не определён, поэтому официальные запросы Claude приостановлены. Белый список IP можно изменить в разделе Настройки › Дополнительно.";
 "claude.refresh.egress_guard_disabled" = "Официальные запросы Claude выключены. Включите белый список IP в разделе Настройки › Дополнительно.";
 "claude.timeline.failure.egress_guard" = "Заблокировано белым списком IP";
 "quota.failure.open_egress_guard_settings" = "Настроить белый список IP";

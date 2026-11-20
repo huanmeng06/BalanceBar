@@ -422,6 +422,10 @@ struct OpenCodexCardFrames: Equatable {
     let bankedResetTicketViewport: CGRect?
 
     var balanceRecharge: CGRect? = nil
+    /// Full-width reason row of a kept balance that failed to refresh (Issue #710).
+    var balanceStaleReason: CGRect? = nil
+    /// The subtitle did not fit beside the amount and has its own full-width row below it.
+    var balanceSubtitleIsBelowAmount = false
 
     /// Produced by the section compositor, never inferred from child frames.
     var sectionLayouts: [OpenCodexOverviewSectionLayout] = []
@@ -514,6 +518,16 @@ enum OpenCodexCardLayout {
     static let quotaProgressHeight: CGFloat = 5
     /// Compact balance cards keep the title close to the first body label.
     static let balanceHeaderGap: CGFloat = 4
+    /// Space between a balance card's stale reason row and the subtitle row above it.
+    static let balanceStaleReasonGap: CGFloat = 2
+    /// How far the amount row rises when the subtitle moves below it. The amount frame keeps
+    /// empty space under its digits, so less than a full row is needed.
+    static let balanceSubtitleBelowShift: CGFloat = 22
+    /// Without a subtitle beside it the left label drops 8pt, and the title row with it. The amount
+    /// drops part of that too, so the title keeps its usual gap above the digits.
+    static let balanceSubtitleBelowAmountDrop: CGFloat = 4
+    /// Bottom margin of a below-amount subtitle or stale reason on a card without a progress bar.
+    static let balanceNoProgressBottomInset: CGFloat = 3
     /// Official 5h/7d rows that draw a progress bar. 8pt shorter than
     /// `quotaRowHeight` so the unused gap under the subtitle shrinks;
     /// title/subtitle/amount stay the same distance from the row top.
@@ -751,6 +765,8 @@ enum OpenCodexCardLayout {
         linkPrefixWidth: CGFloat = 62,
         includesBalanceSubtitle: Bool = true,
         includesBalanceRecharge: Bool = false,
+        balanceStaleReasonHeight: CGFloat = 0,
+        balanceSubtitleBelowAmount: Bool = false,
         includesAccount: Bool = false,
         includesSubscription: Bool = false,
         subscriptionTextWidth: CGFloat? = nil,
@@ -850,10 +866,23 @@ enum OpenCodexCardLayout {
             let textShift = includesQuotaProgress
                 ? quotaProgressGapCompression
                 : quotaRowHeight - lunaReserveNoProgressRowHeight
-            let inlineRecharge = includesBalanceRecharge && !includesBalanceSubtitle
-            let rechargeShift: CGFloat = includesBalanceRecharge && !inlineRecharge ? 25 : 0
+            // A subtitle too long for the column beside the amount gets its own full-width row below it.
+            let subtitleBelow = includesBalanceRecharge && !includesBalanceSubtitle && balanceSubtitleBelowAmount
+            let inlineRecharge = includesBalanceRecharge && !includesBalanceSubtitle && !subtitleBelow
+            // Issue #710: a stale reason takes the lowest text row above the progress bar and
+            // lifts every row above it, so long translations wrap instead of scrolling.
+            // Without a progress bar the lowest row keeps a small bottom margin of its own.
+            let ownsBottomRow = includesBalanceRecharge && !includesBalanceSubtitle
+                && (balanceSubtitleBelowAmount || balanceStaleReasonHeight > 0)
+            let reasonY: CGFloat = includesQuotaProgress ? 18 : (ownsBottomRow ? balanceNoProgressBottomInset : 0)
+            let reasonShift = balanceStaleReasonHeight > 0 ? balanceStaleReasonHeight + balanceStaleReasonGap : 0
+            // Below the amount, the subtitle tucks under the digits; the title row then shares
+            // the amount's baseline like a single-line balance card, leaving no empty line.
+            let subtitleRowShift: CGFloat = subtitleBelow
+                ? (includesQuotaProgress ? balanceSubtitleBelowShift : balanceSubtitleBelowShift - balanceNoProgressBottomInset - 2) : 25
+            let rechargeShift: CGFloat = (includesBalanceRecharge && !inlineRecharge ? subtitleRowShift : 0) + reasonShift
             let row = quotaRowFrames(includesProgress: includesQuotaProgress,
-                                     hasSubtitle: includesBalanceSubtitle || includesBalanceRecharge)
+                                     hasSubtitle: (includesBalanceSubtitle || includesBalanceRecharge) && !subtitleBelow)
             let titleY = row.quotaDetail.maxY + balanceHeaderGap + rechargeShift
             return OpenCodexCardFrames(
                 cardSize: CGSize(width: cardWidth, height: titleY + 27),
@@ -863,7 +892,7 @@ enum OpenCodexCardLayout {
                 subscription: nil,
                 quotaDetail: row.quotaDetail.offsetBy(dx: 0, dy: rechargeShift),
                 reset: nil,
-                amount: row.amount.offsetBy(dx: 0, dy: rechargeShift),
+                amount: row.amount.offsetBy(dx: 0, dy: rechargeShift - (subtitleBelow ? balanceSubtitleBelowAmountDrop : 0)),
                 progress: includesQuotaProgress ? row.progress : nil,
                 linkPrefix: includesBalanceSubtitle ? CGRect(
                     x: horizontalInset,
@@ -881,7 +910,11 @@ enum OpenCodexCardLayout {
                 bankedResetDetailRows: [],
                 bankedResetTicketViewport: nil,
                 balanceRecharge: includesBalanceRecharge
-                    ? CGRect(x: horizontalInset, y: inlineRecharge ? row.reset.minY : (includesQuotaProgress ? 18 : 0), width: contentWidth, height: quotaResetHeight) : nil
+                    ? CGRect(x: horizontalInset, y: (inlineRecharge ? row.reset.minY : reasonY) + reasonShift,
+                             width: contentWidth, height: quotaResetHeight) : nil,
+                balanceStaleReason: balanceStaleReasonHeight > 0
+                    ? CGRect(x: horizontalInset, y: reasonY, width: contentWidth, height: balanceStaleReasonHeight) : nil,
+                balanceSubtitleIsBelowAmount: subtitleBelow
             )
         }
     }

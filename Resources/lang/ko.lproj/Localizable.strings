@@ -575,7 +575,7 @@
 "balance.yesterday" = "어제";
 "balance.used" = "%1$@ 사용";
 "balance.recording.started_on" = "%1$@부터 기록";
-"balance.recording.started" = "기록 시작";
+"balance.recharge.not_recorded" = "아직 기록된 충전 없음";
 "balance.reference_on" = "%1$@ 잔액 %2$@ 대비 %3$@ 남음";
 "balance.reference" = "기준 잔액 %1$@ 대비 %2$@ 남음";
 "balance.reference_unavailable" = "기준 잔액을 확인할 수 없음";
@@ -856,10 +856,10 @@
 "ccswitch.database_unreadable" = "CC Switch 데이터베이스를 읽을 수 없습니다. CC Switch를 다시 열고 다시 시도하세요";
 "ccswitch.database_busy" = "CC Switch 데이터베이스가 사용 중입니다. BalanceBar가 계속 재시도합니다";
 "aggregation.not_configured" = "이 서비스 제공자에 사용량 조회가 설정되어 있지 않습니다. CC Switch에서 사용량 스크립트를 설정하세요";
-"claude.refresh.egress_guard_mismatch" = "출구 IP가 허용 목록에 없어 Claude 공식 요청을 일시 중지했습니다.";
-"claude.refresh.egress_guard_check_failed" = "출구 IP를 확인할 수 없어 Claude 공식 요청을 일시 중지했습니다.";
-"claude.refresh.egress_guard_no_targets" = "IP 허용 목록이 비어 있어 Claude 공식 요청을 일시 중지했습니다.";
-"claude.refresh.egress_guard_unsupported_region" = "출구 지역이 Claude 제공 지역이 아니거나 확인할 수 없어 Claude 공식 요청을 중지했습니다.";
+"claude.refresh.egress_guard_mismatch" = "출구 IP가 허용 목록에 없어 Claude 공식 요청을 일시 중지했습니다. 설정 › 고급에서 IP 허용 목록을 조정할 수 있습니다.";
+"claude.refresh.egress_guard_check_failed" = "출구 IP를 확인할 수 없어 Claude 공식 요청을 일시 중지했습니다. 설정 › 고급에서 IP 허용 목록을 조정할 수 있습니다.";
+"claude.refresh.egress_guard_no_targets" = "IP 허용 목록이 비어 있어 Claude 공식 요청을 일시 중지했습니다. 설정 › 고급에서 IP 허용 목록을 조정할 수 있습니다.";
+"claude.refresh.egress_guard_unsupported_region" = "출구 지역이 Claude 제공 지역이 아니거나 확인할 수 없어 Claude 공식 요청을 중지했습니다. 설정 › 고급에서 IP 허용 목록을 조정할 수 있습니다.";
 "claude.refresh.egress_guard_disabled" = "Claude 공식 요청이 꺼져 있습니다. 설정 › 고급에서 IP 허용 목록을 켤 수 있습니다.";
 "claude.timeline.failure.egress_guard" = "IP 허용 목록에 의해 차단됨";
 "quota.failure.open_egress_guard_settings" = "IP 허용 목록 설정";

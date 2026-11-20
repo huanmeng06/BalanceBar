@@ -575,7 +575,7 @@
 "balance.yesterday" = "ayer";
 "balance.used" = "%1$@ usados";
 "balance.recording.started_on" = "Registro desde %1$@";
-"balance.recording.started" = "Registro iniciado";
+"balance.recharge.not_recorded" = "Sin recarga registrada";
 "balance.reference_on" = "Del saldo del %1$@ de %2$@, queda %3$@";
 "balance.reference" = "Del saldo inicial de %1$@, queda %2$@";
 "balance.reference_unavailable" = "Referencia de saldo no disponible";
@@ -856,10 +856,10 @@
 "ccswitch.database_unreadable" = "No se puede leer la base de datos de CC Switch. Vuelve a abrir CC Switch e inténtalo de nuevo";
 "ccswitch.database_busy" = "La base de datos de CC Switch está ocupada. BalanceBar seguirá reintentando";
 "aggregation.not_configured" = "Este proveedor no tiene consulta de uso configurada. Configura un script de uso en CC Switch";
-"claude.refresh.egress_guard_mismatch" = "La IP de salida no está en la lista de IP permitidas; se pausaron las solicitudes oficiales de Claude.";
-"claude.refresh.egress_guard_check_failed" = "No se pudo confirmar la IP de salida; se pausaron las solicitudes oficiales de Claude.";
-"claude.refresh.egress_guard_no_targets" = "La lista de IP permitidas está vacía; se pausaron las solicitudes oficiales de Claude.";
-"claude.refresh.egress_guard_unsupported_region" = "La región de salida no está entre las que Anthropic ofrece Claude o no se pudo identificar; las solicitudes oficiales de Claude están en pausa.";
+"claude.refresh.egress_guard_mismatch" = "La IP de salida no está en la lista de IP permitidas; se pausaron las solicitudes oficiales de Claude. Puedes ajustar la lista de IP permitidas en Ajustes › Avanzado.";
+"claude.refresh.egress_guard_check_failed" = "No se pudo confirmar la IP de salida; se pausaron las solicitudes oficiales de Claude. Puedes ajustar la lista de IP permitidas en Ajustes › Avanzado.";
+"claude.refresh.egress_guard_no_targets" = "La lista de IP permitidas está vacía; se pausaron las solicitudes oficiales de Claude. Puedes ajustar la lista de IP permitidas en Ajustes › Avanzado.";
+"claude.refresh.egress_guard_unsupported_region" = "La región de salida no está entre las que Anthropic ofrece Claude o no se pudo identificar; las solicitudes oficiales de Claude están en pausa. Puedes ajustar la lista de IP permitidas en Ajustes › Avanzado.";
 "claude.refresh.egress_guard_disabled" = "Las solicitudes oficiales de Claude están desactivadas. Activa la lista de IP permitidas en Ajustes › Avanzado.";
 "claude.timeline.failure.egress_guard" = "Bloqueado por la lista de IP permitidas";
 "quota.failure.open_egress_guard_settings" = "Configurar IP permitidas";
