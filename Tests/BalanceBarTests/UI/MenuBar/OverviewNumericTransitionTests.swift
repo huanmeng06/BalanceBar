@@ -1389,7 +1389,7 @@ final class OverviewNumericPresentationControllerTests: XCTestCase {
             balanceLayout.amount,
             CGRect(
                 x: OpenCodexCardLayout.amountX,
-                y: 10,
+                y: 12,
                 width: OpenCodexCardLayout.amountWidth,
                 height: 48
             )

@@ -3723,6 +3723,9 @@ extension StatusItemControllerTests {
         let freshHeight = fresh.frame.height
         let freshAmount = try XCTUnwrap(fresh.subviews.compactMap { $0 as? OverviewNumericTextView }.first)
         XCTAssertEqual(freshAmount.textColor, .labelColor)
+        let freshSubtitle = try XCTUnwrap(balanceSubtitle(in: fresh))
+        let freshBar = try XCTUnwrap(fresh.subviews.compactMap { $0 as? QuotaProgressView }.first)
+        XCTAssertEqual(freshSubtitle.view.frame.minY - freshBar.frame.maxY, 9, accuracy: 0.5)
         controller.start(snapshot: error, refreshDate: date, menuInput: makeMenuInput(), settings: makeSettings())
         let cached = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
         let cachedAmount = try XCTUnwrap(cached.subviews.compactMap { $0 as? OverviewNumericTextView }.first)
@@ -3799,7 +3802,10 @@ extension StatusItemControllerTests {
         XCTAssertTrue(recoveredAmount === walletAmount, "a reused amount view updates even when the amount is unchanged")
         XCTAssertEqual(recoveredAmount.textColor, .labelColor, "the balance amount returns to its normal color after refresh")
         XCTAssertNil(staleReasonRow(in: recoveredCard), "the reason row goes away after recovery")
-        XCTAssertEqual(try XCTUnwrap(balanceSubtitle(in: recoveredCard)).label.stringValue, tr(.keyBalanceRechargeNotRecorded))
+        let recoveredSubtitle = try XCTUnwrap(balanceSubtitle(in: recoveredCard))
+        XCTAssertEqual(recoveredSubtitle.label.stringValue, tr(.keyBalanceRechargeNotRecorded))
+        let recoveredBar = try XCTUnwrap(recoveredCard.subviews.compactMap { $0 as? QuotaProgressView }.first)
+        XCTAssertEqual(recoveredSubtitle.view.frame.minY - recoveredBar.frame.maxY, 9, accuracy: 0.5)
     }
 
     @MainActor

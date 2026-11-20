@@ -414,26 +414,26 @@ final class OpenCodexCardLayoutTests: XCTestCase {
         XCTAssertNil(official.link)
 
         let balance = OpenCodexCardLayout.frames(for: .balance, linkPrefixWidth: 62)
-        XCTAssertEqual(balance.cardSize, CGSize(width: 304, height: 88))
-        XCTAssertEqual(balance.title, CGRect(x: OpenCodexCardLayout.horizontalInset, y: 61, width: 189, height: 20))
-        XCTAssertEqual(balance.refreshTime, CGRect(x: OpenCodexCardLayout.refreshTimeX, y: 62, width: 81, height: 17))
+        XCTAssertEqual(balance.cardSize, CGSize(width: 304, height: 90))
+        XCTAssertEqual(balance.title, CGRect(x: OpenCodexCardLayout.horizontalInset, y: 63, width: 189, height: 20))
+        XCTAssertEqual(balance.refreshTime, CGRect(x: OpenCodexCardLayout.refreshTimeX, y: 64, width: 81, height: 17))
         XCTAssertNil(balance.account)
         XCTAssertNil(balance.subscription)
-        XCTAssertEqual(balance.quotaDetail, CGRect(x: OpenCodexCardLayout.horizontalInset, y: 39, width: 128, height: 18))
+        XCTAssertEqual(balance.quotaDetail, CGRect(x: OpenCodexCardLayout.horizontalInset, y: 41, width: 128, height: 18))
         XCTAssertNil(balance.reset)
-        XCTAssertEqual(balance.amount, CGRect(x: OpenCodexCardLayout.amountX, y: 10, width: OpenCodexCardLayout.amountWidth, height: 48))
+        XCTAssertEqual(balance.amount, CGRect(x: OpenCodexCardLayout.amountX, y: 12, width: OpenCodexCardLayout.amountWidth, height: 48))
         XCTAssertEqual(balance.progress, CGRect(x: OpenCodexCardLayout.horizontalInset, y: 8, width: OpenCodexCardLayout.contentWidth, height: 5))
-        XCTAssertEqual(balance.linkPrefix, CGRect(x: OpenCodexCardLayout.horizontalInset, y: 20, width: 62, height: 17))
-        XCTAssertEqual(balance.link, CGRect(x: 77, y: 20, width: 148, height: 17))
+        XCTAssertEqual(balance.linkPrefix, CGRect(x: OpenCodexCardLayout.horizontalInset, y: 22, width: 62, height: 17))
+        XCTAssertEqual(balance.link, CGRect(x: 77, y: 22, width: 148, height: 17))
         XCTAssertEqual(
             balance.link!.minY - balance.progress!.maxY,
-            OpenCodexCardLayout.quotaProgressTopGap,
+            9,
             accuracy: 0.001
         )
 
         let englishBalance = OpenCodexCardLayout.frames(for: .balance, linkPrefixWidth: 72)
-        XCTAssertEqual(englishBalance.linkPrefix, CGRect(x: OpenCodexCardLayout.horizontalInset, y: 20, width: 72, height: 17))
-        XCTAssertEqual(englishBalance.link, CGRect(x: 87, y: 20, width: 136, height: 17))
+        XCTAssertEqual(englishBalance.linkPrefix, CGRect(x: OpenCodexCardLayout.horizontalInset, y: 22, width: 72, height: 17))
+        XCTAssertEqual(englishBalance.link, CGRect(x: 87, y: 22, width: 136, height: 17))
     }
 
     func testOpenCodexCardLayoutCollapsesProgressSlotWhenQuotaProgressIsHidden() {
@@ -920,18 +920,31 @@ extension OpenCodexCardLayoutTests {
 
 
 extension OpenCodexCardLayoutTests {
-    func testBalanceRechargeReusesOfficialQuotaRowSlots() throws {
+    func testBalanceRechargeReusesOfficialQuotaRowSlotsWithItsOwnProgressGap() throws {
         for progress in [false, true] {
             let official = OpenCodexCardLayout.frames(for: .quota, includesQuotaProgress: progress)
             let balance = OpenCodexCardLayout.frames(for: .balance, includesBalanceSubtitle: false,
                 includesBalanceRecharge: true, includesQuotaProgress: progress)
-            XCTAssertEqual(official.quotaDetail, balance.quotaDetail)
             let reset = try XCTUnwrap(official.reset)
             let recharge = try XCTUnwrap(balance.balanceRecharge)
-            XCTAssertEqual(reset.minY, recharge.minY)
+            let shift: CGFloat = progress ? 2 : 0
+            XCTAssertEqual(balance.quotaDetail, official.quotaDetail.offsetBy(dx: 0, dy: shift))
+            XCTAssertEqual(recharge.minY, reset.minY + shift)
             XCTAssertEqual(reset.height, recharge.height)
-            XCTAssertEqual(official.amount.origin, balance.amount.origin)
+            XCTAssertEqual(balance.amount.origin, official.amount.offsetBy(dx: 0, dy: shift).origin)
             XCTAssertEqual(official.progress, balance.progress)
+        }
+    }
+
+    func testFreshBalanceKeepsNinePointsBetweenSubtitleAndProgress() throws {
+        for belowAmount in [false, true] {
+            let layout = OpenCodexCardLayout.frames(for: .balance, includesBalanceSubtitle: false,
+                includesBalanceRecharge: true, balanceSubtitleBelowAmount: belowAmount, includesQuotaProgress: true)
+            XCTAssertEqual(layout.balanceSubtitleIsBelowAmount, belowAmount)
+            XCTAssertNil(layout.balanceStaleReason)
+            let subtitle = try XCTUnwrap(layout.balanceRecharge)
+            let bar = try XCTUnwrap(layout.progress)
+            XCTAssertEqual(subtitle.minY - bar.maxY, 9)
         }
     }
 

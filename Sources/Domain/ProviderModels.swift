@@ -518,8 +518,8 @@ enum OpenCodexCardLayout {
     static let quotaProgressHeight: CGFloat = 5
     /// Compact balance cards keep the title close to the first body label.
     static let balanceHeaderGap: CGFloat = 4
-    /// Equal spacing above and below the stale reason on a balance card.
-    static let balanceStaleReasonGap: CGFloat = 9
+    /// Spacing between the balance subtitle, optional stale reason, and progress bar.
+    static let balanceRowGap: CGFloat = 9
     /// How far the amount row rises when the subtitle moves below it. The amount frame keeps
     /// empty space under its digits, so less than a full row is needed.
     static let balanceSubtitleBelowShift: CGFloat = 22
@@ -871,21 +871,25 @@ enum OpenCodexCardLayout {
             let inlineRecharge = includesBalanceRecharge && !includesBalanceSubtitle && !subtitleBelow
             let ownsBottomRow = includesBalanceRecharge && !includesBalanceSubtitle
                 && (balanceSubtitleBelowAmount || balanceStaleReasonHeight > 0)
-            let row = quotaRowFrames(includesProgress: includesQuotaProgress,
-                                     hasSubtitle: (includesBalanceSubtitle || includesBalanceRecharge) && !subtitleBelow)
+            let hasSubtitle = includesBalanceSubtitle || includesBalanceRecharge
+            let row = quotaRowFrames(includesProgress: includesQuotaProgress, hasSubtitle: hasSubtitle && !subtitleBelow)
             let reasonY = includesQuotaProgress
-                ? row.progress.maxY + balanceStaleReasonGap : (ownsBottomRow ? balanceNoProgressBottomInset : 0)
+                ? row.progress.maxY + balanceRowGap : (ownsBottomRow ? balanceNoProgressBottomInset : 0)
             let subtitleY = inlineRecharge || includesBalanceSubtitle ? row.reset.minY
                 : (includesQuotaProgress ? 18 : reasonY)
-            // Place the reason above the bar, then lift the entire upper block just enough
-            // to leave the same gap above the reason whether or not the bar is shown.
-            let reasonShift = balanceStaleReasonHeight > 0
-                ? reasonY + balanceStaleReasonHeight + balanceStaleReasonGap - subtitleY : 0
+            // Keep the upper block together and give the subtitle the same gap above
+            // the reason (when stale) or directly above the progress bar (when fresh).
+            let bottomRowShift: CGFloat
+            if balanceStaleReasonHeight > 0 {
+                bottomRowShift = reasonY + balanceStaleReasonHeight + balanceRowGap - subtitleY
+            } else {
+                bottomRowShift = includesQuotaProgress && hasSubtitle ? reasonY - subtitleY : 0
+            }
             // Below the amount, the subtitle tucks under the digits; the title row then shares
             // the amount's baseline like a single-line balance card, leaving no empty line.
             let subtitleRowShift: CGFloat = subtitleBelow
                 ? (includesQuotaProgress ? balanceSubtitleBelowShift : balanceSubtitleBelowShift - balanceNoProgressBottomInset - 2) : 25
-            let rechargeShift: CGFloat = (includesBalanceRecharge && !inlineRecharge ? subtitleRowShift : 0) + reasonShift
+            let rechargeShift: CGFloat = (includesBalanceRecharge && !inlineRecharge ? subtitleRowShift : 0) + bottomRowShift
             let titleY = row.quotaDetail.maxY + balanceHeaderGap + rechargeShift
             return OpenCodexCardFrames(
                 cardSize: CGSize(width: cardWidth, height: titleY + 27),
@@ -913,7 +917,7 @@ enum OpenCodexCardLayout {
                 bankedResetDetailRows: [],
                 bankedResetTicketViewport: nil,
                 balanceRecharge: includesBalanceRecharge
-                    ? CGRect(x: horizontalInset, y: subtitleY + reasonShift,
+                    ? CGRect(x: horizontalInset, y: subtitleY + bottomRowShift,
                              width: contentWidth, height: quotaResetHeight) : nil,
                 balanceStaleReason: balanceStaleReasonHeight > 0
                     ? CGRect(x: horizontalInset, y: reasonY, width: contentWidth, height: balanceStaleReasonHeight) : nil,
