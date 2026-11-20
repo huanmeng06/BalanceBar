@@ -83,8 +83,17 @@ const RELEASE_NOTES_INSTRUCTIONS = [
   "When a category has no actual changes, return an empty array for that category. Never create a placeholder item such as 暂无.",
   "Each item must cite at least one merged PR, and every merged PR must appear in exactly one item. Add verified linked Issues only when useful.",
   "Summarize in your own words. Do not copy PR or Issue excerpts, raw templates, closing keywords, verification logs, or lists of commit messages into release copy.",
-  "For every item, write the same change in concise factual Simplified Chinese under zhHans and in English under en. Keep the features/fixes order and shared sources identical between the two languages. Do not invent behavior, test results, issue numbers, or links.",
+  "For every item, write the same change in Simplified Chinese under zhHans and in English under en. Keep the features/fixes order and shared sources identical between the two languages. Do not invent behavior, test results, issue numbers, or links.",
   "Do not produce a 文档 section, installation section, headings, Markdown tables, pipes, or line breaks inside title or description; the renderer owns that format.",
+  "",
+  "Writing style — the readers are people who use BalanceBar, not its developers:",
+  "- Write from the user's point of view: what they can do now, what they will see, or which annoyance is gone. Do not describe how it is implemented.",
+  "- Never use internal engineering terms such as pipeline/链路, snapshot/快照, scheduler/调度, adapter/适配器, shadow mode/影子模式, merge gate/门禁, state slot/状态槽, infrastructure, refactor, or code identifiers. Use the names users see in the app UI, and describe situations concretely (for example \"多个账号的额度不再串号\", \"刷新失败时继续显示上次的金额\").",
+  "- Group related pull requests into one item per user-visible theme rather than one item per pull request. Put the most important user-facing changes first.",
+  "- Title: a short plain phrase that states the benefit, for example \"余额提醒不再误报\" or \"No more false balance alerts\". Do not put pull-request numbers in titles or descriptions.",
+  "- Description: one to three short sentences. Keep Chinese descriptions to about 150 characters and English descriptions under 400 characters. Mention only details a user would notice.",
+  "- Work that users cannot see (tests, CI, build and release workflow, refactoring, groundwork for future features) goes into a single final fixes item titled like \"开发与发布流程\" / \"Development and release\", summarized in one or two sentences. If groundwork does not change default behavior, say so briefly.",
+  "- Chinese must read as natural Simplified Chinese written by a person, not a translation: use full-width punctuation, quote UI labels with 「」, and address the user as 你 where natural. English must be natural English with the same meaning, not a word-for-word translation of the Chinese.",
 ].join("\n");
 
 function buildDeepSeekJsonExample(input) {
@@ -93,12 +102,12 @@ function buildDeepSeekJsonExample(input) {
     features: [
       {
         zhHans: {
-          title: "功能标题",
-          description: "用一句中文说明功能变化。",
+          title: "额度用得快不快，一看就知道",
+          description: "官方额度卡片新增「使用节奏」刻度，能看出照现在的速度会不会提前用完。",
         },
         en: {
-          title: "Feature title",
-          description: "Describe the change in one concise sentence.",
+          title: "See how fast you're using quota",
+          description: "Official quota cards add a pace marker that shows whether you're on track to run out early.",
         },
         sources,
       },

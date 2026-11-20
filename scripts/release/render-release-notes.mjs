@@ -33,6 +33,11 @@ const SECTION_DEFINITIONS = [
   },
 ];
 
+const SOURCES_COLUMN = {
+  zhHans: "相关 PR",
+  en: "PRs",
+};
+
 const LANGUAGE_ALIASES = {
   zhHans: ["zhHans", "zh-Hans", "zh", "chinese", "simplifiedChinese"],
   en: ["en", "english"],
@@ -215,9 +220,11 @@ function tableCell(value) {
 }
 
 function sourceLink(repo, source) {
-  const label = source.kind === "pr" ? "PR" : "Issue";
+  // PRs dominate the source column, so they use a bare #N label; the rare
+  // Issue citation keeps its prefix so the two kinds stay distinguishable.
+  const label = source.kind === "pr" ? "" : "Issue ";
   const pathName = source.kind === "pr" ? "pull" : "issues";
-  return `[${label} #${source.number}](https://github.com/${repo}/${pathName}/${source.number})`;
+  return `[${label}#${source.number}](https://github.com/${repo}/${pathName}/${source.number})`;
 }
 
 export function validateReleaseNotes(input, notes) {
@@ -327,16 +334,18 @@ function renderSection(input, notes, definition, language) {
     const localized = localizedText(item, language);
     const title = tableCell(oneLine(localized.title, `${definition.key}.${language}.title`));
     const description = tableCell(oneLine(localized.description, `${definition.key}.${language}.description`));
-    const links = item.sources.map((source) => sourceLink(input.repo, source)).join(", ");
-    return [`${title} (${links})`, description];
+    const links = item.sources.map((source) => sourceLink(input.repo, source)).join(" ");
+    return [title, description, links];
   });
 
+  const { nameColumn, descriptionColumn } = definition[language];
+  const sourcesColumn = SOURCES_COLUMN[language];
   return [
     definition[language].heading,
     "",
-    `| ${definition[language].nameColumn} | ${definition[language].descriptionColumn} |`,
-    "| --- | --- |",
-    ...rows.map(([name, description]) => `| ${name} | ${description} |`),
+    `| ${nameColumn} | ${descriptionColumn} | ${sourcesColumn} |`,
+    "| --- | --- | --- |",
+    ...rows.map((cells) => `| ${cells.join(" | ")} |`),
   ].join("\n");
 }
 
