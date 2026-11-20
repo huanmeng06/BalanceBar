@@ -48,6 +48,57 @@ final class SettingsSectionViewTests: XCTestCase {
         XCTAssertEqual(DashboardSettingsLayoutMetrics.controlFittingMeasurements, 0)
     }
 
+    func testRevealHighlightInsetsVisibleCardEdgesAndReplacesPreviousHighlight() throws {
+        let rows = ["Hidden start", "First", "Middle", "Last", "Hidden end"].map { SettingsRowView(title: $0) }
+        rows[0].isHidden = true
+        rows[4].isHidden = true
+        let section = SettingsSectionView(title: "Settings", contentViews: rows)
+        let window = makeTestWindow(width: 640)
+        window.contentView = section
+        defer { window.orderOut(nil) }
+        window.layoutIfNeeded()
+        section.cardView.layer?.cornerCurve = .continuous
+        let key = DashboardSettingsComponents.revealHighlightAnimationKey
+        let border = SettingsSectionView.borderWidth
+
+        func check(_ row: SettingsRowView, top: Bool, bottom: Bool) throws -> CALayer {
+            let background = row.layer?.backgroundColor
+            DashboardSettingsComponents.flashRevealHighlight(on: row)
+            let parent = try XCTUnwrap(row.layer)
+            let highlight = try XCTUnwrap(parent.sublayers?.first)
+            XCTAssertEqual(highlight.name, key)
+            XCTAssertEqual(parent.backgroundColor, background)
+            XCTAssertEqual(highlight.cornerCurve, .continuous)
+            XCTAssertEqual(highlight.cornerRadius, top || bottom ? SettingsSectionView.cornerRadius - border : 0)
+            let minYInset = (parent.isGeometryFlipped ? top : bottom) ? border : 0
+            let maxYInset = (parent.isGeometryFlipped ? bottom : top) ? border : 0
+            XCTAssertEqual(highlight.frame.minX, parent.bounds.minX + border, accuracy: 0.01)
+            XCTAssertEqual(highlight.frame.maxX, parent.bounds.maxX - border, accuracy: 0.01)
+            XCTAssertEqual(highlight.frame.minY, parent.bounds.minY + minYInset, accuracy: 0.01)
+            XCTAssertEqual(highlight.frame.maxY, parent.bounds.maxY - maxYInset, accuracy: 0.01)
+            var corners: CACornerMask = []
+            if minYInset > 0 { corners.formUnion([.layerMinXMinYCorner, .layerMaxXMinYCorner]) }
+            if maxYInset > 0 { corners.formUnion([.layerMinXMaxYCorner, .layerMaxXMaxYCorner]) }
+            XCTAssertEqual(highlight.maskedCorners, corners)
+            let animation = try XCTUnwrap(highlight.animation(forKey: key) as? CAKeyframeAnimation)
+            XCTAssertEqual(animation.duration, 0.72, accuracy: 0.001)
+            XCTAssertEqual(animation.keyTimes, [0, 0.25, 1])
+            return highlight
+        }
+
+        let first = try check(rows[1], top: true, bottom: false)
+        _ = try check(rows[2], top: false, bottom: false)
+        _ = try check(rows[3], top: false, bottom: true)
+        rows[2].isHidden = true
+        rows[3].isHidden = true
+        section.reconcileSeparators()
+        window.layoutIfNeeded()
+        let replacement = try check(rows[1], top: true, bottom: true)
+        XCTAssertNil(first.superlayer)
+        DashboardSettingsComponents.removeRevealHighlight(from: rows[1])
+        XCTAssertNil(replacement.superlayer)
+    }
+
     func testSectionHeightFollowsArrangedRowsAndSeparatorsWithoutParentRemeasurement() throws {
         DashboardSettingsLayoutMetrics.reset()
         let first = SettingsRowView(title: "First", accessoryView: NSSwitch())

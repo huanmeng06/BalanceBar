@@ -346,17 +346,59 @@ enum DashboardSettingsComponents {
         guard let scrollView = row.enclosingScrollView else { return }
         let margin = max(0, (scrollView.contentView.bounds.height - row.bounds.height) / 2)
         row.scrollToVisible(row.bounds.insetBy(dx: 0, dy: -margin))
+        flashRevealHighlight(on: row)
+    }
 
+    static func flashRevealHighlight(on row: NSView) {
+        guard let card = row.superview as? SettingsSectionCardView else { return }
+        let visibleRows = card.arrangedSubviews.filter {
+            !$0.isHidden && ($0 as? NSBox)?.boxType != .separator
+        }
+        guard visibleRows.contains(where: { $0 === row }) else { return }
         row.wantsLayer = true
         guard let layer = row.layer else { return }
-        let base = layer.backgroundColor ?? NSColor.clear.cgColor
+        removeRevealHighlight(from: row)
+
+        let border = SettingsSectionView.borderWidth
+        let first = row === visibleRows.first
+        let last = row === visibleRows.last
+        // The parent layer's geometry determines which edge of its sublayer is up.
+        let minYIsTop = layer.isGeometryFlipped
+        let insetMinY = (minYIsTop ? first : last) ? border : 0
+        let insetMaxY = (minYIsTop ? last : first) ? border : 0
+        var corners: CACornerMask = []
+        if insetMinY > 0 { corners.formUnion([.layerMinXMinYCorner, .layerMaxXMinYCorner]) }
+        if insetMaxY > 0 { corners.formUnion([.layerMinXMaxYCorner, .layerMaxXMaxYCorner]) }
+
+        let highlight = CALayer()
+        highlight.name = revealHighlightAnimationKey
+        highlight.frame = CGRect(
+            x: layer.bounds.minX + border, y: layer.bounds.minY + insetMinY,
+            width: max(0, layer.bounds.width - 2 * border),
+            height: max(0, layer.bounds.height - insetMinY - insetMaxY)
+        )
+        highlight.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
+        highlight.cornerRadius = corners.isEmpty ? 0 : SettingsSectionView.cornerRadius - border
+        highlight.maskedCorners = corners
+        if let cardLayer = card.layer { highlight.cornerCurve = cardLayer.cornerCurve }
+
+        let base = NSColor.clear.cgColor
         let animation = CAKeyframeAnimation(keyPath: "backgroundColor")
         animation.values = [base, NSColor.controlAccentColor.withAlphaComponent(0.24).cgColor, base]
         animation.keyTimes = [0, 0.25, 1]
         animation.duration = revealHighlightDuration
         animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        layer.backgroundColor = base
-        layer.add(animation, forKey: revealHighlightAnimationKey)
+        highlight.backgroundColor = base
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        CATransaction.setCompletionBlock { [weak highlight] in highlight?.removeFromSuperlayer() }
+        layer.insertSublayer(highlight, at: 0)
+        highlight.add(animation, forKey: revealHighlightAnimationKey)
+        CATransaction.commit()
+    }
+
+    static func removeRevealHighlight(from row: NSView?) {
+        row?.layer?.sublayers?.first { $0.name == revealHighlightAnimationKey }?.removeFromSuperlayer()
     }
 
     static let revealHighlightAnimationKey = "settingsRowRevealHighlight"

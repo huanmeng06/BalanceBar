@@ -989,8 +989,7 @@ final class DashboardMenuBarPreviewSection {
     }
 
     func removeIconDisplayModeRevealHighlight() {
-        let animationKey = DashboardMenuBarPage.iconDisplayModeRevealHighlightAnimationKey
-        iconDisplayModeRow?.layer?.removeAnimation(forKey: animationKey)
+        DashboardSettingsComponents.removeRevealHighlight(from: iconDisplayModeRow)
     }
 
     private func previewPrimaryInkBounds(in background: NSView) -> NSRect? {

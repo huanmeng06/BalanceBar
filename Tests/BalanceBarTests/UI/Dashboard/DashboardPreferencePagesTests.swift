@@ -5823,7 +5823,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             "the runtime warning action should leave space below the target row"
         )
         let highlightAnimation = try XCTUnwrap(
-            iconDisplayModeRow.layer?.animation(
+            iconDisplayModeRow.layer?.sublayers?.first?.animation(
                 forKey: DashboardMenuBarPage.iconDisplayModeRevealHighlightAnimationKey
             ) as? CAKeyframeAnimation
         )
@@ -8116,21 +8116,21 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertTrue(
             settingsText(
                 iconSummary?.stringValue,
-                equals: "微调图标的上下位置Y 轴 - 0.3 pt"
+                equals: "−0.3 pt"
             ),
             "icon offset summary"
         )
         XCTAssertTrue(
             settingsText(
                 amountSummary?.stringValue,
-                equals: "微调数值的上下位置Y 轴 + 0.5 pt"
+                equals: "+0.5 pt"
             ),
             "amount offset summary"
         )
         XCTAssertTrue(
             settingsText(
                 labels.first { $0.identifier?.rawValue == DashboardMenuBarPage.widthAdjustmentSummaryIdentifier }?.stringValue,
-                equals: "调整 BalanceBar 与其他菜单栏图标的间距宽度 + 0.6 pt"
+                equals: "+0.6 pt"
             ),
             "width adjustment summary"
         )
@@ -8242,12 +8242,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(
             refreshedLabels.first { $0.identifier?.rawValue == DashboardMenuBarPage.iconOffsetSummaryIdentifier }
                 .map { normalizeSettingsText($0.stringValue) },
-            "微调图标的上下位置 Y 轴 + 0.7 pt"
+            "+0.7 pt"
         )
         XCTAssertEqual(
             refreshedLabels.first { $0.identifier?.rawValue == DashboardMenuBarPage.amountOffsetSummaryIdentifier }
                 .map { normalizeSettingsText($0.stringValue) },
-            "微调数值的上下位置 Y 轴 - 0.8 pt"
+            "−0.8 pt"
         )
         XCTAssertEqual(
             refreshedSliders.first { $0.identifier?.rawValue == AppPreferences.menuBarIconOffsetYKey }?.doubleValue ?? .nan,
@@ -8363,341 +8363,138 @@ final class DashboardPreferencePagesTests: XCTestCase {
         }
     }
 
-    func testMenuBarTypographySummaryRowsWrapExternalLabelsAcrossWindowWidths() throws {
+    func testPositionAdjustmentsKeepAlignedReadoutsAndFullDescriptionsAcrossLanguagesAndWidths() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
-
-        let summaryIdentifiers = [
-            DashboardMenuBarPage.iconOffsetSummaryIdentifier,
-            DashboardMenuBarPage.amountOffsetSummaryIdentifier,
-            DashboardMenuBarPage.widthAdjustmentSummaryIdentifier
-        ]
-        let expectedSignedSuffixes: [AppLanguage: [String]] = [
-            .simplifiedChinese: ["Y 轴 + 0.0 pt", "Y 轴 + 0.0 pt", "宽度 + 0.0 pt"],
-            .traditionalChineseTaiwan: ["Y 軸 + 0.0 pt", "Y 軸 + 0.0 pt", "寬度 + 0.0 pt"],
-            .traditionalChineseHongKong: ["Y 軸 + 0.0 pt", "Y 軸 + 0.0 pt", "寬度 + 0.0 pt"],
-            .japanese: ["Y 軸 + 0.0 pt", "Y 軸 + 0.0 pt", "幅 + 0.0 pt"],
-            .english: ["Y axis + 0.0 pt", "Y axis + 0.0 pt", "Width + 0.0 pt"],
-            .korean: ["Y 축 + 0.0 pt", "Y 축 + 0.0 pt", "너비 + 0.0 pt"],
-            .spanish: ["Eje Y + 0.0 pt", "Eje Y + 0.0 pt", "Ancho + 0.0 pt"],
-            .german: ["Y Achse + 0.0 pt", "Y Achse + 0.0 pt", "Breite + 0.0 pt"],
-            .french: ["Axe Y + 0.0 pt", "Axe Y + 0.0 pt", "Largeur + 0.0 pt"]
-        ]
-        let expectedDescriptions: [AppLanguage: [String]] = [
-            .simplifiedChinese: ["微调图标的上下位置", "微调数值的上下位置", "调整 BalanceBar 与其他菜单栏图标的间距"],
-            .traditionalChineseTaiwan: ["微調圖示的上下位置", "微調數值的上下位置", "調整 BalanceBar 與其他選單列圖示的間距"],
-            .traditionalChineseHongKong: ["微調圖示的上下位置", "微調數值的上下位置", "調整 BalanceBar 與其他選單列圖示的間距"],
-            .japanese: ["アイコンの上下位置を微調整", "数値の上下位置を微調整", "BalanceBar と他のメニューバーアイコンとの間隔を調整"],
-            .english: ["Fine-tune the icon's vertical position", "Fine-tune the amount's vertical position", "Adjust the gap between BalanceBar and other menu bar icons"],
-            .korean: ["아이콘 세로 위치 미세 조정", "수치 세로 위치 미세 조정", "BalanceBar와 다른 메뉴 막대 아이콘 사이의 간격 조정"],
-            .spanish: ["Ajusta con precisión la posición vertical del icono", "Ajusta con precisión la posición vertical del valor", "Ajusta el espacio entre BalanceBar y los demás iconos de la barra de menús"],
-            .german: ["Vertikale Symbolposition fein einstellen", "Vertikale Position des Werts fein einstellen", "Abstand zwischen BalanceBar und anderen Menüleistensymbolen anpassen"],
-            .french: ["Ajuste précisément la position verticale de l’icône", "Ajuste précisément la position verticale de la valeur", "Ajuste l’espacement entre BalanceBar et les autres icônes de la barre des menus"]
-        ]
-        let longReplacement = "This newly reported summary is intentionally long so the shared settings row must wrap it beside the slider and remeasure the card when the text changes."
-
-        for language in [
-            AppLanguage.simplifiedChinese,
-            .traditionalChineseTaiwan,
-            .traditionalChineseHongKong,
-            .japanese,
-            .english,
-            .korean,
-            .spanish,
-            .german,
-            .french
-        ] { // expected strings below are keyed by these exact languages
+        let valueIdentifiers = [DashboardMenuBarPage.iconOffsetSummaryIdentifier,
+                                DashboardMenuBarPage.amountOffsetSummaryIdentifier,
+                                DashboardMenuBarPage.widthAdjustmentSummaryIdentifier]
+        let descriptionKeys: [LocalizationKey] = [.keyDashboardMenuBarIconVerticalPositionDetail,
+                                                 .keyDashboardMenuBarAmountVerticalPositionDetail,
+                                                 .keyDashboardMenuBarItemSpacingDetail]
+        for language in AppLanguage.allCases where language != .system {
             AppLanguage.selected = language
-            let suiteName = "DashboardPreferencePagesTests.MenuBarExternalSummaries.\(UUID().uuidString)"
-            let defaults = UserDefaults(suiteName: suiteName)!
-            defaults.removePersistentDomain(forName: suiteName)
-            defer { defaults.removePersistentDomain(forName: suiteName) }
-
-            let page = DashboardMenuBarPage().make(.init(
-                preferences: AppPreferences(defaults: defaults),
-                snapshot: .official("OpenAI", 72, "7-day", "2h", Date(timeIntervalSince1970: 1)),
-                menuBarSnapshot: { $0 },
-                iconImage: nil,
-                relay: DashboardPreferencePageRelay()
+            let suite = "MenuBarPositionLayout.\(UUID().uuidString)"
+            let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+            defer { defaults.removePersistentDomain(forName: suite) }
+            let preferences = AppPreferences(defaults: defaults)
+            preferences.menuBarIconOffsetY = -10
+            preferences.menuBarAmountOffsetY = 2.5
+            let controller = DashboardMenuBarPage()
+            let page = controller.make(.init(
+                preferences: preferences, snapshot: .official("OpenAI", 72, "7-day", "2h", Date()), menuBarSnapshot: { $0 },
+                iconImage: nil, relay: DashboardPreferencePageRelay()
             ))
-            let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 516, height: 700),
-                styleMask: [.borderless],
-                backing: .buffered,
-                defer: false
-            )
-            defer { window.orderOut(nil) }
-            pinMenuPage(page, in: window, width: 516, height: 700)
-
-            let summaries = try summaryIdentifiers.map { identifier in
-                try XCTUnwrap(
-                    descendants(of: page)
-                        .compactMap { $0 as? NSTextField }
-                        .first { $0.identifier?.rawValue == identifier }
-                )
-            }
-            let rows = try summaries.map { try XCTUnwrap(SettingsRowView.enclosing($0)) }
+            let labels = try valueIdentifiers.map { try XCTUnwrap(descendant(withIdentifier: $0, in: page) as? NSTextField) }
+            let rows = try labels.map { try XCTUnwrap(SettingsRowView.enclosing($0)) }
+            let sliders = try rows.map { try XCTUnwrap(descendants(of: $0).compactMap { $0 as? NSSlider }.first) }
             let section = try XCTUnwrap(SettingsSectionView.enclosing(rows[0]))
-            let card = section.cardView
-            XCTAssertTrue(rows.allSatisfy { row in section.contentViews.contains { $0 === row } })
-            let expectedSuffixes = try XCTUnwrap(expectedSignedSuffixes[language])
-            let expectedDescriptionLines = try XCTUnwrap(expectedDescriptions[language])
-            // Structured subtitles use word wrapping so AppKit honors the
-            // marked range's non-breaking layout tokens. Unicode still
-            // supplies CJK character-boundary opportunities in the prefix.
-            let expectedLineBreakMode: NSLineBreakMode = .byWordWrapping
+            let reset = try XCTUnwrap(descendant(withIdentifier: DashboardMenuBarPage.positionResetIdentifier, in: page) as? NSButton)
+            XCTAssertEqual(section.contentViews, rows)
+            XCTAssertFalse(reset.isDescendant(of: section.cardView))
+            XCTAssertEqual(labels.map(\.stringValue), ["−10.0 pt", "+2.5 pt", "0.0 pt"])
+            XCTAssertEqual(rows.map { $0.detailLabel.stringValue }, descriptionKeys.map { tr($0) })
+            XCTAssertTrue(sliders.allSatisfy { $0.numberOfTickMarks == 21 })
+            XCTAssertTrue(labels.allSatisfy { $0.alignment == .right })
 
-            func layout(at width: CGFloat) throws -> (rowHeights: [CGFloat], cardHeight: CGFloat) {
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 740, height: 700),
+                                  styleMask: [.borderless], backing: .buffered, defer: false)
+            defer { window.orderOut(nil) }
+            for width: CGFloat in [740, 516, 360, 740] {
                 pinMenuPage(page, in: window, width: width, height: 700)
-                var sliderCenters: [CGFloat] = []
-                for index in summaries.indices {
-                    let summary = summaries[index]
-                    let row = rows[index]
-                    let summaryFrame = summary.convert(summary.bounds, to: row)
-                    XCTAssertGreaterThan(summaryFrame.height, 0, "summary must remain laid out for \(language)")
-                    assertTextFieldIsNotClipped(
-                        summary,
-                        "summary fitting height for \(language)"
-                    )
-                    let slider = try XCTUnwrap(
-                        descendants(of: row).compactMap { $0 as? NSSlider }.first
-                    )
-                    let sliderFrame = slider.convert(slider.bounds, to: row)
-                    XCTAssertEqual(
-                        sliderFrame.midY,
-                        row.bounds.midY,
-                        accuracy: 1.0,
-                        "slider remains centered for \(language)"
-                    )
-                    sliderCenters.append(sliderFrame.midX)
-                    XCTAssertFalse(summary.usesSingleLineMode, "multiline mode for \(language)")
-                    XCTAssertEqual(summary.lineBreakMode, expectedLineBreakMode, "wrapping mode for \(language)")
-                    XCTAssertEqual(
-                        summary.maximumNumberOfLines,
-                        DashboardSettingsComponents.settingsSubtitleMaximumNumberOfLines,
-                        "summary line budget for \(language)"
-                    )
-                    XCTAssertTrue(summary.cell?.wraps == true, "cell wrapping for \(language)")
-                    if normalizeSettingsText(summary.stringValue).contains(expectedSuffixes[index]) {
-                        let renderedLines = renderedTextLines(for: summary).map {
-                            normalizeSettingsText($0).trimmingCharacters(in: .whitespacesAndNewlines)
-                        }
-                        XCTAssertTrue(
-                            normalizeSettingsText(summary.stringValue).contains(expectedDescriptionLines[index]),
-                            "description must remain in the first semantic block for \(language): \(renderedLines)"
-                        )
-                        let suffixLineIndex = renderedLines.firstIndex {
-                            $0.contains(expectedSuffixes[index])
-                        }
-                        XCTAssertNotNil(
-                            suffixLineIndex,
-                            "complete semantic suffix must be rendered for \(language): \(renderedLines)"
-                        )
-                        if let suffixLineIndex {
-                            XCTAssertGreaterThan(
-                                suffixLineIndex,
-                                0,
-                                "complete semantic suffix must start after the description block for \(language): \(renderedLines)"
-                            )
-                            XCTAssertFalse(
-                                renderedLines[suffixLineIndex].contains(expectedDescriptionLines[index]),
-                                "description and dynamic suffix must not share a line for \(language): \(renderedLines)"
-                            )
-                        }
-                        XCTAssertTrue(
-                            renderedLines.contains {
-                                $0.contains(expectedSuffixes[index])
-                            },
-                            "signed descriptor/value suffix must stay together for \(language): \(renderedLines)"
-                        )
-                    }
+                let resetFrame = reset.convert(reset.bounds, to: section)
+                let headingFrame = section.headingLabel.convert(section.headingLabel.bounds, to: section)
+                XCTAssertEqual(resetFrame.maxX, section.cardView.frame.maxX, accuracy: 1)
+                XCTAssertEqual(resetFrame.midY, headingFrame.midY, accuracy: 1)
+                XCTAssertGreaterThanOrEqual(resetFrame.minX, headingFrame.maxX)
+                let firstSlider = sliders[0].convert(sliders[0].bounds, to: section)
+                let firstValue = labels[0].convert(labels[0].bounds, to: section)
+                for (index, row) in rows.enumerated() {
+                    let slider = sliders[index]
+                    let value = labels[index]
+                    let track = slider.convert(slider.bounds, to: section)
+                    let readout = value.convert(value.bounds, to: section)
+                    XCTAssertEqual(track.midX, firstSlider.midX, accuracy: 1)
+                    XCTAssertEqual(track.width, firstSlider.width, accuracy: 1)
+                    if width >= 516 { XCTAssertEqual(track.width, 220, accuracy: 1) }
+                    XCTAssertEqual(readout.maxX, firstValue.maxX, accuracy: 1)
+                    XCTAssertEqual(readout.width, firstValue.width, accuracy: 1)
+                    XCTAssertEqual(readout.midY, track.midY, accuracy: 1)
+                    XCTAssertGreaterThan(readout.minX, track.maxX)
+                    XCTAssertGreaterThanOrEqual(row.labelsStack.bounds.width, SettingsRowView.minimumInlineLabelWidth - 1)
+                    assertTextFieldIsNotClipped(row.titleLabel, "title at \(width) for \(language)")
+                    assertTextFieldIsNotClipped(row.detailLabel, "description at \(width) for \(language)")
+                    XCTAssertGreaterThanOrEqual(value.bounds.width + 0.5, value.intrinsicContentSize.width)
                 }
-                for center in sliderCenters.dropFirst() {
-                    XCTAssertEqual(
-                        center,
-                        sliderCenters[0],
-                        accuracy: 0.5,
-                        "slider tracks must share one horizontal alignment for \(language) at width \(width)"
-                    )
-                }
-                assertNativeSectionCardLayout(section)
-                return (rows.map(\.frame.height), card.frame.height)
             }
-
-            let narrow = try layout(at: 516)
-            XCTAssertTrue(
-                narrow.rowHeights.contains { $0 > 66.5 },
-                "at least one real slider summary must grow at narrow width for \(language)"
-            )
-            let wide = try layout(at: 740)
-            XCTAssertTrue(
-                zip(wide.rowHeights, narrow.rowHeights).allSatisfy { $0 <= $1 + 0.5 },
-                "real slider rows must not grow when widened for \(language)"
-            )
-            XCTAssertLessThanOrEqual(
-                wide.cardHeight,
-                narrow.cardHeight + 0.5,
-                "card must not grow when widened for \(language)"
-            )
-            let narrowAgain = try layout(at: 516)
-            for (restored, original) in zip(narrowAgain.rowHeights, narrow.rowHeights) {
-                XCTAssertEqual(restored, original, accuracy: 0.5)
-            }
-            XCTAssertEqual(narrowAgain.cardHeight, narrow.cardHeight, accuracy: 0.5)
-
-            summaries[0].stringValue = "Short summary"
-            summaries[0].invalidateIntrinsicContentSize()
-            rows[0].invalidateAfterContentChange()
-            let short = try layout(at: 516)
-            summaries[0].stringValue = longReplacement
-            summaries[0].invalidateIntrinsicContentSize()
-            rows[0].invalidateAfterContentChange()
-            let changed = try layout(at: 516)
-            XCTAssertGreaterThan(changed.rowHeights[0], short.rowHeights[0], "content changes must grow the real row for \(language)")
-            XCTAssertGreaterThan(changed.cardHeight, short.cardHeight, "content changes must grow the real card for \(language)")
         }
     }
 
-    func testJapaneseMultilineSummariesKeepAllSliderTracksAlignedAcrossWidthsAndUpdates() throws {
-        let previousLanguage = AppLanguage.selected
-        defer { AppLanguage.selected = previousLanguage }
-        AppLanguage.selected = .japanese
-
-        let suiteName = "DashboardPreferencePagesTests.JapaneseSliderAlignment.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-
+    func testPositionResetRespondsToEachOffsetAndTransientWidthAndRestoresReadouts() throws {
+        let suite = "MenuBarPositionReset.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
         let preferences = AppPreferences(defaults: defaults)
-        let snapshot = Snapshot.official("OpenAI", 72, "7-day", "2h", Date(timeIntervalSince1970: 1))
         let controller = DashboardMenuBarPage()
-        let page = controller.make(.init(
-            preferences: preferences,
-            snapshot: snapshot,
-            menuBarSnapshot: { $0 },
-            iconImage: nil,
-            relay: DashboardPreferencePageRelay()
-        ))
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 516, height: 700),
-            styleMask: [.borderless],
-            backing: .buffered,
-            defer: false
-        )
-        defer { window.orderOut(nil) }
-        pinMenuPage(page, in: window, width: 516, height: 700)
-
-        let summaryIdentifiers = [
-            DashboardMenuBarPage.iconOffsetSummaryIdentifier,
-            DashboardMenuBarPage.amountOffsetSummaryIdentifier,
-            DashboardMenuBarPage.widthAdjustmentSummaryIdentifier
-        ]
-        let summaries = try summaryIdentifiers.map { identifier in
-            try XCTUnwrap(
-                descendants(of: page)
-                    .compactMap { $0 as? NSTextField }
-                    .first { $0.identifier?.rawValue == identifier }
-            )
+        let relay = DashboardPreferencePageRelay()
+        let snapshot = Snapshot.official("OpenAI", 72, "7-day", "2h", Date())
+        func refresh() {
+            controller.refresh(snapshot: snapshot, preferences: preferences, menuBarSnapshot: { $0 }, iconImage: nil)
         }
-        let rows = try summaries.map { try XCTUnwrap(SettingsRowView.enclosing($0)) }
-        let section = try XCTUnwrap(SettingsSectionView.enclosing(rows[0]))
-        let card = section.cardView
-        let sliders = try rows.map { row in
-            try XCTUnwrap(descendants(of: row).compactMap { $0 as? NSSlider }.first)
+        var resets = 0
+        relay.onOffsetReset = { identifier in
+            XCTAssertEqual(identifier, DashboardMenuBarPage.positionResetIdentifier)
+            resets += 1
+            preferences.menuBarIconOffsetY = 0
+            preferences.menuBarAmountOffsetY = 0
+            preferences.menuBarStatusItemWidthAdjustment = 0
+            controller.finishWidthAdjustment(0, horizontalPadding: 10)
+            refresh()
         }
-
-        func controlGroup(for slider: NSSlider, in row: SettingsRowView) throws -> NSView {
-            var current: NSView = slider
-            while let parent = current.superview, parent !== row.contentStack {
-                current = parent
-            }
-            return try XCTUnwrap(current.superview === row.contentStack ? current : nil)
+        let page = controller.make(.init(preferences: preferences, snapshot: snapshot,
+                                         menuBarSnapshot: { $0 }, iconImage: nil, relay: relay))
+        let reset = try XCTUnwrap(descendant(withIdentifier: DashboardMenuBarPage.positionResetIdentifier, in: page) as? NSButton)
+        let readouts = try [DashboardMenuBarPage.iconOffsetSummaryIdentifier,
+                            DashboardMenuBarPage.amountOffsetSummaryIdentifier,
+                            DashboardMenuBarPage.widthAdjustmentSummaryIdentifier].map {
+            try XCTUnwrap(descendant(withIdentifier: $0, in: page) as? NSTextField)
         }
-
-        func layout(at width: CGFloat) throws -> (rowHeights: [CGFloat], cardHeight: CGFloat) {
-            pinMenuPage(page, in: window, width: width, height: 700)
-
-            var sliderCenters: [CGFloat] = []
-            for index in rows.indices {
-                let row = rows[index]
-                let summary = summaries[index]
-                let slider = sliders[index]
-                let group = try controlGroup(for: slider, in: row)
-                let sliderFrame = slider.convert(slider.bounds, to: row)
-                let groupFrame = group.convert(group.bounds, to: row)
-                let lines = renderedTextLines(for: summary)
-                XCTAssertGreaterThanOrEqual(
-                    lines.count,
-                    2,
-                    "Japanese summary must remain multiline at width \(width): \(lines)"
-                )
-                assertTextFieldIsNotClipped(
-                    summary,
-                    "Japanese summary \(index) must not be clipped at width \(width)"
-                )
-                XCTAssertEqual(
-                    sliderFrame.midY,
-                    row.bounds.midY,
-                    accuracy: 0.5,
-                    "Japanese slider \(index) must be vertically centered at width \(width)"
-                )
-                XCTAssertEqual(
-                    groupFrame.midY,
-                    row.bounds.midY,
-                    accuracy: 0.5,
-                    "Japanese slider group \(index) must be vertically centered at width \(width)"
-                )
-                sliderCenters.append(sliderFrame.midX)
-            }
-            for center in sliderCenters.dropFirst() {
-                XCTAssertEqual(
-                    center,
-                    sliderCenters[0],
-                    accuracy: 0.5,
-                    "Japanese slider tracks must share one horizontal alignment at width \(width)"
-                )
-            }
-            assertNativeSectionCardLayout(section)
-            return (rows.map(\.frame.height), card.frame.height)
+        let sliders = try readouts.map { value in
+            try XCTUnwrap(value.superview?.subviews.compactMap { $0 as? NSSlider }.first)
         }
-
-        let narrow = try layout(at: 516)
-        let wide = try layout(at: 740)
-        let narrowAgain = try layout(at: 516)
-        for (restored, original) in zip(narrowAgain.rowHeights, narrow.rowHeights) {
-            XCTAssertEqual(restored, original, accuracy: 0.5)
-        }
-        XCTAssertEqual(narrowAgain.cardHeight, narrow.cardHeight, accuracy: 0.5)
-        XCTAssertTrue(
-            zip(wide.rowHeights, narrow.rowHeights).allSatisfy { $0 <= $1 + 0.5 },
-            "Japanese rows must not grow when the window widens"
-        )
-
-        preferences.menuBarIconOffsetY = -0.7
-        preferences.menuBarAmountOffsetY = 0.8
-        preferences.menuBarStatusItemWidthAdjustment = -0.4
-        controller.refresh(
-            snapshot: snapshot,
-            preferences: preferences,
-            menuBarSnapshot: { $0 },
-            iconImage: nil
-        )
-        _ = try layout(at: 516)
-        XCTAssertEqual(
-            normalizeSettingsText(summaries[0].stringValue),
-            "アイコンの上下位置を微調整 Y 軸 - 0.7 pt"
-        )
-        XCTAssertEqual(
-            normalizeSettingsText(summaries[1].stringValue),
-            "数値の上下位置を微調整 Y 軸 + 0.8 pt"
-        )
-        XCTAssertEqual(
-            normalizeSettingsText(summaries[2].stringValue),
-            "BalanceBar と他のメニューバーアイコンとの間隔を調整 幅 - 0.4 pt"
-        )
-        XCTAssertEqual(sliders[0].doubleValue, -0.7, accuracy: 0.001)
-        XCTAssertEqual(sliders[1].doubleValue, 0.8, accuracy: 0.001)
-        XCTAssertEqual(sliders[2].doubleValue, -0.4, accuracy: 0.001)
+        XCTAssertFalse(reset.isEnabled)
+        preferences.menuBarIconOffsetY = -1.1
+        refresh()
+        XCTAssertTrue(reset.isEnabled)
+        XCTAssertEqual(readouts[0].stringValue, "−1.1 pt")
+        preferences.menuBarIconOffsetY = 0
+        preferences.menuBarAmountOffsetY = 2.5
+        refresh()
+        XCTAssertTrue(reset.isEnabled)
+        XCTAssertEqual(readouts[1].stringValue, "+2.5 pt")
+        preferences.menuBarAmountOffsetY = 0
+        refresh()
+        XCTAssertFalse(reset.isEnabled)
+        controller.refreshWidthAdjustment(-10, horizontalPadding: 10)
+        XCTAssertTrue(reset.isEnabled)
+        XCTAssertEqual(readouts[2].stringValue, "−10.0 pt")
+        XCTAssertEqual(sliders[2].doubleValue, 0, "Do not fight the slider during tracking")
+        preferences.menuBarIconOffsetY = 2
+        preferences.menuBarAmountOffsetY = 3
+        preferences.showMenuBarAmount = false
+        refresh()
+        XCTAssertFalse(sliders[1].isEnabled)
+        XCTAssertEqual(readouts[1].textColor, .disabledControlTextColor)
+        XCTAssertTrue(reset.isEnabled)
+        reset.performClick(nil)
+        XCTAssertEqual(resets, 1)
+        XCTAssertEqual(readouts.map(\.stringValue), ["0.0 pt", "0.0 pt", "0.0 pt"])
+        XCTAssertEqual(sliders.map(\.doubleValue), [0, 0, 0])
+        XCTAssertFalse(reset.isEnabled)
+        preferences.showMenuBarAmount = true
+        refresh()
+        XCTAssertTrue(sliders[1].isEnabled)
+        XCTAssertEqual(readouts[1].textColor, .secondaryLabelColor)
     }
 
     func testMenuBarFontSizePresetControlKeepsDefaultRatioAndRefreshesPreview() throws {
@@ -9046,7 +8843,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertTrue(
             settingsText(
                 summary?.stringValue,
-                equals: "调整 BalanceBar 与其他菜单栏图标的间距宽度 + 7.4 pt"
+                equals: "+7.4 pt"
             ),
             "width-only refresh summary"
         )
@@ -9444,9 +9241,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 ["布局", "菜单栏字号", "图标上下位置", "数值上下位置", "与其他菜单栏图标的间距"],
                 [
                     "调整菜单栏文字大小",
-                    "微调图标的上下位置Y 轴 + 0.0 pt",
-                    "微调数值的上下位置Y 轴 + 0.0 pt",
-                    "调整 BalanceBar 与其他菜单栏图标的间距宽度 + 0.0 pt"
+                    "微调图标的上下位置",
+                    "微调数值的上下位置",
+                    "调整 BalanceBar 与其他菜单栏图标的间距"
                 ],
                 "调整与其他菜单栏图标的间距：-10.0 pt 更窄，+10.0 pt 更宽；默认 0 pt"
             ),
@@ -9455,9 +9252,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 ["版面", "選單列字號", "圖示上下位置", "數值上下位置", "與其他選單列圖示的間距"],
                 [
                     "調整選單列文字大小",
-                    "微調圖示的上下位置 Y 軸 + 0.0 pt",
-                    "微調數值的上下位置 Y 軸 + 0.0 pt",
-                    "調整 BalanceBar 與其他選單列圖示的間距 寬度 + 0.0 pt"
+                    "微調圖示的上下位置",
+                    "微調數值的上下位置",
+                    "調整 BalanceBar 與其他選單列圖示的間距"
                 ],
                 "調整與其他選單列圖示的間距：-10.0 pt 更窄，+10.0 pt 更寬；預設 0 pt"
             ),
@@ -9466,9 +9263,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 ["版面", "選單列字型大小", "圖示上下位置", "數值上下位置", "與其他選單列圖示的間距"],
                 [
                     "調整選單列文字大小",
-                    "微調圖示的上下位置 Y 軸 + 0.0 pt",
-                    "微調數值的上下位置 Y 軸 + 0.0 pt",
-                    "調整 BalanceBar 與其他選單列圖示的間距 寬度 + 0.0 pt"
+                    "微調圖示的上下位置",
+                    "微調數值的上下位置",
+                    "調整 BalanceBar 與其他選單列圖示的間距"
                 ],
                 "調整與其他選單列圖示的間距：-10.0 pt 更窄，+10.0 pt 更寬；預設 0 pt"
             ),
@@ -9477,9 +9274,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 ["レイアウト", "メニューバーのフォントサイズ", "アイコンの上下位置", "数値の上下位置", "他のメニューバーアイコンとの間隔"],
                 [
                     "メニューバーの文字サイズを調整",
-                    "アイコンの上下位置を微調整 Y 軸 + 0.0 pt",
-                    "数値の上下位置を微調整 Y 軸 + 0.0 pt",
-                    "BalanceBar と他のメニューバーアイコンとの間隔を調整 幅 + 0.0 pt"
+                    "アイコンの上下位置を微調整",
+                    "数値の上下位置を微調整",
+                    "BalanceBar と他のメニューバーアイコンとの間隔を調整"
                 ],
                 "他のメニューバーアイコンとの間隔を調整：-10.0 pt（狭く）～+10.0 pt（広く）、デフォルト 0 pt"
             ),
@@ -9488,9 +9285,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 ["Layout", "Menu Bar Font Size", "Icon vertical position", "Amount vertical position", "Spacing from other menu bar icons"],
                 [
                     "Adjust menu bar text size",
-                    "Fine-tune the icon's vertical position Y axis + 0.0 pt",
-                    "Fine-tune the amount's vertical position Y axis + 0.0 pt",
-                    "Adjust the gap between BalanceBar and other menu bar icons Width + 0.0 pt"
+                    "Fine-tune the icon's vertical position",
+                    "Fine-tune the amount's vertical position",
+                    "Adjust the gap between BalanceBar and other menu bar icons"
                 ],
                 "Adjust spacing from other menu bar icons: -10.0 pt narrower to +10.0 pt wider; default 0 pt"
             ),
@@ -9499,9 +9296,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 ["레이아웃", "메뉴 막대 글꼴 크기", "아이콘 세로 위치", "수치 세로 위치", "다른 메뉴 막대 아이콘과의 간격"],
                 [
                     "메뉴 막대 글자 크기 조정",
-                    "아이콘 세로 위치 미세 조정 Y 축 + 0.0 pt",
-                    "수치 세로 위치 미세 조정 Y 축 + 0.0 pt",
-                    "BalanceBar와 다른 메뉴 막대 아이콘 사이의 간격 조정 너비 + 0.0 pt"
+                    "아이콘 세로 위치 미세 조정",
+                    "수치 세로 위치 미세 조정",
+                    "BalanceBar와 다른 메뉴 막대 아이콘 사이의 간격 조정"
                 ],
                 "다른 메뉴 막대 아이콘과의 간격 조정: -10.0pt(더 좁게)에서 +10.0pt(더 넓게); 기본값 0pt"
             ),
@@ -9510,9 +9307,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 ["Diseño", "Tamaño de fuente de la barra de menús", "Posición vertical del icono", "Posición vertical del valor", "Espacio respecto a los demás iconos de la barra de menús"],
                 [
                     "Ajusta el tamaño del texto de la barra de menús",
-                    "Ajusta con precisión la posición vertical del icono Eje Y + 0.0 pt",
-                    "Ajusta con precisión la posición vertical del valor Eje Y + 0.0 pt",
-                    "Ajusta el espacio entre BalanceBar y los demás iconos de la barra de menús Ancho + 0.0 pt"
+                    "Ajusta con precisión la posición vertical del icono",
+                    "Ajusta con precisión la posición vertical del valor",
+                    "Ajusta el espacio entre BalanceBar y los demás iconos de la barra de menús"
                 ],
                 "Ajusta el espacio respecto a los demás iconos: de -10,0 pt (más estrecho) a +10,0 pt (más ancho); valor predeterminado: 0 pt"
             ),
@@ -9521,9 +9318,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 ["Layout", "Schriftgröße der Menüleiste", "Vertikale Symbolposition", "Vertikale Position des Werts", "Abstand zu anderen Menüleistensymbolen"],
                 [
                     "Passt die Textgröße der Menüleiste an",
-                    "Vertikale Symbolposition fein einstellen Y-Achse + 0.0 pt",
-                    "Vertikale Position des Werts fein einstellen Y-Achse + 0.0 pt",
-                    "Abstand zwischen BalanceBar und anderen Menüleistensymbolen anpassen Breite + 0.0 pt"
+                    "Vertikale Symbolposition fein einstellen",
+                    "Vertikale Position des Werts fein einstellen",
+                    "Abstand zwischen BalanceBar und anderen Menüleistensymbolen anpassen"
                 ],
                 "Abstand zu anderen Menüleistensymbolen anpassen: -10,0 pt schmaler bis +10,0 pt breiter; Standard: 0 pt"
             ),
@@ -9532,9 +9329,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 ["Disposition", "Taille de la police de la barre des menus", "Position verticale de l’icône", "Position verticale de la valeur", "Espacement avec les autres icônes de la barre des menus"],
                 [
                     "Ajuste la taille du texte de la barre des menus",
-                    "Ajuste précisément la position verticale de l’icône Axe Y + 0.0 pt",
-                    "Ajuste précisément la position verticale de la valeur Axe Y + 0.0 pt",
-                    "Ajuste l’espacement entre BalanceBar et les autres icônes de la barre des menus Largeur + 0.0 pt"
+                    "Ajuste précisément la position verticale de l’icône",
+                    "Ajuste précisément la position verticale de la valeur",
+                    "Ajuste l’espacement entre BalanceBar et les autres icônes de la barre des menus"
                 ],
                 "Ajuste l’espacement avec les autres icônes : de -10,0 pt (plus étroit) à +10,0 pt (plus large) ; valeur par défaut : 0 pt"
             )
@@ -10069,14 +9866,14 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let row = try XCTUnwrap(SettingsRowView.enclosing(toggle))
         let clip = try XCTUnwrap(row.enclosingScrollView?.contentView)
         let key = DashboardSettingsComponents.revealHighlightAnimationKey
-        XCTAssertNotNil(row.layer?.animation(forKey: key))
+        XCTAssertNotNil(row.layer?.sublayers?.first { $0.name == key }?.animation(forKey: key))
         XCTAssertNil(SettingsSectionView.enclosing(row)?.layer?.animation(forKey: key))
         XCTAssertTrue(clip.bounds.intersects(row.convert(row.bounds, to: clip)))
 
-        row.layer?.removeAnimation(forKey: key)
+        DashboardSettingsComponents.removeRevealHighlight(from: row)
         composition.revealClaudeEgressGuard()
         window.layoutIfNeeded()
-        XCTAssertNotNil(row.layer?.animation(forKey: key), "Repeat navigation should flash the cached row again")
+        XCTAssertNotNil(row.layer?.sublayers?.first { $0.name == key }?.animation(forKey: key), "Repeat navigation should flash the cached row again")
     }
 
     private func trailingMaxX(of view: NSView, in space: NSView) -> CGFloat {
@@ -10638,47 +10435,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         }
     }
 
-    private func renderedTextLines(for field: NSTextField) -> [String] {
-        let paragraphStyle = NSMutableParagraphStyle()
-        paragraphStyle.lineBreakMode = field.lineBreakMode
-        if #available(macOS 10.15, *) {
-            paragraphStyle.lineBreakStrategy = field.lineBreakStrategy
-        }
-        let storage = NSTextStorage(
-            string: field.stringValue,
-            attributes: [
-                .font: field.font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize),
-                .paragraphStyle: paragraphStyle
-            ]
-        )
-        let layoutManager = NSLayoutManager()
-        let textContainer = NSTextContainer(
-            size: NSSize(width: max(1, field.bounds.width), height: .greatestFiniteMagnitude)
-        )
-        textContainer.lineFragmentPadding = 0
-        textContainer.lineBreakMode = field.lineBreakMode
-        layoutManager.addTextContainer(textContainer)
-        storage.addLayoutManager(layoutManager)
-        layoutManager.ensureLayout(for: textContainer)
 
-        var lines: [String] = []
-        var glyphIndex = 0
-        while glyphIndex < layoutManager.numberOfGlyphs {
-            var glyphRange = NSRange()
-            layoutManager.lineFragmentRect(
-                forGlyphAt: glyphIndex,
-                effectiveRange: &glyphRange,
-                withoutAdditionalLayout: true
-            )
-            let characterRange = layoutManager.characterRange(
-                forGlyphRange: glyphRange,
-                actualGlyphRange: nil
-            )
-            lines.append((field.stringValue as NSString).substring(with: characterRange))
-            glyphIndex = NSMaxRange(glyphRange)
-        }
-        return lines
-    }
 }
 
 extension DashboardPreferencePagesTests {

@@ -1462,7 +1462,9 @@ final class DashboardPageSearchTests: XCTestCase {
     }
 
     func testSemanticSubtitleSearchUsesSourceTextWithoutLayoutJoiners() {
-        let subtitle = DashboardMenuBarLayoutSection.iconOffsetSummarySubtitle(y: 7.3)
+        let text = "An inline value + 7.3 pt"
+        let range = (text as NSString).range(of: "+ 7.3 pt")
+        let subtitle = LocalizedSubtitle(text: text, semanticGroups: [range], atomicGroups: [range])
         let label = SettingsSemanticSubtitleLabel(
             frame: NSRect(x: 0, y: 0, width: 1_000, height: 40)
         )
@@ -1485,7 +1487,7 @@ final class DashboardPageSearchTests: XCTestCase {
         XCTAssertTrue(DashboardPageSearch.matches(label.stringValue, query: "7.3"))
         XCTAssertTrue(
             DashboardPageSearch.matches(
-                DashboardMenuBarLayoutSection.iconOffsetSummarySubtitle(y: 7.3).text,
+                subtitle.text,
                 query: "+ 7.3 pt"
             )
         )

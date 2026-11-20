@@ -30,7 +30,7 @@ final class DashboardMenuBarPage {
     static let iconOffsetSliderMaximumIdentifier = "menuBarIconOffsetSliderMaximum"
     static let amountOffsetSliderMinimumIdentifier = "menuBarAmountOffsetSliderMinimum"
     static let amountOffsetSliderMaximumIdentifier = "menuBarAmountOffsetSliderMaximum"
-    static let widthAdjustmentSliderWidth: CGFloat = 140
+    static let widthAdjustmentSliderWidth: CGFloat = 220
     // Match the compact native popup used by the Application settings page.
     // Screenshots are commonly captured at 2x scale, so this is 100 points
     // (about 200 pixels), not the previous 180-point control.
@@ -339,7 +339,6 @@ final class DashboardMenuBarPage {
 
     deinit {
         previewSection.removeIconDisplayModeRevealHighlight()
-        iconTaskSection.removeRevealHighlight()
         layoutSection.teardown()
     }
 

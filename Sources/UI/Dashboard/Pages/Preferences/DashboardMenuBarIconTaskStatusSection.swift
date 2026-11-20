@@ -114,13 +114,7 @@ final class DashboardMenuBarIconTaskStatusSection {
     }
 
     func teardown() {
-        removeRevealHighlight()
         dismissRestartConfirmation()
-    }
-
-    func removeRevealHighlight() {
-        let animationKey = DashboardMenuBarPage.iconDisplayModeRevealHighlightAnimationKey
-        taskStatusIconRow?.layer?.removeAnimation(forKey: animationKey)
     }
 
     func make(input: DashboardMenuBarPage.Input) -> [NSView] {
