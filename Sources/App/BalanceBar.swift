@@ -2047,7 +2047,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         let physicalWidthAdjustment = widthAdjustment
             + CGFloat(AppPreferences.menuBarStatusItemWidthBaseline)
         MenuBarWidthPerformance.measure("menu-bar-width-frame") {
-            statusItemController.updateWidthAdjustment(physicalWidthAdjustment)
+            statusItemController?.updateWidthAdjustment(physicalWidthAdjustment)
             refreshDashboardMenuBarWidthAdjustment(Double(widthAdjustment))
         }
     }
@@ -2055,9 +2055,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private func handleDashboardOffsetReset(identifier: String) {
         switch identifier {
         case DashboardMenuBarPage.positionResetIdentifier:
-            preferences.menuBarIconOffsetX = 0
             preferences.menuBarIconOffsetY = 0
-            preferences.menuBarAmountOffsetX = 0
             preferences.menuBarAmountOffsetY = 0
             handleDashboardOffsetValueEnded(identifier: AppPreferences.menuBarStatusItemWidthAdjustmentKey, value: 0)
         case DashboardMenuBarPage.iconOffsetsResetIdentifier:
@@ -2073,7 +2071,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             "preference reset; identifier=\(identifier); icon_x=\(preferences.menuBarIconOffsetX); icon_y=\(preferences.menuBarIconOffsetY); amount_x=\(preferences.menuBarAmountOffsetX); amount_y=\(preferences.menuBarAmountOffsetY); width=\(preferences.menuBarStatusItemWidthAdjustment); width_physical=\(menuBarStatusItemPhysicalWidthAdjustment)",
             category: "configuration"
         )
-        updateStatusItem(for: snapshot)
+        if statusItemController != nil { updateStatusItem(for: snapshot, refreshDashboard: false) }
         refreshDashboardMenuBarPage()
     }
 

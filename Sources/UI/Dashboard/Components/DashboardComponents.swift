@@ -2449,15 +2449,20 @@ enum DashboardSection: Int, CaseIterable {
 /// Wrapping subtitle that styles one interior phrase as a link. Hover and
 /// click apply only to that range; the rest stays secondary label color.
 final class InlineRangeLinkTextField: NSTextField {
-    var onActivate: (() -> Void)?
+    var onActivate: (() -> Void)? {
+        didSet { updateAccessibilityRole() }
+    }
     var isLinkEnabled = true {
         didSet {
             guard isLinkEnabled != oldValue else { return }
+            updateAccessibilityRole()
             applyStyle(underlined: isHovered)
             updateLinkHitRect()
         }
     }
-    private(set) var linkRange = NSRange(location: NSNotFound, length: 0)
+    private(set) var linkRange = NSRange(location: NSNotFound, length: 0) {
+        didSet { updateAccessibilityRole() }
+    }
     private(set) var linkHitRect = NSRect.zero
     private(set) var linkHitRects: [NSRect] = []
     private var sourceText = ""
@@ -2469,6 +2474,8 @@ final class InlineRangeLinkTextField: NSTextField {
     var hasLink: Bool {
         linkRange.location != NSNotFound && linkRange.length > 0
     }
+
+    var hasActionableLink: Bool { hasLink && isLinkEnabled && onActivate != nil }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -2483,6 +2490,7 @@ final class InlineRangeLinkTextField: NSTextField {
         cell?.isScrollable = false
         font = .systemFont(ofSize: 12)
         textColor = .secondaryLabelColor
+        updateAccessibilityRole()
     }
 
     required init?(coder: NSCoder) { nil }
@@ -2575,6 +2583,17 @@ final class InlineRangeLinkTextField: NSTextField {
         guard isPointInsideLink(for: event) else { return }
         NSCursor.pointingHand.set()
         onActivate?()
+    }
+
+    override func accessibilityPerformPress() -> Bool {
+        guard hasActionableLink, let onActivate else { return false }
+        onActivate()
+        return true
+    }
+
+    private func updateAccessibilityRole() {
+        setAccessibilityRole(hasActionableLink ? .link : .staticText)
+        setAccessibilityElement(true)
     }
 
     override func viewWillMove(toWindow newWindow: NSWindow?) {

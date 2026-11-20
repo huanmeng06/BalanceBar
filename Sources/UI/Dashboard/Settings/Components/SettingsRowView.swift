@@ -181,7 +181,7 @@ enum DashboardSettingsAccessibility {
         }
         if !help.isEmpty {
             control.setAccessibilityHelp(help)
-            detailLabel?.setAccessibilityElement(false)
+            detailLabel?.setAccessibilityElement((detailLabel as? InlineRangeLinkTextField)?.hasActionableLink == true)
         } else if control.accessibilityHelp() != nil {
             // A detail that went away (e.g. a dismissed warning) must not leave stale help behind.
             control.setAccessibilityHelp(nil)

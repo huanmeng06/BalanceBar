@@ -2133,6 +2133,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             window.layoutIfNeeded()
             let label = try XCTUnwrap(generalPage.claudeSourcesSection?.footnoteLabel)
             let link = try XCTUnwrap(generalPage.claudeSourcesFootnoteLinkForTesting)
+            XCTAssertEqual(link.accessibilityRole(), .link)
             let rects = link.linkHitRects
             let context = "width \(width), label \(label.bounds)"
 
@@ -2245,7 +2246,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(row.titleLabel.textColor, .disabledControlTextColor)
         let link = try XCTUnwrap(generalPage.claudeCalibrationLinkForTesting)
         XCTAssertTrue(link.hasLink)
-        link.onActivate?()
+        XCTAssertEqual(link.accessibilityRole(), .link)
+        XCTAssertTrue(link.isAccessibilityElement())
+        XCTAssertTrue(link.accessibilityPerformPress())
         XCTAssertEqual(opened, 1, "the link opens the IP allowlist settings")
 
         preferences.claudeEgressGuardEnabled = true
@@ -2255,6 +2258,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(row.detailLabel.stringValue, tr(.keyClaudeQuotaCalibrationDetail) + "\n"
             + RealtimeBoostSettingsRows.dotPrefix + DashboardGeneralPage.claudeLoginLine(.unknown).text)
         XCTAssertFalse(link.hasLink)
+        XCTAssertEqual(link.accessibilityRole(), .staticText)
+        XCTAssertFalse(link.accessibilityPerformPress())
     }
 
     func testClaudeLoginLineWordsEachStateLikeTheModStatusLine() {
@@ -8438,6 +8443,36 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 }
             }
         }
+    }
+
+    func testPositionResetThroughDashboardButtonPreservesSavedHorizontalOffsets() throws {
+        let defaults = UserDefaults.standard
+        let values: [(String, Double)] = [
+            (AppPreferences.menuBarIconOffsetXKey, 1.4),
+            (AppPreferences.menuBarAmountOffsetXKey, -2.1),
+            (AppPreferences.menuBarIconOffsetYKey, 3.2),
+            (AppPreferences.menuBarAmountOffsetYKey, -4.3),
+            (AppPreferences.menuBarStatusItemWidthAdjustmentKey, 5.4)
+        ]
+        let previous = values.map { ($0.0, defaults.object(forKey: $0.0)) }
+        defer { for (key, value) in previous { defaults.set(value, forKey: key) } }
+        for (key, value) in values { defaults.set(value, forKey: key) }
+
+        let delegate = AppDelegate(repository: CCSwitchRepository(
+            databaseURL: URL(fileURLWithPath: "/nonexistent/issue-714-position-reset.db")
+        ))
+        let composition = delegate.dashboardCompositionForTesting
+        defer { composition.teardownForTesting() }
+        let page = composition.makePageForTesting(.menuBar)
+        let button = try XCTUnwrap(descendant(withIdentifier: DashboardMenuBarPage.positionResetIdentifier, in: page) as? NSButton)
+        XCTAssertTrue(button.isEnabled)
+        button.performClick(nil)
+        let preferences = AppPreferences(defaults: defaults)
+        XCTAssertEqual(preferences.menuBarIconOffsetX, 1.4)
+        XCTAssertEqual(preferences.menuBarAmountOffsetX, -2.1)
+        XCTAssertEqual(preferences.menuBarIconOffsetY, 0)
+        XCTAssertEqual(preferences.menuBarAmountOffsetY, 0)
+        XCTAssertEqual(preferences.menuBarStatusItemWidthAdjustment, 0)
     }
 
     func testPositionResetRespondsToEachOffsetAndTransientWidthAndRestoresReadouts() throws {

@@ -3155,7 +3155,8 @@ final class StatusItemControllerTests: XCTestCase {
         forceNativeCodexAnimationFailureForTesting: Bool = false,
         openDashboard: @escaping () -> Void = {},
         openChatGPT: @escaping () -> Void = {},
-        openCCSwitch: @escaping () -> Void = {}
+        openCCSwitch: @escaping () -> Void = {},
+        openStatusLink: @escaping (URL) -> Void = { _ in }
     ) -> StatusItemController {
         StatusItemController(
             actions: StatusItemController.Actions(
@@ -3166,7 +3167,7 @@ final class StatusItemControllerTests: XCTestCase {
                 quit: {},
                 switchProvider: { _ in },
                 openProviderWebsite: {},
-                openStatusLink: { _ in },
+                openStatusLink: openStatusLink,
                 iconChanged: { _ in }
             ),
             codexAnimationBackend: codexAnimationBackend,
@@ -3712,10 +3713,12 @@ extension StatusItemControllerTests {
 
     @MainActor
     func testCachedBalanceFailureKeepsBalanceCardWithReasonSubtitle() throws {
-        let controller = makeController()
+        let website = try XCTUnwrap(URL(string: "https://provider.example/"))
+        var openedURLs: [URL] = []
+        let controller = makeController(openStatusLink: { openedURLs.append($0) })
         defer { controller.teardown() }
         let date = Date(timeIntervalSince1970: 1_700_000_000)
-        let balance = Snapshot.balance("Fixture API", 42, "USD", nil, date, progressPercentage: 100)
+        let balance = Snapshot.balance("Fixture API", 42, "USD", website, date, progressPercentage: 100)
         let reason = "Fixture failure (HTTP 403)"
         let error = Snapshot.providerError(balance.provider, reason: reason, cachedBalance: balance)
         controller.start(snapshot: balance, refreshDate: date, menuInput: makeMenuInput(), settings: makeSettings())
@@ -3734,6 +3737,9 @@ extension StatusItemControllerTests {
         XCTAssertTrue(cached is MenuHoverLinkHostView, "a kept balance keeps its normal balance layout")
         XCTAssertGreaterThan(cached.frame.height, freshHeight)
         let labels = cached.subviews.compactMap { $0 as? NSTextField }
+        let providerLink = try XCTUnwrap(labels.first { $0.identifier?.rawValue == "overview.providerTitle" } as? HoverLinkTextField)
+        providerLink.onActivate?()
+        XCTAssertEqual(openedURLs, [website])
         let time = try XCTUnwrap(labels.first { $0.identifier?.rawValue == "overview.refreshTime" })
         XCTAssertTrue(time.stringValue.hasPrefix("⚠︎ "))
         XCTAssertEqual(time.textColor, .systemOrange)
