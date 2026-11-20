@@ -107,7 +107,7 @@ final class DashboardMenuBarPreviewSection {
     private weak var iconDisplayModeControl: NSPopUpButton?
     private weak var iconDisplayDelayControl: NSPopUpButton?
     private weak var iconDisplayModeRow: NSView?
-    private weak var iconDisplayDelayRow: NSView?
+    private weak var iconDisplayDelayRow: SettingsRowView?
     private var lastWarningRefreshSignature: WarningRefreshSignature?
     private var isBuilt = false
     private var isSuspended = false
@@ -195,7 +195,7 @@ final class DashboardMenuBarPreviewSection {
         }
     }
 
-    func make(input: DashboardMenuBarPage.Input) -> NSView {
+    func make(input: DashboardMenuBarPage.Input) -> [NSView] {
         prepare(input: input)
         previewSection = nil
         lastWarningRefreshSignature = nil
@@ -432,7 +432,7 @@ final class DashboardMenuBarPreviewSection {
             detail: tr(.keyDashboardMenuBarPageIconDisplayDelayDescription),
             accessoryView: iconDisplayDelayControl
         )
-        iconDisplayDelayRow.isHidden = input.preferences.menuBarIconDisplayMode != .onlyWhileRunning
+        iconDisplayDelayRow.setDependencyEnabled(input.preferences.menuBarIconDisplayMode == .onlyWhileRunning)
         self.iconDisplayDelayRow = iconDisplayDelayRow
         let previewAccessory = MenuBarPreviewAccessoryHost(preview: preview)
         let previewSettingsRow = SettingsRowView(
@@ -446,26 +446,20 @@ final class DashboardMenuBarPreviewSection {
             title: tr(.keyDashboardMenuBarPagePreview),
             contentViews: [
                 previewSettingsRow,
-                iconDisplayModeRow,
-                iconDisplayDelayRow,
                 overflowWarningRow,
                 runtimeOnlyWarningRow
             ]
         )
         self.previewSection = previewSection
         isBuilt = true
-        return previewSection
-    }
-
-    func updateDelayVisibility(showDelay: Bool) {
-        iconDisplayDelayRow?.isHidden = !showDelay
-        updatePreviewSeparators()
+        return [previewSection, SettingsSectionView(title: "", contentViews: [iconDisplayModeRow, iconDisplayDelayRow])]
     }
 
     func applyIconDisplayControls(
         mode: MenuBarIconDisplayMode,
         delay: MenuBarIconDisplayDelay
     ) {
+        iconDisplayDelayRow?.setDependencyEnabled(mode == .onlyWhileRunning)
         if let iconDisplayModeControl,
            let selectedIndex = MenuBarIconDisplayMode.allCases.firstIndex(of: mode) {
             if iconDisplayModeControl.indexOfSelectedItem != selectedIndex {
@@ -991,45 +985,11 @@ final class DashboardMenuBarPreviewSection {
     }
 
     func revealIconDisplayModeSetting() {
-        guard let destination = iconDisplayModeRow else { return }
-        destination.window?.layoutIfNeeded()
-
-        // Expand the requested rect by the available viewport margin so that
-        // scrollToVisible places the row with comfortable space around it
-        // instead of stopping as soon as its bottom edge becomes visible.
-        guard let scrollView = destination.enclosingScrollView else {
-            destination.scrollToVisible(destination.bounds)
-            return
-        }
-        let viewportHeight = scrollView.contentView.bounds.height
-        let verticalMargin = max(0, (viewportHeight - destination.bounds.height) / 2)
-        let revealRect = destination.bounds.insetBy(dx: 0, dy: -verticalMargin)
-        destination.scrollToVisible(revealRect)
-        flashIconDisplayModeRevealDestination(destination)
-    }
-
-    private func flashIconDisplayModeRevealDestination(_ destination: NSView) {
-        destination.wantsLayer = true
-        guard let layer = destination.layer else { return }
-        let animationKey = DashboardMenuBarPage.iconDisplayModeRevealHighlightAnimationKey
-        layer.removeAnimation(forKey: animationKey)
-
-        let baseColor = layer.backgroundColor ?? NSColor.clear.cgColor
-        let highlightColor = NSColor.controlAccentColor
-            .withAlphaComponent(0.24)
-            .cgColor
-        let animation = CAKeyframeAnimation(keyPath: "backgroundColor")
-        animation.values = [baseColor, highlightColor, baseColor]
-        animation.keyTimes = [0, 0.25, 1]
-        animation.duration = DashboardMenuBarPage.iconDisplayModeRevealHighlightDuration
-        animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        layer.backgroundColor = baseColor
-        layer.add(animation, forKey: animationKey)
+        if let row = iconDisplayModeRow { DashboardSettingsComponents.reveal(row) }
     }
 
     func removeIconDisplayModeRevealHighlight() {
-        let animationKey = DashboardMenuBarPage.iconDisplayModeRevealHighlightAnimationKey
-        iconDisplayModeRow?.layer?.removeAnimation(forKey: animationKey)
+        DashboardSettingsComponents.removeRevealHighlight(from: iconDisplayModeRow)
     }
 
     private func previewPrimaryInkBounds(in background: NSView) -> NSRect? {

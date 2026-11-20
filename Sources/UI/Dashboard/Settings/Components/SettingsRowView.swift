@@ -181,7 +181,7 @@ enum DashboardSettingsAccessibility {
         }
         if !help.isEmpty {
             control.setAccessibilityHelp(help)
-            detailLabel?.setAccessibilityElement(false)
+            detailLabel?.setAccessibilityElement((detailLabel as? InlineRangeLinkTextField)?.hasActionableLink == true)
         } else if control.accessibilityHelp() != nil {
             // A detail that went away (e.g. a dismissed warning) must not leave stale help behind.
             control.setAccessibilityHelp(nil)
@@ -318,6 +318,9 @@ final class SettingsRowView: NSView {
     private var labelsNaturalHeightConstraint: NSLayoutConstraint?
     private var labelsNaturalHeightFloorConstraint: NSLayoutConstraint?
     private var accessoryVisibilityObservation: NSKeyValueObservation?
+    private var dependencyEnabled = true
+    private var dependencyControlStates: [(NSControl, Bool)] = []
+    private var dependencyLabelColors: [(NSTextField, NSColor?)] = []
 
     init(
         title: String,
@@ -392,6 +395,35 @@ final class SettingsRowView: NSView {
             current = candidate.superview
         }
         return nil
+    }
+
+    func setDependencyEnabled(_ enabled: Bool) {
+        guard dependencyEnabled != enabled else { return }
+        dependencyEnabled = enabled
+        titleLabel.textColor = enabled ? .labelColor : .disabledControlTextColor
+        detailLabel.textColor = enabled ? .secondaryLabelColor : .disabledControlTextColor
+        titleAccessory?.alphaValue = enabled ? 1 : 0.45
+        if enabled {
+            dependencyControlStates.forEach { $0.0.isEnabled = $0.1 }
+            dependencyControlStates.removeAll()
+            dependencyLabelColors.forEach { $0.0.textColor = $0.1 }
+            dependencyLabelColors.removeAll()
+        } else if let accessoryView {
+            func disableAccessory(in view: NSView) {
+                // Units, slider endpoints and readouts are labels, so they don't
+                // get the native disabled appearance of an editable control.
+                if let label = view as? NSTextField, !label.isEditable {
+                    dependencyLabelColors.append((label, label.textColor))
+                    label.textColor = .disabledControlTextColor
+                } else if let control = view as? NSControl {
+                    dependencyControlStates.append((control, control.isEnabled))
+                    control.isEnabled = false
+                }
+                view.subviews.forEach(disableAccessory)
+            }
+            disableAccessory(in: accessoryView)
+        }
+        DashboardKeyViewLoop.invalidate(window)
     }
 
     override func layout() {

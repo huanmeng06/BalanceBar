@@ -100,6 +100,13 @@ private final class MenuDedicatedControlRow: NSView {
     private let trailingControl: NSView?
     private let control: NSView
 
+    func setDependencyEnabled(_ enabled: Bool) {
+        titleLabel.textColor = enabled ? .labelColor : .disabledControlTextColor
+        detailLabel.textColor = enabled ? .secondaryLabelColor : .disabledControlTextColor
+        trailingControl?.subviews.compactMap { $0 as? NSControl }.forEach { $0.isEnabled = enabled }
+        (control as? QuotaColorThresholdSlider)?.setEditingEnabled(enabled)
+    }
+
     init(
         title: String,
         detail: String?,
@@ -409,11 +416,8 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
     private weak var bankedResetDisplayModeControl: NSPopUpButton?
     private weak var lunaReserveHideExhaustedQuotaRow: NSView?
     private weak var lunaReserveHideExhaustedQuotaSwitch: NSSwitch?
-    private var statusSubtitleLabel: NSTextField?
     private var statusLinksEditor: StatusLinksEditorHostingView?
     private var statusLinksEditorHost: MenuStatusLinksEditorHost?
-    private var makeStatusLinksEditor: (() -> StatusLinksEditorHostingView)?
-    private var statusLinksVisible = false
     private var balanceDisplayThresholdValue = AppPreferences.defaultBalanceDisplayThreshold
     private var onBalanceDisplayThresholdChanged: ((Double) -> Void)?
     private var onQuotaProgressColorConfigurationChanged: ((MenuBarQuotaValueMode, QuotaProgressColorConfiguration) -> Void)?
@@ -428,16 +432,14 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
     }
     private weak var showQuotaProgressBarSwitch: NSSwitch?
     private weak var showQuotaPaceIndicatorSwitch: NSSwitch?
-    private var progressBarDetailRows: [NSView] = []
+    private var progressBarDetailRows: [SettingsRowView] = []
     private weak var showBankedResetSwitch: NSSwitch?
-    private var bankedResetDetailRows: [NSView] = []
+    private var bankedResetDetailRows: [SettingsRowView] = []
 
     func make(_ input: Input) -> NSView {
         balanceDisplayThresholdValue = input.preferences.balanceDisplayThreshold
         onBalanceDisplayThresholdChanged = input.onBalanceDisplayThresholdChanged
         onQuotaProgressColorConfigurationChanged = input.onQuotaProgressColorConfigurationChanged
-        makeStatusLinksEditor = input.makeStatusLinksEditor
-        statusLinksVisible = input.preferences.showStatusMenu
         editingMode = input.preferences.menuBarQuotaValueMode
         readQuotaColorConfigurations(from: input.preferences)
         lunaReserveDisplayModeControl = nil
@@ -658,12 +660,14 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
             subtitle: tr(.keyDashboardMenuPageAfterARechargeKeepTheProgressBarRedWhileTheBalanceRemainsBelowThisAmount),
             control: balanceDisplayThreshold
         )
-        progressBarDetailRows = [showQuotaPaceIndicatorRow, colorRangesRow, displayedColorsRow, thresholdRow]
+        progressBarDetailRows = [showQuotaPaceIndicatorRow, displayedColorsRow, thresholdRow]
         let progressBar = SettingsSectionView(
             title: tr(.keyDashboardMenuPageProgressBar),
+            contentViews: [showQuotaProgressBarRow, showQuotaPaceIndicatorRow]
+        )
+        let progressColors = SettingsSectionView(
+            title: "",
             contentViews: [
-                showQuotaProgressBarRow,
-                showQuotaPaceIndicatorRow,
                 colorRangesRow,
                 displayedColorsRow,
                 thresholdRow
@@ -718,7 +722,7 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         let quickLinkRows: [NSView] = [
             makeRow(
                 tr(.keyDashboardMenuPageOpenMainWindow),
-                subtitle: tr(.keyDashboardMenuPageShowTheBalancebarMainWindow),
+                subtitle: tr(.keyDashboardMenuPageTheOpenMainWindowItemIsAlwaysShown),
                 control: openMainWindow
             ),
             makeRow(
@@ -740,9 +744,7 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         let statusVisible = input.preferences.showStatusMenu
         let statusRow = makeRow(
             tr(.keyDashboardMenuPageViewStatus),
-            subtitle: statusVisible
-                ? tr(.keyDashboardMenuPageShowCustomizableServiceStatusLinks)
-                : tr(.keyDashboardMenuPageShowStatusLinksInTheMenuBar),
+            subtitle: tr(.keyDashboardMenuPageShowCustomizableServiceStatusLinks),
             control: DashboardSettingsComponents.makeSwitch(
                 identifier: "showStatusMenu",
                 isOn: statusVisible,
@@ -750,38 +752,27 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
                 action: #selector(DashboardPreferencePageRelay.toggle(_:))
             )
         )
-        statusSubtitleLabel = statusRow.detailLabel
 
-        // Keep one editor instance in the page for both states, but defer its
-        // expensive table hierarchy until the section is actually visible.
         let editorHost = MenuStatusLinksEditorHost(makeEditor: input.makeStatusLinksEditor)
         statusLinksEditorHost = editorHost
-        if statusVisible {
-            let editor = editorHost.ensureEditor()
-            statusLinksEditor = editor
-            editor.setVisible(true, animated: false)
-        }
-        editorHost.syncHeight()
+        let editor = editorHost.ensureEditor()
+        statusLinksEditor = editor
+        editor.setVisible(true, animated: false)
+        editor.setEditingEnabled(statusVisible)
         let quickLinks = SettingsSectionView(
             title: tr(.keyDashboardMenuPageOpenProject),
             contentViews: quickLinkRows
         )
-        let statusLinks = SettingsSectionView(
-            title: tr(.keyDashboardMenuPageStatusLinks),
-            contentViews: [statusRow, editorHost],
-            separatorIndices: [0]
-        )
-        statusLinksEditorHost?.isHidden = !statusVisible
-        statusLinks.reconcileSeparators()
-        var sections: [NSView] = [progressBar, bankedReset, items, quickLinks, statusLinks]
+        let statusLinks = SettingsSectionView(title: "", contentViews: [statusRow, editorHost])
+        var sections: [[NSView]] = [[progressBar, progressColors], [bankedReset], [items], [quickLinks, statusLinks]]
         if let balanceDisplay {
-            sections.insert(balanceDisplay, at: 0)
+            sections.insert([balanceDisplay], at: 0)
         }
         // Return the sections stack only. Production wrapping in
         // `DashboardScrollablePageViewController` owns the unique page scroller;
         // a nested `makeSettingsPage` scroll would pin the outer document to
         // the clip height and leave the Status Links editor unreachable.
-        return DashboardSettingsComponents.makeSettingsPageContent(sections)
+        return DashboardSettingsComponents.makeSettingsPageContent(groups: sections)
     }
 
     func controlTextDidEndEditing(_ notification: Notification) {
@@ -809,10 +800,6 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         showBankedResetSwitch?.state = preferences.showBankedReset ? .on : .off
         updateBankedResetSettingsVisibility(preferences.showBankedReset)
         let statusLinks = preferences.statusLinks
-        if statusLinksVisible, statusLinksEditor == nil, let host = statusLinksEditorHost {
-            statusLinksEditor = host.ensureEditor()
-            statusLinksEditor?.setVisible(true, animated: false)
-        }
         if statusLinksEditor?.links != statusLinks {
             statusLinksEditor?.updateLinks(statusLinks)
         }
@@ -845,20 +832,7 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
     }
 
     func updateStatusVisibility(_ visible: Bool, animated: Bool) {
-        statusLinksVisible = visible
-        statusSubtitleLabel?.stringValue = visible
-            ? tr(.keyDashboardMenuPageShowCustomizableServiceStatusLinks2)
-            : tr(.keyDashboardMenuPageShowStatusLinksInTheMenuBar2)
-        if visible, statusLinksEditor == nil, let host = statusLinksEditorHost {
-            statusLinksEditor = host.ensureEditor()
-        }
-        statusLinksEditor?.setVisible(visible, animated: animated)
-        statusLinksEditorHost?.isHidden = !visible
-        statusLinksEditorHost?.syncHeight()
-        if let host = statusLinksEditorHost {
-            SettingsSectionView.enclosing(host)?.reconcileSeparators()
-        }
-        invalidateHostedSection(for: statusLinksEditorHost ?? statusLinksEditor)
+        statusLinksEditor?.setEditingEnabled(visible)
         DashboardKeyViewLoop.invalidate(statusLinksEditorHost?.window ?? statusLinksEditor?.window)
     }
 
@@ -868,9 +842,6 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         selectLastRow: Bool = false,
         completion: (() -> Void)? = nil
     ) {
-        if statusLinksEditor == nil, statusLinksVisible, let host = statusLinksEditorHost {
-            statusLinksEditor = host.ensureEditor()
-        }
         guard let statusLinksEditor else {
             completion?()
             return
@@ -903,9 +874,6 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         statusLinksEditor?.teardown()
         statusLinksEditor = nil
         statusLinksEditorHost = nil
-        makeStatusLinksEditor = nil
-        statusLinksVisible = false
-        statusSubtitleLabel = nil
     }
 
     private func readQuotaColorConfigurations(from preferences: AppPreferences) {
@@ -954,7 +922,8 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
     private func updateQuotaColorButtons() {
         for (color, button) in quotaColorButtons {
             button.state = quotaColorConfiguration.enabledColors.contains(color) ? .on : .off
-            button.isEnabled = button.state == .off || quotaColorConfiguration.enabledColors.count > 2
+            button.isEnabled = showQuotaProgressBarSwitch?.state != .off
+                && (button.state == .off || quotaColorConfiguration.enabledColors.count > 2)
         }
     }
 
@@ -982,28 +951,14 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
     }
 
     private func updateProgressBarSettingsVisibility(_ visible: Bool) {
-        progressBarDetailRows.forEach {
-            DashboardSearchVisibility.setBusinessHidden($0, !visible)
-            $0.isHidden = !visible
-        }
-        if let row = showQuotaProgressBarSwitch.flatMap({ SettingsRowView.enclosing($0) })
-            ?? progressBarDetailRows.first {
-            SettingsSectionView.enclosing(row)?.reconcileSeparators()
-        }
-        invalidateHostedSection(for: showQuotaProgressBarSwitch)
+        progressBarDetailRows.forEach { $0.setDependencyEnabled(visible) }
+        colorRangesRow?.setDependencyEnabled(visible)
+        updateQuotaColorButtons()
         DashboardKeyViewLoop.invalidate(showQuotaProgressBarSwitch?.window)
     }
 
     private func updateBankedResetSettingsVisibility(_ visible: Bool) {
-        bankedResetDetailRows.forEach {
-            DashboardSearchVisibility.setBusinessHidden($0, !visible)
-            $0.isHidden = !visible
-        }
-        if let row = showBankedResetSwitch.flatMap({ SettingsRowView.enclosing($0) })
-            ?? bankedResetDetailRows.first {
-            SettingsSectionView.enclosing(row)?.reconcileSeparators()
-        }
-        invalidateHostedSection(for: showBankedResetSwitch)
+        bankedResetDetailRows.forEach { $0.setDependencyEnabled(visible) }
         DashboardKeyViewLoop.invalidate(showBankedResetSwitch?.window)
     }
 

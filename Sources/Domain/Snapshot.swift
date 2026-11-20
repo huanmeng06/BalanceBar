@@ -1281,7 +1281,7 @@ struct Snapshot: Equatable {
             unit: cached?.unit,
             date: cached?.date,
             message: reason,
-            websiteURL: nil,
+            websiteURL: cached?.websiteURL,
             balanceProgressPercentage: cached?.balanceProgressPercentage,
             officialQuotaWindows: []
         )

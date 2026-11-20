@@ -1462,7 +1462,9 @@ final class DashboardPageSearchTests: XCTestCase {
     }
 
     func testSemanticSubtitleSearchUsesSourceTextWithoutLayoutJoiners() {
-        let subtitle = DashboardMenuBarLayoutSection.iconOffsetSummarySubtitle(y: 7.3)
+        let text = "An inline value + 7.3 pt"
+        let range = (text as NSString).range(of: "+ 7.3 pt")
+        let subtitle = LocalizedSubtitle(text: text, semanticGroups: [range], atomicGroups: [range])
         let label = SettingsSemanticSubtitleLabel(
             frame: NSRect(x: 0, y: 0, width: 1_000, height: 40)
         )
@@ -1485,7 +1487,7 @@ final class DashboardPageSearchTests: XCTestCase {
         XCTAssertTrue(DashboardPageSearch.matches(label.stringValue, query: "7.3"))
         XCTAssertTrue(
             DashboardPageSearch.matches(
-                DashboardMenuBarLayoutSection.iconOffsetSummarySubtitle(y: 7.3).text,
+                subtitle.text,
                 query: "+ 7.3 pt"
             )
         )
@@ -2419,8 +2421,10 @@ final class DashboardPageSearchTests: XCTestCase {
         )
         window.layoutIfNeeded()
         XCTAssertEqual(composition.searchQueryForTesting, query)
-        XCTAssertTrue(progressRow.isHidden)
-        XCTAssertFalse(try XCTUnwrap(emptyState(in: composition.currentHostedPageContentForTesting())).isHidden)
+        XCTAssertFalse(progressRow.isHidden)
+        let slider = try XCTUnwrap(firstDescendant(of: progressRow) { $0 is QuotaColorThresholdSlider } as? QuotaColorThresholdSlider)
+        XCTAssertFalse(slider.isEnabled)
+        XCTAssertTrue(emptyState(in: composition.currentHostedPageContentForTesting())?.isHidden != false)
 
         progressSwitch.state = .on
         _ = NSApp.sendAction(
@@ -2431,6 +2435,7 @@ final class DashboardPageSearchTests: XCTestCase {
         window.layoutIfNeeded()
         XCTAssertEqual(composition.searchQueryForTesting, query)
         XCTAssertFalse(progressRow.isHidden)
+        XCTAssertTrue(slider.isEnabled)
         XCTAssertTrue(emptyState(in: composition.currentHostedPageContentForTesting())?.isHidden != false)
     }
 
@@ -2489,15 +2494,17 @@ final class DashboardPageSearchTests: XCTestCase {
 
         try select(.matchLeftClick)
         XCTAssertEqual(composition.searchQueryForTesting, reverseTitle)
-        XCTAssertTrue(reverseSearchRow.isHidden)
-        XCTAssertFalse(try XCTUnwrap(emptyState(in: composition.currentHostedPageContentForTesting())).isHidden)
+        XCTAssertFalse(reverseSearchRow.isHidden)
+        XCTAssertEqual((reverseSearchRow as? SettingsRowView)?.titleLabel.textColor, .disabledControlTextColor)
+        XCTAssertTrue(emptyState(in: composition.currentHostedPageContentForTesting())?.isHidden != false)
 
         composition.applySearchQueryForTesting("")
         window.layoutIfNeeded()
         let restoredReverseRow = try XCTUnwrap(
             row(containingTitle: reverseTitle, in: composition.currentHostedPageContentForTesting())
         )
-        XCTAssertTrue(restoredReverseRow.isHidden)
+        XCTAssertFalse(restoredReverseRow.isHidden)
+        XCTAssertEqual((restoredReverseRow as? SettingsRowView)?.titleLabel.textColor, .disabledControlTextColor)
 
         try select(.openMainWindow)
         XCTAssertFalse(restoredReverseRow.isHidden)
@@ -2896,7 +2903,7 @@ final class DashboardPageSearchTests: XCTestCase {
         XCTAssertFalse(try XCTUnwrap(emptyState(in: stack)).isHidden)
     }
 
-    func testHiddenReverseMouseButtonsRowOnMenuBarPageIsNotSearchable() throws {
+    func testDisabledReverseMouseButtonsRowOnMenuBarPageRemainsSearchable() throws {
         let suiteName = "DashboardPageSearchTests.ReverseMouse.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
         defaults.removePersistentDomain(forName: suiteName)
@@ -2913,10 +2920,10 @@ final class DashboardPageSearchTests: XCTestCase {
         ))
         let reverseTitle = tr(.keyDashboardMenuBarPageReverseMouseButtons)
         let reverseRow = try XCTUnwrap(row(containingTitle: reverseTitle, in: page))
-        XCTAssertTrue(reverseRow.isHidden)
+        XCTAssertFalse(reverseRow.isHidden)
 
         let filter = DashboardPageSearchFilter()
-        XCTAssertFalse(
+        XCTAssertTrue(
             filter.apply(
                 query: reverseTitle,
                 to: page,
@@ -2924,8 +2931,8 @@ final class DashboardPageSearchTests: XCTestCase {
                 mode: .titles
             )
         )
-        XCTAssertTrue(reverseRow.isHidden)
-        XCTAssertFalse(try XCTUnwrap(emptyState(in: page)).isHidden)
+        XCTAssertFalse(reverseRow.isHidden)
+        XCTAssertEqual((reverseRow as? SettingsRowView)?.titleLabel.textColor, .disabledControlTextColor)
 
         XCTAssertTrue(
             filter.apply(
@@ -2935,10 +2942,10 @@ final class DashboardPageSearchTests: XCTestCase {
                 mode: .titles
             )
         )
-        XCTAssertTrue(reverseRow.isHidden)
+        XCTAssertFalse(reverseRow.isHidden)
     }
 
-    func testHiddenResetCountdownRowIsNotSearchable() throws {
+    func testDisabledResetCountdownRowRemainsSearchable() throws {
         let suiteName = "DashboardPageSearchTests.ResetCountdown.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
         defaults.removePersistentDomain(forName: suiteName)
@@ -2955,10 +2962,10 @@ final class DashboardPageSearchTests: XCTestCase {
         ))
         let resetTitle = tr(.keyDashboardMenuBarPageResetCountdown)
         let resetRow = try XCTUnwrap(row(containingTitle: resetTitle, in: page))
-        XCTAssertTrue(resetRow.isHidden)
+        XCTAssertFalse(resetRow.isHidden)
 
         let filter = DashboardPageSearchFilter()
-        XCTAssertFalse(
+        XCTAssertTrue(
             filter.apply(
                 query: resetTitle,
                 to: page,
@@ -2966,8 +2973,8 @@ final class DashboardPageSearchTests: XCTestCase {
                 mode: .titles
             )
         )
-        XCTAssertTrue(resetRow.isHidden)
-        XCTAssertFalse(try XCTUnwrap(emptyState(in: page)).isHidden)
+        XCTAssertFalse(resetRow.isHidden)
+        XCTAssertEqual((resetRow as? SettingsRowView)?.titleLabel.textColor, .disabledControlTextColor)
     }
 
     func testHiddenAnimationFallbackWarningIsNotSearchable() {
@@ -3011,7 +3018,7 @@ final class DashboardPageSearchTests: XCTestCase {
         XCTAssertEqual(warningRow?.isHidden, true)
     }
 
-    func testCatalogCandidateIsRevalidatedAgainstLiveBusinessVisibility() throws {
+    func testGlobalSearchIncludesDisabledReverseMouseButtons() throws {
         let previous = UserDefaults.standard.string(
             forKey: AppPreferences.menuBarRightClickActionKey
         )
@@ -3047,12 +3054,11 @@ final class DashboardPageSearchTests: XCTestCase {
         composition.applySearchQueryForTesting(tr(.keyDashboardMenuBarPageReverseMouseButtons))
         window.layoutIfNeeded()
         XCTAssertEqual(composition.section, .general)
-        XCTAssertFalse(
+        XCTAssertTrue(
             visibleSearchableRowTitles(in: composition.currentHostedPageContentForTesting())
-                .contains(tr(.keyDashboardMenuBarPageReverseMouseButtons)),
-            "business-hidden settings must remain excluded from global results"
+                .contains(tr(.keyDashboardMenuBarPageReverseMouseButtons))
         )
-        XCTAssertFalse(try XCTUnwrap(emptyState(in: composition.currentHostedPageContentForTesting())).isHidden)
+        XCTAssertTrue(emptyState(in: composition.currentHostedPageContentForTesting())?.isHidden != false)
 
         composition.applySearchQueryForTesting("")
         window.layoutIfNeeded()
@@ -3064,7 +3070,8 @@ final class DashboardPageSearchTests: XCTestCase {
                 in: composition.currentHostedPageContentForTesting()
             )
         )
-        XCTAssertTrue(reverseRow.isHidden)
+        XCTAssertFalse(reverseRow.isHidden)
+        XCTAssertEqual((reverseRow as? SettingsRowView)?.titleLabel.textColor, .disabledControlTextColor)
     }
 
     func testBusinessHiddenNonMatchingRowStaysSearchHiddenWhenBusinessRevealsItDuringActiveQuery() {

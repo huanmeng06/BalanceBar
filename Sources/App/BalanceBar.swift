@@ -2047,13 +2047,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         let physicalWidthAdjustment = widthAdjustment
             + CGFloat(AppPreferences.menuBarStatusItemWidthBaseline)
         MenuBarWidthPerformance.measure("menu-bar-width-frame") {
-            statusItemController.updateWidthAdjustment(physicalWidthAdjustment)
+            statusItemController?.updateWidthAdjustment(physicalWidthAdjustment)
             refreshDashboardMenuBarWidthAdjustment(Double(widthAdjustment))
         }
     }
 
     private func handleDashboardOffsetReset(identifier: String) {
         switch identifier {
+        case DashboardMenuBarPage.positionResetIdentifier:
+            preferences.menuBarIconOffsetY = 0
+            preferences.menuBarAmountOffsetY = 0
+            handleDashboardOffsetValueEnded(identifier: AppPreferences.menuBarStatusItemWidthAdjustmentKey, value: 0)
         case DashboardMenuBarPage.iconOffsetsResetIdentifier:
             preferences.menuBarIconOffsetX = 0
             preferences.menuBarIconOffsetY = 0
@@ -2067,7 +2071,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             "preference reset; identifier=\(identifier); icon_x=\(preferences.menuBarIconOffsetX); icon_y=\(preferences.menuBarIconOffsetY); amount_x=\(preferences.menuBarAmountOffsetX); amount_y=\(preferences.menuBarAmountOffsetY); width=\(preferences.menuBarStatusItemWidthAdjustment); width_physical=\(menuBarStatusItemPhysicalWidthAdjustment)",
             category: "configuration"
         )
-        updateStatusItem(for: snapshot)
+        if statusItemController != nil { updateStatusItem(for: snapshot, refreshDashboard: false) }
+        refreshDashboardMenuBarPage()
     }
 
     @objc private func dashboardMenuBarPaddingChanged(_ sender: NSSlider) {
@@ -2184,7 +2189,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     /// The Claude egress guard lives on the Advanced page (Issue #686).
     private func openEgressGuardSettings() {
         openDashboard()
-        dashboardComposition.showSection(.advanced)
+        dashboardComposition.revealClaudeEgressGuard()
     }
 
     private func clampDashboardScrollViewBounds() {

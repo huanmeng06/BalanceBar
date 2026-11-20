@@ -5,19 +5,16 @@ final class DashboardMenuBarQuotaSection {
     private(set) var quotaCardLayoutCountForTesting = 0
 
     private weak var amountSwitch: NSSwitch?
-    private weak var amountDisplayRow: NSView?
-    private weak var resetCountdownRow: NSView?
-    private weak var quotaValueModeRow: NSView?
+    private weak var amountDisplayRow: SettingsRowView?
+    private weak var resetCountdownRow: SettingsRowView?
     private weak var quotaValueModeControl: NSPopUpButton?
-    private weak var quotaWindowPreferenceRow: NSView?
-    private weak var autoSwitchLunaReserveRow: NSView?
-    private weak var lunaReserveResetTimeRow: NSView?
-    private weak var quotaResetDisplayModeRow: NSView?
+    private weak var autoSwitchLunaReserveRow: SettingsRowView?
+    private weak var lunaReserveResetTimeRow: SettingsRowView?
+    private weak var quotaResetDisplayModeRow: SettingsRowView?
     private weak var quotaWindowPreferenceControl: NSPopUpButton?
     private weak var autoSwitchLunaReserveSwitch: NSSwitch?
     private weak var lunaReserveResetTimeModeControl: NSPopUpButton?
     private weak var quotaResetDisplayModeControl: NSPopUpButton?
-    private weak var quotaSection: SettingsSectionView?
     private var lastQuotaVisibilitySignature: [Bool]?
 
     func resetRefreshSignatures() {
@@ -29,11 +26,10 @@ final class DashboardMenuBarQuotaSection {
     }
 
     func setAmountSwitchEnabled(_ isEnabled: Bool) {
-        amountSwitch?.isEnabled = isEnabled
+        amountDisplayRow?.setDependencyEnabled(isEnabled)
     }
 
-    func make(input: DashboardMenuBarPage.Input) -> NSView {
-        quotaSection = nil
+    func make(input: DashboardMenuBarPage.Input) -> [NSView] {
         lastQuotaVisibilitySignature = nil
 
         let amountToggle = DashboardSettingsComponents.makeSwitch(
@@ -83,7 +79,6 @@ final class DashboardMenuBarQuotaSection {
             detail: tr(.keyDashboardMenuBarPageQuotaDisplayPriorityDescription),
             accessoryView: quotaWindowPreferenceControl
         )
-        self.quotaWindowPreferenceRow = quotaWindowPreferenceRow
         let quotaValueModeControl = makeQuotaValueModeControl(
             value: input.preferences.menuBarQuotaValueMode,
             relay: input.relay
@@ -94,11 +89,10 @@ final class DashboardMenuBarQuotaSection {
             detail: tr(.keyDashboardMenuBarPageQuotaValueModeDescription),
             accessoryView: quotaValueModeControl
         )
-        self.quotaValueModeRow = quotaValueModeRow
         autoSwitchLunaReserveRow = nil
         lunaReserveResetTimeRow = nil
-        let autoSwitchLunaReserveRow: NSView?
-        let lunaReserveResetTimeRow: NSView?
+        let autoSwitchLunaReserveRow: SettingsRowView?
+        let lunaReserveResetTimeRow: SettingsRowView?
         if let autoSwitchLunaReserve, let lunaReserveResetTimeModeControl {
             let autoSwitchRow = SettingsRowView(
                 title: DashboardSettingsFormattedCopy.autoSwitchLunaReserveTitle(),
@@ -120,7 +114,7 @@ final class DashboardMenuBarQuotaSection {
         }
         let amountDisplayRow = SettingsRowView(
             title: tr(.keyDashboardMenuBarPageBalanceAmount),
-            detail: tr(.keyDashboardMenuBarPageShowsAPercentageOrApiBalance),
+            detail: DashboardMenuBarPage.requiredDisplayDetail(.keyDashboardMenuBarPageShowsAPercentageOrApiBalance),
             accessoryView: amountToggle
         )
         self.amountDisplayRow = amountDisplayRow
@@ -139,23 +133,25 @@ final class DashboardMenuBarQuotaSection {
         let quotaSection = SettingsSectionView(
             title: tr(.keyDashboardMenuBarPageQuotaAndReset),
             contentViews: [
-                amountDisplayRow,
+                amountDisplayRow, quotaValueModeRow, quotaWindowPreferenceRow
+            ]
+        )
+        let resetSection = SettingsSectionView(
+            title: "",
+            contentViews: [
                 resetCountdownRow,
-                quotaWindowPreferenceRow,
-                quotaValueModeRow,
                 quotaResetDisplayModeRow,
                 autoSwitchLunaReserveRow,
                 lunaReserveResetTimeRow
             ].compactMap { $0 }
         )
-        self.quotaSection = quotaSection
         updateVisibility(
             showAmount: input.preferences.showMenuBarAmount,
             showReset: input.preferences.showMenuBarReset,
             autoSwitchLunaReserve: LunaReserveUserFacing.isCurrentlyEnabled
                 && input.preferences.menuBarAutoSwitchLunaReserve
         )
-        return quotaSection
+        return [quotaSection, resetSection]
     }
 
     func refresh(preferences: AppPreferences) {
@@ -212,24 +208,10 @@ final class DashboardMenuBarQuotaSection {
         let signature = [showAmount, showReset, autoSwitchLunaReserve]
         guard signature != lastQuotaVisibilitySignature else { return }
         lastQuotaVisibilitySignature = signature
-        quotaValueModeRow?.isHidden = !showAmount
-        resetCountdownRow?.isHidden = !showAmount
-        let showResetDetails = showAmount && showReset
-        quotaWindowPreferenceRow?.isHidden = !showResetDetails
-        autoSwitchLunaReserveRow?.isHidden = !showAmount
-        lunaReserveResetTimeRow?.isHidden = !showAmount || !autoSwitchLunaReserve
-        quotaResetDisplayModeRow?.isHidden = !showResetDetails
-        autoSwitchLunaReserveSwitch?.isEnabled = showAmount
-        lunaReserveResetTimeModeControl?.isEnabled = showAmount && autoSwitchLunaReserve
-
-        quotaSection?.reconcileSeparators()
-        guard let quotaSection else { return }
-        quotaCardLayoutCountForTesting += 1
-        quotaSection.cardView.invalidateHostedSettingsRowHeight()
-        quotaSection.invalidateIntrinsicContentSize()
-        quotaSection.needsLayout = true
-        quotaSection.superview?.invalidateIntrinsicContentSize()
-        quotaSection.superview?.needsLayout = true
+        resetCountdownRow?.setDependencyEnabled(showAmount)
+        quotaResetDisplayModeRow?.setDependencyEnabled(showAmount && showReset)
+        autoSwitchLunaReserveRow?.setDependencyEnabled(showAmount)
+        lunaReserveResetTimeRow?.setDependencyEnabled(showAmount && autoSwitchLunaReserve)
     }
 
     private func makeQuotaWindowPreferenceControl(

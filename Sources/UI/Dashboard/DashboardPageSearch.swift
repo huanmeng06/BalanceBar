@@ -351,13 +351,10 @@ enum DashboardSettingsSearchCatalog {
         "dashboard.general.and.refresh.pages.update_check_failure_reason_http_server_error_value",
         "dashboard.general.and.refresh.pages.update_check_failure_reason_http_status_value",
         "dashboard.general.and.refresh.pages.update_check_failure_reason_http_too_many_requests_value",
-        "dashboard.menu.bar.page.adjusts_the_gap_between_balancebar_and_other_items_widthvalue",
         "dashboard.menu.bar.page.animation_frame_rate_cpu_estimate",
         "dashboard.menu.bar.page.animation_frame_rate_cpu_estimate_range",
         "dashboard.menu.bar.page.auto_switch_luna_reserve",
         "dashboard.menu.bar.page.auto_switch_luna_reserve_description",
-        "dashboard.menu.bar.page.fine_tune_the_amount_s_vertical_position_yaxisvalue",
-        "dashboard.menu.bar.page.fine_tune_the_icon_s_vertical_position_yaxisvalue",
         "dashboard.menu.bar.page.luna_reserve_reset_time",
         "dashboard.menu.bar.page.luna_reserve_reset_time_description",
         "dashboard.menu.bar.page.luna_reserve_reset_time_luna_reserve",
@@ -507,7 +504,7 @@ enum DashboardSettingsSearchCatalog {
         switch section {
         case .general:
             return [
-                .keyDashboardGeneralAndRefreshPagesSystem,
+                .keyDashboardGeneralDataSources,
                 .keyDashboardGeneralAndRefreshPagesCcSwitch,
                 .keyDashboardGeneralAndRefreshPagesLaunchAtLogin,
                 .keyDashboardGeneralAndRefreshPagesSilentLaunch,
@@ -587,11 +584,17 @@ enum DashboardSettingsSearchCatalog {
                 .keyDashboardMenuBarPageRightClick,
                 .keyDashboardMenuBarPageReverseMouseButtons,
                 .keyDashboardMenuBarPageLayout,
+                .keyDashboardMenuBarPositionAdjustments,
+                .keyDashboardMenuBarRequiredDisplay,
+                .keyCommonRestoreDefaults,
                 .keyDashboardMenuBarPageMenuBarFontSize,
                 .keyDashboardMenuBarPageMenuBarIconSize,
                 .keyDashboardMenuBarPageIconOffset,
+                .keyDashboardMenuBarIconVerticalPositionDetail,
                 .keyDashboardMenuBarPageAmountOffset,
-                .keyDashboardMenuBarPageMenuBarWidth
+                .keyDashboardMenuBarAmountVerticalPositionDetail,
+                .keyDashboardMenuBarPageMenuBarWidth,
+                .keyDashboardMenuBarItemSpacingDetail
             ]
         case .menu:
             return [
@@ -622,6 +625,8 @@ enum DashboardSettingsSearchCatalog {
             return [
                 .keyDashboardAdvancedPageSourceValidity,
                 .keyDashboardAdvancedPageSourceValidityOauth,
+                .keyDashboardAdvancedOfficialValidityDependency,
+                .keyClaudeQuotaCalibrationOffLink,
                 .keyDashboardAdvancedPageSourceValidityMod,
                 .keyDashboardAdvancedPageEgressGuard,
                 .keyDashboardAdvancedPageEgressGuardEnabled,
@@ -645,6 +650,8 @@ enum DashboardSettingsSearchCatalog {
         switch section {
         case .menuBar:
             return [
+                DashboardMenuBarPage.requiredDisplayDetail(.keyDashboardMenuBarPageShowsAPercentageOrApiBalance),
+                DashboardMenuBarPage.requiredDisplayDetail(.keyDashboardMenuBarPageShowsTheCurrentTaskStatus),
                 tr(.keyDashboardMenuBarPageQuotaDisplayPriorityDescription),
                 tr(.keyDashboardMenuBarPageFiveHourQuota),
                 tr(.keyDashboardMenuBarPageSevenDayQuota)
@@ -656,6 +663,7 @@ enum DashboardSettingsSearchCatalog {
             ]
         case .general, .menu, .advanced:
             var texts = DashboardSettingsFormattedCopy.sharedVisibleTexts(for: section)
+            if section == .advanced { texts.append(DashboardAdvancedPage.officialValidityDetail) }
             if section == .general {
                 let cardStates: [RealtimeBoostText] = [
                     .statusDetecting, .cardNotInstalledTitle, .cardOtherScopeTitle, .statusEnabledShort,
@@ -962,14 +970,11 @@ enum DashboardSettingsSearchRuntime {
                     DashboardMenuBarPage.animationFrameRateSubtitle(
                         mode: animationMode,
                         fps: frameRate
-                    )
-                ] + searchableSubtitleTexts(
-                    DashboardMenuBarLayoutSection.iconOffsetSummarySubtitle(y: menuBarIconOffsetY)
-                ) + searchableSubtitleTexts(
-                    DashboardMenuBarLayoutSection.amountOffsetSummarySubtitle(y: menuBarAmountOffsetY)
-                ) + searchableSubtitleTexts(
-                    DashboardMenuBarLayoutSection.widthAdjustmentSummarySubtitle(menuBarWidthAdjustment)
-                )
+                    ),
+                    DashboardMenuBarLayoutSection.signedPointText(menuBarIconOffsetY),
+                    DashboardMenuBarLayoutSection.signedPointText(menuBarAmountOffsetY),
+                    DashboardMenuBarLayoutSection.signedPointText(menuBarWidthAdjustment)
+                ]
             ),
             .menu: nonempty(
                 [DashboardMenuPage.formattedBalanceDisplayThreshold(balanceDisplayThreshold)]
@@ -982,11 +987,6 @@ enum DashboardSettingsSearchRuntime {
         values.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     }
 
-    /// Candidate copy for a subtitle. This is the localization source the
-    /// mounted row indexes, without AppKit layout tokens.
-    private static func searchableSubtitleTexts(_ subtitle: LocalizedSubtitle) -> [String] {
-        [DashboardPageSearch.semanticSearchText(subtitle.text)]
-    }
 }
 
 /// Deterministic counters used by search regression tests. They describe

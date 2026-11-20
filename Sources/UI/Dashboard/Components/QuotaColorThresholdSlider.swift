@@ -891,10 +891,17 @@ final class QuotaColorThresholdSlider: NSControl {
     }
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-    override var acceptsFirstResponder: Bool { true }
+    override var acceptsFirstResponder: Bool { isEnabled }
+
+    func setEditingEnabled(_ enabled: Bool) {
+        guard isEnabled != enabled else { return }
+        isEnabled = enabled
+        alphaValue = enabled ? 1 : 0.45
+        boundarySliders.values.forEach { $0.isEnabled = enabled }
+    }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
-        guard bounds.contains(point),
+        guard isEnabled, bounds.contains(point),
               let color = hitThumb(at: point) ?? nearestBoundary(to: point.x),
               let slider = slider(for: color) else { return nil }
         // Return the exact persistent child so AppKit dispatches the original

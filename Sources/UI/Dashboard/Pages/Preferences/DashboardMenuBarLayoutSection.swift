@@ -2,26 +2,20 @@ import AppKit
 
 /// Font, icon size, offset, and spacing controls for the Menu Bar page.
 final class DashboardMenuBarLayoutSection {
-    /// Slider groups have a stable natural width, but their labels should
-    /// move below the row text when the Menu Bar page becomes narrow. The
-    /// native settings row owns that placement decision through this contract.
-    ///
-    /// This is a plain `NSView` host so the native row can bounds-center the
-    /// group. An inner `NSStackView` would derive `alignmentRect(forFrame:)`
-    /// from arranged subviews and ignore `alignmentRectInsets`, which on CI
-    /// macOS 26 showed up as `slider.midY` 39 vs row `midY` 38. Endpoint
-    /// labels and the slider are pinned with bounds `centerY` instead, matching
-    /// the legacy settings row's `control.centerY` pin.
+    /// Keep the endpoint and value slots aligned; the settings row decides when the
+    /// group moves below its labels. Use a plain host for bounds-based centering.
     private final class MenuBarSliderControls: NSView, SettingsRowAccessoryLayout {
         private static let spacing: CGFloat = 6
 
         let allowsTextDrivenDedicatedRow = true
         let minimumInlineLabelWidth = SettingsRowView.minimumInlineLabelWidth
         private(set) var stacksControlsVertically = false
-        private let arrangedViews: [NSView]
+        private let labelsWidth: CGFloat
+        private let trackWidth: NSLayoutConstraint
 
-        init(views: [NSView]) {
-            arrangedViews = views
+        init(views: [NSView], slider: NSSlider, labelsWidth: CGFloat) {
+            self.labelsWidth = labelsWidth + CGFloat(views.count - 1) * Self.spacing
+            trackWidth = slider.widthAnchor.constraint(equalToConstant: DashboardMenuBarPage.widthAdjustmentSliderWidth)
             super.init(frame: .zero)
             translatesAutoresizingMaskIntoConstraints = false
             var previous: NSView?
@@ -50,7 +44,7 @@ final class DashboardMenuBarLayoutSection {
             if let previous {
                 constraints.append(previous.trailingAnchor.constraint(equalTo: trailingAnchor))
             }
-            NSLayoutConstraint.activate(constraints)
+            NSLayoutConstraint.activate(constraints + [trackWidth])
         }
 
         required init?(coder: NSCoder) {
@@ -64,18 +58,12 @@ final class DashboardMenuBarLayoutSection {
         override func frame(forAlignmentRect alignmentRect: NSRect) -> NSRect { alignmentRect }
 
         func updateAvailableRowWidth(_ width: CGFloat) {
-            // The slider itself keeps its fixed track width. The row moves the
-            // complete group below the labels when the remaining inline text
-            // column would become too narrow.
-            _ = width
+            guard width > 0 else { return }
+            let fittingWidth = min(DashboardMenuBarPage.widthAdjustmentSliderWidth, max(1, floor(width - labelsWidth)))
+            if trackWidth.constant != fittingWidth { trackWidth.constant = fittingWidth }
         }
 
-        var naturalAccessoryWidth: CGFloat {
-            let visible = arrangedViews.filter { !$0.isHidden }
-            return visible.reduce(CGFloat(0)) { total, view in
-                total + max(0, view.fittingSize.width)
-            } + max(0, CGFloat(visible.count - 1)) * Self.spacing
-        }
+        var naturalAccessoryWidth: CGFloat { labelsWidth + trackWidth.constant }
     }
 
     private struct SliderEndpointWidths {
@@ -93,6 +81,7 @@ final class DashboardMenuBarLayoutSection {
         let control: NSPopUpButton
     }
 
+    private weak var resetPositionButton: NSButton?
     private var iconOffsetSummaryLabel: NSTextField?
     private var amountOffsetSummaryLabel: NSTextField?
     private var widthAdjustmentSummaryLabel: NSTextField?
@@ -117,36 +106,13 @@ final class DashboardMenuBarLayoutSection {
     func make(
         input: DashboardMenuBarPage.Input,
         transientWidthAdjustment: Double?
-    ) -> NSView {
+    ) -> [NSView] {
         removeFontSizePresetTrackingObserver()
         removeIconSizePresetTrackingObserver()
-        let iconOffsetSummaryContent = Self.iconOffsetSummarySubtitle(
-            y: input.preferences.menuBarIconOffsetY
-        )
-        let iconOffsetSummary = DashboardSettingsComponents.makeSubtitleLabel(
-            iconOffsetSummaryContent
-        )
-        iconOffsetSummary.identifier = NSUserInterfaceItemIdentifier(
-            DashboardMenuBarPage.iconOffsetSummaryIdentifier
-        )
-        let amountOffsetSummaryContent = Self.amountOffsetSummarySubtitle(
-            y: input.preferences.menuBarAmountOffsetY
-        )
-        let amountOffsetSummary = DashboardSettingsComponents.makeSubtitleLabel(
-            amountOffsetSummaryContent
-        )
-        amountOffsetSummary.identifier = NSUserInterfaceItemIdentifier(
-            DashboardMenuBarPage.amountOffsetSummaryIdentifier
-        )
-        let widthAdjustment = transientWidthAdjustment
-            ?? input.preferences.menuBarStatusItemWidthAdjustment
-        let widthAdjustmentSummaryContent = Self.widthAdjustmentSummarySubtitle(widthAdjustment)
-        let widthAdjustmentSummary = DashboardSettingsComponents.makeSubtitleLabel(
-            widthAdjustmentSummaryContent
-        )
-        widthAdjustmentSummary.identifier = NSUserInterfaceItemIdentifier(
-            DashboardMenuBarPage.widthAdjustmentSummaryIdentifier
-        )
+        let widthAdjustment = transientWidthAdjustment ?? input.preferences.menuBarStatusItemWidthAdjustment
+        let iconOffsetSummary = Self.makeValueLabel(input.preferences.menuBarIconOffsetY, identifier: DashboardMenuBarPage.iconOffsetSummaryIdentifier)
+        let amountOffsetSummary = Self.makeValueLabel(input.preferences.menuBarAmountOffsetY, identifier: DashboardMenuBarPage.amountOffsetSummaryIdentifier)
+        let widthAdjustmentSummary = Self.makeValueLabel(widthAdjustment, identifier: DashboardMenuBarPage.widthAdjustmentSummaryIdentifier)
         let minimumOffsetTitle = tr(.keyDashboardMenuBarPageDown)
         let maximumOffsetTitle = tr(.keyDashboardMenuBarPageUp)
         let minimumAmountOffsetTitle = tr(.keyDashboardMenuBarPageDown2)
@@ -167,6 +133,7 @@ final class DashboardMenuBarLayoutSection {
             maximumIdentifier: DashboardMenuBarPage.iconOffsetSliderMaximumIdentifier,
             tooltip: tr(.keyDashboardMenuBarPageAdjustsVerticalPositionFrom100PtDownTo100PtUpDefault0Pt),
             endpointWidths: sliderEndpointWidths,
+            valueLabel: iconOffsetSummary,
             relay: input.relay
         )
         let amountOffsetControls = makeCenteredSliderControls(
@@ -179,12 +146,14 @@ final class DashboardMenuBarLayoutSection {
             maximumIdentifier: DashboardMenuBarPage.amountOffsetSliderMaximumIdentifier,
             tooltip: tr(.keyDashboardMenuBarPageAdjustsVerticalPositionFrom100PtDownTo100PtUpDefault0Pt2),
             endpointWidths: sliderEndpointWidths,
+            valueLabel: amountOffsetSummary,
             relay: input.relay
         )
         let widthAdjustmentControls = makeWidthSliderControls(
             value: widthAdjustment,
             key: AppPreferences.menuBarStatusItemWidthAdjustmentKey,
             endpointWidths: sliderEndpointWidths,
+            valueLabel: widthAdjustmentSummary,
             relay: input.relay
         )
         let fontSizePreset = input.preferences.menuBarFontSizePreset
@@ -213,7 +182,7 @@ final class DashboardMenuBarLayoutSection {
             for: iconSizeControls.control,
             preferences: input.preferences
         )
-        return SettingsSectionView(
+        let layout = SettingsSectionView(
             title: tr(.keyDashboardMenuBarPageLayout),
             contentViews: [
                 SettingsRowView(
@@ -227,30 +196,43 @@ final class DashboardMenuBarLayoutSection {
                     detail: tr(.keyDashboardMenuBarPageAdjustsTheMenuBarIconSize),
                     accessoryView: iconSizeControls.view,
                     minimumHeight: 66
-                ),
+                )
+            ]
+        )
+        let reset = NSButton(
+            title: tr(.keyCommonRestoreDefaults), target: input.relay,
+            action: #selector(DashboardPreferencePageRelay.resetOffset(_:))
+        )
+        reset.bezelStyle = .rounded
+        reset.controlSize = .regular
+        reset.identifier = NSUserInterfaceItemIdentifier(DashboardMenuBarPage.positionResetIdentifier)
+        resetPositionButton = reset
+        let position = SettingsSectionView(
+            title: tr(.keyDashboardMenuBarPositionAdjustments),
+            contentViews: [
                 SettingsRowView(
                     title: tr(.keyDashboardMenuBarPageIconOffset),
-                    detail: iconOffsetSummaryContent.text,
-                    detailLabel: iconOffsetSummary,
+                    detail: tr(.keyDashboardMenuBarIconVerticalPositionDetail),
                     accessoryView: iconOffsetControls.view,
                     minimumHeight: 66
                 ),
                 SettingsRowView(
                     title: tr(.keyDashboardMenuBarPageAmountOffset),
-                    detail: amountOffsetSummaryContent.text,
-                    detailLabel: amountOffsetSummary,
+                    detail: tr(.keyDashboardMenuBarAmountVerticalPositionDetail),
                     accessoryView: amountOffsetControls.view,
                     minimumHeight: 66
                 ),
                 SettingsRowView(
                     title: tr(.keyDashboardMenuBarPageMenuBarWidth),
-                    detail: widthAdjustmentSummaryContent.text,
-                    detailLabel: widthAdjustmentSummary,
+                    detail: tr(.keyDashboardMenuBarItemSpacingDetail),
                     accessoryView: widthAdjustmentControls.view,
                     minimumHeight: 66
                 )
-            ]
+            ],
+            headerAccessory: reset
         )
+        applyWidthAdjustment(widthAdjustment, synchronizeSlider: false)
+        return [layout, position]
     }
 
     func refresh(
@@ -262,18 +244,12 @@ final class DashboardMenuBarLayoutSection {
         let iconSizePreset = preferences.menuBarIconSizePreset
         let iconOffsetY = preferences.menuBarIconOffsetY
         let amountOffsetY = preferences.menuBarAmountOffsetY
-        DashboardSettingsComponents.updateSubtitleLabel(
-            iconOffsetSummaryLabel,
-            with: Self.iconOffsetSummarySubtitle(y: iconOffsetY)
-        )
-        DashboardSettingsComponents.updateSubtitleLabel(
-            amountOffsetSummaryLabel,
-            with: Self.amountOffsetSummarySubtitle(y: amountOffsetY)
-        )
+        iconOffsetSummaryLabel?.stringValue = Self.signedPointText(iconOffsetY)
+        amountOffsetSummaryLabel?.stringValue = Self.signedPointText(amountOffsetY)
         iconOffsetSlider?.doubleValue = iconOffsetY
         amountOffsetSlider?.doubleValue = amountOffsetY
-        iconOffsetSlider?.isEnabled = preferences.showMenuBarIcon
-        amountOffsetSlider?.isEnabled = preferences.showMenuBarAmount
+        iconOffsetSlider.flatMap(SettingsRowView.enclosing)?.setDependencyEnabled(preferences.showMenuBarIcon)
+        amountOffsetSlider.flatMap(SettingsRowView.enclosing)?.setDependencyEnabled(preferences.showMenuBarAmount)
         if let fontSizePresetControl {
             if fontSizePresetControl.indexOfSelectedItem != fontSizePreset.segmentIndex {
                 fontSizePresetControl.selectItem(at: fontSizePreset.segmentIndex)
@@ -283,7 +259,7 @@ final class DashboardMenuBarLayoutSection {
                 selectedIndex: fontSizePreset.segmentIndex
             )
         }
-        fontSizePresetControl?.isEnabled = preferences.showMenuBarAmount
+        fontSizePresetControl.flatMap(SettingsRowView.enclosing)?.setDependencyEnabled(preferences.showMenuBarAmount)
         if let iconSizePresetControl {
             if iconSizePresetControl.indexOfSelectedItem != iconSizePreset.segmentIndex {
                 iconSizePresetControl.selectItem(at: iconSizePreset.segmentIndex)
@@ -293,7 +269,7 @@ final class DashboardMenuBarLayoutSection {
                 selectedIndex: iconSizePreset.segmentIndex
             )
         }
-        iconSizePresetControl?.isEnabled = preferences.showMenuBarIcon
+        iconSizePresetControl.flatMap(SettingsRowView.enclosing)?.setDependencyEnabled(preferences.showMenuBarIcon)
         applyWidthAdjustment(widthAdjustment, synchronizeSlider: synchronizeWidthSlider)
     }
 
@@ -301,14 +277,13 @@ final class DashboardMenuBarLayoutSection {
         _ widthAdjustment: Double,
         synchronizeSlider: Bool
     ) {
-        DashboardSettingsComponents.updateSubtitleLabel(
-            widthAdjustmentSummaryLabel,
-            with: Self.widthAdjustmentSummarySubtitle(widthAdjustment)
-        )
+        let value = Self.signedPointText(widthAdjustment)
+        if widthAdjustmentSummaryLabel?.stringValue != value { widthAdjustmentSummaryLabel?.stringValue = value }
         if synchronizeSlider {
             widthAdjustmentSlider?.doubleValue = widthAdjustment
         }
-        widthAdjustmentSlider?.isEnabled = true
+        resetPositionButton?.isEnabled = iconOffsetSlider?.doubleValue != 0
+            || amountOffsetSlider?.doubleValue != 0 || widthAdjustment != 0
     }
 
     /// Every slider row uses the same endpoint slots for the current
@@ -333,37 +308,30 @@ final class DashboardMenuBarLayoutSection {
         )
     }
 
-    private static func signedPointText(_ value: Double) -> String {
-        let sign = value < 0 ? "-" : "+"
-        // Keep the signed value as one layout word. AppKit's normal word
-        // wrapping can otherwise leave a trailing `0.0 pt` fragment on the
-        // next line while the localized descriptor/value group remains on the
-        // previous line. Non-breaking spaces
-        // are visually identical to ordinary spaces, but make the complete
-        // descriptor/value group move together at narrow widths.
-        let nonBreakingSpace = "\u{00A0}"
-        return "\(nonBreakingSpace)\(sign)\(nonBreakingSpace)\(String(format: "%.1f", abs(value)))\(nonBreakingSpace)pt"
+    static func signedPointText(_ value: Double) -> String {
+        let magnitude = String(format: "%.1f", abs(value))
+        let sign = magnitude == "0.0" ? "" : value < 0 ? "−" : "+"
+        return "\(sign)\(magnitude) pt"
     }
 
-    static func iconOffsetSummarySubtitle(y: Double) -> LocalizedSubtitle {
-        trSubtitle(
-            .keyDashboardMenuBarPageFineTuneTheIconSVerticalPositionYaxisvalue,
-            arguments: [signedPointText(y)]
-        )
-    }
+    private static let valueFont = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+    private static let valueWidth: CGFloat = {
+        let offset = AppPreferences.menuBarOffsetRange
+        let spacing = AppPreferences.menuBarStatusItemWidthAdjustmentRange
+        let candidates = [offset.lowerBound, offset.upperBound, spacing.lowerBound, spacing.upperBound, 0]
+        return candidates.map {
+            ceil(NSAttributedString(string: signedPointText($0), attributes: [.font: valueFont]).size().width) + 4
+        }.max() ?? 0
+    }()
 
-    static func amountOffsetSummarySubtitle(y: Double) -> LocalizedSubtitle {
-        trSubtitle(
-            .keyDashboardMenuBarPageFineTuneTheAmountSVerticalPositionYaxisvalue,
-            arguments: [signedPointText(y)]
-        )
-    }
-
-    static func widthAdjustmentSummarySubtitle(_ value: Double) -> LocalizedSubtitle {
-        trSubtitle(
-            .keyDashboardMenuBarPageAdjustsTheGapBetweenBalancebarAndOtherItemsWidthvalue,
-            arguments: [signedPointText(value)]
-        )
+    private static func makeValueLabel(_ value: Double, identifier: String) -> NSTextField {
+        let label = NSTextField(labelWithString: signedPointText(value))
+        label.identifier = NSUserInterfaceItemIdentifier(identifier)
+        label.font = valueFont
+        label.textColor = .secondaryLabelColor
+        label.alignment = .right
+        label.widthAnchor.constraint(equalToConstant: valueWidth).isActive = true
+        return label
     }
 
     private func makeFontSizePresetControls(
@@ -514,6 +482,7 @@ final class DashboardMenuBarLayoutSection {
         value: Double,
         key: String,
         endpointWidths: SliderEndpointWidths,
+        valueLabel: NSTextField,
         relay: DashboardPreferencePageRelay
     ) -> CenteredSliderControls {
         makeCenteredSliderControls(
@@ -526,6 +495,7 @@ final class DashboardMenuBarLayoutSection {
             maximumIdentifier: DashboardMenuBarPage.widthAdjustmentSliderMaximumIdentifier,
             tooltip: tr(.keyDashboardMenuBarPageAdjustsMenuBarWidthFrom100PtNarrowTo100PtWideDefault0Pt),
             endpointWidths: endpointWidths,
+            valueLabel: valueLabel,
             relay: relay
         )
     }
@@ -540,6 +510,7 @@ final class DashboardMenuBarLayoutSection {
         maximumIdentifier: String,
         tooltip: String,
         endpointWidths: SliderEndpointWidths,
+        valueLabel: NSTextField,
         relay: DashboardPreferencePageRelay
     ) -> CenteredSliderControls {
         let slider = MenuBarWidthSlider()
@@ -563,9 +534,6 @@ final class DashboardMenuBarLayoutSection {
             guard let relay, let slider else { return }
             relay.finishOffsetValue(slider)
         }
-        slider.widthAnchor.constraint(
-            equalToConstant: DashboardMenuBarPage.widthAdjustmentSliderWidth
-        ).isActive = true
 
         let minimumLabel = makeWidthSliderEndpointLabel(
             minimumTitle,
@@ -579,7 +547,11 @@ final class DashboardMenuBarLayoutSection {
             width: endpointWidths.maximum,
             alignment: AppLanguage.resolved == .english ? .right : .center
         )
-        let controls = MenuBarSliderControls(views: [minimumLabel, slider, maximumLabel])
+        let controls = MenuBarSliderControls(
+            views: [minimumLabel, slider, maximumLabel, valueLabel],
+            slider: slider,
+            labelsWidth: endpointWidths.minimum + endpointWidths.maximum + Self.valueWidth
+        )
         controls.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         return CenteredSliderControls(view: controls, slider: slider)
     }

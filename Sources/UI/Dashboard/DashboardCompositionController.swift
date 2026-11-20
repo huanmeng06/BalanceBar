@@ -464,6 +464,13 @@ final class DashboardCompositionController {
         updateModSyncCardVisibility()
     }
 
+    func revealClaudeEgressGuard() {
+        pageSession.toolbarController.setQuery("")
+        // Navigation mounts the page and settles its width-dependent layout synchronously.
+        showSection(.advanced)
+        dashboardPreferencePages.revealClaudeEgressGuard()
+    }
+
     func showNotificationAgent(_ agent: BalanceNotificationAgent) {
         configureNotificationNavigation()
         if section != .notifications {

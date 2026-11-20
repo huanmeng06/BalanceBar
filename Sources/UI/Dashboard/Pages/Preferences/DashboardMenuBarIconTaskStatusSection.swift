@@ -73,7 +73,6 @@ final class DashboardMenuBarIconTaskStatusSection {
     var persistRestoreToken: (DashboardRestoreToken) -> Void = { token in
         DashboardRestoreStore.record(token)
     }
-    var onDelayVisibilityChanged: ((Bool) -> Void)?
 
     private let animationFrameRateEditor = AnimationFrameRateEditor()
     private weak var iconSwitch: NSSwitch?
@@ -88,16 +87,14 @@ final class DashboardMenuBarIconTaskStatusSection {
     private weak var animationFrameRateField: NSTextField?
     private weak var animationFrameRateUnitLabel: NSTextField?
     private weak var animationFrameRateSubtitleLabel: NSTextField?
-    private weak var taskStatusIconRow: NSView?
-    private weak var animationRow: NSView?
-    private weak var animationModeRow: NSView?
-    private weak var animationFrameRateRow: NSView?
-    private weak var animationFallbackWarningLabel: NSTextField?
+    private weak var taskStatusIconRow: SettingsRowView?
+    private weak var animationRow: SettingsRowView?
+    private weak var animationModeRow: SettingsRowView?
+    private weak var animationFrameRateRow: SettingsRowView?
     private weak var animationFallbackWarningRow: NSView?
     private weak var iconTaskStatusSection: SettingsSectionView?
     private struct IconTaskVisibilitySignature: Equatable {
         let showIcon: Bool
-        let showDelay: Bool
         let showAnimationMode: Bool
         let showFallbackWarning: Bool
     }
@@ -113,20 +110,14 @@ final class DashboardMenuBarIconTaskStatusSection {
     }
 
     func setIconSwitchEnabled(_ isEnabled: Bool) {
-        iconSwitch?.isEnabled = isEnabled
+        taskStatusIconRow?.setDependencyEnabled(isEnabled)
     }
 
     func teardown() {
-        removeRevealHighlight()
         dismissRestartConfirmation()
     }
 
-    func removeRevealHighlight() {
-        let animationKey = DashboardMenuBarPage.iconDisplayModeRevealHighlightAnimationKey
-        taskStatusIconRow?.layer?.removeAnimation(forKey: animationKey)
-    }
-
-    func make(input: DashboardMenuBarPage.Input) -> NSView {
+    func make(input: DashboardMenuBarPage.Input) -> [NSView] {
         iconTaskStatusSection = nil
         lastIconTaskVisibilitySignature = nil
         animationFallbackActive = input.animationFallbackActive
@@ -171,12 +162,11 @@ final class DashboardMenuBarIconTaskStatusSection {
         animationFallbackWarningRow.identifier = NSUserInterfaceItemIdentifier(
             DashboardMenuBarPage.animationFallbackWarningIdentifier + "Row"
         )
-        self.animationFallbackWarningLabel = animationFallbackWarningLabel
         self.animationFallbackWarningRow = animationFallbackWarningRow
         animationFallbackWarningRow.isHidden = true
         let taskStatusIconRow = SettingsRowView(
             title: tr(.keyDashboardMenuBarPageAgentIcon),
-            detail: tr(.keyDashboardMenuBarPageShowsTheCurrentTaskStatus),
+            detail: DashboardMenuBarPage.requiredDisplayDetail(.keyDashboardMenuBarPageShowsTheCurrentTaskStatus),
             accessoryView: iconToggle
         )
         self.taskStatusIconRow = taskStatusIconRow
@@ -227,11 +217,13 @@ final class DashboardMenuBarIconTaskStatusSection {
             DashboardMenuBarPage.animationFrameRateRowIdentifier
         )
         self.animationFrameRateRow = animationFrameRateRow
-        let iconTaskStatusSection = SettingsSectionView(
+        let iconSection = SettingsSectionView(
             title: tr(.keyDashboardMenuBarPageIconAndTaskStatus),
+            contentViews: [taskStatusIconRow, animationRow]
+        )
+        let iconTaskStatusSection = SettingsSectionView(
+            title: "",
             contentViews: [
-                taskStatusIconRow,
-                animationRow,
                 animationModeRow,
                 animationFrameRateRow,
                 animationFallbackWarningRow
@@ -240,11 +232,10 @@ final class DashboardMenuBarIconTaskStatusSection {
         self.iconTaskStatusSection = iconTaskStatusSection
         updateVisibility(
             showTaskStatusIcon: input.preferences.showMenuBarIcon,
-            displayMode: input.preferences.menuBarIconDisplayMode,
             animationEnabled: input.preferences.animateCodexActivity,
             animationMode: input.preferences.menuBarAnimationMode
         )
-        return iconTaskStatusSection
+        return [iconSection, iconTaskStatusSection]
     }
 
     func refresh(preferences: AppPreferences) {
@@ -276,7 +267,6 @@ final class DashboardMenuBarIconTaskStatusSection {
         )
         updateVisibility(
             showTaskStatusIcon: preferences.showMenuBarIcon,
-            displayMode: preferences.menuBarIconDisplayMode,
             animationEnabled: preferences.animateCodexActivity,
             animationMode: preferences.menuBarAnimationMode
         )
@@ -284,37 +274,30 @@ final class DashboardMenuBarIconTaskStatusSection {
 
     func updateVisibility(
         showTaskStatusIcon: Bool,
-        displayMode: MenuBarIconDisplayMode,
         animationEnabled: Bool,
         animationMode: MenuBarAnimationMode
     ) {
         let showDependentRows = showTaskStatusIcon
-        let showDelay = displayMode == .onlyWhileRunning
         let showAnimationMode = showDependentRows && animationEnabled
         let showFallbackWarning = showAnimationMode
             && animationMode == .efficient
             && animationFallbackActive
         let signature = IconTaskVisibilitySignature(
             showIcon: showTaskStatusIcon,
-            showDelay: showDelay,
             showAnimationMode: showAnimationMode,
             showFallbackWarning: showFallbackWarning
         )
         guard signature != lastIconTaskVisibilitySignature else { return }
         lastIconTaskVisibilitySignature = signature
-        animationRow?.isHidden = !showDependentRows
-        animationModeRow?.isHidden = !showAnimationMode
-        animationModeControl?.isEnabled = showAnimationMode
-        animationFrameRateRow?.isHidden = !showAnimationMode
-        animationFrameRateField?.isEnabled = showAnimationMode
-        animationFallbackWarningRow?.isHidden = !showFallbackWarning
-        animationFallbackWarningLabel?.stringValue = DashboardMenuBarPage.animationFallbackWarningText()
-        onDelayVisibilityChanged?(showDelay)
-
-        // Delay now lives on the preview card. Icon rows are task status →
-        // animation → animation mode → frame rate → fallback warning.
-        iconTaskStatusSection?.reconcileSeparators()
-        updateCardLayout()
+        animationRow?.setDependencyEnabled(showDependentRows)
+        animationModeRow?.setDependencyEnabled(showAnimationMode)
+        animationModeSubtitleLabel?.isLinkEnabled = showAnimationMode
+        animationFrameRateRow?.setDependencyEnabled(showAnimationMode)
+        if animationFallbackWarningRow?.isHidden == showFallbackWarning {
+            animationFallbackWarningRow?.isHidden = !showFallbackWarning
+            iconTaskStatusSection?.reconcileSeparators()
+            updateCardLayout()
+        }
     }
 
     private func updateCardLayout() {

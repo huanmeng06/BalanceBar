@@ -63,18 +63,20 @@ final class SettingsSectionView: NSView {
         separatorIndices: Set<Int>? = nil,
         footnote: String? = nil,
         footnoteDetail: String? = nil,
-        footerView: NSView? = nil
+        footerView: NSView? = nil,
+        footnoteLabel: NSTextField? = nil,
+        headerAccessory: NSView? = nil
     ) {
         headingLabel = NSTextField(labelWithString: title)
         cardView = SettingsSectionCardView()
-        footnoteLabel = footnote.map { NSTextField(wrappingLabelWithString: $0) }
-        let detailLabel = footnote == nil ? nil : footnoteDetail.map { _ in NSTextField(wrappingLabelWithString: "") }
+        self.footnoteLabel = footnoteLabel ?? footnote.map { NSTextField(wrappingLabelWithString: $0) }
+        let detailLabel = self.footnoteLabel == nil ? nil : footnoteDetail.map { _ in NSTextField(wrappingLabelWithString: "") }
         footnoteDetailLabel = detailLabel
         footnoteDetailClip = detailLabel.map { _ in NSView() }
         self.footerView = footerView
         self.contentViews = contentViews
         super.init(frame: .zero)
-        configure(title: title, separatorIndices: separatorIndices)
+        configure(title: title, separatorIndices: separatorIndices, headerAccessory: headerAccessory)
         if let footnoteDetail { setFootnoteDetailText(footnoteDetail) }
     }
 
@@ -267,7 +269,7 @@ final class SettingsSectionView: NSView {
         return nil
     }
 
-    private func configure(title: String, separatorIndices: Set<Int>?) {
+    private func configure(title: String, separatorIndices: Set<Int>?, headerAccessory: NSView?) {
         translatesAutoresizingMaskIntoConstraints = false
         setContentHuggingPriority(.defaultLow, for: .horizontal)
         setContentCompressionResistancePriority(.required, for: .horizontal)
@@ -332,7 +334,28 @@ final class SettingsSectionView: NSView {
         contentStack.setClippingResistancePriority(.required, for: .vertical)
         contentStack.detachesHiddenViews = true
         if !headingLabel.isHidden {
-            contentStack.addView(headingLabel, in: .top)
+            if let headerAccessory {
+                let header = NSView()
+                header.translatesAutoresizingMaskIntoConstraints = false
+                headerAccessory.translatesAutoresizingMaskIntoConstraints = false
+                headerAccessory.setContentHuggingPriority(.required, for: .horizontal)
+                headerAccessory.setContentCompressionResistancePriority(.required, for: .horizontal)
+                header.addSubview(headingLabel)
+                header.addSubview(headerAccessory)
+                contentStack.addView(header, in: .top)
+                NSLayoutConstraint.activate([
+                    header.widthAnchor.constraint(equalTo: contentStack.widthAnchor),
+                    headingLabel.leadingAnchor.constraint(equalTo: header.leadingAnchor),
+                    headingLabel.trailingAnchor.constraint(lessThanOrEqualTo: headerAccessory.leadingAnchor, constant: -12),
+                    headerAccessory.trailingAnchor.constraint(equalTo: header.trailingAnchor),
+                    headingLabel.centerYAnchor.constraint(equalTo: header.centerYAnchor),
+                    headerAccessory.centerYAnchor.constraint(equalTo: header.centerYAnchor),
+                    header.heightAnchor.constraint(greaterThanOrEqualTo: headingLabel.heightAnchor),
+                    header.heightAnchor.constraint(greaterThanOrEqualTo: headerAccessory.heightAnchor)
+                ])
+            } else {
+                contentStack.addView(headingLabel, in: .top)
+            }
         }
         contentStack.addView(cardView, in: .top)
         if let footnoteLabel {

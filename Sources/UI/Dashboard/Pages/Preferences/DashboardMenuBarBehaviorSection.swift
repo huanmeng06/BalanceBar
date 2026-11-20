@@ -4,8 +4,7 @@ import AppKit
 final class DashboardMenuBarBehaviorSection {
     private weak var rightClickActionControl: NSPopUpButton?
     private weak var reverseMouseButtonsSwitch: NSSwitch?
-    private weak var rightClickActionRow: NSView?
-    private weak var reverseMouseButtonsRow: NSView?
+    private weak var reverseMouseButtonsRow: SettingsRowView?
     func make(input: DashboardMenuBarPage.Input) -> NSView {
         let rightClickActionControl = makeRightClickActionControl(
             value: input.preferences.menuBarRightClickAction,
@@ -24,13 +23,11 @@ final class DashboardMenuBarBehaviorSection {
             detail: tr(.keyDashboardMenuBarPageRightClickDescription),
             accessoryView: rightClickActionControl
         )
-        self.rightClickActionRow = rightClickActionRow
         let reverseMouseButtonsRow = SettingsRowView(
             title: tr(.keyDashboardMenuBarPageReverseMouseButtons),
             detail: tr(.keyDashboardMenuBarPageReverseMouseButtonsDescription),
             accessoryView: reverseMouseButtonsSwitch
         )
-        reverseMouseButtonsRow.isHidden = input.preferences.menuBarRightClickAction == .matchLeftClick
         self.reverseMouseButtonsRow = reverseMouseButtonsRow
         let behaviorSection = SettingsSectionView(
             title: tr(.keyDashboardMenuBarPageBehavior),
@@ -58,16 +55,7 @@ final class DashboardMenuBarBehaviorSection {
     }
 
     private func updateVisibility(rightClickAction: MenuBarRightClickAction) {
-        let showReverse = rightClickAction != .matchLeftClick
-        reverseMouseButtonsRow?.isHidden = !showReverse
-        guard let row = rightClickActionRow ?? reverseMouseButtonsRow,
-              let section = SettingsSectionView.enclosing(row) else { return }
-        section.reconcileSeparators()
-        section.cardView.invalidateHostedSettingsRowHeight()
-        section.invalidateIntrinsicContentSize()
-        section.needsLayout = true
-        section.superview?.invalidateIntrinsicContentSize()
-        section.superview?.needsLayout = true
+        reverseMouseButtonsRow?.setDependencyEnabled(rightClickAction != .matchLeftClick)
     }
 
     private func makeRightClickActionControl(

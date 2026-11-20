@@ -536,6 +536,41 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertGreaterThan(scrollView.contentView.bounds.origin.x, 0)
     }
 
+    func testLongURLFitsNativeCellAtRightScrollLimitWithEditingOnOrOff() throws {
+        let urls = [
+            "https://github.com/huanmeng06/BalanceBar/issues/714",
+            "https://example.org/" + String(repeating: "Wide_Path_", count: 24) + "end"
+        ]
+        for url in urls {
+            let editor = makeEditor(links: [StatusLink(title: "Long", url: url)])
+            let window = makeWindow(for: editor, width: 420)
+            defer { window.orderOut(nil) }
+            let scrollView = try XCTUnwrap(editor.scrollViewForTesting as? StatusLinksScrollView)
+            let clip = scrollView.contentView
+            let table = editor.tableViewForTesting
+
+            for enabled in [true, false, true] {
+                editor.setEditingEnabled(enabled)
+                window.layoutIfNeeded()
+                XCTAssertTrue(scrollView.allowsHorizontalScrolling)
+                var proposedBounds = clip.bounds
+                proposedBounds.origin.x = table.frame.maxX
+                clip.scroll(to: clip.constrainBoundsRect(proposedBounds).origin)
+                scrollView.reflectScrolledClipView(clip)
+                window.layoutIfNeeded()
+
+                let field = try XCTUnwrap((table.view(atColumn: 1, row: 0, makeIfNecessary: true) as? NSTableCellView)?.textField)
+                field.superview?.layoutSubtreeIfNeeded()
+                let cell = try XCTUnwrap(field.cell)
+                XCTAssertEqual(field.stringValue, url)
+                XCTAssertEqual(field.isEditable, enabled)
+                XCTAssertGreaterThanOrEqual(field.bounds.width, ceil(cell.cellSize.width), "URL length: \(url.count)")
+                XCTAssertEqual(clip.bounds.maxX, table.frame.maxX, accuracy: 1)
+                XCTAssertLessThanOrEqual(field.convert(field.bounds, to: clip).maxX, clip.bounds.maxX + 1)
+            }
+        }
+    }
+
     func testLongURLEnablesBothScrollAxesForLongList() throws {
         let longURL = "https://" + String(repeating: "x", count: 55)
         let links = (0..<12).map {

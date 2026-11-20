@@ -350,9 +350,9 @@
 "dashboard.menu.bar.page.icon_offset" = "Вертикальное положение значка";
 "dashboard.menu.bar.page.amount_offset" = "Вертикальное положение значения";
 "dashboard.menu.bar.page.menu_bar_width" = "Интервал до других значков строки меню";
-"dashboard.menu.bar.page.fine_tune_the_icon_s_vertical_position_yaxisvalue" = "Точная настройка вертикального положения значка [[balancebar.break-before-semantic]][[balancebar.semantic]]Ось Y[[balancebar.atomic]]%1$@[[/balancebar.atomic]][[/balancebar.semantic]]";
-"dashboard.menu.bar.page.fine_tune_the_amount_s_vertical_position_yaxisvalue" = "Точная настройка вертикального положения значения [[balancebar.break-before-semantic]][[balancebar.semantic]]Ось Y[[balancebar.atomic]]%1$@[[/balancebar.atomic]][[/balancebar.semantic]]";
-"dashboard.menu.bar.page.adjusts_the_gap_between_balancebar_and_other_items_widthvalue" = "Настройка интервала между BalanceBar и другими значками строки меню [[balancebar.break-before-semantic]][[balancebar.semantic]]Ширина[[balancebar.atomic]]%1$@[[/balancebar.atomic]][[/balancebar.semantic]]";
+"dashboard.menu.bar.page.icon_vertical_position_detail" = "Точная настройка вертикального положения значка";
+"dashboard.menu.bar.page.amount_vertical_position_detail" = "Точная настройка вертикального положения значения";
+"dashboard.menu.bar.page.item_spacing_detail" = "Настройка интервала между BalanceBar и другими значками строки меню";
 "dashboard.menu.bar.page.large_13_10_pt_medium_11_7_9_pt_small_10_4_8_pt" = "Большой: 13/10 pt; средний: 11,7/9 pt; маленький: 10,4/8 pt";
 "dashboard.menu.bar.page.large_20_pt_medium_18_pt_small_16_pt" = "Большой: 20 pt; средний: 18 pt; маленький: 16 pt";
 "dashboard.menu.bar.page.large" = "Большой";
@@ -885,3 +885,7 @@
 "dashboard.advanced.page.egress_guard_column_available" = "Claude доступен";
 "dashboard.advanced.page.egress_guard_available_yes" = "В регионе, где Anthropic предоставляет Claude";
 "dashboard.advanced.page.egress_guard_available_no" = "Вне регионов, где Anthropic предоставляет Claude";
+"dashboard.general.data_sources" = "Источники данных";
+"dashboard.menu.bar.position_adjustments" = "Точная настройка положения";
+"dashboard.menu.bar.required_display" = "Должен отображаться хотя бы значок или значение.";
+"dashboard.advanced.official_validity_dependency" = "Применяется только при включённых официальных запросах квот.";

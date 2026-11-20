@@ -350,9 +350,9 @@
 "dashboard.menu.bar.page.icon_offset" = "Position verticale de l’icône";
 "dashboard.menu.bar.page.amount_offset" = "Position verticale de la valeur";
 "dashboard.menu.bar.page.menu_bar_width" = "Espacement avec les autres icônes de la barre des menus";
-"dashboard.menu.bar.page.fine_tune_the_icon_s_vertical_position_yaxisvalue" = "Ajuste précisément la position verticale de l’icône [[balancebar.break-before-semantic]][[balancebar.semantic]]Axe Y[[balancebar.atomic]]%1$@[[/balancebar.atomic]][[/balancebar.semantic]]";
-"dashboard.menu.bar.page.fine_tune_the_amount_s_vertical_position_yaxisvalue" = "Ajuste précisément la position verticale de la valeur [[balancebar.break-before-semantic]][[balancebar.semantic]]Axe Y[[balancebar.atomic]]%1$@[[/balancebar.atomic]][[/balancebar.semantic]]";
-"dashboard.menu.bar.page.adjusts_the_gap_between_balancebar_and_other_items_widthvalue" = "Ajuste l’espacement entre BalanceBar et les autres icônes de la barre des menus [[balancebar.break-before-semantic]][[balancebar.semantic]]Largeur[[balancebar.atomic]]%1$@[[/balancebar.atomic]][[/balancebar.semantic]]";
+"dashboard.menu.bar.page.icon_vertical_position_detail" = "Ajuste précisément la position verticale de l’icône";
+"dashboard.menu.bar.page.amount_vertical_position_detail" = "Ajuste précisément la position verticale de la valeur";
+"dashboard.menu.bar.page.item_spacing_detail" = "Ajuste l’espacement entre BalanceBar et les autres icônes de la barre des menus";
 "dashboard.menu.bar.page.large_13_10_pt_medium_11_7_9_pt_small_10_4_8_pt" = "Grande : 13/10 pt ; moyenne : 11,7/9 pt ; petite : 10,4/8 pt";
 "dashboard.menu.bar.page.large_20_pt_medium_18_pt_small_16_pt" = "Grande : 20 pt ; moyenne : 18 pt ; petite : 16 pt";
 "dashboard.menu.bar.page.large" = "Grande";
@@ -885,3 +885,7 @@
 "dashboard.advanced.page.egress_guard_column_available" = "Claude disponible";
 "dashboard.advanced.page.egress_guard_available_yes" = "Dans une région où Anthropic propose Claude";
 "dashboard.advanced.page.egress_guard_available_no" = "Hors des régions où Anthropic propose Claude";
+"dashboard.general.data_sources" = "Sources de données";
+"dashboard.menu.bar.position_adjustments" = "Réglage fin de la position";
+"dashboard.menu.bar.required_display" = "Au moins l’icône ou la valeur doit rester visible.";
+"dashboard.advanced.official_validity_dependency" = "Ne s’applique que si les requêtes de quota officielles sont activées.";

@@ -254,6 +254,10 @@ final class DashboardPreferencePages {
         searchGeneralPage.refreshClaudeSourcesFootnote(calibrationInterval: preferences.claudeCalibrationInterval)
     }
 
+    func revealClaudeEgressGuard() {
+        advancedPage.revealEgressGuard()
+    }
+
     func refreshClaudeEgressGuard() {
         advancedPage.refreshEgressGuard(preferences: preferences)
         searchAdvancedPage.refreshEgressGuard(preferences: preferences)

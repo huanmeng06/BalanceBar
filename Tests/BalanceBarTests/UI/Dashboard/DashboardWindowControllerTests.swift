@@ -2087,7 +2087,7 @@ final class DashboardSourceListContractTests: XCTestCase {
 
 @MainActor
 final class DashboardProductionPathRegressionTests: XCTestCase {
-    func testMenuPageHidesStatusLinksEditorWhenMenuDisplayIsDisabled() {
+    func testMenuPageDisablesStatusLinksEditorWhenMenuDisplayIsDisabled() {
         let defaults = UserDefaults.standard
         let previousValue = defaults.object(forKey: "showStatusMenu")
         let previousLinks = defaults.object(forKey: "statusLinks")
@@ -2113,12 +2113,14 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         let page = appDelegate.dashboardCompositionForTesting.makePageForTesting(.menu)
 
         let editor = findStatusLinksEditor(in: page)
-        XCTAssertNil(editor, "The Status Links editor is deferred while the setting is disabled")
+        XCTAssertTrue(editor?.isVisible == true)
+        XCTAssertFalse(editor?.isEditingEnabled ?? true)
 
         appDelegate.dashboardCompositionForTesting.updateMenuStatusVisibility(true, animated: false)
         let materializedEditor = findStatusLinksEditor(in: page)
         XCTAssertNotNil(materializedEditor)
         XCTAssertFalse(materializedEditor?.isHidden ?? true)
+        XCTAssertTrue(materializedEditor?.isEditingEnabled == true)
 
         appDelegate.dashboardCompositionForTesting.updateMenuStatusVisibility(false, animated: false)
         appDelegate.dashboardCompositionForTesting.updateMenuStatusVisibility(true, animated: false)
@@ -2311,7 +2313,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         layoutDescendants(of: window.contentView!)
         XCTAssertEqual(findStatusLinksEditors(in: hiddenPage).count, 1)
         let hiddenEditor = try XCTUnwrap(findStatusLinksEditor(in: hiddenPage))
-        XCTAssertFalse(hiddenEditor.isVisible)
+        XCTAssertTrue(hiddenEditor.isVisible)
+        XCTAssertFalse(hiddenEditor.isEditingEnabled)
         XCTAssertTrue(hiddenEditor === visibleEditor, "Toggle must not recreate the native editor")
         XCTAssertTrue(hiddenEditor.scrollViewForTesting.documentView === hiddenEditor.tableViewForTesting)
         XCTAssertFalse(defaults.bool(forKey: "showStatusMenu"))
@@ -2396,7 +2399,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             XCTAssertEqual(editors.count, 1, "Rapid toggles must keep exactly one editor")
             XCTAssertTrue(editors.first === editor, "Rapid toggles must not recreate the native editor")
             XCTAssertTrue(editors.first?.scrollViewForTesting.documentView === editors.first?.tableViewForTesting)
-            XCTAssertEqual(editors.first?.isVisible, shouldShow)
+            XCTAssertTrue(editors.first?.isVisible == true)
+            XCTAssertEqual(editors.first?.isEditingEnabled, shouldShow)
         }
 
         let finalToggle = try XCTUnwrap(
@@ -2420,9 +2424,10 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         RunLoop.current.run(until: Date().addingTimeInterval(0.3))
         layoutDescendants(of: window.contentView!)
         let hiddenEditor = try XCTUnwrap(findStatusLinksEditor(in: try XCTUnwrap(menuPage(in: window))))
-        XCTAssertFalse(hiddenEditor.isVisible)
-        XCTAssertEqual(hiddenEditor.frame.height, 0, accuracy: 1)
-        XCTAssertEqual(hiddenEditor.alphaValue, 0, accuracy: 0.01)
+        XCTAssertTrue(hiddenEditor.isVisible)
+        XCTAssertFalse(hiddenEditor.isEditingEnabled)
+        XCTAssertEqual(hiddenEditor.frame.height, hiddenEditor.layoutHeight, accuracy: 1)
+        XCTAssertLessThan(hiddenEditor.alphaValue, 1)
         XCTAssertEqual(hiddenEditor.rowCount, customLinks.count)
 
         finalToggle.state = .on

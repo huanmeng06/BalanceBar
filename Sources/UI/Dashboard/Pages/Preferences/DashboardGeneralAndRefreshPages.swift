@@ -399,7 +399,7 @@ final class DashboardGeneralPage {
     private(set) var claudeCalibrationPopup: NSPopUpButton?
     /// The Claude card's section; its footnote summary toggles the comparison detail.
     private(set) var claudeSourcesSection: SettingsSectionView?
-    private var claudeSourcesFootnoteLink: SettingsSubtitleLink?
+    private weak var claudeSourcesFootnoteLink: InlineRangeLinkTextField?
     private var claudeSourcesFootnoteInterval: TimeInterval = 0
     /// The search projection shows the detail open so matched words are on screen.
     private let expandsClaudeSourcesFootnote: Bool
@@ -407,7 +407,7 @@ final class DashboardGeneralPage {
     init(expandsClaudeSourcesFootnote: Bool = false) {
         self.expandsClaudeSourcesFootnote = expandsClaudeSourcesFootnote
     }
-    private var claudeCalibrationLink: SettingsSubtitleLink?
+    private weak var claudeCalibrationLink: InlineRangeLinkTextField?
     private var claudeOfficialEnabled = true
     private(set) var claudeLoginStatus: ClaudeLoginStatus = .unknown
     private var claudeLoginTimeZone: TimeZone = .autoupdatingCurrent
@@ -445,7 +445,7 @@ final class DashboardGeneralPage {
         currentProviderDetailLabel = currentProviderRow.detailLabel
         applyConnectionSummaries()
         let system = SettingsSectionView(
-            title: tr(.keyDashboardGeneralAndRefreshPagesSystem),
+            title: tr(.keyDashboardGeneralDataSources),
             contentViews: [currentProviderRow]
         )
 
@@ -511,7 +511,7 @@ final class DashboardGeneralPage {
 
         let startup = SettingsSectionView(
             title: tr(.keyDashboardGeneralAndRefreshPagesStartup),
-            contentViews: [launchAtLoginRow, silentLaunchRow, launchWithChatGPTRow]
+            contentViews: [launchAtLoginRow, launchWithChatGPTRow]
         )
 
         let intervalTitle = { (seconds: TimeInterval) in
@@ -585,34 +585,37 @@ final class DashboardGeneralPage {
                 )
             ]
         )
+        let calibrationLink = InlineRangeLinkTextField()
         let calibrationRow = SettingsRowView(
             title: tr(.keyClaudeQuotaCalibration),
             detail: tr(.keyClaudeQuotaCalibrationDetail),
+            detailLabel: calibrationLink,
             titleAccessory: DashboardRefreshPage.agentIconStrip(["Claude"], tag: tr(.keyClaudeSourceTagAllClients)),
             accessoryView: refreshControls(claudeCalibrationPopup)
         )
         claudeCalibrationRow = calibrationRow
+        claudeCalibrationLink = calibrationLink
         self.claudeCalibrationPopup = claudeCalibrationPopup
         relay = input.relay
         claudeLoginStatus = input.claudeLoginStatus
         claudeLoginTimeZone = input.preferences.effectiveDisplayTimeZone
         refreshClaudeOfficialEnabled(input.preferences.claudeEgressGuardEnabled)
+        let sourceFootnote = InlineRangeLinkTextField()
         let refreshingClaude = SettingsSectionView(
             title: "",
             contentViews: [
                 calibrationRow,
                 modRows.statusRow
             ],
-            footnote: "",
-            footnoteDetail: ""
+            footnoteDetail: "",
+            footnoteLabel: sourceFootnote
         )
         claudeSourcesSection = refreshingClaude
-        claudeSourcesFootnoteLink?.remove()
-        claudeSourcesFootnoteLink = nil
+        claudeSourcesFootnoteLink = sourceFootnote
         refreshingClaude.setFootnoteDetailExpanded(expandsClaudeSourcesFootnote, animated: false)
         refreshClaudeSourcesFootnote(calibrationInterval: input.preferences.claudeCalibrationInterval)
         let refreshNow = SettingsSectionView(
-            title: tr(.keyDashboardGeneralAndRefreshPagesRefreshNow),
+            title: "",
             contentViews: [
                 SettingsRowView(
                     title: tr(.keyDashboardGeneralAndRefreshPagesBalanceData),
@@ -735,14 +738,13 @@ final class DashboardGeneralPage {
         )
         let appUpdate = SettingsSectionView(
             title: "",
-            contentViews: [updateChannelRow, updateRow]
+            contentViews: [updateRow, updateChannelRow]
         )
-        let content = DashboardSettingsComponents.makeSettingsPageContent(
-            [system, refreshing, refreshingClaude, refreshNow, startup, app, appUpdate])
-        // The two refresh cards belong to one heading, so they sit closer than separate sections.
-        (content as? NSStackView)?.setCustomSpacing(12, after: refreshing)
-        (content as? NSStackView)?.setCustomSpacing(12, after: app)
-        return content
+        return DashboardSettingsComponents.makeSettingsPageContent(groups: [
+            [system], [refreshing, refreshingClaude, refreshNow],
+            [startup, SettingsSectionView(title: "", contentViews: [silentLaunchRow])],
+            [app, appUpdate]
+        ])
     }
 
     func refreshModSync(_ status: ModSyncStatus?, operation: ModPanelState?) {
@@ -782,16 +784,12 @@ final class DashboardGeneralPage {
     /// Rewrites the footnote in place, e.g. when the calibration interval changes.
     func refreshClaudeSourcesFootnote(calibrationInterval: TimeInterval) {
         claudeSourcesFootnoteInterval = calibrationInterval
-        guard let section = claudeSourcesSection, let label = section.footnoteLabel else { return }
+        guard let section = claudeSourcesSection, let label = claudeSourcesFootnoteLink else { return }
         let parts = Self.claudeSourcesFootnoteParts(calibrationInterval: calibrationInterval)
         let line = Self.claudeSourcesFootnoteSummaryLine(parts.summary, expanded: section.isFootnoteDetailExpanded)
         section.setFootnoteDetailText(parts.detail)
-        guard label.stringValue != line.text || claudeSourcesFootnoteLink == nil else { return }
-        claudeSourcesFootnoteLink?.remove()
-        label.stringValue = line.text
-        claudeSourcesFootnoteLink = SettingsSubtitleLink(
-            label: label, linkText: line.link, restrictsHitAreaToLinkText: true
-        ) { [weak self] in
+        guard label.stringValue != line.text else { return }
+        label.setContent(line.text, linkPhrase: line.link) { [weak self] in
             self?.toggleClaudeSourcesFootnote()
         }
         DashboardSettingsComponents.invalidateHostedSettingsRowHeight(for: label)
@@ -804,8 +802,8 @@ final class DashboardGeneralPage {
         onSearchableCopyChanged?()
     }
 
-    func toggleClaudeSourcesFootnoteForTesting() { claudeSourcesFootnoteLink?.performClickForTesting() }
-    var claudeSourcesFootnoteLinkForTesting: SettingsSubtitleLink? { claudeSourcesFootnoteLink }
+    func toggleClaudeSourcesFootnoteForTesting() { claudeSourcesFootnoteLink?.onActivate?() }
+    var claudeSourcesFootnoteLinkForTesting: InlineRangeLinkTextField? { claudeSourcesFootnoteLink }
 
     /// The login line under the calibration row's description, worded like the Mod row's
     /// status line: a coloured dot, a status word, then " · "-joined facts and what to do.
@@ -916,13 +914,10 @@ final class DashboardGeneralPage {
     /// requests back on. The saved interval is kept.
     func refreshClaudeOfficialEnabled(_ enabled: Bool) {
         guard let row = claudeCalibrationRow else { return }
-        claudeCalibrationPopup?.isEnabled = enabled
-        row.titleLabel.textColor = enabled ? .labelColor : .disabledControlTextColor
-        row.titleAccessory?.alphaValue = enabled ? 1 : 0.45
-        claudeCalibrationLink?.remove()
-        claudeCalibrationLink = nil
+        row.setDependencyEnabled(enabled)
         claudeOfficialEnabled = enabled
         guard !enabled else {
+            claudeCalibrationLink?.setContent("", linkPhrase: nil, onActivate: nil)
             applyClaudeLoginDetail()
             return
         }
@@ -930,13 +925,14 @@ final class DashboardGeneralPage {
         claudeLoginExpiryTimer = nil
         // The explanation, then on its own line a link to Settings › Advanced.
         let link = tr(.keyClaudeQuotaCalibrationOffLink)
-        row.updateDetail("\(tr(.keyClaudeQuotaCalibrationOffDetail))\n\(link)")
-        claudeCalibrationLink = SettingsSubtitleLink(label: row.detailLabel, linkText: link) { [weak self] in
+        let detail = "\(tr(.keyClaudeQuotaCalibrationOffDetail))\n\(link)"
+        row.updateDetail(detail)
+        claudeCalibrationLink?.setContent(detail, linkPhrase: link) { [weak self] in
             self?.relay?.openEgressGuardSettings(nil)
         }
     }
 
-    var claudeCalibrationLinkForTesting: SettingsSubtitleLink? { claudeCalibrationLink }
+    var claudeCalibrationLinkForTesting: InlineRangeLinkTextField? { claudeCalibrationLink }
 
     func refreshDisplayTimeZone(_ selection: AppTimeZoneSelection) {
         systemTimeZoneCheckbox?.state = selection == .system ? .on : .off
@@ -1629,125 +1625,5 @@ final class AgentIconStripView: NSView {
             }
             x += iconSize.width + Self.spacing
         }
-    }
-}
-
-/// Turns the tail of a settings-row subtitle into an in-app link: link color, pointing-hand
-/// cursor and a click that runs `action` (no URL, so nothing leaves the app). The subtitle keeps
-/// its own wrapping; `remove()` restores a plain label.
-final class SettingsSubtitleLink: NSResponder {
-    private weak var label: NSTextField?
-    private let linkText: String
-    private let action: () -> Void
-    private var recognizer: NSClickGestureRecognizer?
-    private var trackingArea: NSTrackingArea?
-    /// Only the link words take the pointing hand and the click, not the whole label; for
-    /// links that trail ordinary sentences.
-    private let restrictsHitAreaToLinkText: Bool
-
-    init(label: NSTextField, linkText: String, restrictsHitAreaToLinkText: Bool = false,
-         action: @escaping () -> Void) {
-        self.label = label
-        self.linkText = linkText
-        self.restrictsHitAreaToLinkText = restrictsHitAreaToLinkText
-        self.action = action
-        super.init()
-        let recognizer = NSClickGestureRecognizer(target: self, action: #selector(clicked))
-        label.addGestureRecognizer(recognizer)
-        self.recognizer = recognizer
-        var options: NSTrackingArea.Options = [.cursorUpdate, .activeInKeyWindow, .inVisibleRect]
-        if restrictsHitAreaToLinkText { options.insert(.mouseMoved) }
-        let area = NSTrackingArea(rect: .zero, options: options, owner: self, userInfo: nil)
-        label.addTrackingArea(area)
-        trackingArea = area
-        label.setAccessibilityRole(.link)
-        applyStyle()
-    }
-
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    var displayedLinkRange: NSRange? {
-        guard let text = label?.stringValue else { return nil }
-        let range = (text as NSString).range(of: linkText.replacingOccurrences(of: "\n", with: ""))
-        return range.location == NSNotFound ? nil : range
-    }
-
-    /// Re-applies the link color after the row rewraps its subtitle.
-    func applyStyle() {
-        guard let label, let range = displayedLinkRange else { return }
-        let attributed = NSMutableAttributedString(string: label.stringValue, attributes: [
-            .font: label.font ?? NSFont.systemFont(ofSize: 12),
-            .foregroundColor: label.textColor ?? NSColor.secondaryLabelColor,
-        ])
-        attributed.addAttribute(.foregroundColor, value: NSColor.linkColor, range: range)
-        label.attributedStringValue = attributed
-    }
-
-    /// One box per line the link words occupy, in label coordinates, padded a little for
-    /// an easier hit. A wrapped link gets a box on each line it touches, never the whole
-    /// lines around it.
-    var linkHitRects: [NSRect] {
-        guard let label, let range = displayedLinkRange, let cell = label.cell else { return [] }
-        let textRect = cell.titleRect(forBounds: label.bounds)
-        guard !textRect.isEmpty else { return [] }
-        let storage = NSTextStorage(attributedString: label.attributedStringValue)
-        let layout = NSLayoutManager()
-        let container = NSTextContainer(size: NSSize(width: textRect.width, height: .greatestFiniteMagnitude))
-        container.lineFragmentPadding = 2
-        container.lineBreakMode = cell.lineBreakMode
-        layout.addTextContainer(container)
-        storage.addLayoutManager(layout)
-        layout.ensureLayout(for: container)
-        let glyphs = layout.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
-        guard glyphs.length > 0 else { return [] }
-        var rects: [NSRect] = []
-        layout.enumerateEnclosingRects(forGlyphRange: glyphs, withinSelectedGlyphRange: glyphs,
-                                       in: container) { box, _ in
-            guard !box.isEmpty else { return }
-            let y = label.isFlipped ? textRect.minY + box.minY : textRect.maxY - box.maxY
-            let rect = NSRect(x: textRect.minX + box.minX, y: y, width: box.width, height: box.height)
-                .insetBy(dx: -3, dy: -2)
-                .intersection(label.bounds)
-            if !rect.isEmpty { rects.append(rect) }
-        }
-        return rects
-    }
-
-    private func isOverLink(_ point: NSPoint) -> Bool {
-        linkHitRects.contains { $0.contains(point) }
-    }
-
-    private func isOverLink(_ event: NSEvent) -> Bool {
-        guard restrictsHitAreaToLinkText else { return true }
-        guard let label else { return false }
-        return isOverLink(label.convert(event.locationInWindow, from: nil))
-    }
-
-    override func cursorUpdate(with event: NSEvent) {
-        (isOverLink(event) ? NSCursor.pointingHand : NSCursor.arrow).set()
-    }
-
-    override func mouseMoved(with event: NSEvent) {
-        guard restrictsHitAreaToLinkText else { return }
-        (isOverLink(event) ? NSCursor.pointingHand : NSCursor.arrow).set()
-    }
-
-    @objc private func clicked() {
-        if restrictsHitAreaToLinkText, let label, let recognizer,
-           !isOverLink(recognizer.location(in: label)) { return }
-        action()
-    }
-
-    /// Runs the action as a click on the link words would.
-    func performClickForTesting() { action() }
-
-    func remove() {
-        guard let label else { return }
-        if let recognizer { label.removeGestureRecognizer(recognizer) }
-        if let trackingArea { label.removeTrackingArea(trackingArea) }
-        label.setAccessibilityRole(.staticText)
-        label.attributedStringValue = NSAttributedString(string: label.stringValue)
     }
 }

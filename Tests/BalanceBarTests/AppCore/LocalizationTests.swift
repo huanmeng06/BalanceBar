@@ -1291,7 +1291,7 @@ final class LocalizationTests: XCTestCase {
     func testAllTypedKeysExistInEveryBundledLanguage() throws {
         let expectedKeys = Set(LocalizationKey.allCases.map(\.rawKey))
         XCTAssertEqual(expectedKeys.count, LocalizationKey.allCases.count)
-        XCTAssertEqual(expectedKeys.count, 855)
+        XCTAssertEqual(expectedKeys.count, 859)
         let newLanguages: Set<AppLanguage> = [.portuguese, .russian, .italian]
 
         func keySequence(from text: String) -> [String] {
@@ -1828,16 +1828,15 @@ final class LocalizationTests: XCTestCase {
         assertTranslation(.korean, .keyLunaReserveStatusLoading, equals: "불러오는 중…")
 
         let valuePositionCopy: [(AppLanguage, String, String)] = [
-            (.spanish, "Posición vertical del valor", "Ajusta con precisión la posición vertical del valor Eje Y+0.0 pt"),
-            (.french, "Position verticale de la valeur", "Ajuste précisément la position verticale de la valeur Axe Y+0.0 pt"),
-            (.german, "Vertikale Position des Werts", "Vertikale Position des Werts fein einstellen Y-Achse+0.0 pt")
+            (.spanish, "Posición vertical del valor", "Ajusta con precisión la posición vertical del valor"),
+            (.french, "Position verticale de la valeur", "Ajuste précisément la position verticale de la valeur"),
+            (.german, "Vertikale Position des Werts", "Vertikale Position des Werts fein einstellen")
         ]
         for (language, title, subtitle) in valuePositionCopy {
             assertTranslation(language, .keyDashboardMenuBarPageAmountOffset, equals: title)
             assertTranslation(
                 language,
-                .keyDashboardMenuBarPageFineTuneTheAmountSVerticalPositionYaxisvalue,
-                arguments: ["+0.0 pt"],
+                .keyDashboardMenuBarAmountVerticalPositionDetail,
                 equals: subtitle
             )
         }
@@ -2000,7 +1999,7 @@ final class LocalizationTests: XCTestCase {
         }
     }
 
-    func testParameterizedAndSemanticContractsHoldAcrossAllTwelveLanguages() {
+    func testParameterizedContractsHoldAcrossAllTwelveLanguages() {
         let store = LocalizationResourceStore(bundle: testBundle)
         let languages: [AppLanguage] = [
             .simplifiedChinese, .traditionalChineseTaiwan, .traditionalChineseHongKong,
@@ -2032,20 +2031,6 @@ final class LocalizationTests: XCTestCase {
                     )
                 }
             }
-
-            let subtitle = store.localizedSubtitle(
-                key: .keyDashboardMenuBarPageAdjustsTheGapBetweenBalancebarAndOtherItemsWidthvalue,
-                language: language,
-                arguments: ["\u{00A0}-\u{00A0}10.0\u{00A0}pt"]
-            )
-            XCTAssertFalse(subtitle.text.contains(LocalizationSemanticMarker.semanticStart))
-            XCTAssertEqual(subtitle.semanticGroups.count, 1, "semantic group for \(language)")
-            XCTAssertEqual(subtitle.atomicGroups.count, 1, "atomic interpolation for \(language)")
-            XCTAssertEqual(
-                subtitle.lineBreakBeforeSemanticGroups,
-                subtitle.semanticGroups,
-                "semantic suffix should start on a new line for \(language)"
-            )
         }
     }
 
@@ -2781,42 +2766,18 @@ final class LocalizationTests: XCTestCase {
         )
     }
 
-    func testSemanticSubtitleResourcesExposeLocalizedAndAtomicInterpolationRanges() throws {
+    func testPositionDescriptionsArePlainTranslatedCopyWithoutReadouts() {
         let store = LocalizationResourceStore(bundle: testBundle)
-        let values = [
-            "\u{00A0}-\u{00A0}10.0\u{00A0}pt",
-            "\u{00A0}+\u{00A0}10.0\u{00A0}pt",
-            "\u{00A0}+\u{00A0}0.0\u{00A0}pt"
-        ]
-
-        for value in values {
-            for language in allLanguages {
-                let subtitle = store.localizedSubtitle(
-                    key: .keyDashboardMenuBarPageAdjustsTheGapBetweenBalancebarAndOtherItemsWidthvalue,
-                    language: language,
-                    arguments: [value]
-                )
-                XCTAssertFalse(subtitle.text.contains(LocalizationSemanticMarker.semanticStart))
-                XCTAssertEqual(subtitle.semanticGroups.count, 1, "semantic group for \(language), value \(value)")
-                XCTAssertEqual(subtitle.atomicGroups.count, 1, "atomic interpolation for \(language), value \(value)")
-                XCTAssertEqual(
-                    subtitle.lineBreakBeforeSemanticGroups,
-                    subtitle.semanticGroups,
-                    "the complete dynamic suffix starts on its own line for \(language), value \(value)"
-                )
-
-                let text = subtitle.text as NSString
-                let semanticText = text.substring(with: try XCTUnwrap(subtitle.semanticGroups.first))
-                let atomicText = text.substring(with: try XCTUnwrap(subtitle.atomicGroups.first))
-                XCTAssertTrue(
-                    semanticText.contains(value),
-                    "localized suffix should contain its dynamic value for \(language)"
-                )
-                XCTAssertEqual(atomicText, value, "dynamic value range for \(language)")
-                XCTAssertTrue(
-                    semanticText.contains("\u{00A0}"),
-                    "localized resource should preserve the visual descriptor/value spacing for \(language)"
-                )
+        let keys: [LocalizationKey] = [.keyDashboardMenuBarIconVerticalPositionDetail,
+                                       .keyDashboardMenuBarAmountVerticalPositionDetail,
+                                       .keyDashboardMenuBarItemSpacingDetail]
+        for language in allLanguages {
+            for key in keys {
+                let subtitle = store.localizedSubtitle(key: key, language: language, arguments: [])
+                XCTAssertFalse(subtitle.text.isEmpty || subtitle.text.hasPrefix("⟦"), "description for \(language): \(key)")
+                XCTAssertTrue(subtitle.semanticGroups.isEmpty)
+                XCTAssertTrue(subtitle.atomicGroups.isEmpty)
+                XCTAssertFalse(subtitle.text.contains("\n"))
             }
         }
     }
@@ -2827,7 +2788,7 @@ final class LocalizationTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: root) }
         let directory = root.appendingPathComponent("en.lproj")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let key = LocalizationKey.keyDashboardMenuBarPageAdjustsTheGapBetweenBalancebarAndOtherItemsWidthvalue.rawKey
+        let key = LocalizationKey.keyDashboardMenuBarItemSpacingDetail.rawKey
         let fixture = "\"\(key)\" = \"Future summary: [[balancebar.break-before-semantic]][[balancebar.semantic]]Zukunft value[[balancebar.atomic]]%1$@[[/balancebar.atomic]][[/balancebar.semantic]]\";\n"
         try fixture.write(
             to: directory.appendingPathComponent("Localizable.strings"),
@@ -2836,7 +2797,7 @@ final class LocalizationTests: XCTestCase {
         )
 
         let subtitle = LocalizationResourceStore(resourceRoot: root).localizedSubtitle(
-            key: .keyDashboardMenuBarPageAdjustsTheGapBetweenBalancebarAndOtherItemsWidthvalue,
+            key: .keyDashboardMenuBarItemSpacingDetail,
             language: .english,
             arguments: [" - 10.0 pt"]
         )
