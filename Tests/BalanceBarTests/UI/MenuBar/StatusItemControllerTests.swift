@@ -3721,8 +3721,12 @@ extension StatusItemControllerTests {
         controller.start(snapshot: balance, refreshDate: date, menuInput: makeMenuInput(), settings: makeSettings())
         let fresh = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
         let freshHeight = fresh.frame.height
+        let freshAmount = try XCTUnwrap(fresh.subviews.compactMap { $0 as? OverviewNumericTextView }.first)
+        XCTAssertEqual(freshAmount.textColor, .labelColor)
         controller.start(snapshot: error, refreshDate: date, menuInput: makeMenuInput(), settings: makeSettings())
         let cached = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        let cachedAmount = try XCTUnwrap(cached.subviews.compactMap { $0 as? OverviewNumericTextView }.first)
+        XCTAssertEqual(cachedAmount.textColor, .secondaryLabelColor)
         // Issue #710: the normal balance card plus a full-width red reason row.
         XCTAssertTrue(cached is MenuHoverLinkHostView, "a kept balance keeps its normal balance layout")
         XCTAssertGreaterThan(cached.frame.height, freshHeight)
@@ -3742,6 +3746,12 @@ extension StatusItemControllerTests {
 
         XCTAssertFalse(cached.subviews.contains { $0 is FailureStateView || $0 is NSButton })
 
+        controller.update(snapshot: balance, refreshDate: date.addingTimeInterval(60), menuInput: makeMenuInput(), settings: makeSettings())
+        let recoveredDirect = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        let directAmount = try XCTUnwrap(recoveredDirect.subviews.compactMap { $0 as? OverviewNumericTextView }.first)
+        XCTAssertEqual(directAmount.textColor, .labelColor)
+        XCTAssertNil(staleReasonRow(in: recoveredDirect))
+
         let source = ProviderSummarySource(id: "api", name: balance.provider, isOfficial: false,
             query: nil, officialAccessToken: nil)
         let display = AggregatedProviderDisplay(entry: .init(source: source, role: .default),
@@ -3756,6 +3766,8 @@ extension StatusItemControllerTests {
         let scroll = try XCTUnwrap(aggregated.statusMenuForTesting.items.first?.view as? NSScrollView)
         let wallet = try XCTUnwrap(scroll.documentView?.subviews.first?.subviews.first)
         XCTAssertTrue(wallet is MenuHoverLinkHostView, "cached wallet keeps its normal balance layout")
+        let walletAmount = try XCTUnwrap(wallet.subviews.compactMap { $0 as? OverviewNumericTextView }.first)
+        XCTAssertEqual(walletAmount.textColor, .secondaryLabelColor)
         XCTAssertFalse(wallet.subviews.contains { $0 is FailureStateView || $0 is NSButton })
         let walletTime = wallet.subviews.compactMap { $0 as? NSTextField }.first { $0.identifier?.rawValue == "overview.refreshTime" }
         XCTAssertEqual(walletTime?.textColor, .systemOrange)
@@ -3774,6 +3786,9 @@ extension StatusItemControllerTests {
             showOpenChatGPTMenu: false, showOpenCCSwitchMenu: false, showStatusMenu: false,
             aggregatedProviders: [recovered]), settings: makeSettings())
         let recoveredCard = try XCTUnwrap(scroll.documentView?.subviews.first?.subviews.first)
+        let recoveredAmount = try XCTUnwrap(recoveredCard.subviews.compactMap { $0 as? OverviewNumericTextView }.first)
+        XCTAssertTrue(recoveredAmount === walletAmount, "a reused amount view updates even when the amount is unchanged")
+        XCTAssertEqual(recoveredAmount.textColor, .labelColor, "the balance amount returns to its normal color after refresh")
         XCTAssertNil(staleReasonRow(in: recoveredCard), "the reason row goes away after recovery")
         XCTAssertEqual(try XCTUnwrap(balanceSubtitle(in: recoveredCard)).label.stringValue, tr(.keyBalanceRechargeNotRecorded))
     }

@@ -7016,6 +7016,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     private func updateBalanceSubtitle(in card: NSView, context: OverviewCardContext) {
         updateBalanceStaleReason(in: card, context: context)
+        if context.snapshot.kind == .balance,
+           let amount = card.subviews.compactMap({ $0 as? OverviewNumericTextView }).first {
+            amount.setTextColor(context.staleBalanceReason == nil ? .labelColor : .secondaryLabelColor)
+        }
         let id = NSUserInterfaceItemIdentifier("balance.subtitle")
         let aggregation = !menuInput.aggregatedProviders.isEmpty
             || (context.snapshot.kind == .balance && !menuInput.directProviderIsOfficial)

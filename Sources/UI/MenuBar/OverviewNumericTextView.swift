@@ -77,14 +77,16 @@ final class OverviewNumericInterpolator: NSObject {
 
 private final class OverviewNumericTextModel: ObservableObject {
     @Published var amount: Double
+    @Published var textColor: NSColor
     @Published var prefix: String
     @Published var suffix: String
     @Published var fractionLength: Int
     @Published var remainingTime = false
     @Published var countsDown = false
 
-    init(amount: Double) {
+    init(amount: Double, textColor: NSColor) {
         self.amount = amount
+        self.textColor = textColor
         prefix = ""
         suffix = ""
         fractionLength = 0
@@ -132,7 +134,6 @@ enum OverviewNumericContentAlignment: Equatable {
 private struct OverviewNumericTextRoot: View {
     @ObservedObject var model: OverviewNumericTextModel
     let font: NSFont
-    let color: NSColor
     var alignment: NSTextAlignment = .right
     var contentAlignment: OverviewNumericContentAlignment = .trailing
 
@@ -151,7 +152,7 @@ private struct OverviewNumericTextRoot: View {
             }
         }
         .font(Font(font))
-        .foregroundStyle(Color(color))
+        .foregroundStyle(Color(model.textColor))
         .monospacedDigit()
         .multilineTextAlignment(alignment == .left || alignment == .natural ? .leading : .trailing)
         .lineLimit(1)
@@ -216,6 +217,7 @@ final class OverviewNumericTextView: NSView {
     private let hostingView: NSHostingView<OverviewNumericTextRoot>
     private(set) var currentValue: Double
     private(set) var sample: OverviewNumericSample?
+    var textColor: NSColor { model.textColor }
     private var pendingPlan: OverviewNumericTransitionPlan?
     private var finishWorkItem: DispatchWorkItem?
     private var isDigitRolling = false
@@ -274,12 +276,11 @@ final class OverviewNumericTextView: NSView {
         textField.isHidden = true
         textField.alphaValue = 0
         textField.setAccessibilityElement(false)
-        model = OverviewNumericTextModel(amount: value)
+        model = OverviewNumericTextModel(amount: value, textColor: textColor)
         hostingView = NSHostingView(
             rootView: OverviewNumericTextRoot(
                 model: model,
                 font: font,
-                color: textColor,
                 alignment: alignment,
                 contentAlignment: contentAlignment
             )
@@ -294,6 +295,12 @@ final class OverviewNumericTextView: NSView {
     }
 
     required init?(coder: NSCoder) { nil }
+
+    func setTextColor(_ color: NSColor) {
+        guard textColor != color else { return }
+        model.textColor = color
+        textField.textColor = color
+    }
 
     deinit {
         finishWorkItem?.cancel()
