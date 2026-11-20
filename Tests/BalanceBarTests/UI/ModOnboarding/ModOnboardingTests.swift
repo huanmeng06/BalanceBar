@@ -1857,7 +1857,7 @@ final class RealtimeBoostAdvancedCardTests: XCTestCase {
         defer { AppLanguage.selected = old }
         let advanced = DashboardAdvancedPage().make(.init(relay: DashboardPreferencePageRelay(), logViewer: nil))
         let advancedSections = descendants(advanced).compactMap { $0 as? SettingsSectionView }
-        XCTAssertEqual(advancedSections.map { $0.headingLabel.stringValue }, ["Validity of each Claude data source", "Claude IP Allowlist", "Diagnostics"])
+        XCTAssertEqual(advancedSections.map { $0.headingLabel.stringValue }, ["Claude IP Allowlist", "Validity of each Claude data source", "Diagnostics"])
         XCTAssertFalse(descendants(advanced).contains { ($0 as? SettingsRowView)?.titleLabel.stringValue == "BalanceBar Mod realtime boost" },
                        "the Mod install row lives under General; Advanced only has the validity selectors")
 
