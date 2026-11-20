@@ -1,0 +1,314 @@
+{
+  "features": [
+    {
+      "zhHans": {
+        "title": "Claude 官方额度刷新链路",
+        "description": "统一账户与额度模型、请求调度、窗口合并和通知接入；按账号隔离读数，并区分刷新、待确认和失败状态。"
+      },
+      "en": {
+        "title": "Unified Claude official quota pipeline",
+        "description": "Unifies account identity, request scheduling, quota-window merging and notification integration, with per-account data and distinct refresh, confirmation and failure states."
+      },
+      "sources": [
+        { "kind": "pr", "number": 535 },
+        { "kind": "pr", "number": 539 },
+        { "kind": "pr", "number": 540 },
+        { "kind": "pr", "number": 541 },
+        { "kind": "pr", "number": 542 },
+        { "kind": "pr", "number": 543 },
+        { "kind": "pr", "number": 546 }
+      ]
+    },
+    {
+      "zhHans": {
+        "title": "BalanceBar Mod 实时额度与管理",
+        "description": "在设置里管理用户级 Mod 安装、更新和卸载，同步 Claude Code CLI 与 Desktop Code 的实时额度。按账号和组织校验快照，支持恢复及分叉会话，正确处理停用、重装、版本不兼容和过期数据。"
+      },
+      "en": {
+        "title": "BalanceBar Mod live quotas and management",
+        "description": "Manage user-scoped Mod installation, updates and removal. Sync live Claude Code CLI and Desktop Code quota readings, validate account and organization, support resumed and forked sessions, and handle disabled, reinstalled, outdated and expired sources correctly."
+      },
+      "sources": [
+        { "kind": "pr", "number": 534 },
+        { "kind": "pr", "number": 550 },
+        { "kind": "pr", "number": 551 },
+        { "kind": "pr", "number": 554 },
+        { "kind": "pr", "number": 602 },
+        { "kind": "pr", "number": 603 },
+        { "kind": "pr", "number": 610 },
+        { "kind": "pr", "number": 614 },
+        { "kind": "pr", "number": 624 },
+        { "kind": "pr", "number": 631 },
+        { "kind": "pr", "number": 635 },
+        { "kind": "pr", "number": 638 },
+        { "kind": "pr", "number": 639 },
+        { "kind": "pr", "number": 654 },
+        { "kind": "pr", "number": 656 },
+        { "kind": "pr", "number": 660 },
+        { "kind": "pr", "number": 668 },
+        { "kind": "pr", "number": 670 },
+        { "kind": "pr", "number": 692 },
+        { "kind": "pr", "number": 697 },
+        { "kind": "pr", "number": 699 }
+      ]
+    },
+    {
+      "zhHans": {
+        "title": "Claude Desktop 与 Codex 活动识别",
+        "description": "前台切换到 Claude Desktop 时自动选择 Claude；Codex 的中间进度消息不再被误判为整轮任务结束。"
+      },
+      "en": {
+        "title": "Claude Desktop and Codex activity detection",
+        "description": "Switches to Claude when Claude Desktop comes to the foreground and no longer treats interim Codex progress messages as the end of a task."
+      },
+      "sources": [
+        { "kind": "pr", "number": 549 },
+        { "kind": "pr", "number": 556 }
+      ]
+    },
+    {
+      "zhHans": {
+        "title": "额度节奏与剩余／已用显示",
+        "description": "官方额度卡增加节奏刻度、悬停提示和有足够证据时的预计耗尽时间；菜单栏与下拉卡片可切换剩余／已用百分比，进度条编辑也支持两种口径。"
+      },
+      "en": {
+        "title": "Quota pace and remaining/used display",
+        "description": "Official quota cards show pace markers, tooltips and projected depletion when enough evidence is available. The menu bar and dropdown support remaining or used percentages, and the progress color editor supports both modes."
+      },
+      "sources": [
+        { "kind": "pr", "number": 505 },
+        { "kind": "pr", "number": 575 },
+        { "kind": "pr", "number": 587 },
+        { "kind": "pr", "number": 594 },
+        { "kind": "pr", "number": 704 }
+      ]
+    },
+    {
+      "zhHans": {
+        "title": "Claude 数据来源监视与诊断",
+        "description": "高级设置提供有效期与读数时间线，显示官方请求、按次失败和调度预估；过短的 Mod 有效期提示只推荐可选值。通用设置解释两种来源并显示官方登录状态，日志记录 Mod 生命周期与快照拒绝原因。"
+      },
+      "en": {
+        "title": "Claude source timeline and diagnostics",
+        "description": "Advanced settings expose validity and a timeline of readings, official requests, individual failures and scheduling estimates; short Mod validity warnings suggest available options. General explains both sources and shows official sign-in state, and logs record Mod lifecycle and snapshot rejection reasons."
+      },
+      "sources": [
+        { "kind": "pr", "number": 557 },
+        { "kind": "pr", "number": 612 },
+        { "kind": "pr", "number": 618 },
+        { "kind": "pr", "number": 620 },
+        { "kind": "pr", "number": 621 },
+        { "kind": "pr", "number": 633 },
+        { "kind": "pr", "number": 643 },
+        { "kind": "pr", "number": 645 },
+        { "kind": "pr", "number": 647 },
+        { "kind": "pr", "number": 650 },
+        { "kind": "pr", "number": 652 },
+        { "kind": "pr", "number": 684 },
+        { "kind": "pr", "number": 701 }
+      ]
+    },
+    {
+      "zhHans": {
+        "title": "Claude 官方请求出口 IP 白名单",
+        "description": "仅在设置允许且出口 IP 匹配白名单时发送 Claude 官方额度请求；高级设置提供填表和检测入口。"
+      },
+      "en": {
+        "title": "Claude official request IP allowlist",
+        "description": "Claude official quota requests only run when enabled and the egress IP matches the allowlist. Advanced settings provide the list editor and an IP check."
+      },
+      "sources": [
+        { "kind": "pr", "number": 687 }
+      ]
+    }
+  ],
+  "fixes": [
+    {
+      "zhHans": {
+        "title": "刷新设置与 Claude 数据来源整理",
+        "description": "分别配置官方额度校准和 API 余额刷新；统一 Claude 自动与手动调度，修复手动刷新后的定时恢复。实验性的 statusLine 原生同步最终移除，Claude 只保留 Mod 与官方来源；通用页重新分组。"
+      },
+      "en": {
+        "title": "Refresh settings and Claude source cleanup",
+        "description": "Separates official calibration from API balance cadence, unifies Claude refresh scheduling and restores timers after manual refresh. Experimental statusLine sync was removed in favor of Mod and official readings, and General settings were regrouped."
+      },
+      "sources": [
+        { "kind": "pr", "number": 508 },
+        { "kind": "pr", "number": 560 },
+        { "kind": "pr", "number": 566 },
+        { "kind": "pr", "number": 567 },
+        { "kind": "pr", "number": 570 },
+        { "kind": "pr", "number": 572 },
+        { "kind": "pr", "number": 573 },
+        { "kind": "pr", "number": 574 },
+        { "kind": "pr", "number": 636 },
+        { "kind": "pr", "number": 648 }
+      ]
+    },
+    {
+      "zhHans": {
+        "title": "Claude 刷新、重置与登录恢复",
+        "description": "支持直连代理；让临近过期的本地读数衔接官方预取，修正 5 小时重置后快照采纳。区分未登录、钥匙串拒绝和限流，避免已有有效 Mod 数据时误报失败，改善重新登录和手动刷新反馈。"
+      },
+      "en": {
+        "title": "Claude refresh, reset and sign-in recovery",
+        "description": "Honors direct-mode proxies, prefetches before local data expires and fixes snapshot acceptance after five-hour resets. Distinguishes sign-out, Keychain denial and rate limiting, avoids false failures with valid Mod data, and improves sign-in and refresh feedback."
+      },
+      "sources": [
+        { "kind": "pr", "number": 536 },
+        { "kind": "pr", "number": 563 },
+        { "kind": "pr", "number": 589 },
+        { "kind": "pr", "number": 616 },
+        { "kind": "pr", "number": 622 },
+        { "kind": "pr", "number": 630 },
+        { "kind": "pr", "number": 651 },
+        { "kind": "pr", "number": 655 },
+        { "kind": "pr", "number": 657 },
+        { "kind": "pr", "number": 671 },
+        { "kind": "pr", "number": 683 },
+        { "kind": "pr", "number": 693 }
+      ]
+    },
+    {
+      "zhHans": {
+        "title": "Codex 重置观察倒计时",
+        "description": "按公告截止时间显示观察窗口，以独立倒计时区分个人额度重置；预测数据优先用结构化时间，并加入默认关闭的共享观察服务。"
+      },
+      "en": {
+        "title": "Codex reset observation countdown",
+        "description": "Uses the announced observation deadline and distinguishes it from personal quota resets. Forecasts prefer structured timestamps; the optional shared observation service is off by default."
+      },
+      "sources": [
+        { "kind": "pr", "number": 583 },
+        { "kind": "pr", "number": 590 },
+        { "kind": "pr", "number": 606 },
+        { "kind": "pr", "number": 608 }
+      ]
+    },
+    {
+      "zhHans": {
+        "title": "CC Switch 连接和聚合反馈",
+        "description": "通用页显示已启用 Agent 的连接模式及服务商；首次打开菜单即显示聚合来源，数据库不可用、未选服务商或未配置余额查询时给出具体说明。"
+      },
+      "en": {
+        "title": "CC Switch connection and aggregation feedback",
+        "description": "General shows connection modes and providers for enabled agents. Aggregated sources appear on first open, with specific guidance for database access, missing selections and unconfigured balance queries."
+      },
+      "sources": [
+        { "kind": "pr", "number": 586 },
+        { "kind": "pr", "number": 644 },
+        { "kind": "pr", "number": 649 },
+        { "kind": "pr", "number": 688 }
+      ]
+    },
+    {
+      "zhHans": {
+        "title": "菜单栏余额与额度错误状态",
+        "description": "加载状态与失败分开，优先窗口缺失时用可用额度；Codex 未登录时提示登录，额度与余额错误本地化。余额刷新失败时保留旧金额，以次要文字色、警告时间和原因标记；长提示换行，充值时间超过一天按天显示。"
+      },
+      "en": {
+        "title": "Menu bar quota and balance recovery states",
+        "description": "Separates loading from failure and falls back to available quota windows. Localized errors distinguish balances, quotas and Codex sign-in. Failed balance refreshes retain muted cached amounts with a warning timestamp and reason; long text wraps and recharge age can display in days."
+      },
+      "sources": [
+        { "kind": "pr", "number": 595 },
+        { "kind": "pr", "number": 695 },
+        { "kind": "pr", "number": 702 },
+        { "kind": "pr", "number": 705 },
+        { "kind": "pr", "number": 706 },
+        { "kind": "pr", "number": 711 },
+        { "kind": "pr", "number": 712 }
+      ]
+    },
+    {
+      "zhHans": {
+        "title": "设置页交互、搜索和表格排版",
+        "description": "恢复原生开关，修复反转鼠标按键后的状态残留；缩放时文字和卡片同步调整，窄窗口时区控件可换行。加快搜索，统一设置表格标题、列高与对齐。"
+      },
+      "en": {
+        "title": "Settings interaction, search and table layout",
+        "description": "Restores native switches, clears stale state when reversing mouse buttons, and keeps wrapped rows and cards in sync during resize. Time-zone controls adapt to narrow windows, search starts faster, and settings tables align their headers and rows."
+      },
+      "sources": [
+        { "kind": "pr", "number": 585 },
+        { "kind": "pr", "number": 592 },
+        { "kind": "pr", "number": 653 },
+        { "kind": "pr", "number": 665 },
+        { "kind": "pr", "number": 666 },
+        { "kind": "pr", "number": 689 },
+        { "kind": "pr", "number": 696 },
+        { "kind": "pr", "number": 698 },
+        { "kind": "pr", "number": 708 }
+      ]
+    },
+    {
+      "zhHans": {
+        "title": "更新检查与限流反馈",
+        "description": "临时复查失败不会清掉已经找到的更新；按 GitHub 限流响应节流，改换代理后可手动重试，并让长刷新提示按自然断点换行。"
+      },
+      "en": {
+        "title": "Update checks and rate-limit feedback",
+        "description": "Retains detected updates through temporary recheck failures, respects GitHub rate limits, allows manual retry after changing proxies, and wraps long refresh messages at natural boundaries."
+      },
+      "sources": [
+        { "kind": "pr", "number": 593 },
+        { "kind": "pr", "number": 617 }
+      ]
+    },
+    {
+      "zhHans": {
+        "title": "余额提醒不再使用失效采样",
+        "description": "API 余额刷新失败时作废旧的通知采样，避免开启提醒或重新检查权限后用旧值误报，成功刷新后恢复评估。"
+      },
+      "en": {
+        "title": "Prevent stale balance notifications",
+        "description": "Invalidates notification samples when API balance refresh fails, avoiding false alerts after enabling reminders or rechecking permissions until a successful refresh restores evaluation."
+      },
+      "sources": [
+        { "kind": "pr", "number": 559 }
+      ]
+    },
+    {
+      "zhHans": {
+        "title": "增量数据读取与实验适配器",
+        "description": "为文件监听、Codex 本地日志、Claude HUD、跨端补偿和用量估算补齐基础模块；实验或影子模式不等于新增默认额度来源。"
+      },
+      "en": {
+        "title": "Incremental data reading and experimental adapters",
+        "description": "Adds foundations for file watching, local Codex logs, Claude HUD, cross-device refresh and usage estimation. Experimental and shadow-mode components are not additional default quota sources."
+      },
+      "sources": [
+        { "kind": "pr", "number": 544 },
+        { "kind": "pr", "number": 552 },
+        { "kind": "pr", "number": 553 },
+        { "kind": "pr", "number": 555 },
+        { "kind": "pr", "number": 558 }
+      ]
+    },
+    {
+      "zhHans": {
+        "title": "构建、发布与测试可靠性",
+        "description": "完善 Ready 合并门禁和版本发布流程并行化；加入性能基准、加速 XCTest，并隔离偏好与日志，减少测试对正式版的影响。 发布说明按主题归并 PR，并在发布前校验改动范围。"
+      },
+      "en": {
+        "title": "Build, release and test reliability",
+        "description": "Strengthens Ready merge gates and speeds release and test workflows with parallelization and benchmarks. Tests are faster and isolate preferences and logs from the production app. Release notes group related PRs and validate the source range before publishing."
+      },
+      "sources": [
+        { "kind": "pr", "number": 538 },
+        { "kind": "pr", "number": 545 },
+        { "kind": "pr", "number": 561 },
+        { "kind": "pr", "number": 568 },
+        { "kind": "pr", "number": 571 },
+        { "kind": "pr", "number": 613 },
+        { "kind": "pr", "number": 615 },
+        { "kind": "pr", "number": 662 },
+        { "kind": "pr", "number": 664 },
+        { "kind": "pr", "number": 667 },
+        { "kind": "pr", "number": 694 },
+        { "kind": "pr", "number": 700 },
+        { "kind": "pr", "number": 716 }
+      ]
+    }
+  ]
+}

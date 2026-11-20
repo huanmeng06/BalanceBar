@@ -323,6 +323,9 @@ test("DeepSeek is the default provider and uses JSON chat completions", async ()
   assert.match(request.messages[0].content, /zhHans/);
   assert.match(request.messages[0].content, /English/);
   assert.match(request.messages[0].content, /"number": 140/);
+  assert.match(request.messages[0].content, /"number": 141/);
+  assert.match(request.messages[0].content, /Group PRs that changed the same user-facing behavior/);
+  assert.match(request.messages[0].content, /not intermediate behavior that was reverted or superseded/);
   assert.match(request.messages[1].content, /v1\.1\.5/);
 
   let observedUrl;
@@ -1080,6 +1083,34 @@ test("validator rejects an item that omits a merged PR", () => {
     () => validateReleaseNotes(fixtureInput(), notes),
     /Release notes omitted merged PR\(s\): #141/,
   );
+});
+
+test("grouped release notes render all contributing PR links in one row per language", () => {
+  const notes = fixtureNotes();
+  notes.features[0].sources.push({ kind: "pr", number: 140 });
+  notes.fixes = [];
+  const rendered = renderReleaseNotes(fixtureInput(), notes);
+  const groupedRows = rendered.split("\n").filter((line) => line.includes("[PR #141]"));
+  assert.equal(groupedRows.length, 2);
+  assert.ok(groupedRows.every((line) => line.includes("[PR #140]")));
+});
+
+test("publishing CLI fails without AI instead of writing a raw-PR fallback", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "balancebar-release-no-fallback-"));
+  try {
+    const input = path.join(directory, "input.json");
+    const output = path.join(directory, "output.json");
+    fs.writeFileSync(input, JSON.stringify(fixtureInput()));
+    assert.throws(() => execFileSync(process.execPath, [
+      "scripts/release/generate-release-notes.mjs", "--input", input, "--output", output,
+    ], {
+      env: { ...process.env, RELEASE_AI_PROVIDER: "deepseek", DEEPSEEK_API_KEY: "" },
+      stdio: "pipe",
+    }), /DEEPSEEK_API_KEY is required/);
+    assert.equal(fs.existsSync(output), false);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test("validator rejects invented sources", () => {
