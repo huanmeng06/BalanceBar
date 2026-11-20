@@ -117,7 +117,7 @@ final class DashboardMenuBarLayoutSection {
     func make(
         input: DashboardMenuBarPage.Input,
         transientWidthAdjustment: Double?
-    ) -> NSView {
+    ) -> [NSView] {
         removeFontSizePresetTrackingObserver()
         removeIconSizePresetTrackingObserver()
         let iconOffsetSummaryContent = Self.iconOffsetSummarySubtitle(
@@ -213,7 +213,7 @@ final class DashboardMenuBarLayoutSection {
             for: iconSizeControls.control,
             preferences: input.preferences
         )
-        return SettingsSectionView(
+        let layout = SettingsSectionView(
             title: tr(.keyDashboardMenuBarPageLayout),
             contentViews: [
                 SettingsRowView(
@@ -227,7 +227,17 @@ final class DashboardMenuBarLayoutSection {
                     detail: tr(.keyDashboardMenuBarPageAdjustsTheMenuBarIconSize),
                     accessoryView: iconSizeControls.view,
                     minimumHeight: 66
-                ),
+                )
+            ]
+        )
+        let reset = NSButton(
+            title: tr(.keyCommonRestoreDefaults), target: input.relay,
+            action: #selector(DashboardPreferencePageRelay.resetOffset(_:))
+        )
+        reset.identifier = NSUserInterfaceItemIdentifier(DashboardMenuBarPage.positionResetIdentifier)
+        let position = SettingsSectionView(
+            title: tr(.keyDashboardMenuBarPositionAdjustments),
+            contentViews: [
                 SettingsRowView(
                     title: tr(.keyDashboardMenuBarPageIconOffset),
                     detail: iconOffsetSummaryContent.text,
@@ -248,9 +258,11 @@ final class DashboardMenuBarLayoutSection {
                     detailLabel: widthAdjustmentSummary,
                     accessoryView: widthAdjustmentControls.view,
                     minimumHeight: 66
-                )
+                ),
+                SettingsRowView(title: "", accessoryView: reset)
             ]
         )
+        return [layout, position]
     }
 
     func refresh(
@@ -272,8 +284,8 @@ final class DashboardMenuBarLayoutSection {
         )
         iconOffsetSlider?.doubleValue = iconOffsetY
         amountOffsetSlider?.doubleValue = amountOffsetY
-        iconOffsetSlider?.isEnabled = preferences.showMenuBarIcon
-        amountOffsetSlider?.isEnabled = preferences.showMenuBarAmount
+        iconOffsetSlider.flatMap(SettingsRowView.enclosing)?.setDependencyEnabled(preferences.showMenuBarIcon)
+        amountOffsetSlider.flatMap(SettingsRowView.enclosing)?.setDependencyEnabled(preferences.showMenuBarAmount)
         if let fontSizePresetControl {
             if fontSizePresetControl.indexOfSelectedItem != fontSizePreset.segmentIndex {
                 fontSizePresetControl.selectItem(at: fontSizePreset.segmentIndex)
@@ -283,7 +295,7 @@ final class DashboardMenuBarLayoutSection {
                 selectedIndex: fontSizePreset.segmentIndex
             )
         }
-        fontSizePresetControl?.isEnabled = preferences.showMenuBarAmount
+        fontSizePresetControl.flatMap(SettingsRowView.enclosing)?.setDependencyEnabled(preferences.showMenuBarAmount)
         if let iconSizePresetControl {
             if iconSizePresetControl.indexOfSelectedItem != iconSizePreset.segmentIndex {
                 iconSizePresetControl.selectItem(at: iconSizePreset.segmentIndex)
@@ -293,7 +305,7 @@ final class DashboardMenuBarLayoutSection {
                 selectedIndex: iconSizePreset.segmentIndex
             )
         }
-        iconSizePresetControl?.isEnabled = preferences.showMenuBarIcon
+        iconSizePresetControl.flatMap(SettingsRowView.enclosing)?.setDependencyEnabled(preferences.showMenuBarIcon)
         applyWidthAdjustment(widthAdjustment, synchronizeSlider: synchronizeWidthSlider)
     }
 

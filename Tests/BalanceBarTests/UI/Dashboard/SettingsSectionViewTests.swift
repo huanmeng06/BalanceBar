@@ -138,11 +138,8 @@ final class SettingsSectionViewTests: XCTestCase {
                 .first { $0.identifier?.rawValue == AppPreferences.silentLaunchKey }
         )
         let startup = try XCTUnwrap(SettingsSectionView.enclosing(silentLaunchSwitch))
-        XCTAssertEqual(
-            startup.headingLabel.stringValue,
-            tr(.keyDashboardGeneralAndRefreshPagesStartup)
-        )
-        XCTAssertEqual(startup.contentViews.count, 3)
+        XCTAssertTrue(startup.headingLabel.isHidden)
+        XCTAssertEqual(startup.contentViews.count, 1)
         XCTAssertNotNil(SettingsRowView.enclosing(silentLaunchSwitch))
 
         let openButton = try XCTUnwrap(
@@ -153,7 +150,7 @@ final class SettingsSectionViewTests: XCTestCase {
         let system = try XCTUnwrap(SettingsSectionView.enclosing(openButton))
         XCTAssertEqual(
             system.headingLabel.stringValue,
-            tr(.keyDashboardGeneralAndRefreshPagesSystem)
+            tr(.keyDashboardGeneralDataSources)
         )
         XCTAssertNotNil(SettingsRowView.enclosing(openButton))
 
@@ -162,12 +159,9 @@ final class SettingsSectionViewTests: XCTestCase {
                 .compactMap { $0 as? NSButton }
                 .first { $0.title == tr(.keyDashboardGeneralAndRefreshPagesRefreshNow) }
         )
-        // Manual refresh has its own section, separate from the interval settings.
+        // Manual refresh is the last card under the same Refresh heading.
         let refresh = try XCTUnwrap(SettingsSectionView.enclosing(refreshButton))
-        XCTAssertEqual(
-            refresh.headingLabel.stringValue,
-            tr(.keyDashboardGeneralAndRefreshPagesRefreshNow)
-        )
+        XCTAssertTrue(refresh.headingLabel.isHidden)
         XCTAssertNotNil(SettingsRowView.enclosing(refreshButton))
 
         let languagePopup = try XCTUnwrap(

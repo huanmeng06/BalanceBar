@@ -2450,6 +2450,13 @@ enum DashboardSection: Int, CaseIterable {
 /// click apply only to that range; the rest stays secondary label color.
 final class InlineRangeLinkTextField: NSTextField {
     var onActivate: (() -> Void)?
+    var isLinkEnabled = true {
+        didSet {
+            guard isLinkEnabled != oldValue else { return }
+            applyStyle(underlined: isHovered)
+            updateLinkHitRect()
+        }
+    }
     private(set) var linkRange = NSRange(location: NSNotFound, length: 0)
     private(set) var linkHitRect = NSRect.zero
     private(set) var linkHitRects: [NSRect] = []
@@ -2514,9 +2521,9 @@ final class InlineRangeLinkTextField: NSTextField {
         self.linkPhrase = linkPhrase
         sourceText = text
         refreshLinkRange()
-        applyStyle(underlined: false)
-        isHovered = false
+        applyStyle(underlined: isHovered)
         updateLinkHitRect()
+        synchronizeHoverStateWithMouseLocation()
     }
 
     override func layout() {
@@ -2598,13 +2605,13 @@ final class InlineRangeLinkTextField: NSTextField {
         paragraph.lineBreakMode = lineBreakMode
         let body: [NSAttributedString.Key: Any] = [
             .font: font ?? NSFont.systemFont(ofSize: 12),
-            .foregroundColor: NSColor.secondaryLabelColor,
+            .foregroundColor: textColor ?? NSColor.secondaryLabelColor,
             .paragraphStyle: paragraph
         ]
         if attributed.length > 0 {
             attributed.addAttributes(body, range: NSRange(location: 0, length: attributed.length))
         }
-        if hasLink, NSMaxRange(linkRange) <= attributed.length {
+        if isLinkEnabled, hasLink, NSMaxRange(linkRange) <= attributed.length {
             var linkAttributes: [NSAttributedString.Key: Any] = [
                 .foregroundColor: NSColor.linkColor
             ]
@@ -2707,7 +2714,7 @@ final class InlineRangeLinkTextField: NSTextField {
     }
 
     private func calculateLinkHitRects() -> [NSRect] {
-        guard hasLink,
+        guard isLinkEnabled, hasLink,
               !bounds.isEmpty,
               let cell,
               attributedStringValue.length >= NSMaxRange(linkRange)

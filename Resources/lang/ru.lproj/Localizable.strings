@@ -885,3 +885,7 @@
 "dashboard.advanced.page.egress_guard_column_available" = "Claude доступен";
 "dashboard.advanced.page.egress_guard_available_yes" = "В регионе, где Anthropic предоставляет Claude";
 "dashboard.advanced.page.egress_guard_available_no" = "Вне регионов, где Anthropic предоставляет Claude";
+"dashboard.general.data_sources" = "Источники данных";
+"dashboard.menu.bar.position_adjustments" = "Точная настройка положения";
+"dashboard.menu.bar.required_display" = "Должен отображаться хотя бы значок или значение.";
+"dashboard.advanced.official_validity_dependency" = "Применяется только при включённых официальных запросах квот.";

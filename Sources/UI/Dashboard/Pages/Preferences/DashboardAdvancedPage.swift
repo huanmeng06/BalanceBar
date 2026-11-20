@@ -35,6 +35,7 @@ final class DashboardAdvancedPage {
     /// The official-validity selector, kept so a calibration-interval change on the Refresh page can
     /// update its choices without rebuilding the cached page.
     private weak var oauthValidityPopup: NSPopUpButton?
+    private weak var oauthValidityRow: SettingsRowView?
     private weak var sourceTimelineView: ClaudeSourceTimelineView?
     private var sourceValidityRows: [String: SettingsRowView] = [:]
     private(set) var egressGuardSection: ClaudeEgressGuardSectionController?
@@ -42,6 +43,15 @@ final class DashboardAdvancedPage {
     /// Re-reads the egress guard settings without rebuilding the cached page.
     func refreshEgressGuard(preferences: AppPreferences) {
         egressGuardSection?.refresh(preferences: preferences)
+        oauthValidityRow?.setDependencyEnabled(preferences.claudeEgressGuardEnabled)
+    }
+
+    func revealEgressGuard() {
+        egressGuardSection?.revealToggle()
+    }
+
+    static var officialValidityDetail: String {
+        "\(tr(.keyDashboardAdvancedOfficialValidityDependency)) \(tr(.keyClaudeQuotaCalibrationOffLink))"
     }
 
     /// Redraws the source timeline after a new reading, failure, status or validity change.
@@ -149,7 +159,7 @@ final class DashboardAdvancedPage {
             preferences: input.preferences, relay: input.relay, actions: input.egressGuard)
         egressGuardSection = egressGuard
         return DashboardSettingsComponents.makeSettingsPageContent([
-            makeSourceValiditySection(input), egressGuard.makeSection(), logs,
+            egressGuard.makeSection(), makeSourceValiditySection(input), logs,
         ])
     }
 
@@ -190,9 +200,14 @@ final class DashboardAdvancedPage {
         let timeline = ClaudeSourceTimelineView(
             provider: input.sourceTimeline, timeZone: input.preferences.effectiveDisplayTimeZone)
         sourceTimelineView = timeline
+        let validityLink = InlineRangeLinkTextField()
+        validityLink.setContent(Self.officialValidityDetail, linkPhrase: tr(.keyClaudeQuotaCalibrationOffLink)) { [weak relay = input.relay] in
+            relay?.openEgressGuardSettings(nil)
+        }
         let rows = [
             SettingsRowView(
                 title: tr(.keyDashboardAdvancedPageSourceValidityOauth),
+                detailLabel: validityLink,
                 titleAccessory: DashboardRefreshPage.agentIconStrip(["Claude"]),
                 accessoryView: controls[0]),
             SettingsRowView(
@@ -203,6 +218,8 @@ final class DashboardAdvancedPage {
         sourceValidityRows = [
             AppPreferences.claudeModValidityKey: rows[1],
         ]
+        oauthValidityRow = rows[0]
+        rows[0].setDependencyEnabled(input.preferences.claudeEgressGuardEnabled)
         refreshSourceValidityWarnings(preferences: input.preferences)
         return SettingsSectionView(
             title: tr(.keyDashboardAdvancedPageSourceValidity),
@@ -276,6 +293,7 @@ final class ClaudeEgressGuardSectionController: NSObject {
     private let actions: ClaudeEgressGuardPageActions
     private var allowedIPs: [String]
     private let toggle: NSSwitch
+    private weak var toggleRow: SettingsRowView?
     private(set) var listEditor: EgressIPListEditorView!
     private var detectedIP: String?
     private var detectGeneration = 0
@@ -297,6 +315,7 @@ final class ClaudeEgressGuardSectionController: NSObject {
             detail: tr(.keyDashboardAdvancedPageEgressGuardEnabledDetail),
             titleAccessory: DashboardRefreshPage.agentIconStrip(["Claude"]),
             accessoryView: toggle)
+        self.toggleRow = toggleRow
 
         let editor = EgressIPListEditorView(
             ips: allowedIPs,
@@ -314,6 +333,11 @@ final class ClaudeEgressGuardSectionController: NSObject {
             title: tr(.keyDashboardAdvancedPageEgressGuard),
             contentViews: [toggleRow, editor],
             footnote: tr(.keyDashboardAdvancedPageEgressGuardFootnote))
+    }
+
+    func revealToggle() {
+        guard let row = toggleRow, row.window != nil, !row.isHiddenOrHasHiddenAncestor else { return }
+        DashboardSettingsComponents.reveal(row)
     }
 
     /// Re-reads the saved settings (after a change from the other page copy or the app).

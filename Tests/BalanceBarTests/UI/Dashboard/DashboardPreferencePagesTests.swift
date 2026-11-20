@@ -1935,7 +1935,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
         let labels = descendants(of: page).compactMap { $0 as? NSTextField }.map(\.stringValue)
         let sectionTitles = [
-            tr(.keyDashboardGeneralAndRefreshPagesSystem),
+            tr(.keyDashboardGeneralDataSources),
             tr(.keyDashboardGeneralAndRefreshPagesRefresh),
             tr(.keyDashboardGeneralAndRefreshPagesStartup),
             tr(.keyDashboardGeneralAndRefreshPagesApplication)
@@ -2244,8 +2244,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertFalse(popup.isEnabled)
         XCTAssertEqual(row.titleLabel.textColor, .disabledControlTextColor)
         let link = try XCTUnwrap(generalPage.claudeCalibrationLinkForTesting)
-        XCTAssertNotNil(link.displayedLinkRange)
-        link.performClickForTesting()
+        XCTAssertTrue(link.hasLink)
+        link.onActivate?()
         XCTAssertEqual(opened, 1, "the link opens the IP allowlist settings")
 
         preferences.claudeEgressGuardEnabled = true
@@ -2254,7 +2254,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(row.titleLabel.textColor, .labelColor)
         XCTAssertEqual(row.detailLabel.stringValue, tr(.keyClaudeQuotaCalibrationDetail) + "\n"
             + RealtimeBoostSettingsRows.dotPrefix + DashboardGeneralPage.claudeLoginLine(.unknown).text)
-        XCTAssertNil(generalPage.claudeCalibrationLinkForTesting)
+        XCTAssertFalse(link.hasLink)
     }
 
     func testClaudeLoginLineWordsEachStateLikeTheModStatusLine() {
@@ -2393,7 +2393,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let relay = DashboardPreferencePageRelay()
         var changes: [(String, TimeInterval)] = []
         relay.onInterval = { changes.append(($0, $1)) }
-        let page = DashboardAdvancedPage().make(.init(
+        let controller = DashboardAdvancedPage()
+        let page = controller.make(.init(
             relay: relay, logViewer: nil, includeLogViewer: false, preferences: preferences))
 
         func popup(_ key: String) throws -> NSPopUpButton {
@@ -2425,7 +2426,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
         for view in section.contentViews {
             let row = try XCTUnwrap(view as? SettingsRowView)
             if row.titleLabel.stringValue == tr(.keyDashboardAdvancedPageSourceValidityOauth) {
-                XCTAssertEqual(row.detailLabel.stringValue, "")
+                XCTAssertEqual(row.detailLabel.stringValue, DashboardAdvancedPage.officialValidityDetail)
+                XCTAssertEqual(row.titleLabel.textColor, .disabledControlTextColor)
+                XCTAssertEqual(row.titleAccessory?.alphaValue, 0.45)
+                XCTAssertTrue((row.detailLabel as? InlineRangeLinkTextField)?.hasLink == true)
             } else {
                 XCTAssertEqual(
                     row.detailLabel.stringValue,
@@ -2434,6 +2438,11 @@ final class DashboardPreferencePagesTests: XCTestCase {
             }
         }
 
+        XCTAssertFalse(oauth.isEnabled)
+        preferences.claudeEgressGuardEnabled = true
+        controller.refreshEgressGuard(preferences: preferences)
+        XCTAssertTrue(oauth.isEnabled)
+        XCTAssertEqual(SettingsRowView.enclosing(oauth)?.detailLabel.stringValue, DashboardAdvancedPage.officialValidityDetail)
         mod.selectItem(at: 0)
         _ = mod.sendAction(mod.action!, to: mod.target)
         XCTAssertEqual(changes.count, 1)
@@ -2890,7 +2899,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         }
     }
 
-    func testMenuBarReverseMouseButtonsSwitchIsHiddenUnlessRightClickDiffersFromLeftClick() throws {
+    func testMenuBarReverseMouseButtonsSwitchIsDisabledUnlessRightClickDiffersFromLeftClick() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
         AppLanguage.selected = .simplifiedChinese
@@ -2938,7 +2947,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 .first { $0.identifier?.rawValue == DashboardMenuBarPage.reverseMouseButtonsIdentifier }
         )
         let reverseRow = try XCTUnwrap(SettingsRowView.enclosing(reverseSwitch))
-        XCTAssertTrue(reverseRow.isHidden)
+        XCTAssertFalse(reverseRow.isHidden)
+        XCTAssertFalse(reverseSwitch.isEnabled)
+        XCTAssertEqual(reverseRow.detailLabel.textColor, .disabledControlTextColor)
         XCTAssertEqual(reverseSwitch.state, .off)
 
         let labels = descendants(of: page).compactMap { $0 as? NSTextField }
@@ -2954,6 +2965,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         relay.menuBarRightClickAction(popup)
         XCTAssertEqual(preferences.menuBarRightClickAction, .openMainWindow)
         XCTAssertFalse(reverseRow.isHidden)
+        XCTAssertTrue(reverseSwitch.isEnabled)
 
         reverseSwitch.state = .on
         relay.toggle(reverseSwitch)
@@ -2962,7 +2974,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
         popup.selectItem(at: 0)
         relay.menuBarRightClickAction(popup)
         XCTAssertEqual(preferences.menuBarRightClickAction, .matchLeftClick)
-        XCTAssertTrue(reverseRow.isHidden)
+        XCTAssertFalse(reverseRow.isHidden)
+        XCTAssertFalse(reverseSwitch.isEnabled)
+        XCTAssertTrue(preferences.menuBarReverseMouseButtons)
 
         preferences.menuBarRightClickAction = .openAgent
         preferences.menuBarReverseMouseButtons = true
@@ -3066,10 +3080,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     .first { $0.identifier?.rawValue == DashboardMenuBarPage.animationModeIdentifier }
             )
             let animationModeRow = try XCTUnwrap(SettingsRowView.enclosing(animationModePopup))
-            XCTAssertTrue(
-                delayRow.isHidden,
-                "the delay selector is hidden while Always Visible is selected in (language)"
-            )
+            XCTAssertFalse(delayRow.isHidden)
+            XCTAssertFalse(delayPopup.isEnabled)
             let iconTaskStatusSection = try XCTUnwrap(SettingsSectionView.enclosing(taskStatusRow))
             let iconRows = iconTaskStatusSection.contentViews
             let animationFrameRateRow = try XCTUnwrap(
@@ -3078,9 +3090,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     in: page
                 ) as? SettingsRowView
             )
+            let renderingSection = try XCTUnwrap(SettingsSectionView.enclosing(animationModeRow))
+            XCTAssertFalse(renderingSection === iconTaskStatusSection)
+            XCTAssertEqual(iconRows.count, 2)
             XCTAssertTrue(
                 zip(
-                    iconRows,
+                    iconRows + renderingSection.contentViews,
                     [taskStatusRow, animationRow, animationModeRow, animationFrameRateRow]
                 )
                     .allSatisfy { $0.0 === $0.1 },
@@ -3097,22 +3112,18 @@ final class DashboardPreferencePagesTests: XCTestCase {
             let previewSection = try XCTUnwrap(SettingsSectionView.enclosing(modeRow))
             let previewRows = previewSection.contentViews
             let previewSeparators = previewSection.separators
-            XCTAssertEqual(previewRows.count, 5)
+            XCTAssertEqual(previewRows.count, 2)
             XCTAssertTrue(
-                previewRows[1] === modeRow,
-                "menu bar display sits directly under current layout in (language)"
+                previewRows[0] === modeRow,
+                "menu bar display heads the second preview card in \(language)"
             )
             XCTAssertTrue(
-                previewRows[2] === delayRow,
+                previewRows[1] === delayRow,
                 "hide delay sits directly under menu bar display in (language)"
             )
             let iconTaskStatusSeparators = iconTaskStatusSection.separators
-            XCTAssertEqual(iconTaskStatusSeparators.count, 4)
-            XCTAssertFalse(iconTaskStatusSeparators[0].isHidden)
-            XCTAssertFalse(iconTaskStatusSeparators[1].isHidden)
-            XCTAssertFalse(iconTaskStatusSeparators[2].isHidden)
-            XCTAssertTrue(iconTaskStatusSeparators[3].isHidden)
-            XCTAssertEqual(previewSeparators.map(\.isHidden), [false, true, true, true])
+            XCTAssertEqual(iconTaskStatusSeparators.map(\.isHidden), [false])
+            XCTAssertEqual(previewSeparators.map(\.isHidden), [false])
             XCTAssertFalse(taskStatusRow.isHidden)
             XCTAssertFalse(animationRow.isHidden)
             XCTAssertFalse(modeRow.isHidden)
@@ -3177,12 +3188,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 delayRow.isHidden,
                 "changing to Only While Running reveals the delay selector immediately in (language)"
             )
-            XCTAssertTrue(previewRows[2] === delayRow)
-            XCTAssertEqual(previewSeparators.map(\.isHidden), [false, false, true, true])
-            XCTAssertFalse(iconTaskStatusSeparators[0].isHidden)
-            XCTAssertFalse(iconTaskStatusSeparators[1].isHidden)
-            XCTAssertFalse(iconTaskStatusSeparators[2].isHidden)
-            XCTAssertTrue(iconTaskStatusSeparators[3].isHidden)
+            XCTAssertTrue(delayPopup.isEnabled)
+            XCTAssertEqual(previewSeparators.map(\.isHidden), [false])
 
             delayPopup.selectItem(at: 0)
             relay.menuBarIconDisplayDelay(delayPopup)
@@ -3208,12 +3215,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 iconImage: nil
             )
             window.layoutIfNeeded()
-            XCTAssertTrue(delayRow.isHidden, "switching back hides the delay selector in (language)")
-            XCTAssertEqual(previewSeparators.map(\.isHidden), [false, true, true, true])
-            XCTAssertFalse(iconTaskStatusSeparators[0].isHidden)
-            XCTAssertFalse(iconTaskStatusSeparators[1].isHidden)
-            XCTAssertFalse(iconTaskStatusSeparators[2].isHidden)
-            XCTAssertTrue(iconTaskStatusSeparators[3].isHidden)
+            XCTAssertFalse(delayRow.isHidden)
+            XCTAssertFalse(delayPopup.isEnabled)
 
             relay.onToggle = { identifier, enabled in
                 guard identifier == "showMenuBarIcon" else { return }
@@ -3229,20 +3232,19 @@ final class DashboardPreferencePagesTests: XCTestCase {
             relay.toggle(taskStatusSwitch)
             window.layoutIfNeeded()
             XCTAssertFalse(taskStatusRow.isHidden)
-            XCTAssertTrue(animationRow.isHidden)
+            XCTAssertFalse(animationRow.isHidden)
+            XCTAssertFalse(animationSwitch.isEnabled)
             XCTAssertFalse(modeRow.isHidden)
-            XCTAssertTrue(delayRow.isHidden)
-            XCTAssertTrue(
-                iconTaskStatusSeparators.allSatisfy(\.isHidden),
-                "dependent icon rows have no stray separators when task status icon is off in (language)"
-            )
+            XCTAssertFalse(delayPopup.isEnabled)
+            XCTAssertEqual(iconTaskStatusSeparators.map(\.isHidden), [false])
 
             taskStatusSwitch.state = .on
             relay.toggle(taskStatusSwitch)
             window.layoutIfNeeded()
             XCTAssertFalse(animationRow.isHidden)
             XCTAssertFalse(modeRow.isHidden)
-            XCTAssertTrue(delayRow.isHidden)
+            XCTAssertTrue(animationSwitch.isEnabled)
+            XCTAssertFalse(delayPopup.isEnabled)
 
             let rebuiltPage = DashboardMenuBarPage().make(.init(
                 preferences: AppPreferences(defaults: defaults),
@@ -3352,11 +3354,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
         let previewSection = try XCTUnwrap(SettingsSectionView.enclosing(modeRow))
         let previewRows = previewSection.contentViews
-        XCTAssertEqual(previewRows.count, 5)
-        XCTAssertTrue(previewRows[1] === modeRow)
-        XCTAssertTrue(previewRows[2] === delayRow)
-        XCTAssertTrue(previewRows[3] === overflowRow)
-        XCTAssertTrue(previewRows[4] === runtimeRow)
+        XCTAssertEqual(previewRows.count, 2)
+        XCTAssertTrue(previewRows[0] === modeRow)
+        XCTAssertTrue(previewRows[1] === delayRow)
+        XCTAssertFalse(SettingsSectionView.enclosing(overflowRow) === previewSection)
         XCTAssertFalse(modeRow.isHidden)
         XCTAssertFalse(overflowRow.isHidden)
         XCTAssertTrue(runtimeRow.isHidden)
@@ -3379,17 +3380,14 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
         XCTAssertFalse(preferences.showMenuBarIcon)
         XCTAssertFalse(modeRow.isHidden)
-        XCTAssertTrue(previewRows[1] === modeRow)
-        XCTAssertTrue(previewRows[2] === delayRow)
+        XCTAssertTrue(previewRows[0] === modeRow)
+        XCTAssertTrue(previewRows[1] === delayRow)
         XCTAssertFalse(overflowRow.isHidden)
         XCTAssertFalse(delayRow.isHidden)
-        XCTAssertTrue(animationRow.isHidden)
-        let iconTaskStatusSeparators = iconTaskStatusSection.separators
-        XCTAssertTrue(iconTaskStatusSeparators.allSatisfy(\.isHidden))
-        XCTAssertEqual(
-            previewSection.separators.map(\.isHidden),
-            [false, false, false, true]
-        )
+        XCTAssertFalse(animationRow.isHidden)
+        XCTAssertFalse(animationSwitch.isEnabled)
+        XCTAssertTrue(delayPopup.isEnabled)
+        XCTAssertEqual(iconTaskStatusSection.separators.map(\.isHidden), [false])
 
         controller.refresh(
             snapshot: snapshot,
@@ -3401,14 +3399,14 @@ final class DashboardPreferencePagesTests: XCTestCase {
         window.layoutIfNeeded()
         page.layoutSubtreeIfNeeded()
         XCTAssertFalse(modeRow.isHidden)
-        XCTAssertTrue(previewRows[1] === modeRow)
-        XCTAssertTrue(previewRows[2] === delayRow)
+        XCTAssertTrue(previewRows[0] === modeRow)
+        XCTAssertTrue(previewRows[1] === delayRow)
         XCTAssertTrue(overflowRow.isHidden)
         XCTAssertTrue(runtimeRow.isHidden)
         XCTAssertFalse(delayRow.isHidden)
         XCTAssertEqual(
             previewSection.separators.map(\.isHidden),
-            [false, false, true, true]
+            [false]
         )
     }
 
@@ -3760,7 +3758,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         assertLabelsStayReadable(at: 720)
     }
 
-    func testMenuPageDependentRowsCollapseAndExpandWithoutParentHeightMeasurement() throws {
+    func testMenuPageDependentRowsKeepTheirHeightWithoutParentHeightMeasurement() throws {
         LunaReserveUserFacing.testOverride = true
         defer { LunaReserveUserFacing.testOverride = nil }
         let previousLanguage = AppLanguage.selected
@@ -3830,20 +3828,20 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
         let progressSection = try XCTUnwrap(SettingsSectionView.enclosing(progressToggle))
         let progressCard = progressSection.cardView
-        XCTAssertEqual(progressSection.contentViews.filter { !$0.isHidden }.count, 5)
+        XCTAssertEqual(progressSection.contentViews.filter { !$0.isHidden }.count, 2)
         assertCardFollowsVisibleContent(progressCard)
         let progressExpanded = progressCard.frame.height
 
         preferences.showQuotaProgressBar = false
         controller.refresh(preferences: preferences)
         assertCardFollowsVisibleContent(progressCard)
-        XCTAssertEqual(progressSection.contentViews.filter { !$0.isHidden }.count, 1)
-        XCTAssertLessThan(progressCard.frame.height + 8, progressExpanded)
+        XCTAssertEqual(progressSection.contentViews.filter { !$0.isHidden }.count, 2)
+        XCTAssertEqual(progressCard.frame.height, progressExpanded, accuracy: 0.5)
 
         preferences.showQuotaProgressBar = true
         controller.refresh(preferences: preferences)
         assertCardFollowsVisibleContent(progressCard)
-        XCTAssertEqual(progressSection.contentViews.filter { !$0.isHidden }.count, 5)
+        XCTAssertEqual(progressSection.contentViews.filter { !$0.isHidden }.count, 2)
         XCTAssertGreaterThan(progressCard.frame.height, SettingsRowView.minimumHeight + 8)
 
         let bankedToggle = try XCTUnwrap(
@@ -3860,8 +3858,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
         preferences.showBankedReset = false
         controller.refresh(preferences: preferences)
         assertCardFollowsVisibleContent(bankedCard)
-        XCTAssertEqual(bankedSection.contentViews.filter { !$0.isHidden }.count, 1)
-        XCTAssertLessThan(bankedCard.frame.height + 8, bankedExpanded)
+        XCTAssertEqual(bankedSection.contentViews.filter { !$0.isHidden }.count, 2)
+        XCTAssertEqual(bankedCard.frame.height, bankedExpanded, accuracy: 0.5)
 
         preferences.showBankedReset = true
         controller.refresh(preferences: preferences)
@@ -3884,8 +3882,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
         controller.updateStatusVisibility(false, animated: false)
         assertCardFollowsVisibleContent(statusCard)
-        XCTAssertEqual(editor.currentHeight, 0, accuracy: 0.5)
-        XCTAssertLessThan(statusCard.frame.height + 8, statusExpanded)
+        XCTAssertEqual(editor.currentHeight, editor.layoutHeight, accuracy: 0.5)
+        XCTAssertEqual(statusCard.frame.height, statusExpanded, accuracy: 0.5)
 
         controller.updateStatusVisibility(true, animated: false)
         assertCardFollowsVisibleContent(statusCard)
@@ -3958,7 +3956,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             settingsSection(withTitle: tr(.keyDashboardMenuPageProgressBar), in: page)
         )
         let progressBarRows = settingsRows(in: progressBarSection)
-        XCTAssertEqual(progressBarRows.count, 5)
+        XCTAssertEqual(progressBarRows.count, 2)
         let sectionTitles = labels.map(\.stringValue)
         let progressBarIndex = try XCTUnwrap(
             sectionTitles.firstIndex(of: tr(.keyDashboardMenuPageProgressBar))
@@ -3982,7 +3980,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let quickSwitchRow = nativeSettingsRow(enclosing: quickSwitch) else {
             return XCTFail("Expected both balance display and dropdown-menu rows")
         }
-        XCTAssertTrue(progressBarRows[4] === thresholdRow)
+        let colors = try XCTUnwrap(SettingsSectionView.enclosing(thresholdRow))
+        XCTAssertTrue(colors.headingLabel.isHidden)
+        XCTAssertEqual(colors.contentViews.count, 3)
+        XCTAssertTrue(colors.contentViews.last === thresholdRow)
         XCTAssertEqual(thresholdRow.contentHuggingPriority(for: .vertical), .required)
         XCTAssertEqual(quickSwitchRow.contentHuggingPriority(for: .vertical), .required)
         XCTAssertEqual(
@@ -4075,7 +4076,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(popup.indexOfSelectedItem, 0)
     }
 
-    func testBankedResetMasterSwitchHidesDisplayStyleWithoutResettingMode() throws {
+    func testBankedResetMasterSwitchDisablesDisplayStyleWithoutResettingMode() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
         AppLanguage.selected = .simplifiedChinese
@@ -4162,15 +4163,15 @@ final class DashboardPreferencePagesTests: XCTestCase {
         settleNativeSettingsLayout(page, window: window)
         XCTAssertFalse(preferences.showBankedReset)
         XCTAssertFalse(bankedResetRows[0].isHidden)
-        XCTAssertTrue(bankedResetRows.dropFirst().allSatisfy(\.isHidden))
-        XCTAssertTrue(separators.allSatisfy(\.isHidden))
+        XCTAssertTrue(bankedResetRows.allSatisfy { !$0.isHidden })
+        XCTAssertTrue(separators.allSatisfy { !$0.isHidden })
+        XCTAssertFalse(popup.isEnabled)
         XCTAssertEqual(
             cardHeight(of: rowsStack),
             visibleArrangedHeight(in: rowsStack),
             accuracy: 1.0
         )
-        let collapsedHeight = cardHeight(of: rowsStack)
-        XCTAssertLessThan(collapsedHeight + 8, expandedHeight)
+        XCTAssertEqual(cardHeight(of: rowsStack), expandedHeight, accuracy: 0.5)
         XCTAssertEqual(preferences.menuBankedResetDisplayMode, .compact)
         XCTAssertEqual(popup.indexOfSelectedItem, 0)
 
@@ -4346,7 +4347,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
             let progressBarSection = try XCTUnwrap(
                 settingsSection(withTitle: tr(.keyDashboardMenuPageProgressBar, language: language), in: page)
             )
-            let progressBarRows = settingsRows(in: progressBarSection)
+            let progressBarCard = try XCTUnwrap(SettingsSectionView.enclosing(progressBarSection))
+            let colorCard = try XCTUnwrap((page as? NSStackView)?.arrangedSubviews.drop(while: { $0 !== progressBarCard }).dropFirst().first as? SettingsSectionView)
+            XCTAssertTrue(colorCard.headingLabel.isHidden)
+            let progressBarRows = progressBarCard.contentViews + colorCard.contentViews
             XCTAssertEqual(progressBarRows.count, 5, "Progress Bar row count for \(language)")
 
             let expectedRows = [
@@ -4579,7 +4583,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         }
     }
 
-    func testProgressBarMasterSwitchHidesDependentRowsWithoutResettingConfiguration() throws {
+    func testProgressBarMasterSwitchDisablesDependentRowsWithoutResettingConfiguration() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
         AppLanguage.selected = .simplifiedChinese
@@ -4630,7 +4634,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             settingsSection(withTitle: tr(.keyDashboardMenuPageProgressBar), in: page)
         )
         let progressBarRows = settingsRows(in: progressBarSection)
-        XCTAssertEqual(progressBarRows.count, 5)
+        XCTAssertEqual(progressBarRows.count, 2)
         let rowsStack = try XCTUnwrap(progressBarRows[0].superview as? NSStackView)
         let separators = rowsStack.arrangedSubviews.compactMap { $0 as? NSBox }
         let toggle = try XCTUnwrap(
@@ -4653,16 +4657,18 @@ final class DashboardPreferencePagesTests: XCTestCase {
         window.layoutIfNeeded()
         XCTAssertFalse(preferences.showQuotaProgressBar)
         XCTAssertFalse(progressBarRows[0].isHidden)
-        XCTAssertTrue(progressBarRows.dropFirst().allSatisfy(\.isHidden))
-        XCTAssertTrue(separators.allSatisfy(\.isHidden))
-        let collapsedHeight = cardHeight(of: rowsStack)
-        XCTAssertLessThan(collapsedHeight + 8, expandedHeight)
+        XCTAssertTrue(progressBarRows.allSatisfy { !$0.isHidden })
+        XCTAssertTrue(separators.allSatisfy { !$0.isHidden })
+        XCTAssertEqual(cardHeight(of: rowsStack), expandedHeight, accuracy: 0.5)
+        XCTAssertFalse(slider.isEnabled)
+        XCTAssertFalse(try XCTUnwrap(progressBarRows[1] as? SettingsRowView).accessoryView.flatMap { $0 as? NSSwitch }?.isEnabled ?? true)
         XCTAssertEqual(preferences.quotaProgressColorConfiguration, storedConfiguration)
 
         toggle.state = .on
         relay.toggle(toggle)
         window.layoutIfNeeded()
         XCTAssertTrue(preferences.showQuotaProgressBar)
+        XCTAssertTrue(slider.isEnabled)
         XCTAssertTrue(progressBarRows.allSatisfy { !$0.isHidden })
         XCTAssertTrue(separators.allSatisfy { !$0.isHidden })
         XCTAssertEqual(preferences.quotaProgressColorConfiguration, storedConfiguration)
@@ -4962,13 +4968,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let progressBarSection = try XCTUnwrap(
             settingsSection(withTitle: tr(.keyDashboardMenuPageProgressBar), in: page)
         )
-        let progressBarRows = settingsRows(in: progressBarSection)
-        XCTAssertEqual(progressBarRows.last.map(ObjectIdentifier.init), ObjectIdentifier(thresholdRow))
+        let colorSection = try XCTUnwrap(SettingsSectionView.enclosing(thresholdRow))
+        XCTAssertFalse(colorSection === SettingsSectionView.enclosing(progressBarSection))
+        XCTAssertTrue(colorSection.headingLabel.isHidden)
+        XCTAssertTrue(colorSection.contentViews.last === thresholdRow)
         XCTAssertFalse(balanceDisplayRows.contains { $0 === thresholdRow })
-        XCTAssertEqual(
-            progressBarRows.count,
-            5
-        )
+        XCTAssertEqual(colorSection.contentViews.count, 3)
         XCTAssertFalse(hideRow.isHidden)
         XCTAssertTrue(hideSwitch.isEnabled)
         settleNativeSettingsLayout(page, window: window)
@@ -5132,27 +5137,27 @@ final class DashboardPreferencePagesTests: XCTestCase {
             (
                 .simplifiedChinese,
                 ["打开主窗口", "打开当前 Agent", "打开 CC Switch"],
-                ["显示 BalanceBar 主窗口", "菜单项随当前图标变化，点击打开对应应用或终端", "显示 CC Switch 主窗口"]
+                ["“打开主窗口”始终显示", "菜单项随当前图标变化，点击打开对应应用或终端", "显示 CC Switch 主窗口"]
             ),
             (
                 .traditionalChineseTaiwan,
                 ["開啟主視窗", "開啟目前的 Agent", "開啟 CC Switch"],
-                ["顯示 BalanceBar 主視窗", "選單項目會隨目前圖示變化，點一下即可開啟對應的應用程式或終端機", "顯示 CC Switch 主視窗"]
+                ["「開啟主視窗」一律顯示", "選單項目會隨目前圖示變化，點一下即可開啟對應的應用程式或終端機", "顯示 CC Switch 主視窗"]
             ),
             (
                 .traditionalChineseHongKong,
                 ["開啟主視窗", "開啟目前的 Agent", "開啟 CC Switch"],
-                ["顯示 BalanceBar 主視窗", "選單項目會隨目前圖示變化，點一下即可開啟對應的應用程式或終端機", "顯示 CC Switch 主視窗"]
+                ["「開啟主視窗」一律顯示", "選單項目會隨目前圖示變化，點一下即可開啟對應的應用程式或終端機", "顯示 CC Switch 主視窗"]
             ),
             (
                 .japanese,
                 ["メインウインドウを開く", "現在の Agent を開く", "CC Switch を開く"],
-                ["BalanceBar のメインウインドウを表示", "メニュー項目は現在のアイコンに合わせて変化し、対応するアプリまたはターミナルを開きます", "CC Switch のメインウインドウを表示"]
+                ["「メインウインドウを開く」項目は常に表示されます", "メニュー項目は現在のアイコンに合わせて変化し、対応するアプリまたはターミナルを開きます", "CC Switch のメインウインドウを表示"]
             ),
             (
                 .english,
                 ["Open Main Window", "Open Current Agent", "Open CC Switch"],
-                ["Show the BalanceBar main window", "The menu item follows the current icon and opens the matching app or terminal", "Show the CC Switch main window"]
+                ["The Open Main Window item is always shown", "The menu item follows the current icon and opens the matching app or terminal", "Show the CC Switch main window"]
             )
         ]
 
@@ -5295,7 +5300,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let separators = rowsStack.arrangedSubviews.compactMap { $0 as? NSBox }
         XCTAssertEqual(separators.count, 1)
         XCTAssertFalse(separators[0].isHidden)
-        XCTAssertTrue(
+        XCTAssertFalse(
             descendants(of: page)
                 .compactMap { $0 as? NSTextField }
                 .contains { $0.stringValue == tr(.keyDashboardMenuPageStatusLinks) }
@@ -5365,8 +5370,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
         for visible in [false, true, false, true, false, true] {
             controller.updateStatusVisibility(visible, animated: false)
-            XCTAssertEqual(separators[0].isHidden, !visible)
-            _ = layout(at: 516)
+            XCTAssertFalse(separators[0].isHidden)
+            XCTAssertEqual(editor.isEditingEnabled, visible)
+            XCTAssertEqual(editor.resetButtonForTesting.isEnabled, visible)
+            XCTAssertEqual(layout(at: 516).cardHeight, restored.cardHeight, accuracy: 0.5)
         }
         XCTAssertEqual(editor.currentHeight, editor.layoutHeight, accuracy: 0.5)
         XCTAssertEqual(
@@ -5376,7 +5383,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
     }
 
-    func testMenuPageDefersStatusLinksEditorUntilShown() {
+    func testMenuPageCreatesOneStatusLinksEditorEvenWhenDisabled() {
         let suiteName = "DashboardPreferencePagesTests.StatusLinksLazy.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
@@ -5400,7 +5407,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             },
             onBalanceDisplayThresholdChanged: { _ in }
         ))
-        XCTAssertEqual(editorCreationCount, 0)
+        XCTAssertEqual(editorCreationCount, 1)
 
         controller.updateStatusVisibility(true, animated: false)
         XCTAssertEqual(editorCreationCount, 1)
@@ -5583,7 +5590,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let previewSection = try XCTUnwrap(SettingsSectionView.enclosing(overflowRow))
         let previewCard = previewSection.cardView
         let separators = previewSection.separators
-        XCTAssertEqual(separators.count, 4)
+        XCTAssertEqual(separators.count, 2)
         let previewRows = previewSection.contentViews
         let iconDisplayModeControl = try XCTUnwrap(
             descendant(withIdentifier: AppPreferences.menuBarIconDisplayModeKey, in: page)
@@ -5593,18 +5600,18 @@ final class DashboardPreferencePagesTests: XCTestCase {
             descendant(withIdentifier: AppPreferences.menuBarIconDisplayDelayKey, in: page)
         )
         let iconDisplayDelayRow = try XCTUnwrap(SettingsRowView.enclosing(iconDisplayDelayControl))
-        XCTAssertEqual(previewRows.count, 5)
-        XCTAssertTrue(previewRows[1] === iconDisplayModeRow)
-        XCTAssertTrue(previewRows[2] === iconDisplayDelayRow)
-        XCTAssertTrue(previewRows[3] === overflowRow)
-        XCTAssertTrue(previewRows[4] === runtimeRow)
-        XCTAssertTrue(iconDisplayDelayRow.isHidden)
+        XCTAssertEqual(previewRows.count, 3)
+        XCTAssertFalse(SettingsSectionView.enclosing(iconDisplayModeRow) === previewSection)
+        XCTAssertTrue(SettingsSectionView.enclosing(iconDisplayModeRow) === SettingsSectionView.enclosing(iconDisplayDelayRow))
+        XCTAssertTrue(previewRows[1] === overflowRow)
+        XCTAssertTrue(previewRows[2] === runtimeRow)
+        XCTAssertFalse(iconDisplayDelayRow.isHidden)
 
         let cases: [(StatusItemVisibility, Bool, Bool, [Bool])] = [
-            (.unknown, false, false, [false, true, true, true]),
-            (.hiddenByMenuBarSpace, true, false, [false, false, true, true]),
-            (.hiddenByRuntimePolicy, false, true, [false, false, true, true]),
-            (.hiddenByMenuBarSpaceAndRuntimePolicy, true, true, [false, false, true, false])
+            (.unknown, false, false, [true, true]),
+            (.hiddenByMenuBarSpace, true, false, [false, true]),
+            (.hiddenByRuntimePolicy, false, true, [false, true]),
+            (.hiddenByMenuBarSpaceAndRuntimePolicy, true, true, [false, false])
         ]
         var collapsedCardHeight: CGFloat = 0
         var expandedCardHeight: CGFloat = 0
@@ -5951,9 +5958,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
         window.layoutIfNeeded()
         XCTAssertTrue(warningRow.isHidden)
-        // Overflow is gone, but 菜单栏显示 remains directly under 当前布局,
-        // so the first separator still divides two visible preview rows.
-        XCTAssertFalse(separator.isHidden)
+        XCTAssertTrue(separator.isHidden, "Only the preview row remains in this card")
 
         controller.refresh(
             snapshot: snapshot,
@@ -6029,8 +6034,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
             XCTAssertEqual(Set(sectionIndices).count, sectionIndices.count)
             let quotaRowTitles = [
                 tr(.keyDashboardMenuBarPageBalanceAmount, language: language),
-                tr(.keyDashboardMenuBarPageResetCountdown, language: language),
                 tr(.keyDashboardMenuBarPageQuotaDisplayPriority, language: language),
+                tr(.keyDashboardMenuBarPageResetCountdown, language: language),
                 tr(.keyDashboardMenuBarPageQuotaResetDisplayMode, language: language)
             ]
             let quotaRowIndices = quotaRowTitles.compactMap { labelStrings.firstIndex(of: $0) }
@@ -6155,9 +6160,11 @@ final class DashboardPreferencePagesTests: XCTestCase {
         animationSwitch.state = .off
         relay.toggle(animationSwitch)
         XCTAssertFalse(preferences.animateCodexActivity)
-        XCTAssertTrue(animationModeRow.isHidden)
+        XCTAssertFalse(animationModeRow.isHidden)
         XCTAssertFalse(animationModeControl.isEnabled)
-        XCTAssertTrue(animationFrameRateRow.isHidden)
+        XCTAssertFalse(animationFrameRateRow.isHidden)
+        XCTAssertEqual(animationModeRow.detailLabel.textColor, .disabledControlTextColor)
+        XCTAssertEqual(animationFrameRateRow.titleLabel.textColor, .disabledControlTextColor)
 
         animationSwitch.state = .on
         relay.toggle(animationSwitch)
@@ -6269,44 +6276,35 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let autoSwitchRow = try XCTUnwrap(SettingsRowView.enclosing(autoSwitch))
         let quotaWindowRow = try XCTUnwrap(SettingsRowView.enclosing(quotaWindowPopup))
         let lunaReserveResetTimeRow = try XCTUnwrap(SettingsRowView.enclosing(lunaReserveResetTimePopup))
-        let quotaValueRow = try XCTUnwrap(
+        let quotaValuePopup = try XCTUnwrap(
             descendants(of: page).compactMap { $0 as? NSPopUpButton }
                 .first { $0.identifier?.rawValue == DashboardMenuBarPage.quotaValueModeIdentifier }
-                .flatMap(SettingsRowView.enclosing)
         )
+        let quotaValueRow = try XCTUnwrap(SettingsRowView.enclosing(quotaValuePopup))
         let quotaResetRow = try XCTUnwrap(SettingsRowView.enclosing(quotaResetPopup))
         let quotaSection = try XCTUnwrap(SettingsSectionView.enclosing(amountRow))
-        let card = quotaSection.cardView
-        let rowViews = quotaSection.contentViews
-        XCTAssertTrue(
-            zip(
-                rowViews,
-                [amountRow, resetRow, quotaWindowRow, quotaValueRow, quotaResetRow, autoSwitchRow, lunaReserveResetTimeRow]
-            )
-                .allSatisfy { $0.0 === $0.1 }
-        )
-        XCTAssertEqual(rowViews.count, 7)
-        let separators = quotaSection.separators
-        XCTAssertEqual(separators.count, 6)
+        let resetSection = try XCTUnwrap(SettingsSectionView.enclosing(resetRow))
+        XCTAssertEqual(quotaSection.contentViews, [amountRow, quotaValueRow, quotaWindowRow])
+        XCTAssertEqual(resetSection.contentViews, [resetRow, quotaResetRow, autoSwitchRow, lunaReserveResetTimeRow])
+        let card = resetSection.cardView
 
         func assertCardLayout() {
             window.layoutIfNeeded()
             SettingsRowView.flushPendingWrappingHeightCommits(in: page)
             window.layoutIfNeeded()
             assertNativeSectionCardLayout(quotaSection)
+            assertNativeSectionCardLayout(resetSection)
         }
 
-        XCTAssertTrue([amountRow, resetRow, quotaWindowRow, quotaValueRow, autoSwitchRow, quotaResetRow].allSatisfy { !$0.isHidden })
-        XCTAssertTrue(lunaReserveResetTimeRow.isHidden)
-        XCTAssertTrue(separators.dropLast().allSatisfy { !$0.isHidden })
-        XCTAssertTrue(separators.last?.isHidden == true)
+        XCTAssertTrue((quotaSection.contentViews + resetSection.contentViews).allSatisfy { !$0.isHidden })
+        XCTAssertFalse(lunaReserveResetTimePopup.isEnabled)
         assertCardLayout()
         let expandedCardHeight = card.frame.height
 
         autoSwitch.state = .on
         relay.toggle(autoSwitch)
         XCTAssertTrue(preferences.menuBarAutoSwitchLunaReserve)
-        XCTAssertFalse(lunaReserveResetTimeRow.isHidden)
+        XCTAssertTrue(lunaReserveResetTimePopup.isEnabled)
         XCTAssertEqual(
             lunaReserveResetTimePopup.itemTitles,
             [
@@ -6322,55 +6320,36 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(preferences.menuBarLunaReserveResetTimeMode, .originalQuota)
         autoSwitch.state = .off
         relay.toggle(autoSwitch)
-        XCTAssertTrue(lunaReserveResetTimeRow.isHidden)
+        XCTAssertFalse(lunaReserveResetTimePopup.isEnabled)
 
         amountSwitch.state = .off
         relay.toggle(amountSwitch)
-        XCTAssertFalse(amountRow.isHidden)
-        XCTAssertTrue(resetRow.isHidden)
-        XCTAssertTrue(quotaValueRow.isHidden)
-        XCTAssertTrue(quotaWindowRow.isHidden)
-        XCTAssertTrue(autoSwitchRow.isHidden)
-        XCTAssertTrue(lunaReserveResetTimeRow.isHidden)
-        XCTAssertTrue(quotaResetRow.isHidden)
-        XCTAssertTrue(separators.allSatisfy(\.isHidden))
+        XCTAssertFalse(resetSwitch.isEnabled)
+        XCTAssertTrue(quotaValuePopup.isEnabled)
+        XCTAssertTrue(quotaWindowPopup.isEnabled)
+        XCTAssertFalse(autoSwitch.isEnabled)
+        XCTAssertFalse(quotaResetPopup.isEnabled)
+        XCTAssertTrue(resetSection.separators.allSatisfy { !$0.isHidden })
         assertCardLayout()
-        XCTAssertLessThan(card.frame.height + 8, expandedCardHeight)
+        XCTAssertEqual(card.frame.height, expandedCardHeight, accuracy: 0.5)
 
         amountSwitch.state = .on
         relay.toggle(amountSwitch)
-        XCTAssertFalse(resetRow.isHidden)
-        XCTAssertFalse(quotaValueRow.isHidden)
-        XCTAssertFalse(quotaWindowRow.isHidden)
-        XCTAssertFalse(autoSwitchRow.isHidden)
-        XCTAssertTrue(lunaReserveResetTimeRow.isHidden)
-        XCTAssertFalse(quotaResetRow.isHidden)
-        XCTAssertTrue(separators.dropLast().allSatisfy { !$0.isHidden })
-        XCTAssertTrue(separators.last?.isHidden == true)
+        XCTAssertTrue(resetSwitch.isEnabled)
+        XCTAssertTrue(autoSwitch.isEnabled)
+        XCTAssertTrue(quotaResetPopup.isEnabled)
 
         resetSwitch.state = .off
         relay.toggle(resetSwitch)
-        XCTAssertFalse(amountRow.isHidden)
-        XCTAssertFalse(resetRow.isHidden)
-        XCTAssertFalse(quotaValueRow.isHidden)
-        XCTAssertTrue(quotaWindowRow.isHidden)
-        XCTAssertFalse(autoSwitchRow.isHidden)
-        XCTAssertTrue(lunaReserveResetTimeRow.isHidden)
-        XCTAssertTrue(quotaResetRow.isHidden)
-        XCTAssertFalse(separators[0].isHidden)
-        XCTAssertFalse(separators[1].isHidden)
-        XCTAssertTrue(separators[2].isHidden)
-        XCTAssertFalse(separators[3].isHidden)
-        XCTAssertTrue(separators[4].isHidden)
-        XCTAssertTrue(separators[5].isHidden)
+        XCTAssertTrue(quotaWindowPopup.isEnabled)
+        XCTAssertFalse(quotaResetPopup.isEnabled)
+        XCTAssertEqual(quotaResetRow.titleLabel.textColor, .disabledControlTextColor)
         assertCardLayout()
 
         resetSwitch.state = .on
         relay.toggle(resetSwitch)
-        XCTAssertTrue([amountRow, resetRow, quotaWindowRow, quotaValueRow, autoSwitchRow, quotaResetRow].allSatisfy { !$0.isHidden })
-        XCTAssertTrue(lunaReserveResetTimeRow.isHidden)
-        XCTAssertTrue(separators.dropLast().allSatisfy { !$0.isHidden })
-        XCTAssertTrue(separators.last?.isHidden == true)
+        XCTAssertTrue(quotaResetPopup.isEnabled)
+        XCTAssertFalse(lunaReserveResetTimePopup.isEnabled)
         assertCardLayout()
         XCTAssertEqual(card.frame.height, expandedCardHeight, accuracy: 0.5)
     }
@@ -6505,7 +6484,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             )
             let quotaSection = try XCTUnwrap(SettingsSectionView.enclosing(selectorRow))
             let quotaRows = quotaSection.contentViews
-            XCTAssertEqual(quotaRows.count, 5)
+            XCTAssertEqual(quotaRows.count, 3)
             XCTAssertTrue(
                 zip(
                     quotaRows,
@@ -6518,26 +6497,14 @@ final class DashboardPreferencePagesTests: XCTestCase {
                         ),
                         try XCTUnwrap(
                             descendants(of: page)
-                                .compactMap { $0 as? NSSwitch }
-                                .first { $0.identifier?.rawValue == "showMenuBarReset" }
-                                .flatMap(SettingsRowView.enclosing)
-                        ),
-                        selectorRow,
-                        try XCTUnwrap(
-                            descendants(of: page)
                                 .compactMap { $0 as? NSPopUpButton }
                                 .first { $0.identifier?.rawValue == DashboardMenuBarPage.quotaValueModeIdentifier }
                                 .flatMap(SettingsRowView.enclosing)
                         ),
-                        try XCTUnwrap(
-                            descendants(of: page)
-                                .compactMap { $0 as? NSPopUpButton }
-                                .first { $0.identifier?.rawValue == DashboardMenuBarPage.quotaResetDisplayModeIdentifier }
-                                .flatMap(SettingsRowView.enclosing)
-                        )
+                        selectorRow
                     ]
                 ).allSatisfy { $0.0 === $0.1 },
-                "quota rows follow usage, reset countdown, priority, percentage, reset display without Reserve controls"
+                "the first quota card orders usage, percentage, then priority"
             )
             XCTAssertTrue(
                 descendants(of: selectorRow)
@@ -6616,7 +6583,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         }
     }
 
-    func testQuotaValueModeSelectorRefreshesPreviewAndHidesWhenAmountIsOff() throws {
+    func testQuotaValueModeSelectorRefreshesPreviewAndRemainsEnabledWhenAmountIsOff() throws {
         let suite = "DashboardPreferencePagesTests.QuotaValueMode.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -6652,7 +6619,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
         preferences.showMenuBarAmount = false
         preferences.menuBarQuotaValueMode = .remaining
         controller.refresh(snapshot: snapshot, preferences: preferences, menuBarSnapshot: { $0 }, iconImage: nil)
-        XCTAssertTrue(row.isHidden)
+        XCTAssertFalse(row.isHidden)
+        XCTAssertTrue(popup.isEnabled)
         XCTAssertEqual(popup.selectedItem?.representedObject as? String, "remaining")
     }
 
@@ -10082,6 +10050,33 @@ final class DashboardPreferencePagesTests: XCTestCase {
             XCTAssertNotNil(SettingsRowView.enclosing(reloadButton))
             XCTAssertNotNil(SettingsSectionView.enclosing(reloadButton))
         }
+    }
+
+    func testAllowlistRevealMountsAdvancedAfterSearchAndHighlightsOnlyTheToggle() throws {
+        let delegate = AppDelegate(repository: CCSwitchRepository(
+            databaseURL: URL(fileURLWithPath: "/nonexistent/issue-714-reveal.db")
+        ))
+        let composition = delegate.dashboardCompositionForTesting
+        defer { composition.teardownForTesting() }
+        let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .general))
+        composition.applySearchQueryForTesting(tr(.keyClaudeQuotaCalibration))
+
+        composition.revealClaudeEgressGuard()
+        XCTAssertEqual(composition.section, .advanced)
+        XCTAssertEqual(composition.searchQueryForTesting, "")
+        let page = composition.currentHostedPageContentForTesting()
+        let toggle = try XCTUnwrap(descendant(withIdentifier: AppPreferences.claudeEgressGuardEnabledKey, in: page))
+        let row = try XCTUnwrap(SettingsRowView.enclosing(toggle))
+        let clip = try XCTUnwrap(row.enclosingScrollView?.contentView)
+        let key = DashboardSettingsComponents.revealHighlightAnimationKey
+        XCTAssertNotNil(row.layer?.animation(forKey: key))
+        XCTAssertNil(SettingsSectionView.enclosing(row)?.layer?.animation(forKey: key))
+        XCTAssertTrue(clip.bounds.intersects(row.convert(row.bounds, to: clip)))
+
+        row.layer?.removeAnimation(forKey: key)
+        composition.revealClaudeEgressGuard()
+        window.layoutIfNeeded()
+        XCTAssertNotNil(row.layer?.animation(forKey: key), "Repeat navigation should flash the cached row again")
     }
 
     private func trailingMaxX(of view: NSView, in space: NSView) -> CGFloat {

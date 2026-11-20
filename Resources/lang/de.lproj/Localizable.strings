@@ -885,3 +885,7 @@
 "dashboard.advanced.page.egress_guard_column_available" = "Claude verfügbar";
 "dashboard.advanced.page.egress_guard_available_yes" = "In einer von Anthropic unterstützten Region";
 "dashboard.advanced.page.egress_guard_available_no" = "Nicht in einer von Anthropic unterstützten Region";
+"dashboard.general.data_sources" = "Datenquellen";
+"dashboard.menu.bar.position_adjustments" = "Position feinjustieren";
+"dashboard.menu.bar.required_display" = "Mindestens das Symbol oder der Wert muss sichtbar sein.";
+"dashboard.advanced.official_validity_dependency" = "Gilt nur, wenn offizielle Kontingentabfragen aktiviert sind.";

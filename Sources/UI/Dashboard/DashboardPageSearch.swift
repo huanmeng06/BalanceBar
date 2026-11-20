@@ -507,7 +507,7 @@ enum DashboardSettingsSearchCatalog {
         switch section {
         case .general:
             return [
-                .keyDashboardGeneralAndRefreshPagesSystem,
+                .keyDashboardGeneralDataSources,
                 .keyDashboardGeneralAndRefreshPagesCcSwitch,
                 .keyDashboardGeneralAndRefreshPagesLaunchAtLogin,
                 .keyDashboardGeneralAndRefreshPagesSilentLaunch,
@@ -587,6 +587,9 @@ enum DashboardSettingsSearchCatalog {
                 .keyDashboardMenuBarPageRightClick,
                 .keyDashboardMenuBarPageReverseMouseButtons,
                 .keyDashboardMenuBarPageLayout,
+                .keyDashboardMenuBarPositionAdjustments,
+                .keyDashboardMenuBarRequiredDisplay,
+                .keyCommonRestoreDefaults,
                 .keyDashboardMenuBarPageMenuBarFontSize,
                 .keyDashboardMenuBarPageMenuBarIconSize,
                 .keyDashboardMenuBarPageIconOffset,
@@ -622,6 +625,8 @@ enum DashboardSettingsSearchCatalog {
             return [
                 .keyDashboardAdvancedPageSourceValidity,
                 .keyDashboardAdvancedPageSourceValidityOauth,
+                .keyDashboardAdvancedOfficialValidityDependency,
+                .keyClaudeQuotaCalibrationOffLink,
                 .keyDashboardAdvancedPageSourceValidityMod,
                 .keyDashboardAdvancedPageEgressGuard,
                 .keyDashboardAdvancedPageEgressGuardEnabled,
@@ -645,6 +650,8 @@ enum DashboardSettingsSearchCatalog {
         switch section {
         case .menuBar:
             return [
+                DashboardMenuBarPage.requiredDisplayDetail(.keyDashboardMenuBarPageShowsAPercentageOrApiBalance),
+                DashboardMenuBarPage.requiredDisplayDetail(.keyDashboardMenuBarPageShowsTheCurrentTaskStatus),
                 tr(.keyDashboardMenuBarPageQuotaDisplayPriorityDescription),
                 tr(.keyDashboardMenuBarPageFiveHourQuota),
                 tr(.keyDashboardMenuBarPageSevenDayQuota)
@@ -656,6 +663,7 @@ enum DashboardSettingsSearchCatalog {
             ]
         case .general, .menu, .advanced:
             var texts = DashboardSettingsFormattedCopy.sharedVisibleTexts(for: section)
+            if section == .advanced { texts.append(DashboardAdvancedPage.officialValidityDetail) }
             if section == .general {
                 let cardStates: [RealtimeBoostText] = [
                     .statusDetecting, .cardNotInstalledTitle, .cardOtherScopeTitle, .statusEnabledShort,

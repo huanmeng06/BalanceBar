@@ -122,6 +122,7 @@ final class StatusLinksEditorHostingView: NSView,
 
     private(set) var links: [StatusLink]
     private(set) var isTornDown = false
+    private(set) var isEditingEnabled = true
 
     let tableView: NSTableView
     let tableContainer: NSBox
@@ -501,6 +502,23 @@ final class StatusLinksEditorHostingView: NSView,
         }
     }
 
+    func setEditingEnabled(_ enabled: Bool) {
+        guard isEditingEnabled != enabled else { return }
+        isEditingEnabled = enabled
+        if !enabled, let editor = window?.firstResponder as? NSTextView,
+           let field = editor.delegate as? NSTextField, field.isDescendant(of: tableView) {
+            window?.endEditing(for: field)
+        }
+        tableView.isEnabled = enabled
+        tableView.reloadData()
+        resetButton.isEnabled = enabled
+        actionsControl.isEnabled = enabled
+        moveControl.isEnabled = enabled
+        moreControl.isEnabled = enabled
+        alphaValue = enabled ? 1 : 0.55
+        updateActionControlState()
+    }
+
     func teardown() {
         guard !isTornDown else { return }
         isTornDown = true
@@ -580,8 +598,9 @@ final class StatusLinksEditorHostingView: NSView,
                 : "\(tr(.keyStatusLinksEditorUrl)) \(row + 1)"
         )
         field.delegate = self
-        field.isEditable = true
-        field.isSelectable = true
+        field.isEnabled = isEditingEnabled
+        field.isEditable = isEditingEnabled
+        field.isSelectable = isEditingEnabled
         field.isContinuous = true
         field.isBordered = false
         field.drawsBackground = false
@@ -640,6 +659,7 @@ final class StatusLinksEditorHostingView: NSView,
     }
 
     private func performAction(segment: Int) {
+        guard isEditingEnabled else { return }
         switch segment {
         case 0:
             finishEditing()
@@ -669,6 +689,7 @@ final class StatusLinksEditorHostingView: NSView,
     }
 
     private func performMoveAction(segment: Int) {
+        guard isEditingEnabled else { return }
         guard segment == 0 || segment == 1 else {
             updateActionControlState()
             return
@@ -1333,6 +1354,7 @@ final class StatusLinksEditorHostingView: NSView,
     }
 
     private func commit(_ field: NSTextField) {
+        guard isEditingEnabled else { return }
         let row = tableView.row(for: field)
         guard links.indices.contains(row),
               let fieldIdentifier = field.identifier?.rawValue else { return }

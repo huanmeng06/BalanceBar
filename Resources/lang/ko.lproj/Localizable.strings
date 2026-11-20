@@ -885,3 +885,7 @@
 "dashboard.advanced.page.egress_guard_column_available" = "Claude 사용 가능";
 "dashboard.advanced.page.egress_guard_available_yes" = "Anthropic 제공 지역 안";
 "dashboard.advanced.page.egress_guard_available_no" = "Anthropic 제공 지역 밖";
+"dashboard.general.data_sources" = "데이터 소스";
+"dashboard.menu.bar.position_adjustments" = "위치 미세 조정";
+"dashboard.menu.bar.required_display" = "아이콘과 수치 중 하나 이상을 표시해야 합니다.";
+"dashboard.advanced.official_validity_dependency" = "공식 사용량 요청이 켜져 있을 때만 적용됩니다.";

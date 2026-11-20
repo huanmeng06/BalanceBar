@@ -885,3 +885,7 @@
 "dashboard.advanced.page.egress_guard_column_available" = "Claude disponible";
 "dashboard.advanced.page.egress_guard_available_yes" = "En una región donde Anthropic ofrece Claude";
 "dashboard.advanced.page.egress_guard_available_no" = "Fuera de las regiones donde Anthropic ofrece Claude";
+"dashboard.general.data_sources" = "Fuentes de datos";
+"dashboard.menu.bar.position_adjustments" = "Ajuste fino de posición";
+"dashboard.menu.bar.required_display" = "Debe mostrarse al menos el icono o el valor.";
+"dashboard.advanced.official_validity_dependency" = "Solo se aplica cuando las consultas de cuota oficiales están activadas.";

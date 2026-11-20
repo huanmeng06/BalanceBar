@@ -2054,6 +2054,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
 
     private func handleDashboardOffsetReset(identifier: String) {
         switch identifier {
+        case DashboardMenuBarPage.positionResetIdentifier:
+            preferences.menuBarIconOffsetX = 0
+            preferences.menuBarIconOffsetY = 0
+            preferences.menuBarAmountOffsetX = 0
+            preferences.menuBarAmountOffsetY = 0
+            handleDashboardOffsetValueEnded(identifier: AppPreferences.menuBarStatusItemWidthAdjustmentKey, value: 0)
         case DashboardMenuBarPage.iconOffsetsResetIdentifier:
             preferences.menuBarIconOffsetX = 0
             preferences.menuBarIconOffsetY = 0
@@ -2068,6 +2074,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             category: "configuration"
         )
         updateStatusItem(for: snapshot)
+        refreshDashboardMenuBarPage()
     }
 
     @objc private func dashboardMenuBarPaddingChanged(_ sender: NSSlider) {
@@ -2184,7 +2191,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     /// The Claude egress guard lives on the Advanced page (Issue #686).
     private func openEgressGuardSettings() {
         openDashboard()
-        dashboardComposition.showSection(.advanced)
+        dashboardComposition.revealClaudeEgressGuard()
     }
 
     private func clampDashboardScrollViewBounds() {

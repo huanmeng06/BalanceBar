@@ -885,3 +885,7 @@
 "dashboard.advanced.page.egress_guard_column_available" = "Claude 可用";
 "dashboard.advanced.page.egress_guard_available_yes" = "在 Anthropic 可用地區內";
 "dashboard.advanced.page.egress_guard_available_no" = "不在 Anthropic 可用地區內";
+"dashboard.general.data_sources" = "資料來源";
+"dashboard.menu.bar.position_adjustments" = "位置微調";
+"dashboard.menu.bar.required_display" = "圖示和數值至少顯示一項。";
+"dashboard.advanced.official_validity_dependency" = "僅在啟用官方用量請求時生效。";

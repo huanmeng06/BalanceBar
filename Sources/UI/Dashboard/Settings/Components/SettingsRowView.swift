@@ -318,6 +318,8 @@ final class SettingsRowView: NSView {
     private var labelsNaturalHeightConstraint: NSLayoutConstraint?
     private var labelsNaturalHeightFloorConstraint: NSLayoutConstraint?
     private var accessoryVisibilityObservation: NSKeyValueObservation?
+    private var dependencyEnabled = true
+    private var dependencyControlStates: [(NSControl, Bool)] = []
 
     init(
         title: String,
@@ -392,6 +394,29 @@ final class SettingsRowView: NSView {
             current = candidate.superview
         }
         return nil
+    }
+
+    func setDependencyEnabled(_ enabled: Bool) {
+        guard dependencyEnabled != enabled else { return }
+        dependencyEnabled = enabled
+        titleLabel.textColor = enabled ? .labelColor : .disabledControlTextColor
+        detailLabel.textColor = enabled ? .secondaryLabelColor : .disabledControlTextColor
+        titleAccessory?.alphaValue = enabled ? 1 : 0.45
+        if enabled {
+            dependencyControlStates.forEach { $0.0.isEnabled = $0.1 }
+            dependencyControlStates.removeAll()
+        } else if let accessoryView {
+            func disableControls(in view: NSView) {
+                if let control = view as? NSControl,
+                   (control as? NSTextField)?.isEditable != false {
+                    dependencyControlStates.append((control, control.isEnabled))
+                    control.isEnabled = false
+                }
+                view.subviews.forEach(disableControls)
+            }
+            disableControls(in: accessoryView)
+        }
+        DashboardKeyViewLoop.invalidate(window)
     }
 
     override func layout() {

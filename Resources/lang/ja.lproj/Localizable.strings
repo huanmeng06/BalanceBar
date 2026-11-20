@@ -885,3 +885,7 @@
 "dashboard.advanced.page.egress_guard_column_available" = "Claude 利用可";
 "dashboard.advanced.page.egress_guard_available_yes" = "Anthropic の提供地域内";
 "dashboard.advanced.page.egress_guard_available_no" = "Anthropic の提供地域外";
+"dashboard.general.data_sources" = "データソース";
+"dashboard.menu.bar.position_adjustments" = "位置の微調整";
+"dashboard.menu.bar.required_display" = "アイコンと数値のどちらか一方は表示する必要があります。";
+"dashboard.advanced.official_validity_dependency" = "公式使用量の取得が有効な場合にのみ適用されます。";

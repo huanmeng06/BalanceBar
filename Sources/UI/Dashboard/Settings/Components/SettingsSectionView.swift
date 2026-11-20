@@ -63,12 +63,13 @@ final class SettingsSectionView: NSView {
         separatorIndices: Set<Int>? = nil,
         footnote: String? = nil,
         footnoteDetail: String? = nil,
-        footerView: NSView? = nil
+        footerView: NSView? = nil,
+        footnoteLabel: NSTextField? = nil
     ) {
         headingLabel = NSTextField(labelWithString: title)
         cardView = SettingsSectionCardView()
-        footnoteLabel = footnote.map { NSTextField(wrappingLabelWithString: $0) }
-        let detailLabel = footnote == nil ? nil : footnoteDetail.map { _ in NSTextField(wrappingLabelWithString: "") }
+        self.footnoteLabel = footnoteLabel ?? footnote.map { NSTextField(wrappingLabelWithString: $0) }
+        let detailLabel = self.footnoteLabel == nil ? nil : footnoteDetail.map { _ in NSTextField(wrappingLabelWithString: "") }
         footnoteDetailLabel = detailLabel
         footnoteDetailClip = detailLabel.map { _ in NSView() }
         self.footerView = footerView

@@ -58,9 +58,13 @@ final class DashboardMenuBarPage {
     static let runtimeWarningIdentifier = runtimeOnlyWarningIdentifier
     static let runtimeWarningRowIdentifier = runtimeOnlyWarningRowIdentifier
     static let runtimeWarningSettingsButtonIdentifier = runtimeOnlyWarningSettingsButtonIdentifier
-    static let iconDisplayModeRevealHighlightAnimationKey =
-        "menuBarIconDisplayModeRevealHighlight"
-    static let iconDisplayModeRevealHighlightDuration: TimeInterval = 0.72
+    static let iconDisplayModeRevealHighlightAnimationKey = DashboardSettingsComponents.revealHighlightAnimationKey
+    static let iconDisplayModeRevealHighlightDuration = DashboardSettingsComponents.revealHighlightDuration
+    static let positionResetIdentifier = "menuBarPositionReset"
+
+    static func requiredDisplayDetail(_ key: LocalizationKey) -> String {
+        tr(key) + "\n" + tr(.keyDashboardMenuBarRequiredDisplay)
+    }
     static let systemMenuBarSettingsURL = URL(
         string: "x-apple.systempreferences:com.apple.ControlCenter-Settings.extension"
     )!
@@ -407,7 +411,6 @@ final class DashboardMenuBarPage {
         guard isBuilt else { return }
         iconTaskSection.updateVisibility(
             showTaskStatusIcon: showTaskStatusIcon,
-            displayMode: displayMode,
             animationEnabled: animationEnabled,
             animationMode: animationMode
         )
@@ -419,9 +422,6 @@ final class DashboardMenuBarPage {
         iconTaskSection.relaunchApplication = relaunchApplication
         iconTaskSection.restoreSnapshotProvider = restoreSnapshotProvider
         iconTaskSection.persistRestoreToken = persistRestoreToken
-        iconTaskSection.onDelayVisibilityChanged = { [weak self] showDelay in
-            self?.previewSection.updateDelayVisibility(showDelay: showDelay)
-        }
         previewSection.animationFrameRate = input.preferences.menuBarAnimationFrameRate
 
         let previewSectionView = previewSection.make(input: input)
@@ -445,13 +445,12 @@ final class DashboardMenuBarPage {
             animationSpriteImage: input.animationSpriteImage,
             animationFallbackActive: input.animationFallbackActive
         )
-        return DashboardSettingsComponents.makeSettingsPageContent([
+        return DashboardSettingsComponents.makeSettingsPageContent(groups: [
             previewSectionView,
             quotaAndResetSection,
             iconAndTaskStatusSection,
-            behaviorSectionView,
-            layoutSectionView
-        ])
+            [behaviorSectionView]
+        ] + layoutSectionView.map { [$0] })
     }
 
     func refresh(

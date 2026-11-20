@@ -1,4 +1,5 @@
 import AppKit
+import QuartzCore
 
 protocol SettingsRowAccessoryLayout: AnyObject {
     func updateAvailableRowWidth(_ width: CGFloat)
@@ -303,7 +304,7 @@ enum DashboardSettingsComponents {
     /// Settings sections stack only. Page-level `NSScrollView` chrome, the
     /// 52pt viewport inset, and the 34pt document width contract belong to
     /// `DashboardScrollablePageViewController`.
-    static func makeSettingsPageContent(_ sections: [NSView]) -> NSView {
+    static func makeSettingsPageContent(_ sections: [NSView]) -> NSStackView {
         let stack = NSStackView()
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -331,6 +332,35 @@ enum DashboardSettingsComponents {
         }
         return stack
     }
+
+    static func makeSettingsPageContent(groups: [[NSView]]) -> NSView {
+        let stack = makeSettingsPageContent(groups.flatMap { $0 })
+        for group in groups {
+            for card in group.dropLast() { stack.setCustomSpacing(12, after: card) }
+        }
+        return stack
+    }
+
+    static func reveal(_ row: NSView) {
+        row.window?.layoutIfNeeded()
+        guard let scrollView = row.enclosingScrollView else { return }
+        let margin = max(0, (scrollView.contentView.bounds.height - row.bounds.height) / 2)
+        row.scrollToVisible(row.bounds.insetBy(dx: 0, dy: -margin))
+
+        row.wantsLayer = true
+        guard let layer = row.layer else { return }
+        let base = layer.backgroundColor ?? NSColor.clear.cgColor
+        let animation = CAKeyframeAnimation(keyPath: "backgroundColor")
+        animation.values = [base, NSColor.controlAccentColor.withAlphaComponent(0.24).cgColor, base]
+        animation.keyTimes = [0, 0.25, 1]
+        animation.duration = revealHighlightDuration
+        animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        layer.backgroundColor = base
+        layer.add(animation, forKey: revealHighlightAnimationKey)
+    }
+
+    static let revealHighlightAnimationKey = "settingsRowRevealHighlight"
+    static let revealHighlightDuration: TimeInterval = 0.72
 
     /// Compatibility facade for tests that still assemble a complete page view
     /// without a page controller. Production pages wrap
