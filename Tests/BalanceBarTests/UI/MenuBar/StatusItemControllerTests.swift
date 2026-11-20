@@ -3715,14 +3715,21 @@ extension StatusItemControllerTests {
         let controller = makeController()
         defer { controller.teardown() }
         let date = Date(timeIntervalSince1970: 1_700_000_000)
-        let balance = Snapshot.balance("Fixture API", 3.34, "USD", nil, date)
+        let balance = Snapshot.balance("Fixture API", 42, "USD", nil, date, progressPercentage: 100)
         let reason = "Fixture failure (HTTP 403)"
         let error = Snapshot.providerError(balance.provider, reason: reason, cachedBalance: balance)
         controller.start(snapshot: balance, refreshDate: date, menuInput: makeMenuInput(), settings: makeSettings())
         let fresh = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
         let freshHeight = fresh.frame.height
+        let freshAmount = try XCTUnwrap(fresh.subviews.compactMap { $0 as? OverviewNumericTextView }.first)
+        XCTAssertEqual(freshAmount.textColor, .labelColor)
+        let freshSubtitle = try XCTUnwrap(balanceSubtitle(in: fresh))
+        let freshBar = try XCTUnwrap(fresh.subviews.compactMap { $0 as? QuotaProgressView }.first)
+        XCTAssertEqual(freshSubtitle.view.frame.minY - freshBar.frame.maxY, 9, accuracy: 0.5)
         controller.start(snapshot: error, refreshDate: date, menuInput: makeMenuInput(), settings: makeSettings())
         let cached = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        let cachedAmount = try XCTUnwrap(cached.subviews.compactMap { $0 as? OverviewNumericTextView }.first)
+        XCTAssertEqual(cachedAmount.textColor, .secondaryLabelColor)
         // Issue #710: the normal balance card plus a full-width red reason row.
         XCTAssertTrue(cached is MenuHoverLinkHostView, "a kept balance keeps its normal balance layout")
         XCTAssertGreaterThan(cached.frame.height, freshHeight)
@@ -3738,9 +3745,19 @@ extension StatusItemControllerTests {
         XCTAssertEqual(reasonRow.stringValue.replacingOccurrences(of: "\u{200B}", with: ""), reason)
         XCTAssertEqual(reasonRow.textColor, .systemRed)
         XCTAssertEqual(reasonRow.frame.width, OpenCodexCardLayout.contentWidth, accuracy: 0.5)
-        XCTAssertLessThanOrEqual(reasonRow.frame.maxY, subtitle.view.frame.minY + 0.5, "the reason sits below the subtitle")
+        let directGap = subtitle.view.frame.minY - reasonRow.frame.maxY
+        XCTAssertEqual(directGap, 9, accuracy: 0.5)
+        let directBar = try XCTUnwrap(cached.subviews.compactMap { $0 as? QuotaProgressView }.first)
+        XCTAssertEqual(directBar.percentage, 100)
+        XCTAssertEqual(reasonRow.frame.minY - directBar.frame.maxY, 9, accuracy: 0.5)
 
         XCTAssertFalse(cached.subviews.contains { $0 is FailureStateView || $0 is NSButton })
+
+        controller.update(snapshot: balance, refreshDate: date.addingTimeInterval(60), menuInput: makeMenuInput(), settings: makeSettings())
+        let recoveredDirect = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        let directAmount = try XCTUnwrap(recoveredDirect.subviews.compactMap { $0 as? OverviewNumericTextView }.first)
+        XCTAssertEqual(directAmount.textColor, .labelColor)
+        XCTAssertNil(staleReasonRow(in: recoveredDirect))
 
         let source = ProviderSummarySource(id: "api", name: balance.provider, isOfficial: false,
             query: nil, officialAccessToken: nil)
@@ -3756,6 +3773,8 @@ extension StatusItemControllerTests {
         let scroll = try XCTUnwrap(aggregated.statusMenuForTesting.items.first?.view as? NSScrollView)
         let wallet = try XCTUnwrap(scroll.documentView?.subviews.first?.subviews.first)
         XCTAssertTrue(wallet is MenuHoverLinkHostView, "cached wallet keeps its normal balance layout")
+        let walletAmount = try XCTUnwrap(wallet.subviews.compactMap { $0 as? OverviewNumericTextView }.first)
+        XCTAssertEqual(walletAmount.textColor, .secondaryLabelColor)
         XCTAssertFalse(wallet.subviews.contains { $0 is FailureStateView || $0 is NSButton })
         let walletTime = wallet.subviews.compactMap { $0 as? NSTextField }.first { $0.identifier?.rawValue == "overview.refreshTime" }
         XCTAssertEqual(walletTime?.textColor, .systemOrange)
@@ -3765,6 +3784,11 @@ extension StatusItemControllerTests {
         let walletReason = try XCTUnwrap(staleReasonRow(in: wallet))
         XCTAssertEqual(walletReason.stringValue.replacingOccurrences(of: "\u{200B}", with: ""), reason)
         XCTAssertEqual(walletReason.textColor, .systemRed)
+        let walletSubtitle = try XCTUnwrap(balanceSubtitle(in: wallet))
+        let walletBar = try XCTUnwrap(wallet.subviews.compactMap { $0 as? QuotaProgressView }.first)
+        XCTAssertEqual(walletBar.percentage, 100)
+        XCTAssertEqual(walletSubtitle.view.frame.minY - walletReason.frame.maxY, directGap, accuracy: 0.5)
+        XCTAssertEqual(walletReason.frame.minY - walletBar.frame.maxY, 9, accuracy: 0.5)
 
         var recovered = display
         recovered.status = .fresh
@@ -3774,8 +3798,14 @@ extension StatusItemControllerTests {
             showOpenChatGPTMenu: false, showOpenCCSwitchMenu: false, showStatusMenu: false,
             aggregatedProviders: [recovered]), settings: makeSettings())
         let recoveredCard = try XCTUnwrap(scroll.documentView?.subviews.first?.subviews.first)
+        let recoveredAmount = try XCTUnwrap(recoveredCard.subviews.compactMap { $0 as? OverviewNumericTextView }.first)
+        XCTAssertTrue(recoveredAmount === walletAmount, "a reused amount view updates even when the amount is unchanged")
+        XCTAssertEqual(recoveredAmount.textColor, .labelColor, "the balance amount returns to its normal color after refresh")
         XCTAssertNil(staleReasonRow(in: recoveredCard), "the reason row goes away after recovery")
-        XCTAssertEqual(try XCTUnwrap(balanceSubtitle(in: recoveredCard)).label.stringValue, tr(.keyBalanceRechargeNotRecorded))
+        let recoveredSubtitle = try XCTUnwrap(balanceSubtitle(in: recoveredCard))
+        XCTAssertEqual(recoveredSubtitle.label.stringValue, tr(.keyBalanceRechargeNotRecorded))
+        let recoveredBar = try XCTUnwrap(recoveredCard.subviews.compactMap { $0 as? QuotaProgressView }.first)
+        XCTAssertEqual(recoveredSubtitle.view.frame.minY - recoveredBar.frame.maxY, 9, accuracy: 0.5)
     }
 
     @MainActor
