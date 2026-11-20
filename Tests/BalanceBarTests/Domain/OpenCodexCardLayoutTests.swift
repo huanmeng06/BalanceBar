@@ -934,4 +934,26 @@ extension OpenCodexCardLayoutTests {
             XCTAssertEqual(official.progress, balance.progress)
         }
     }
+
+    func testStaleBalanceUsesTheSameSubtitleGapWithAndWithoutProgress() throws {
+        for belowAmount in [false, true] {
+            for reasonHeight: CGFloat in [17, 34] {
+                for showsProgress in [false, true] {
+                    let layout = OpenCodexCardLayout.frames(for: .balance, includesBalanceSubtitle: false,
+                        includesBalanceRecharge: true, balanceStaleReasonHeight: reasonHeight,
+                        balanceSubtitleBelowAmount: belowAmount, includesQuotaProgress: showsProgress)
+                    let subtitle = try XCTUnwrap(layout.balanceRecharge)
+                    let reason = try XCTUnwrap(layout.balanceStaleReason)
+                    XCTAssertEqual(subtitle.minY - reason.maxY, 9, "keep the approved card's 9 pt gap")
+                    XCTAssertEqual(reason.height, reasonHeight)
+                    if showsProgress {
+                        let bar = try XCTUnwrap(layout.progress)
+                        XCTAssertEqual(reason.minY - bar.maxY, OpenCodexCardLayout.quotaProgressTopGap)
+                    } else {
+                        XCTAssertNil(layout.progress)
+                    }
+                }
+            }
+        }
+    }
 }

@@ -3715,7 +3715,7 @@ extension StatusItemControllerTests {
         let controller = makeController()
         defer { controller.teardown() }
         let date = Date(timeIntervalSince1970: 1_700_000_000)
-        let balance = Snapshot.balance("Fixture API", 3.34, "USD", nil, date)
+        let balance = Snapshot.balance("Fixture API", 42, "USD", nil, date, progressPercentage: 100)
         let reason = "Fixture failure (HTTP 403)"
         let error = Snapshot.providerError(balance.provider, reason: reason, cachedBalance: balance)
         controller.start(snapshot: balance, refreshDate: date, menuInput: makeMenuInput(), settings: makeSettings())
@@ -3742,7 +3742,11 @@ extension StatusItemControllerTests {
         XCTAssertEqual(reasonRow.stringValue.replacingOccurrences(of: "\u{200B}", with: ""), reason)
         XCTAssertEqual(reasonRow.textColor, .systemRed)
         XCTAssertEqual(reasonRow.frame.width, OpenCodexCardLayout.contentWidth, accuracy: 0.5)
-        XCTAssertLessThanOrEqual(reasonRow.frame.maxY, subtitle.view.frame.minY + 0.5, "the reason sits below the subtitle")
+        let directGap = subtitle.view.frame.minY - reasonRow.frame.maxY
+        XCTAssertEqual(directGap, 9, accuracy: 0.5)
+        let directBar = try XCTUnwrap(cached.subviews.compactMap { $0 as? QuotaProgressView }.first)
+        XCTAssertEqual(directBar.percentage, 100)
+        XCTAssertEqual(reasonRow.frame.minY - directBar.frame.maxY, OpenCodexCardLayout.quotaProgressTopGap, accuracy: 0.5)
 
         XCTAssertFalse(cached.subviews.contains { $0 is FailureStateView || $0 is NSButton })
 
@@ -3777,6 +3781,11 @@ extension StatusItemControllerTests {
         let walletReason = try XCTUnwrap(staleReasonRow(in: wallet))
         XCTAssertEqual(walletReason.stringValue.replacingOccurrences(of: "\u{200B}", with: ""), reason)
         XCTAssertEqual(walletReason.textColor, .systemRed)
+        let walletSubtitle = try XCTUnwrap(balanceSubtitle(in: wallet))
+        let walletBar = try XCTUnwrap(wallet.subviews.compactMap { $0 as? QuotaProgressView }.first)
+        XCTAssertEqual(walletBar.percentage, 100)
+        XCTAssertEqual(walletSubtitle.view.frame.minY - walletReason.frame.maxY, directGap, accuracy: 0.5)
+        XCTAssertEqual(walletReason.frame.minY - walletBar.frame.maxY, OpenCodexCardLayout.quotaProgressTopGap, accuracy: 0.5)
 
         var recovered = display
         recovered.status = .fresh

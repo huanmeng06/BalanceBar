@@ -2670,9 +2670,10 @@ final class DomainModelsTests: XCTestCase {
         )
         let store = ProviderBalanceProgressStore(defaults: defaults)
 
-        XCTAssertEqual(try progress(store, amount: 5, unit: "USD", identity: identity), 100)
-        XCTAssertEqual(try progress(store, amount: 3, unit: "USD", identity: identity), 60)
-        XCTAssertEqual(try progress(store, amount: 1, unit: "USD", identity: identity), 20)
+        XCTAssertEqual(try progress(store, amount: 42, unit: "USD", identity: identity), 100)
+        XCTAssertEqual(try progress(store, amount: 21, unit: "USD", identity: identity), 50)
+        XCTAssertEqual(try progress(store, amount: 1, unit: "USD", identity: identity), 100 / 42, accuracy: 0.000001)
+        XCTAssertEqual(try progress(store, amount: 0.42, unit: "USD", identity: identity), 1, accuracy: 0.000001)
         XCTAssertEqual(try progress(store, amount: 5.20, unit: "USD", identity: identity), 100)
         XCTAssertEqual(
             try progress(store, amount: 1, unit: "USD", identity: identity),
