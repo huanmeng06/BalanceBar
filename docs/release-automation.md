@@ -77,12 +77,21 @@ The two language sections use the same item order and source links. Empty
 feature or fix arrays are omitted in both languages together. The renderer
 does not add a “暂无……” placeholder section.
 
-The description does not contain a separate documentation section. Every
-generated row must cite at least one real Issue or PR from the release range,
-and every merged PR in that range must appear in at least one row.
+The description does not contain a separate documentation section. Related PRs
+share a row, with each PR linked in that row. Every merged PR in the release
+range must appear exactly once; explicitly linked Issues can supplement PR
+links. For stable releases, describe final shipped behavior rather than
+enumerating intermediate versions or features that were later removed.
+
+A reviewed release can supply `scripts/release/notes/vX.Y.Z.json` with the same
+`features`/`fixes` format. The workflow uses the file instead of calling the
+model, then runs the same renderer and source validation against the actual
+merge range. Update the curated file if additional PRs enter that range before
+release; missing, duplicate, or out-of-range PR links block publication.
 
 If the selected provider call, JSON parsing, or source validation fails, the
-workflow stops before pushing the tag or publishing the Release. DeepSeek JSON
+workflow stops before pushing the tag or publishing the Release. It does not
+publish raw PR excerpts as a fallback. DeepSeek JSON
 Output is checked again by the local validator, which preserves the
 exact-format and traceability guarantees.
 
