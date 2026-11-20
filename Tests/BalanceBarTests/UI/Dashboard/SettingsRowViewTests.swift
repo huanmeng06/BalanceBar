@@ -4,6 +4,35 @@ import XCTest
 
 @MainActor
 final class SettingsRowViewTests: XCTestCase {
+    func testDependencyStateDimsNestedAccessoryLabelsAndRestoresOriginalState() {
+        let unit = NSTextField(labelWithString: "fps")
+        unit.textColor = .labelColor
+        let endpoint = NSTextField(labelWithString: "Up")
+        endpoint.textColor = .secondaryLabelColor
+        let field = NSTextField(string: "30")
+        let unavailable = NSButton(title: "Unavailable", target: nil, action: nil)
+        unavailable.isEnabled = false
+        let accessory = NSStackView(views: [NSStackView(views: [field, unit]), endpoint, unavailable])
+        let row = SettingsRowView(title: "Frame Rate", accessoryView: accessory)
+
+        for _ in 0..<2 {
+            row.setDependencyEnabled(false)
+            row.setDependencyEnabled(false)
+            XCTAssertFalse(row.isHidden)
+            XCTAssertFalse(field.isEnabled)
+            XCTAssertFalse(unavailable.isEnabled)
+            XCTAssertEqual(unit.textColor, .disabledControlTextColor)
+            XCTAssertEqual(endpoint.textColor, .disabledControlTextColor)
+            XCTAssertEqual(field.stringValue, "30")
+
+            row.setDependencyEnabled(true)
+            XCTAssertTrue(field.isEnabled)
+            XCTAssertFalse(unavailable.isEnabled)
+            XCTAssertEqual(unit.textColor, .labelColor)
+            XCTAssertEqual(endpoint.textColor, .secondaryLabelColor)
+        }
+    }
+
     func testNativeRowUsesAutoLayoutHierarchyAndSkipsLegacyHeightCaches() throws {
         DashboardSettingsLayoutMetrics.reset()
         let control = NSSwitch()

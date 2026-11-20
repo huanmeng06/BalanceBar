@@ -6153,6 +6153,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 in: page
             ) as? SettingsRowView
         )
+        let frameRateField = try XCTUnwrap(descendant(
+            withIdentifier: DashboardMenuBarPage.animationFrameRateIdentifier, in: animationFrameRateRow
+        ) as? NSTextField)
+        let frameRateUnit = try XCTUnwrap(descendants(of: animationFrameRateRow).compactMap { $0 as? NSTextField }
+            .first { $0.stringValue == tr(.keyDashboardMenuBarPageAnimationFrameRateUnit) })
+        let originalUnitColor = frameRateUnit.textColor
         XCTAssertFalse(animationModeRow.isHidden)
         XCTAssertTrue(animationModeControl.isEnabled)
         XCTAssertFalse(animationFrameRateRow.isHidden)
@@ -6165,6 +6171,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertFalse(animationFrameRateRow.isHidden)
         XCTAssertEqual(animationModeRow.detailLabel.textColor, .disabledControlTextColor)
         XCTAssertEqual(animationFrameRateRow.titleLabel.textColor, .disabledControlTextColor)
+        XCTAssertFalse(frameRateField.isEnabled)
+        XCTAssertEqual(frameRateUnit.textColor, .disabledControlTextColor)
 
         animationSwitch.state = .on
         relay.toggle(animationSwitch)
@@ -6172,6 +6180,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertFalse(animationModeRow.isHidden)
         XCTAssertTrue(animationModeControl.isEnabled)
         XCTAssertFalse(animationFrameRateRow.isHidden)
+        XCTAssertTrue(frameRateField.isEnabled)
+        XCTAssertEqual(frameRateUnit.textColor, originalUnitColor)
     }
 
     func testMenuBarQuotaRowsFollowVisibilityDependenciesAndRequestedOrder() throws {
@@ -8462,6 +8472,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let sliders = try readouts.map { value in
             try XCTUnwrap(value.superview?.subviews.compactMap { $0 as? NSSlider }.first)
         }
+        let amountEndpoints = try [DashboardMenuBarPage.amountOffsetSliderMinimumIdentifier,
+                                   DashboardMenuBarPage.amountOffsetSliderMaximumIdentifier].map {
+            try XCTUnwrap(descendant(withIdentifier: $0, in: page) as? NSTextField)
+        }
         XCTAssertFalse(reset.isEnabled)
         preferences.menuBarIconOffsetY = -1.1
         refresh()
@@ -8485,6 +8499,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
         refresh()
         XCTAssertFalse(sliders[1].isEnabled)
         XCTAssertEqual(readouts[1].textColor, .disabledControlTextColor)
+        XCTAssertTrue(amountEndpoints.allSatisfy { $0.textColor == .disabledControlTextColor })
+        XCTAssertEqual(readouts[2].textColor, .secondaryLabelColor)
         XCTAssertTrue(reset.isEnabled)
         reset.performClick(nil)
         XCTAssertEqual(resets, 1)
@@ -8495,6 +8511,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         refresh()
         XCTAssertTrue(sliders[1].isEnabled)
         XCTAssertEqual(readouts[1].textColor, .secondaryLabelColor)
+        XCTAssertTrue(amountEndpoints.allSatisfy { $0.textColor == .secondaryLabelColor })
     }
 
     func testMenuBarFontSizePresetControlKeepsDefaultRatioAndRefreshesPreview() throws {

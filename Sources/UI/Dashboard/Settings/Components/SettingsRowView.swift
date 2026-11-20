@@ -320,6 +320,7 @@ final class SettingsRowView: NSView {
     private var accessoryVisibilityObservation: NSKeyValueObservation?
     private var dependencyEnabled = true
     private var dependencyControlStates: [(NSControl, Bool)] = []
+    private var dependencyLabelColors: [(NSTextField, NSColor?)] = []
 
     init(
         title: String,
@@ -405,16 +406,22 @@ final class SettingsRowView: NSView {
         if enabled {
             dependencyControlStates.forEach { $0.0.isEnabled = $0.1 }
             dependencyControlStates.removeAll()
+            dependencyLabelColors.forEach { $0.0.textColor = $0.1 }
+            dependencyLabelColors.removeAll()
         } else if let accessoryView {
-            func disableControls(in view: NSView) {
-                if let control = view as? NSControl,
-                   (control as? NSTextField)?.isEditable != false {
+            func disableAccessory(in view: NSView) {
+                // Units, slider endpoints and readouts are labels, so they don't
+                // get the native disabled appearance of an editable control.
+                if let label = view as? NSTextField, !label.isEditable {
+                    dependencyLabelColors.append((label, label.textColor))
+                    label.textColor = .disabledControlTextColor
+                } else if let control = view as? NSControl {
                     dependencyControlStates.append((control, control.isEnabled))
                     control.isEnabled = false
                 }
-                view.subviews.forEach(disableControls)
+                view.subviews.forEach(disableAccessory)
             }
-            disableControls(in: accessoryView)
+            disableAccessory(in: accessoryView)
         }
         DashboardKeyViewLoop.invalidate(window)
     }

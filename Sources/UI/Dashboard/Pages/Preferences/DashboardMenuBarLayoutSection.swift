@@ -246,8 +246,6 @@ final class DashboardMenuBarLayoutSection {
         let amountOffsetY = preferences.menuBarAmountOffsetY
         iconOffsetSummaryLabel?.stringValue = Self.signedPointText(iconOffsetY)
         amountOffsetSummaryLabel?.stringValue = Self.signedPointText(amountOffsetY)
-        iconOffsetSummaryLabel?.textColor = preferences.showMenuBarIcon ? .secondaryLabelColor : .disabledControlTextColor
-        amountOffsetSummaryLabel?.textColor = preferences.showMenuBarAmount ? .secondaryLabelColor : .disabledControlTextColor
         iconOffsetSlider?.doubleValue = iconOffsetY
         amountOffsetSlider?.doubleValue = amountOffsetY
         iconOffsetSlider.flatMap(SettingsRowView.enclosing)?.setDependencyEnabled(preferences.showMenuBarIcon)
