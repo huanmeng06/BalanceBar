@@ -83,6 +83,28 @@ final class OpenCodexCardLayoutTests: XCTestCase {
         XCTAssertEqual(quota.cardRow, frames.quotaRows.first)
     }
 
+    func testBalanceFramesCanAppendResetSectionsWithoutDroppingBalanceBody() throws {
+        let base = OpenCodexCardLayout.frames(for: .balance, includesQuotaProgress: true)
+        let withCards = OpenCodexCardLayout.frames(
+            for: .balance,
+            includesBalanceSubtitle: true,
+            includesQuotaProgress: true,
+            includesBankedReset: true,
+            bankedResetCardCount: 2,
+            bankedResetDisplayMode: .detailed
+        )
+
+        XCTAssertEqual(withCards.amount, base.amount)
+        XCTAssertEqual(withCards.progress, base.progress)
+        XCTAssertTrue(withCards.cardSize.height > base.cardSize.height)
+        XCTAssertEqual(
+            withCards.sectionLayouts.map(\.id),
+            [.legacyQuota, .resetProbability, .bankedReset]
+        )
+        XCTAssertNotNil(withCards.bankedResetSummaryRow)
+        XCTAssertEqual(withCards.bankedResetDetailRows.count, 2)
+    }
+
     func testCountdownProgressAddsIndependentFullWidthBottomBar() throws {
         let windows = [
             OfficialQuotaWindow(kind: .fiveHour, remaining: 80, label: "5h", daysText: "5 hours", reset: "2h", durationSeconds: 18_000),

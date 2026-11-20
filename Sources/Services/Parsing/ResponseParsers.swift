@@ -412,7 +412,7 @@ enum OfficialQuotaResponseParser {
         if client == .claude {
             let windows = claudeReadings(object: object, now: now).map(\.window)
             guard !windows.isEmpty else { throw ResponseParserError.unsupportedFormat }
-            return Output(windows: windows)
+            return Output(windows: windows, bankedReset: parseClaudeBankedReset(object: object, now: now))
         }
 
         let limits = (object["rate_limit"] as? [String: Any]) ?? object
@@ -450,6 +450,63 @@ enum OfficialQuotaResponseParser {
             return nil
         }
         return bankedReset(from: credits, now: now) ?? CodexBankedReset(cards: [])
+    }
+
+    static func parseClaudeBankedReset(
+        object: [String: Any],
+        now: Date = Date()
+    ) -> CodexBankedReset? {
+        guard let reset = object["cedar_ember"] as? [String: Any],
+              (reset["eligible"] as? Bool) == true,
+              let grants = reset["grants"] as? [[String: Any]] else {
+            return nil
+        }
+
+        var seenIDs = Set<String>()
+        let cards = grants.enumerated().compactMap { index, grant -> CodexBankedResetCard? in
+            guard let count = nonNegativeInt(grant["resets_left"]), count > 0 else { return nil }
+            let expiresAt = ResponseParsingSupport.timestampDate(grant["ends_at"])
+            if let expiresAt, expiresAt <= now { return nil }
+
+            let rawID = ResponseParsingSupport.stringValue(grant["id"])?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if let rawID, !rawID.isEmpty, !seenIDs.insert(rawID).inserted { return nil }
+            let label = ResponseParsingSupport.stringValue(grant["label"])?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let resetType = ResponseParsingSupport.stringValue(grant["type"])?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let remaining = CodexBankedResetFormatting.remaining(until: expiresAt, now: now)
+
+            return CodexBankedResetCard(
+                id: rawID?.isEmpty == true ? nil : rawID ?? "claude-reset-\(index)",
+                resetType: resetType,
+                titleText: label.flatMap { $0.isEmpty ? nil : $0 } ?? tr(.keyCodexBankedResetTitle),
+                windowText: claudeResetWindowText(grant["clears"]),
+                resetCount: count,
+                expiresAt: expiresAt,
+                expiresText: CodexBankedResetFormatting.expiryText(for: expiresAt, relativeTo: now),
+                remainingText: remaining?.text,
+                remainingIsWarning: remaining?.isWarning ?? false
+            )
+        }
+        guard !cards.isEmpty else { return nil }
+        return CodexBankedReset(cards: cards)
+    }
+
+    private static func claudeResetWindowText(_ value: Any?) -> String? {
+        guard let keys = value as? [String] else { return nil }
+        var seen = Set<String>()
+        let labels = keys.compactMap { key -> String? in
+            let mapped: (String, String)?
+            switch key {
+            case "five_hour": mapped = (key, tr(.keyResponseParsers5HourQuota))
+            case "seven_day", "seven_day_overage_included": mapped = ("seven_day", tr(.keyResponseParsers7DayQuota))
+            default: mapped = nil
+            }
+            guard let mapped, seen.insert(mapped.0).inserted else { return nil }
+            return mapped.1
+        }
+        return labels.isEmpty ? nil : labels.joined(separator: " · ")
     }
 
     private static func parseCodexWindow(

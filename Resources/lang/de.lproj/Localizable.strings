@@ -379,6 +379,10 @@
 "dashboard.menu.page.after_a_recharge_keep_the_progress_bar_red_while_the_balance_remains_below_this_amount" = "Nach einer Aufladung bleibt der Fortschrittsbalken rot, solange das Guthaben unter diesem Wert liegt.";
 "dashboard.menu.page.show_banked_reset" = "Reset-Karten anzeigen";
 "dashboard.menu.page.show_banked_reset_description" = "Wenn ausgeschaltet, zeigt das Dropdown-Menü keine Reset-Karten mehr";
+"dashboard.menu.page.show_non_official_banked_reset" = "Reset-Karten bei inoffiziellen Codex-Anbietern anzeigen";
+"dashboard.menu.page.show_non_official_banked_reset_description" = "Verwendet die lokale Codex-Anmeldung, um Karten beim ausgewählten Vermittler abzurufen";
+"dashboard.menu.page.show_non_official_reset_probability" = "Reset-Wahrscheinlichkeit bei inoffiziellen Anbietern anzeigen";
+"dashboard.menu.page.show_non_official_reset_probability_description" = "Verwendet die öffentliche Prognose von codex-reset.com und sendet eine zusätzliche Anfrage";
 "dashboard.menu.page.banked_reset_display_mode" = "Anzeigestil";
 "dashboard.menu.page.banked_reset_display_mode_description" = "Kompakt zeigt Anzahl und Reset-Wahrscheinlichkeit; detailliert listet jede Karte";
 "dashboard.menu.page.banked_reset_display_mode_compact" = "Kompakt";

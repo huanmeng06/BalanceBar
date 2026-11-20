@@ -409,6 +409,114 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(recorder.stored[.claude]?.snapshot.amount), 1.30, accuracy: 0.000001)
     }
 
+    func testNonOfficialCodexBalanceAddsResetCardsFromSeparateRead() throws {
+        try setCurrentProvider("codex-custom")
+        DelayedBalanceURLProtocol.setHandler { request in
+            if request.url?.path.contains("rate-limit-reset-credits") == true {
+                return DelayedBalanceURLProtocol.Reply(
+                    data: Data(#"{"available_count":1,"credits":[{"id":"relay-card","reset_type":"codex_rate_limits","status":"available","expires_at":"2099-01-01T00:00:00Z"}]}"#.utf8),
+                    statusCode: 200
+                )
+            }
+            return DelayedBalanceURLProtocol.success(amount: "12.34", unit: "USD")
+        }
+        let suiteName = "ProviderRefreshCoordinatorTests.NonOfficialResetCards.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.showBankedReset = true
+        preferences.showNonOfficialBankedReset = true
+
+        let rendered = expectation(description: "balance and attached reset-card snapshots")
+        rendered.expectedFulfillmentCount = 2
+        let lock = NSLock()
+        var snapshots: [Snapshot] = []
+        let coordinator = makeCoordinator(
+            repository: repository,
+            officialQuotaClient: OfficialQuotaClient(
+                session: session,
+                credentialReader: FixtureCredentialReader(codexToken: "fixture-codex-token")
+            ),
+            balanceAPIClient: BalanceAPIClient(session: session),
+            actions: ProviderRefreshActions(
+                currentProvider: { [repository] client in repository?.loadCurrent(appType: client.appType) },
+                isActiveClient: { _ in true },
+                render: { snapshot in
+                    lock.lock(); snapshots.append(snapshot); lock.unlock()
+                    rendered.fulfill()
+                },
+                storeClientSnapshot: { _, _, _ in },
+                quickSwitchSummaryChanged: { _ in }
+            ),
+            refreshPreferences: preferences
+        )
+
+        let current = try XCTUnwrap(repository.loadCurrent(appType: "codex"))
+        XCTAssertFalse(current.isOfficial)
+        coordinator.refreshStandardProvider(current: current, client: .codex, forceBalance: true, switched: false)
+        wait(for: [rendered], timeout: 3)
+        waitForCoordinator(coordinator)
+
+        lock.lock(); let captured = snapshots; lock.unlock()
+        let balance = try XCTUnwrap(captured.last)
+        XCTAssertEqual(balance.kind, .balance)
+        XCTAssertEqual(try XCTUnwrap(balance.amount), 12.34, accuracy: 0.000001)
+        XCTAssertEqual(balance.bankedReset?.availableCount, 1)
+        XCTAssertEqual(balance.bankedReset?.cards.first?.id, "relay-card")
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 2)
+    }
+
+    func testNonOfficialCodexResetCardFailureKeepsSuccessfulBalance() throws {
+        try setCurrentProvider("codex-custom")
+        DelayedBalanceURLProtocol.setHandler { request in
+            if request.url?.path.contains("rate-limit-reset-credits") == true {
+                return DelayedBalanceURLProtocol.Reply(data: Data("{}".utf8), statusCode: 500)
+            }
+            return DelayedBalanceURLProtocol.success(amount: "9.87", unit: "USD")
+        }
+        let suiteName = "ProviderRefreshCoordinatorTests.NonOfficialResetFailure.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.showNonOfficialBankedReset = true
+
+        let rendered = expectation(description: "balance and isolated reset-card fallback")
+        rendered.expectedFulfillmentCount = 2
+        let lock = NSLock()
+        var snapshots: [Snapshot] = []
+        let coordinator = makeCoordinator(
+            repository: repository,
+            officialQuotaClient: OfficialQuotaClient(
+                session: session,
+                credentialReader: FixtureCredentialReader(codexToken: "fixture-codex-token")
+            ),
+            balanceAPIClient: BalanceAPIClient(session: session),
+            actions: ProviderRefreshActions(
+                currentProvider: { [repository] client in repository?.loadCurrent(appType: client.appType) },
+                isActiveClient: { _ in true },
+                render: { snapshot in
+                    lock.lock(); snapshots.append(snapshot); lock.unlock()
+                    rendered.fulfill()
+                },
+                storeClientSnapshot: { _, _, _ in },
+                quickSwitchSummaryChanged: { _ in }
+            ),
+            refreshPreferences: preferences
+        )
+
+        let current = try XCTUnwrap(repository.loadCurrent(appType: "codex"))
+        coordinator.refreshStandardProvider(current: current, client: .codex, forceBalance: true, switched: false)
+        wait(for: [rendered], timeout: 3)
+        waitForCoordinator(coordinator)
+
+        lock.lock(); let captured = snapshots; lock.unlock()
+        let balance = try XCTUnwrap(captured.last)
+        XCTAssertEqual(balance.kind, .balance)
+        XCTAssertEqual(try XCTUnwrap(balance.amount), 9.87, accuracy: 0.000001)
+        XCTAssertNil(balance.bankedReset)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 2)
+    }
+
     func testMissingUsageScriptShowsConfigurationReason() throws {
         try withDatabase { db in
             try execute(db, sql: """

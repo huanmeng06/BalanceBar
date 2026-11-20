@@ -380,6 +380,61 @@ final class OfficialQuotaClientTests: XCTestCase {
         XCTAssertEqual(request.value(forHTTPHeaderField: "anthropic-beta"), "oauth-2025-04-20")
     }
 
+    func testClaudeResetCardRequestUsesClaudeCodeSurfaceAndParsesGrants() throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let response = Data(#"{"cedar_ember":{"eligible":true,"grants":[{"id":"full-reset-test","label":"One full limit reset","type":"full","resets_left":2,"ends_at":"2027-01-22T00:00:00Z","clears":["five_hour","seven_day"]}]}}"#.utf8)
+        StubURLProtocol.setHandler { request in
+            let components = URLComponents(url: try! XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
+            XCTAssertEqual(components?.queryItems, [
+                URLQueryItem(name: "cedar_ember", value: "1"),
+                URLQueryItem(name: "skip_spend", value: "1")
+            ])
+            XCTAssertEqual(request.value(forHTTPHeaderField: "x-app"), "cli")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "User-Agent"), "claude-cli/\(OfficialQuotaClient.claudeBankedResetUserAgentVersion) (external, cli)")
+            XCTAssertNil(request.value(forHTTPHeaderField: "Cookie"))
+            XCTAssertFalse(request.httpShouldHandleCookies)
+            return StubResult(data: response)
+        }
+        let client = makeClient(claudeToken: "fixture-claude-value", now: { now })
+        let done = expectation(description: "Claude reset cards completed")
+        var captured: Result<CodexBankedReset?, OfficialQuotaClientError>?
+        client.fetchClaudeBankedResetCards { result in
+            captured = result
+            done.fulfill()
+        }
+        wait(for: [done], timeout: 2)
+
+        guard case .success(let reset)? = captured else {
+            return XCTFail("expected Claude reset-card success, got \(String(describing: captured))")
+        }
+        XCTAssertEqual(reset?.availableCount, 2)
+        let request = try XCTUnwrap(StubURLProtocol.lastRequest)
+        XCTAssertEqual(request.url?.host, "api.anthropic.com")
+        XCTAssertEqual(request.url?.path, "/api/oauth/usage")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer fixture-claude-value")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "anthropic-beta"), "oauth-2025-04-20")
+    }
+
+    func testClaudeResetCardRateLimitReturnsRetryDeadlineWithoutChangingUsageTransport() throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        StubURLProtocol.setHandler { _ in
+            StubResult(statusCode: 429, data: Data("{}".utf8), headers: ["Retry-After": "120"])
+        }
+        let client = makeClient(claudeToken: "fixture-claude-value", now: { now })
+        let done = expectation(description: "Claude reset-card rate limit completed")
+        var captured: Result<CodexBankedReset?, OfficialQuotaClientError>?
+        client.fetchClaudeBankedResetCards { result in
+            captured = result
+            done.fulfill()
+        }
+        wait(for: [done], timeout: 2)
+
+        guard case .failure(.httpStatus(statusCode: 429, _, let retryAt))? = captured else {
+            return XCTFail("expected an isolated reset-card 429, got \(String(describing: captured))")
+        }
+        XCTAssertEqual(retryAt, now.addingTimeInterval(120))
+    }
+
     func testCodexStoredAccessTokenOverridesInjectedReader() throws {
         StubURLProtocol.setHandler { _ in
             StubResult(data: Self.codexBody)

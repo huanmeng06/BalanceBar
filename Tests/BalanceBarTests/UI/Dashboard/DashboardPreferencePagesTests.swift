@@ -4055,6 +4055,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertLessThan(bankedResetIndex, menuBehaviorIndex)
         XCTAssertTrue(labels.contains("显示重置卡"))
         XCTAssertTrue(labels.contains("关闭后，下拉菜单不再显示重置卡"))
+        XCTAssertTrue(labels.contains("非官方渠道下也显示重置卡"))
+        XCTAssertTrue(labels.contains("非官方渠道下显示重置概率"))
         XCTAssertTrue(labels.contains("显示样式"))
         XCTAssertTrue(labels.contains("简洁只显示张数和重置概率，详细列出每张卡"))
 
@@ -4131,7 +4133,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             settingsSection(withTitle: tr(.keyCodexBankedResetTitle), in: page)
         )
         let bankedResetRows = settingsRows(in: bankedResetSection)
-        XCTAssertEqual(bankedResetRows.count, 2)
+        XCTAssertEqual(bankedResetRows.count, 4)
         let rowsStack = try XCTUnwrap(bankedResetRows[0].superview as? NSStackView)
         let separators = rowsStack.arrangedSubviews.compactMap { $0 as? NSBox }
         let toggle = try XCTUnwrap(
@@ -4269,6 +4271,32 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 secondRowText.contains(tr(.keyDashboardMenuPageBankedResetDisplayMode, language: language)),
                 "second reset-card row keeps display-style copy for \(language)"
             )
+        }
+    }
+
+    func testNonOfficialResetSettingsHaveLocalizedCopy() {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        let expected: [AppLanguage: (String, String)] = [
+            .simplifiedChinese: ("非官方渠道下也显示重置卡", "非官方渠道下显示重置概率"),
+            .traditionalChineseTaiwan: ("非官方管道下也顯示重置卡", "非官方管道下顯示重置機率"),
+            .traditionalChineseHongKong: ("非官方渠道下也顯示重置卡", "非官方渠道下顯示重置機率"),
+            .english: ("Show reset cards on non-official Codex providers", "Show reset probability on non-official providers")
+        ]
+
+        for language in AppLanguage.allCases where language != .system {
+            let cardTitle = tr(.keyDashboardMenuPageShowNonOfficialBankedReset, language: language)
+            let cardDescription = tr(.keyDashboardMenuPageShowNonOfficialBankedResetDescription, language: language)
+            let probabilityTitle = tr(.keyDashboardMenuPageShowNonOfficialResetProbability, language: language)
+            let probabilityDescription = tr(.keyDashboardMenuPageShowNonOfficialResetProbabilityDescription, language: language)
+            XCTAssertFalse(cardTitle.hasPrefix("⟦"), "reset-card title exists for \(language)")
+            XCTAssertFalse(cardDescription.hasPrefix("⟦"), "reset-card description exists for \(language)")
+            XCTAssertFalse(probabilityTitle.hasPrefix("⟦"), "probability title exists for \(language)")
+            XCTAssertFalse(probabilityDescription.hasPrefix("⟦"), "probability description exists for \(language)")
+            if let copy = expected[language] {
+                XCTAssertEqual(cardTitle, copy.0)
+                XCTAssertEqual(probabilityTitle, copy.1)
+            }
         }
     }
 

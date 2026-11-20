@@ -439,6 +439,10 @@ final class AppPreferences {
     static let menuBankedResetDisplayModeDefault: CodexBankedResetDisplayMode = .defaultValue
     static let showBankedResetKey = "showBankedReset"
     static let showBankedResetDefault = true
+    static let showNonOfficialBankedResetKey = "showNonOfficialBankedReset"
+    static let showNonOfficialBankedResetDefault = true
+    static let showNonOfficialResetProbabilityKey = "showNonOfficialResetProbability"
+    static let showNonOfficialResetProbabilityDefault = false
     static let menuLunaReserveHideExhaustedQuotaKey = "menuLunaReserveHideExhaustedQuota"
     static let menuLunaReserveHideExhaustedQuotaDefault = false
     static let menuBarIconDisplayModeKey = "menuBarIconDisplayMode"
@@ -677,6 +681,14 @@ final class AppPreferences {
     var showBankedReset: Bool {
         get { bool(Self.showBankedResetKey, default: Self.showBankedResetDefault) }
         set { defaults.set(newValue, forKey: Self.showBankedResetKey) }
+    }
+    var showNonOfficialBankedReset: Bool {
+        get { bool(Self.showNonOfficialBankedResetKey, default: Self.showNonOfficialBankedResetDefault) }
+        set { defaults.set(newValue, forKey: Self.showNonOfficialBankedResetKey) }
+    }
+    var showNonOfficialResetProbability: Bool {
+        get { bool(Self.showNonOfficialResetProbabilityKey, default: Self.showNonOfficialResetProbabilityDefault) }
+        set { defaults.set(newValue, forKey: Self.showNonOfficialResetProbabilityKey) }
     }
     var menuLunaReserveHideExhaustedQuota: Bool {
         get {

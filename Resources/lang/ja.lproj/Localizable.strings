@@ -379,6 +379,10 @@
 "dashboard.menu.page.after_a_recharge_keep_the_progress_bar_red_while_the_balance_remains_below_this_amount" = "チャージ後も残高がこの金額を下回っている間は、進捗バーを赤色で表示";
 "dashboard.menu.page.show_banked_reset" = "リセットカードを表示";
 "dashboard.menu.page.show_banked_reset_description" = "オフにすると、ドロップダウンメニューにリセットカードを表示しません";
+"dashboard.menu.page.show_non_official_banked_reset" = "非公式 Codex プロバイダーでもリセットカードを表示";
+"dashboard.menu.page.show_non_official_banked_reset_description" = "中継プロバイダーの選択中に、ローカルの Codex ログインでカードを取得します";
+"dashboard.menu.page.show_non_official_reset_probability" = "非公式プロバイダーでリセット確率を表示";
+"dashboard.menu.page.show_non_official_reset_probability_description" = "codex-reset.com の公開予測を使うため、追加のリクエストが発生します";
 "dashboard.menu.page.banked_reset_display_mode" = "表示スタイル";
 "dashboard.menu.page.banked_reset_display_mode_description" = "簡潔は枚数とリセット確率のみ、詳細は各カードを表示します";
 "dashboard.menu.page.banked_reset_display_mode_compact" = "簡潔";

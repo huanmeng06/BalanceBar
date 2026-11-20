@@ -63,6 +63,8 @@ struct ClaudeQuotaState: Equatable {
     /// Source of the newest displayed standard-window reading, independent of
     /// `status` (which drops the source while refreshing or estimating).
     let newestReadingSource: StatusSlotLiveSource?
+    /// Claude Code's optional reset grants. A failed secondary read never changes `failure`.
+    var bankedReset: CodexBankedReset? = nil
 }
 
 /// Forwards notification snapshots from the quota adapter to the existing rules.
@@ -186,6 +188,12 @@ final class ClaudeQuotaPipeline {
     /// this process (a restored merge state does not count). Guarded by `lock`.
     private var officialReadSinceActivation = false
     private var state: ClaudeQuotaState?
+    private var resetCardDemand = false
+    private var bankedReset: CodexBankedReset?
+    private var bankedResetFetchInFlight = false
+    private var lastBankedResetFetchAt: Date?
+    private var bankedResetRetryAt: Date?
+    static let bankedResetRefreshInterval: TimeInterval = 5 * 60
     /// Set while the Mod is known to be uninstalled or disabled (its lifecycle, not its data
     /// validity): its readings keep their value and time but are neither live nor fresh
     /// scheduler evidence. Cleared only by a Mod snapshot produced after this moment, so a
@@ -491,6 +499,27 @@ final class ClaudeQuotaPipeline {
         scheduler.setDemand(enabled)
     }
 
+    /// Enables the low-frequency Claude reset-grant request used by the menu card.
+    /// It is deliberately independent from the scheduled usage request and its failures.
+    func setResetCardDemand(_ enabled: Bool) {
+        queue.async { [self] in
+            guard resetCardDemand != enabled else {
+                if enabled { requestBankedResetCardsIfNeeded() }
+                return
+            }
+            resetCardDemand = enabled
+            if !enabled {
+                bankedReset = nil
+                lastBankedResetFetchAt = nil
+                bankedResetRetryAt = nil
+                bankedResetFetchInFlight = false
+                publish()
+            } else {
+                requestBankedResetCardsIfNeeded(force: true)
+            }
+        }
+    }
+
     func schedulerStatus() -> FetchSchedulerStatus {
         scheduler.statusSnapshot()
     }
@@ -677,6 +706,10 @@ final class ClaudeQuotaPipeline {
         }
         realtimeTracker?.reset(epoch: change.epoch)
         sourceTimeline.reset(accountKey: ClaudeSourceTimeline.accountKey(forStableID: change.identity?.stableID))
+        bankedReset = nil
+        lastBankedResetFetchAt = nil
+        bankedResetRetryAt = nil
+        bankedResetFetchInFlight = false
         lock.withLock {
             setFailureLocked(nil)
             refreshing = false
@@ -961,12 +994,14 @@ final class ClaudeQuotaPipeline {
         guard let engine else { return }
         var newFailure: ClaudeQuotaFailure?
         var adoptedOfficialRead = false
+        var shouldFetchBankedReset = false
         switch delivery.result {
         case let .success(data):
             lock.withLock { lastSuccessAt = delivery.receivedAt }
             let currentEpoch = identity.accountEpoch == delivery.epoch
             newFailure = merge(data, delivery: delivery, into: engine)
             adoptedOfficialRead = currentEpoch && newFailure == nil
+            shouldFetchBankedReset = adoptedOfficialRead
         case .rateLimited:
             newFailure = .rateLimited
         case .unauthorized:
@@ -1014,6 +1049,64 @@ final class ClaudeQuotaPipeline {
                 outcome: .success)
         }
         publish()
+        if shouldFetchBankedReset { requestBankedResetCardsIfNeeded() }
+    }
+
+    private func requestBankedResetCardsIfNeeded(force: Bool = false) {
+        guard resetCardDemand, hasAccount, !bankedResetFetchInFlight else { return }
+        let date = now()
+        if let cooldown = stateStore.snapshot.cooldownUntil, cooldown > date { return }
+        if let bankedResetRetryAt, bankedResetRetryAt > date { return }
+        if !force, let last = lastBankedResetFetchAt,
+           date.timeIntervalSince(last) < Self.bankedResetRefreshInterval { return }
+        bankedResetFetchInFlight = true
+        lastBankedResetFetchAt = date
+        let epoch = identity.accountEpoch
+
+        func send(_ sendCheck: @escaping (CCSwitchProxyConfiguration) -> ClaudeEgressGuardBlock?) {
+            client.fetchClaudeBankedResetCards(
+                sendCheck: sendCheck,
+                didReadToken: { [weak self] token in self?.recordCredentialRead(token, epoch: epoch) },
+                completion: { [weak self] result in
+                    self?.queue.async {
+                        guard let self, self.identity.accountEpoch == epoch, self.resetCardDemand else { return }
+                        self.bankedResetFetchInFlight = false
+                        switch result {
+                        case let .success(cards):
+                            self.bankedResetRetryAt = nil
+                            self.bankedReset = cards
+                            self.publish()
+                        case let .failure(.httpStatus(status, _, retryAt)) where status == 429:
+                            self.bankedResetRetryAt = retryAt ?? self.now().addingTimeInterval(Self.bankedResetRefreshInterval)
+                        case .failure:
+                            break
+                        }
+                    }
+                }
+            )
+        }
+
+        guard let egressGuard else {
+            send { _ in nil }
+            return
+        }
+        egressGuard.evaluateTrace { [weak self] decision, trace in
+            guard let self else { return }
+            switch decision {
+            case .allowed:
+                send { route in
+                    guard let trace else { return .checkFailed }
+                    if let checked = trace.route, checked != route { return .checkFailed }
+                    if case let .blocked(block) = egressGuard.decision(for: trace) { return block }
+                    return nil
+                }
+            case let .blocked(block):
+                self.queue.async {
+                    self.bankedResetFetchInFlight = false
+                    self.diagnostics("claude reset-card request skipped; reason=\(block.rawValue)", .debug)
+                }
+            }
+        }
     }
 
     private static func timelineValues(
@@ -1278,7 +1371,8 @@ final class ClaudeQuotaPipeline {
             isRefreshing: refreshing,
             failure: failure,
             status: status,
-            newestReadingSource: Self.statusSource(of: standard))
+            newestReadingSource: Self.statusSource(of: standard),
+            bankedReset: bankedReset)
         next.officialDisabled = officialDisabled
         let changed = lock.withLock { () -> Bool in
             guard state != next else { return false }

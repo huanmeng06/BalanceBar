@@ -379,6 +379,10 @@
 "dashboard.menu.page.after_a_recharge_keep_the_progress_bar_red_while_the_balance_remains_below_this_amount" = "After a top-up, keep the progress bar red while the balance is below this amount";
 "dashboard.menu.page.show_banked_reset" = "Show Reset Cards";
 "dashboard.menu.page.show_banked_reset_description" = "When off, the dropdown menu no longer shows reset cards";
+"dashboard.menu.page.show_non_official_banked_reset" = "Show reset cards on non-official Codex providers";
+"dashboard.menu.page.show_non_official_banked_reset_description" = "Use your local Codex login to fetch reset cards while a non-official provider is selected";
+"dashboard.menu.page.show_non_official_reset_probability" = "Show reset probability on non-official providers";
+"dashboard.menu.page.show_non_official_reset_probability_description" = "Uses the public codex-reset.com forecast and makes an extra request";
 "dashboard.menu.page.banked_reset_display_mode" = "Display style";
 "dashboard.menu.page.banked_reset_display_mode_description" = "Compact shows the count and reset probability; detailed lists each card";
 "dashboard.menu.page.banked_reset_display_mode_compact" = "Compact";

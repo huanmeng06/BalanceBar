@@ -787,6 +787,58 @@ final class ResponseParsersTests: XCTestCase {
         XCTAssertNil(output.lunaReserve)
     }
 
+    func testClaudeBankedResetMapsGrantCountExpiryAndClearedWindows() throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let expiresAt = Date(timeIntervalSince1970: 1_800_576_000)
+        let output = try OfficialQuotaResponseParser.parse(
+            object: [
+                "five_hour": ["utilization": 23, "resets_at": "2027-01-15T00:00:00Z"],
+                "cedar_ember": [
+                    "eligible": true,
+                    "grants": [[
+                        "id": "full-reset-test",
+                        "label": "One full limit reset (January 2027)",
+                        "type": "full",
+                        "resets_total": 2,
+                        "resets_left": 2,
+                        "ends_at": "2027-01-22T00:00:00Z",
+                        "clears": ["five_hour", "seven_day", "seven_day_overage_included"],
+                        "usable_now": true
+                    ]]
+                ]
+            ],
+            client: .claude,
+            now: now
+        )
+
+        let reset = try XCTUnwrap(output.bankedReset)
+        let card = try XCTUnwrap(reset.cards.first)
+        XCTAssertEqual(reset.availableCount, 2)
+        XCTAssertEqual(reset.cards.count, 1)
+        XCTAssertEqual(card.id, "full-reset-test")
+        XCTAssertEqual(card.resetType, "full")
+        XCTAssertEqual(card.resetCount, 2)
+        XCTAssertEqual(card.titleText, "One full limit reset (January 2027)")
+        XCTAssertEqual(card.windowText, tr(.keyResponseParsers5HourQuota) + " · " + tr(.keyResponseParsers7DayQuota) + " · " + tr(.keyResponseParsers7DayQuota))
+        XCTAssertEqual(card.expiresAt, expiresAt)
+        XCTAssertEqual(card.remainingText, CodexBankedResetFormatting.remaining(until: expiresAt, now: now)?.text)
+    }
+
+    func testClaudeBankedResetTreatsIneligibleEmptyAndExpiredGrantsAsNoData() {
+        let cases: [[String: Any]] = [
+            [:],
+            ["cedar_ember": NSNull()],
+            ["cedar_ember": ["eligible": false, "grants": [["resets_left": 1]]]],
+            ["cedar_ember": ["eligible": true, "grants": []]],
+            ["cedar_ember": ["eligible": true, "grants": [["resets_left": 0]]]],
+            ["cedar_ember": ["eligible": true, "grants": [["resets_left": 1, "ends_at": "2023-11-14T22:13:19Z"]]]]
+        ]
+
+        for object in cases {
+            XCTAssertNil(OfficialQuotaResponseParser.parseClaudeBankedReset(object: object, now: now))
+        }
+    }
+
     func testBankedResetCreditListParserAcceptsStandaloneCreditsPayload() throws {
         let expiresAt = Date(timeIntervalSince1970: 1_700_086_400)
         let bankedReset = try XCTUnwrap(

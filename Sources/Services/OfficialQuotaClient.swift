@@ -140,6 +140,8 @@ struct DefaultOfficialQuotaParser: OfficialQuotaParsing {
 /// and response parser. The transport and both dependencies are injectable so
 /// tests can remain offline and avoid the user's Keychain or home directory.
 final class OfficialQuotaClient {
+    static let claudeBankedResetUserAgentVersion = "2.1.322"
+
     private typealias Completion = (Result<OfficialQuotaResult, OfficialQuotaClientError>) -> Void
 
     /// Keeps request cleanup independent from the client instance. A task can
@@ -632,6 +634,86 @@ final class OfficialQuotaClient {
                 completion(.failure("http_\(status)"), .httpStatus(statusCode: status, dataSize: data?.count ?? 0))
             }
         }.resume()
+    }
+
+    /// Reads Claude Code's reset grants without changing the scheduled usage request's result.
+    func fetchClaudeBankedResetCards(
+        sendCheck: (CCSwitchProxyConfiguration) -> ClaudeEgressGuardBlock? = { _ in nil },
+        didReadToken: (String) -> Void = { _ in },
+        completion: @escaping (Result<CodexBankedReset?, OfficialQuotaClientError>) -> Void
+    ) {
+        guard let token = claudeRequestCredentials(cacheFor: 2).accessToken, !token.isEmpty,
+              let request = Self.makeClaudeBankedResetRequest(accessToken: token) else {
+            if lastClaudeKeychainUnreadable() {
+                completion(.failure(.credentialsUnreadable))
+            } else {
+                completion(.failure(.missingCredentials))
+            }
+            return
+        }
+        didReadToken(token)
+        let route = claudeRoute()
+        if let block = sendCheck(route.configuration) {
+            completion(.failure(.egressGuard(block)))
+            return
+        }
+        SwitchLog.write(
+            "claude reset-card transport started; scope_omitted=true",
+            level: .debug,
+            category: "refresh.transport"
+        )
+        route.session.dataTask(with: request) { [now] data, response, error in
+            if let error {
+                completion(.failure(.transport(Self.transportError(from: error, client: .claude))))
+                return
+            }
+            guard let http = response as? HTTPURLResponse else {
+                completion(.failure(.unsupportedFormat(dataSize: data?.count ?? 0)))
+                return
+            }
+            guard (200..<300).contains(http.statusCode), let data else {
+                let receivedAt = now()
+                let retryAt = http.statusCode == 429
+                    ? RetryAfterParser.seconds(from: http.value(forHTTPHeaderField: "Retry-After"), now: receivedAt)
+                        .map { receivedAt.addingTimeInterval($0) }
+                    : nil
+                completion(.failure(.httpStatus(
+                    statusCode: http.statusCode,
+                    dataSize: data?.count ?? 0,
+                    retryAt: retryAt
+                )))
+                return
+            }
+            do {
+                let object = try ResponseParsingSupport.object(from: data)
+                completion(.success(OfficialQuotaResponseParser.parseClaudeBankedReset(object: object, now: now())))
+            } catch {
+                completion(.failure(.invalidJSON(dataSize: data.count)))
+            }
+        }.resume()
+    }
+
+    static func makeClaudeBankedResetRequest(accessToken: String) -> URLRequest? {
+        var components = URLComponents(string: "https://api.anthropic.com/api/oauth/usage")
+        components?.queryItems = [
+            URLQueryItem(name: "cedar_ember", value: "1"),
+            URLQueryItem(name: "skip_spend", value: "1")
+        ]
+        guard let url = components?.url, !accessToken.isEmpty else { return nil }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 15
+        request.httpShouldHandleCookies = false
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
+        request.setValue("cli", forHTTPHeaderField: "x-app")
+        request.setValue(
+            "claude-cli/\(claudeBankedResetUserAgentVersion) (external, cli)",
+            forHTTPHeaderField: "User-Agent"
+        )
+        return request
     }
 
     static let claudeEgressTraceURL = URL(string: "https://claude.ai/cdn-cgi/trace")!

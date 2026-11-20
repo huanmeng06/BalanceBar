@@ -379,6 +379,10 @@
 "dashboard.menu.page.after_a_recharge_keep_the_progress_bar_red_while_the_balance_remains_below_this_amount" = "После пополнения оставлять индикатор выполнения красным, пока баланс ниже этого значения";
 "dashboard.menu.page.show_banked_reset" = "Показывать карты сброса";
 "dashboard.menu.page.show_banked_reset_description" = "Если выключено, выпадающее меню больше не показывает карты сброса";
+"dashboard.menu.page.show_non_official_banked_reset" = "Показывать карты сброса у неофициальных провайдеров Codex";
+"dashboard.menu.page.show_non_official_banked_reset_description" = "Использовать локальный вход Codex для загрузки карт при выборе прокси-провайдера";
+"dashboard.menu.page.show_non_official_reset_probability" = "Показывать вероятность сброса у неофициальных провайдеров";
+"dashboard.menu.page.show_non_official_reset_probability_description" = "Используется публичный прогноз codex-reset.com и отправляется дополнительный запрос";
 "dashboard.menu.page.banked_reset_display_mode" = "Стиль отображения";
 "dashboard.menu.page.banked_reset_display_mode_description" = "Краткий показывает число и вероятность сброса; подробный перечисляет каждую карту";
 "dashboard.menu.page.banked_reset_display_mode_compact" = "Краткий";

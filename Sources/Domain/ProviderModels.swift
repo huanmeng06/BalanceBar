@@ -786,6 +786,78 @@ enum OpenCodexCardLayout {
     ) -> OpenCodexCardFrames {
         let showsProbability = includesResetProbability ?? includesBankedReset
         let hasWindows = !officialQuotaWindows.isEmpty
+        if category == .balance && (includesBankedReset || showsProbability) {
+            let base = frames(
+                for: .balance,
+                linkPrefixWidth: linkPrefixWidth,
+                includesBalanceSubtitle: includesBalanceSubtitle,
+                includesBalanceRecharge: includesBalanceRecharge,
+                balanceStaleReasonHeight: balanceStaleReasonHeight,
+                balanceSubtitleBelowAmount: balanceSubtitleBelowAmount,
+                includesQuotaProgress: includesQuotaProgress
+            )
+            let reset = composedQuotaFrames(
+                windows: [],
+                includesAccount: false,
+                includesSubscription: false,
+                subscriptionTextWidth: nil,
+                includesLunaReserve: false,
+                includesLunaReserveProgress: false,
+                lunaReserveInsertionIndex: nil,
+                includesQuotaProgress: includesQuotaProgress,
+                includesBankedReset: includesBankedReset,
+                bankedResetCardCount: bankedResetCardCount,
+                bankedResetDisplayMode: bankedResetDisplayMode,
+                includesBankedResetNearestExpiry: includesBankedResetNearestExpiry,
+                includesBankedResetForecastMetrics: includesBankedResetForecastMetrics,
+                includesResetProbability: showsProbability,
+                includesBankedResetCountdownProgress: includesBankedResetCountdownProgress,
+                bankedResetTicketMetrics: bankedResetTicketMetrics
+            )
+            let resetSections = reset.sectionLayouts.filter {
+                $0.id == .resetProbability || $0.id == .bankedReset
+            }
+            let resetMinY = resetSections.map(\.frame.minY).min() ?? 0
+            let resetOrigin = base.cardSize.height + metrics.sectionSpacing
+            let resetOffset = resetOrigin - resetMinY
+            let shiftedSections = resetSections.map { section in
+                OpenCodexOverviewSectionLayout(
+                    id: section.id,
+                    frame: section.frame.offsetBy(dx: 0, dy: resetOffset),
+                    row: section.row,
+                    header: section.header
+                )
+            }
+            let shiftedMetrics = reset.bankedResetForecastMetrics?.offsetBy(dx: 0, dy: resetOffset)
+            let shiftedConfidence = reset.bankedResetForecastConfidence?.offsetBy(dx: 0, dy: resetOffset)
+            let shiftedViewport = reset.bankedResetTicketViewport?.offsetBy(dx: 0, dy: resetOffset)
+            let shiftedHeight = shiftedSections.map(\.frame.maxY).max() ?? base.cardSize.height
+            return OpenCodexCardFrames(
+                cardSize: CGSize(width: base.cardSize.width, height: max(base.cardSize.height, shiftedHeight)),
+                title: base.title,
+                refreshTime: base.refreshTime,
+                account: base.account,
+                subscription: base.subscription,
+                quotaDetail: base.quotaDetail,
+                reset: base.reset,
+                amount: base.amount,
+                progress: base.progress,
+                linkPrefix: base.linkPrefix,
+                link: base.link,
+                quotaRows: base.quotaRows,
+                lunaReserveRow: base.lunaReserveRow,
+                bankedResetSummaryRow: reset.bankedResetSummaryRow,
+                bankedResetProbabilityRow: reset.bankedResetProbabilityRow,
+                bankedResetForecastMetrics: shiftedMetrics,
+                bankedResetForecastConfidence: shiftedConfidence,
+                bankedResetDetailRows: reset.bankedResetDetailRows,
+                bankedResetTicketViewport: shiftedViewport,
+                balanceRecharge: base.balanceRecharge,
+                balanceStaleReason: base.balanceStaleReason,
+                balanceSubtitleIsBelowAmount: base.balanceSubtitleIsBelowAmount,
+                sectionLayouts: base.sectionLayouts + shiftedSections
+            )
+        }
         if category == .quota,
            hasWindows || includesLunaReserve || includesBankedReset || showsProbability {
             return composedQuotaFrames(

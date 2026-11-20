@@ -379,6 +379,10 @@
 "dashboard.menu.page.after_a_recharge_keep_the_progress_bar_red_while_the_balance_remains_below_this_amount" = "충전 후 잔액이 이 금액보다 적으면 진행 막대를 계속 빨간색으로 표시";
 "dashboard.menu.page.show_banked_reset" = "리셋 카드 표시";
 "dashboard.menu.page.show_banked_reset_description" = "끄면 드롭다운 메뉴에 리셋 카드가 표시되지 않습니다";
+"dashboard.menu.page.show_non_official_banked_reset" = "비공식 Codex 제공자에서도 리셋 카드 표시";
+"dashboard.menu.page.show_non_official_banked_reset_description" = "중계 제공자를 선택하면 로컬 Codex 로그인으로 카드를 가져옵니다";
+"dashboard.menu.page.show_non_official_reset_probability" = "비공식 제공자에서 리셋 확률 표시";
+"dashboard.menu.page.show_non_official_reset_probability_description" = "codex-reset.com의 공개 예측을 사용하며 추가 요청이 발생합니다";
 "dashboard.menu.page.banked_reset_display_mode" = "표시 스타일";
 "dashboard.menu.page.banked_reset_display_mode_description" = "간결은 장수와 리셋 확률만 표시하고, 상세는 각 카드를 나열합니다";
 "dashboard.menu.page.banked_reset_display_mode_compact" = "간결";

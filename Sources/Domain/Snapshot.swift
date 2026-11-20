@@ -124,6 +124,7 @@ struct CodexBankedResetCard: Equatable {
     let resetType: String
     let titleText: String
     let windowText: String?
+    let resetCount: Int
     let expiresAt: Date?
     let expiresText: String?
     let remainingText: String?
@@ -134,6 +135,7 @@ struct CodexBankedResetCard: Equatable {
         resetType: String,
         titleText: String,
         windowText: String? = nil,
+        resetCount: Int = 1,
         expiresAt: Date?,
         expiresText: String?,
         remainingText: String? = nil,
@@ -143,6 +145,7 @@ struct CodexBankedResetCard: Equatable {
         self.resetType = resetType
         self.titleText = titleText
         self.windowText = windowText
+        self.resetCount = max(1, resetCount)
         self.expiresAt = expiresAt
         self.expiresText = expiresText
         self.remainingText = remainingText
@@ -156,7 +159,7 @@ struct CodexBankedReset: Equatable {
 
     init(cards: [CodexBankedResetCard]) {
         self.cards = cards
-        self.availableCount = cards.count
+        self.availableCount = cards.reduce(0) { $0 + $1.resetCount }
     }
 }
 
@@ -1065,8 +1068,8 @@ struct Snapshot: Equatable {
     let quotaPredictionContexts: [QuotaPredictionContext]
     let quotaPredictionAccountKey: String?
     let lunaReserve: LunaReserveQuota?
-    let bankedReset: CodexBankedReset?
-    let resetForecast: CodexResetForecast
+    var bankedReset: CodexBankedReset?
+    var resetForecast: CodexResetForecast
     /// The window selected for the compact/menu-bar presentation. The full
     /// quota card keeps all source windows, so this marker prevents the
     /// selected row's exact reset timestamp from being replaced by the
@@ -1187,7 +1190,9 @@ struct Snapshot: Equatable {
         _ date: Date,
         progressPercentage: Double? = nil,
         recharge: BalanceRecharge? = nil,
-        progressContext: BalanceProgressContext? = nil
+        progressContext: BalanceProgressContext? = nil,
+        bankedReset: CodexBankedReset? = nil,
+        resetForecast: CodexResetForecast = .unavailable
     ) -> Snapshot {
         var snapshot = Snapshot(
             kind: .balance,
@@ -1202,6 +1207,8 @@ struct Snapshot: Equatable {
         )
         snapshot.balanceRecharge = recharge
         snapshot.balanceProgressContext = progressContext
+        snapshot.bankedReset = bankedReset
+        snapshot.resetForecast = resetForecast
         return snapshot
     }
 
@@ -1305,14 +1312,14 @@ struct Snapshot: Equatable {
         return recognized.isEmpty ? Array(officialQuotaWindows.prefix(1)) : recognized
     }
 
-    /// Resolve the official quota rows shown in the status menu. This keeps
+    /// Resolve quota and reset-card rows shown in the status menu. This keeps
     /// menu-only visibility preferences out of the snapshot and never changes
     /// the source windows used by the Dashboard provider page.
     func officialQuotaMenuPresentation(
         lunaReserveDisplayMode: LunaReserveDisplayMode,
         hideExhaustedQuota: Bool
     ) -> OfficialQuotaMenuPresentation {
-        guard kind == .official else {
+        guard kind == .official || kind == .balance else {
             return OfficialQuotaMenuPresentation(
                 windows: [],
                 lunaReserve: nil,
@@ -1321,11 +1328,12 @@ struct Snapshot: Equatable {
             )
         }
 
-        let windows = officialQuotaWindowsForMenu
-        let displayMode = LunaReserveUserFacing.isCurrentlyEnabled
+        let isOfficial = kind == .official
+        let windows = isOfficial ? officialQuotaWindowsForMenu : []
+        let displayMode = isOfficial && LunaReserveUserFacing.isCurrentlyEnabled
             ? lunaReserveDisplayMode
             : .disabled
-        let hideExhausted = LunaReserveUserFacing.isCurrentlyEnabled && hideExhaustedQuota
+        let hideExhausted = isOfficial && LunaReserveUserFacing.isCurrentlyEnabled && hideExhaustedQuota
         let hasExhaustedQuota = windows.contains {
             $0.kind != .other && $0.remaining <= 0
         }
@@ -1378,7 +1386,8 @@ struct Snapshot: Equatable {
         }
         let presentedBankedReset: CodexBankedReset? = {
             guard let bankedReset,
-                  bankedReset.availableCount == bankedReset.cards.count else {
+                  bankedReset.availableCount >= bankedReset.cards.count,
+                  bankedReset.cards.allSatisfy({ $0.resetCount > 0 }) else {
                 return nil
             }
             return bankedReset
