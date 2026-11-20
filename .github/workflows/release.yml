@@ -428,8 +428,9 @@ jobs:
 
           echo "RELEASE_INPUT=$input_json" >> "$GITHUB_ENV"
 
-      - name: Generate structured description with the selected AI provider
+      - name: Load curated description or generate it with the selected AI provider
         env:
+          TAG: ${{ needs.plan.outputs.tag }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
@@ -440,9 +441,14 @@ jobs:
         run: |
           set -Eeuo pipefail
           ai_json="$RUNNER_TEMP/balancebar-release-ai.json"
-          node scripts/release/generate-release-notes.mjs \
-            --input "$RELEASE_INPUT" \
-            --output "$ai_json"
+          curated="scripts/release/notes/${TAG}.json"
+          if [[ -f "$curated" ]]; then
+            cp "$curated" "$ai_json"
+          else
+            node scripts/release/generate-release-notes.mjs \
+              --input "$RELEASE_INPUT" \
+              --output "$ai_json"
+          fi
           echo "RELEASE_AI_NOTES=$ai_json" >> "$GITHUB_ENV"
 
       - name: Render and validate the exact Release format
