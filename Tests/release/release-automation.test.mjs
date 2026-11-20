@@ -1014,22 +1014,42 @@ test("renderer preserves the BalanceBar release layout and links every row", () 
   const rendered = renderReleaseNotes(fixtureInput(), fixtureNotes());
 
   assert.match(rendered, /## ✨ 新功能/);
-  assert.match(rendered, /\| 功能 \| 说明 \|/);
+  assert.match(rendered, /\| 功能 \| 说明 \| 相关 PR \|\n\| --- \| --- \| --- \|/);
   assert.match(rendered, /## 🛠 修复与体验优化/);
-  assert.match(rendered, /\| 项目 \| 说明 \|/);
+  assert.match(rendered, /\| 项目 \| 说明 \| 相关 PR \|/);
   assert.match(rendered, /## 📦 安装/);
   assert.match(rendered, /## ✨ New Features/);
-  assert.match(rendered, /\| Feature \| Description \|/);
+  assert.match(rendered, /\| Feature \| Description \| PRs \|/);
   assert.match(rendered, /## 🛠 Fixes & Improvements/);
   assert.match(rendered, /## 📦 Installation/);
   assert.match(rendered, /BalanceBar-1\.1\.5\.dmg/);
-  assert.match(rendered, /\[PR #141\]\(https:\/\/github\.com\/huanmeng06\/BalanceBar\/pull\/141\)/);
-  assert.match(rendered, /\[PR #140\]\(https:\/\/github\.com\/huanmeng06\/BalanceBar\/pull\/140\)/);
+  assert.match(rendered, /\[#141\]\(https:\/\/github\.com\/huanmeng06\/BalanceBar\/pull\/141\)/);
+  assert.match(rendered, /\[#140\]\(https:\/\/github\.com\/huanmeng06\/BalanceBar\/pull\/140\)/);
   assert.match(rendered, /\[Issue #136\]\(https:\/\/github\.com\/huanmeng06\/BalanceBar\/issues\/136\)/);
   assert.match(rendered, /Full Changelog: \[1\.1\.0 → 1\.1\.5\]/);
   assert.ok(rendered.indexOf("## ✨ 新功能") < rendered.indexOf("## ✨ New Features"));
   assert.ok(rendered.indexOf("## 📦 安装") < rendered.indexOf("\n\n---\n\n"));
   assert.doesNotMatch(rendered, /## 📚 文档|架构说明|开发工作流/);
+});
+
+test("renderer keeps titles plain and puts source links in their own column", () => {
+  const rendered = renderReleaseNotes(fixtureInput(), fixtureNotes());
+
+  assert.match(
+    rendered,
+    /^\| GitHub 更新检查 \| 在通用设置中检查最新稳定版本。 \| \[#141\]\(https:\/\/github\.com\/huanmeng06\/BalanceBar\/pull\/141\) \|$/m,
+  );
+  assert.doesNotMatch(rendered, /\[PR #/);
+});
+
+test("release notes prompt asks for user-facing grouped notes", () => {
+  const request = buildDeepSeekRequest(fixtureInput(), "deepseek-v4-pro");
+  const instructions = request.messages[0].content;
+
+  assert.match(instructions, /readers are people who use BalanceBar, not its developers/);
+  assert.match(instructions, /Never use internal engineering terms/);
+  assert.match(instructions, /one item per user-visible theme/);
+  assert.match(instructions, /single final fixes item/);
 });
 
 test("renderer omits empty feature or fix sections", () => {
@@ -1068,7 +1088,7 @@ test("renderer ignores an unlinked Issue when the item has a valid PR source", (
 
   const rendered = renderReleaseNotes(fixtureInput(), notes);
 
-  assert.match(rendered, /\[PR #141\]\(https:\/\/github\.com\/huanmeng06\/BalanceBar\/pull\/141\)/);
+  assert.match(rendered, /\[#141\]\(https:\/\/github\.com\/huanmeng06\/BalanceBar\/pull\/141\)/);
   assert.doesNotMatch(rendered, /\[Issue #143\]/);
 });
 

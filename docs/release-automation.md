@@ -77,6 +77,17 @@ The two language sections use the same item order and source links. Empty
 feature or fix arrays are omitted in both languages together. The renderer
 does not add a “暂无……” placeholder section.
 
+Each section is a three-column table: name, description, and the item's
+sources as short links (`#123` for PRs, `Issue #123` for Issues). Titles and
+descriptions stay free of PR numbers.
+
+The prompt asks the model to write for users rather than developers: describe
+what users can now do or no longer run into, avoid internal engineering terms,
+group related PRs into one row per user-visible theme with the most important
+changes first, and fold work users cannot see (tests, CI, build and release,
+refactoring, groundwork) into one final `开发与发布流程` / `Development and
+release` row.
+
 The description does not contain a separate documentation section. Every
 generated row must cite at least one real Issue or PR from the release range,
 and every merged PR in that range must appear in at least one row.
