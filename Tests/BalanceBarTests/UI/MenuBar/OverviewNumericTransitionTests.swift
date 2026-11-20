@@ -1359,6 +1359,10 @@ final class OverviewNumericPresentationControllerTests: XCTestCase {
     }
 
     func testBalanceAmountIsTopAlignedWhileOtherNumericCardsStayCentered() throws {
+        // Pin a language whose subtitle fits beside the amount, the layout these frames describe.
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
         let previousOverride = LunaReserveUserFacing.testOverride
         LunaReserveUserFacing.testOverride = true
         defer { LunaReserveUserFacing.testOverride = previousOverride }

@@ -3711,29 +3711,34 @@ extension StatusItemControllerTests {
     }
 
     @MainActor
-    func testCachedBalanceFailureUsesWarningTimeWithoutRecoveryRow() throws {
+    func testCachedBalanceFailureKeepsBalanceCardWithReasonSubtitle() throws {
         let controller = makeController()
         defer { controller.teardown() }
         let date = Date(timeIntervalSince1970: 1_700_000_000)
         let balance = Snapshot.balance("Fixture API", 3.34, "USD", nil, date)
         let reason = "Fixture failure (HTTP 403)"
         let error = Snapshot.providerError(balance.provider, reason: reason, cachedBalance: balance)
-        func card() throws -> NSView {
-            controller.start(snapshot: error, refreshDate: date, menuInput: makeMenuInput(), settings: makeSettings())
-            return try XCTUnwrap(controller.menuItemsForTesting.first?.view)
-        }
-        let cached = try card()
+        controller.start(snapshot: balance, refreshDate: date, menuInput: makeMenuInput(), settings: makeSettings())
+        let fresh = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        let freshHeight = fresh.frame.height
+        controller.start(snapshot: error, refreshDate: date, menuInput: makeMenuInput(), settings: makeSettings())
+        let cached = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        // Issue #710: the normal balance card plus a full-width red reason row.
+        XCTAssertTrue(cached is MenuHoverLinkHostView, "a kept balance keeps its normal balance layout")
+        XCTAssertGreaterThan(cached.frame.height, freshHeight)
         let labels = cached.subviews.compactMap { $0 as? NSTextField }
         let time = try XCTUnwrap(labels.first { $0.identifier?.rawValue == "overview.refreshTime" })
-        let amount = try XCTUnwrap(labels.first { $0.stringValue == balance.overviewLargeAmount })
         XCTAssertTrue(time.stringValue.hasPrefix("⚠︎ "))
         XCTAssertEqual(time.textColor, .systemOrange)
         XCTAssertEqual(time.toolTip, reason)
-        XCTAssertEqual(amount.textColor, .labelColor, "cached amounts use the normal foreground color")
-        XCTAssertFalse(labels.contains { [reason, tr(.keySnapshotLoadFailed)].contains($0.stringValue) })
-        XCTAssertEqual(cached.frame.height, ErrorCardLayout.minimumCardHeight, accuracy: 0.5)
-        XCTAssertGreaterThanOrEqual(amount.frame.minY, 5)
-        XCTAssertGreaterThanOrEqual(time.frame.minY - amount.frame.maxY, 6)
+        XCTAssertFalse(labels.contains { $0.stringValue == tr(.keySnapshotLoadFailed) })
+        let subtitle = try XCTUnwrap(balanceSubtitle(in: cached))
+        XCTAssertEqual(subtitle.label.stringValue, tr(.keyBalanceRechargeNotRecorded), "the subtitle keeps its usage text")
+        let reasonRow = try XCTUnwrap(staleReasonRow(in: cached))
+        XCTAssertEqual(reasonRow.stringValue.replacingOccurrences(of: "\u{200B}", with: ""), reason)
+        XCTAssertEqual(reasonRow.textColor, .systemRed)
+        XCTAssertEqual(reasonRow.frame.width, OpenCodexCardLayout.contentWidth, accuracy: 0.5)
+        XCTAssertLessThanOrEqual(reasonRow.frame.maxY, subtitle.view.frame.minY + 0.5, "the reason sits below the subtitle")
 
         XCTAssertFalse(cached.subviews.contains { $0 is FailureStateView || $0 is NSButton })
 
@@ -3755,13 +3760,28 @@ extension StatusItemControllerTests {
         let walletTime = wallet.subviews.compactMap { $0 as? NSTextField }.first { $0.identifier?.rawValue == "overview.refreshTime" }
         XCTAssertEqual(walletTime?.textColor, .systemOrange)
         XCTAssertTrue(walletTime?.toolTip?.contains(reason) == true)
+        // Issue #710: the subtitle states the reason. Wallet grouping prefixes each failed member
+        // with its name; for a single member that repeats the title and is dropped.
+        let walletReason = try XCTUnwrap(staleReasonRow(in: wallet))
+        XCTAssertEqual(walletReason.stringValue.replacingOccurrences(of: "\u{200B}", with: ""), reason)
+        XCTAssertEqual(walletReason.textColor, .systemRed)
+
+        var recovered = display
+        recovered.status = .fresh
+        recovered.reason = nil
+        aggregated.update(snapshot: .placeholder, refreshDate: nil, menuInput: StatusItemController.MenuInput(choices: [],
+            quickSwitchSummaries: [:], activeClient: .codex, openAIAccount: nil, statusLinks: [], showQuickSwitchMenu: false,
+            showOpenChatGPTMenu: false, showOpenCCSwitchMenu: false, showStatusMenu: false,
+            aggregatedProviders: [recovered]), settings: makeSettings())
+        let recoveredCard = try XCTUnwrap(scroll.documentView?.subviews.first?.subviews.first)
+        XCTAssertNil(staleReasonRow(in: recoveredCard), "the reason row goes away after recovery")
+        XCTAssertEqual(try XCTUnwrap(balanceSubtitle(in: recoveredCard)).label.stringValue, tr(.keyBalanceRechargeNotRecorded))
     }
 
     @MainActor
-    func testClaudeFailureCardOffersTheOfficialUsagePageAndOtherErrorCardsDoNot() throws {
-        var opened: [URL] = []
+    func testOfficialFailureCardShowsReasonWithoutButtons() throws {
         let controller = StatusItemController(actions: .init(manualRefresh: {}, openDashboard: {}, openChatGPT: {},
-            openCCSwitch: {}, quit: {}, switchProvider: { _ in }, openProviderWebsite: {}, openStatusLink: { opened.append($0) },
+            openCCSwitch: {}, quit: {}, switchProvider: { _ in }, openProviderWebsite: {}, openStatusLink: { _ in },
             iconChanged: { _ in }))
         defer { controller.teardown() }
         let input = StatusItemController.MenuInput(choices: [], quickSwitchSummaries: [:], activeClient: .claude,
@@ -3777,16 +3797,39 @@ extension StatusItemControllerTests {
         let plain = try card(for: .providerError("Claude Official", reason: "Network down", cachedBalance: nil))
         XCTAssertNil(find(FailureStateView.self, in: plain))
 
-        var failure = Snapshot.providerError("Claude Official", reason: "Network down", cachedBalance: nil)
-        failure.quotaStatus = .error(at: nil)
-        let withButton = try card(for: failure)
-        let view = try XCTUnwrap(find(FailureStateView.self, in: withButton))
-        XCTAssertEqual(view.reasonForTesting.replacingOccurrences(of: "\u{200B}", with: ""), "Network down")
-        XCTAssertEqual(view.openUsageButton.title, tr(.keyQuotaFailureOpenUsagePage))
-        XCTAssertEqual(view.openUsageButton.accessibilityLabel(), tr(.keyQuotaFailureOpenUsagePage))
-        XCTAssertEqual(withButton.frame.height, plain.frame.height + ErrorCardLayout.usagePageButtonHeight, accuracy: 0.5)
-        view.openUsageButton.performClick(nil)
-        XCTAssertEqual(opened, [FailureStateView.officialUsageURL])
+        // Issue #710: no recovery leaves a button (or its reserved height) inside the card.
+        for recovery in [FailureRecovery.openUsagePage, .copySignInCommand, .openEgressGuardSettings, .none] {
+            var failure = Snapshot.providerError("Claude Official", reason: "Network down", cachedBalance: nil)
+            failure.quotaStatus = .error(at: nil)
+            failure.failureRecovery = recovery
+            let view = try card(for: failure)
+            let state = try XCTUnwrap(find(FailureStateView.self, in: view))
+            XCTAssertEqual(state.reasonForTesting.replacingOccurrences(of: "\u{200B}", with: ""), "Network down")
+            XCTAssertEqual(state.action, .none, "\(recovery)")
+            XCTAssertNil(find(NSButton.self, in: view), "\(recovery)")
+            XCTAssertEqual(view.frame.height, plain.frame.height, accuracy: 0.5, "\(recovery)")
+        }
+    }
+
+    @MainActor
+    func testErrorCardWithoutAmountUsesFullContentWidth() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        let reason = "未找到 CC Switch 当前的 Codex 服务商，请在 CC Switch 中选择一个服务商"
+        controller.start(snapshot: .error(reason), refreshDate: nil, menuInput: makeMenuInput(), settings: makeSettings())
+        let card = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        let labels = card.subviews.compactMap { $0 as? NSTextField }
+        let detail = try XCTUnwrap(labels.first { $0.stringValue.replacingOccurrences(of: "\u{200B}", with: "") == reason })
+        XCTAssertEqual(detail.frame.width, ErrorCardLayout.contentWidth, accuracy: 0.5)
+        XCTAssertFalse(labels.contains { $0.stringValue == "—" }, "no amount placeholder beside the reason")
+
+        let cold = Snapshot.providerError("Fixture API", reason: "Fixture failure (HTTP 503)", cachedBalance: nil)
+        controller.start(snapshot: cold, refreshDate: nil, menuInput: makeMenuInput(), settings: makeSettings())
+        let coldCard = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        let coldLabels = coldCard.subviews.compactMap { $0 as? NSTextField }
+        XCTAssertFalse(coldLabels.contains { $0.stringValue == "—" })
+        let status = try XCTUnwrap(coldLabels.first { $0.stringValue == tr(.keySnapshotLoadFailed) })
+        XCTAssertEqual(status.frame.width, ErrorCardLayout.contentWidth, accuracy: 0.5)
     }
 
     @MainActor
@@ -3808,10 +3851,13 @@ extension StatusItemControllerTests {
         expired.accountUnavailableReason = .codexLoginExpired
         controller.start(snapshot: expired, refreshDate: nil, menuInput: input, settings: makeSettings())
         let card = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
-        let failure = try XCTUnwrap(find(FailureStateView.self, in: card), "Codex failures get the failure view too")
-        XCTAssertEqual(failure.action, .none)
-        XCTAssertEqual(failure.client, .codex)
+        // Issue #710: the orange row carries the reason, so the card keeps only title and account status.
+        XCTAssertNil(find(FailureStateView.self, in: card))
         XCTAssertNil(find(NSButton.self, in: card))
+        let cardTexts = card.subviews.compactMap { ($0 as? NSTextField)?.stringValue }
+        XCTAssertFalse(cardTexts.contains(tr(.keySnapshotLoadFailed)))
+        XCTAssertFalse(cardTexts.contains { $0.replacingOccurrences(of: "\u{200B}", with: "") == tr(.keyCodexRefreshLoginExpired) })
+        XCTAssertLessThan(card.frame.height, ErrorCardLayout.minimumCardHeight)
         let rows = controller.menuItemsForTesting.compactMap { $0.view as? ModPromptRowView }
             .filter { $0.identifier?.rawValue == "menu.codexLoginPrompt" }
         XCTAssertEqual(rows.count, 1)
@@ -3827,9 +3873,9 @@ extension StatusItemControllerTests {
         network.failureClient = .codex
         controller.start(snapshot: network, refreshDate: nil, menuInput: input, settings: makeSettings())
         let networkCard = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
-        let open = try XCTUnwrap(find(FailureStateView.self, in: networkCard))
-        open.actionButton.performClick(nil)
-        XCTAssertEqual(opened, [FailureStateView.codexUsageURL], "Codex opens its own usage page, never claude.ai")
+        XCTAssertNotNil(find(FailureStateView.self, in: networkCard))
+        XCTAssertNil(find(NSButton.self, in: networkCard), "Issue #710: error cards carry no buttons")
+        XCTAssertTrue(opened.isEmpty)
         XCTAssertEqual(StatusItemController.directAccount(input.openAIAccount, snapshot: network, activeClient: .codex),
             input.openAIAccount, "a network failure keeps the account")
         XCTAssertEqual(StatusItemController.directAccount(input.openAIAccount, snapshot: expired, activeClient: .claude),
@@ -4347,6 +4393,10 @@ extension StatusItemControllerTests {
 
     @MainActor
     func testAggregationNoteTagsReuseCardsAndCollapseSubtitleSpace() throws {
+        // The compact layout under test keeps the subtitle beside the amount (Chinese copy fits).
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
         let controller = makeController()
         defer { controller.teardown() }
         controller.start(snapshot: .placeholder, refreshDate: nil, menuInput: aggregationInput(count: 4), settings: makeSettings())
@@ -4520,6 +4570,50 @@ extension StatusItemControllerTests {
     }
 
     /// Fitting subtitles are a text field; overflowing copy (e.g. English) is a marquee.
+    @MainActor
+    func testSwitchingFromDirectToAggregationShowsStaleMemberState() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let balance = Snapshot.balance("Fixture API", 3.34, "USD", nil, date)
+        let reason = "Fixture failure (HTTP 401)"
+        controller.start(snapshot: balance, refreshDate: date, menuInput: makeMenuInput(), settings: makeSettings())
+        XCTAssertFalse(controller.statusMenuForTesting.items.first?.view is NSScrollView)
+        let source = ProviderSummarySource(id: "api", name: balance.provider, isOfficial: false,
+            query: nil, officialAccessToken: nil)
+        let stale = AggregatedProviderDisplay(entry: .init(source: source, role: .default),
+            identity: .init(providerID: source.id, accountScope: "fixture", configurationRevision: "fixture"),
+            snapshot: balance, account: nil, status: .stale, reason: reason, fetchedAt: date)
+        let input = StatusItemController.MenuInput(choices: [], quickSwitchSummaries: [:], activeClient: .codex,
+            openAIAccount: nil, statusLinks: [], showQuickSwitchMenu: false, showOpenChatGPTMenu: false,
+            showOpenCCSwitchMenu: false, showStatusMenu: false, aggregatedProviders: [stale])
+        // Same snapshot and native items: only the aggregation input changes.
+        controller.update(snapshot: balance, refreshDate: date, menuInput: input, settings: makeSettings())
+        let scroll = try XCTUnwrap(controller.statusMenuForTesting.items.first?.view as? NSScrollView,
+                                   "switching to aggregation mounts the aggregation viewport")
+        let card = try XCTUnwrap(scroll.documentView?.subviews.first?.subviews.first)
+        let time = card.subviews.compactMap { $0 as? NSTextField }.first { $0.identifier?.rawValue == "overview.refreshTime" }
+        XCTAssertEqual(time?.textColor, .systemOrange)
+        XCTAssertNotNil(staleReasonRow(in: card))
+    }
+
+    /// Beside-amount subtitles keep the layout's detail row; below-amount ones (Issue #710)
+    /// align the detail's baseline with the amount like a single-line balance card.
+    private func assertQuotaDetailPlacement(_ detail: AccountMarqueeView, amount: OverviewNumericTextView,
+                                            in card: MenuHoverLinkHostView, line: UInt = #line) {
+        guard let layout = card.overviewLayout else { return XCTFail("missing layout", line: line) }
+        if layout.balanceSubtitleIsBelowAmount {
+            XCTAssertEqual(StatusItemController.overviewBaselineY(for: detail.accountLabel, in: card),
+                           StatusItemController.overviewBaselineY(for: amount.textField, in: card), accuracy: 0.5, line: line)
+        } else {
+            XCTAssertEqual(detail.frame.minY, layout.quotaDetail.minY, line: line)
+        }
+    }
+
+    private func staleReasonRow(in card: NSView) -> NSTextField? {
+        card.subviews.first { $0.identifier?.rawValue == "balance.staleReason" } as? NSTextField
+    }
+
     private func balanceSubtitle(in card: NSView) -> (view: NSView, label: NSTextField)? {
         guard let view = card.subviews.first(where: { $0.identifier?.rawValue == "balance.subtitle" }) else { return nil }
         if let marquee = view as? AccountMarqueeView { return (view, marquee.accountLabel) }
@@ -4555,9 +4649,16 @@ extension StatusItemControllerTests {
         XCTAssertTrue(subtitle.label.stringValue.contains("$10.00"))
         XCTAssertTrue(label.toolTip?.contains(tr(.keyBalanceRechargeObserved)) == true)
         let layout = try XCTUnwrap(card.overviewLayout)
-        XCTAssertEqual(label.frame.maxY + 2, layout.quotaDetail.minY)
-        let amountGlyphWidth = AccountMarqueeView.textWidth(of: "$3.73", font: .monospacedDigitSystemFont(ofSize: 31, weight: .semibold))
-        XCTAssertLessThanOrEqual(label.frame.maxX + 12, layout.amount.maxX - amountGlyphWidth + 0.5)
+        if layout.balanceSubtitleIsBelowAmount {
+            // Issue #710: a subtitle too long for the column beside the amount gets the full width.
+            XCTAssertEqual(label.frame.width, OpenCodexCardLayout.contentWidth, accuracy: 0.5)
+            XCTAssertFalse(label is AccountMarqueeView)
+            XCTAssertLessThanOrEqual(label.frame.maxY, layout.quotaDetail.minY)
+        } else {
+            XCTAssertEqual(label.frame.maxY + 2, layout.quotaDetail.minY)
+            let amountGlyphWidth = AccountMarqueeView.textWidth(of: "$3.73", font: .monospacedDigitSystemFont(ofSize: 31, weight: .semibold))
+            XCTAssertLessThanOrEqual(label.frame.maxX + 12, layout.amount.maxX - amountGlyphWidth + 0.5)
+        }
         XCTAssertEqual(card.subviews.compactMap { $0 as? OverviewNumericTextView }.first?.frame, layout.amount)
         XCTAssertGreaterThan(label.frame.minY, try XCTUnwrap(layout.progress).maxY)
         let window = NSWindow(contentRect: scroll.frame, styleMask: [.borderless], backing: .buffered, defer: false)
@@ -4840,14 +4941,14 @@ extension StatusItemControllerTests {
         let detail = try XCTUnwrap(card.subviews.compactMap { $0 as? AccountMarqueeView }.first { $0.identifier?.rawValue == "overview.quotaDetail" })
         let amount = try XCTUnwrap(card.subviews.compactMap { $0 as? OverviewNumericTextView }.first)
         let height = card.frame.height
-        XCTAssertEqual(detail.frame.minY, card.overviewLayout?.quotaDetail.minY)
+        assertQuotaDetailPlacement(detail, amount: amount, in: card)
         let recharge = BalanceRecharge(amountCents: 1000, observedAt: Date())
         controller.updateMenu(input: input(recharge: recharge))
         XCTAssertTrue(controller.statusMenuForTesting.items.first?.view === viewport)
         XCTAssertTrue(wrapper.subviews.first === card)
         XCTAssertTrue(card.subviews.compactMap { $0 as? OverviewNumericTextView }.first === amount)
         XCTAssertNotNil(card.overviewLayout?.progress)
-        XCTAssertEqual(detail.frame.minY, card.overviewLayout?.quotaDetail.minY)
+        assertQuotaDetailPlacement(detail, amount: amount, in: card)
         let subtitle = try XCTUnwrap(balanceSubtitle(in: card))
         let label = subtitle.label
         XCTAssertTrue(label.stringValue.contains("+$10.00"))
@@ -4864,7 +4965,7 @@ extension StatusItemControllerTests {
         XCTAssertEqual(card.frame.height, height)
         XCTAssertNotNil(card.overviewLayout?.progress)
         XCTAssertTrue(card.subviews.contains { $0 is QuotaProgressView })
-        XCTAssertEqual(try XCTUnwrap(balanceSubtitle(in: card)).label.stringValue, tr(.keyBalanceRecordingStarted))
+        XCTAssertEqual(try XCTUnwrap(balanceSubtitle(in: card)).label.stringValue, tr(.keyBalanceRechargeNotRecorded))
 
     }
 }
@@ -5093,8 +5194,9 @@ extension StatusItemControllerTests {
                     XCTAssertNil(hint.onActivate)
                     XCTAssertNotNil(links.first { $0.identifier?.rawValue == "overview.providerTitle" }?.onActivate)
                     if language == .german {
-                        XCTAssertTrue(hint.superview is AccountMarqueeView)
-                        XCTAssertTrue((hint.superview as? AccountMarqueeView)?.isScrollable == true)
+                        // Issue #710: the long German subtitle moves below the amount instead of scrolling.
+                        XCTAssertEqual((card as? MenuHoverLinkHostView)?.overviewLayout?.balanceSubtitleIsBelowAmount, true)
+                        XCTAssertFalse(hint.superview is AccountMarqueeView)
                     }
                     controller.menuWillOpen(menu)
                     let host = try XCTUnwrap(card as? MenuHoverLinkHostView)

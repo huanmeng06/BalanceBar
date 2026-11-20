@@ -575,7 +575,7 @@
 "balance.yesterday" = "yesterday";
 "balance.used" = "%1$@ used";
 "balance.recording.started_on" = "Recording since %1$@";
-"balance.recording.started" = "Recording started";
+"balance.recharge.not_recorded" = "No top-up recorded yet";
 "balance.reference_on" = "Of %1$@ balance %2$@, %3$@ remains";
 "balance.reference" = "Of baseline %1$@, %2$@ remains";
 "balance.reference_unavailable" = "Balance reference unavailable";
@@ -856,10 +856,10 @@
 "ccswitch.database_unreadable" = "Can't read the CC Switch database. Reopen CC Switch and try again.";
 "ccswitch.database_busy" = "The CC Switch database is busy. BalanceBar will keep retrying.";
 "aggregation.not_configured" = "No usage query is set up for this Provider. Configure a usage script in CC Switch.";
-"claude.refresh.egress_guard_mismatch" = "The egress IP isn't on the allowlist, so Claude official requests are paused.";
-"claude.refresh.egress_guard_check_failed" = "Couldn't confirm the egress IP, so Claude official requests are paused.";
-"claude.refresh.egress_guard_no_targets" = "The IP allowlist is empty, so Claude official requests are paused.";
-"claude.refresh.egress_guard_unsupported_region" = "The egress region isn't one where Anthropic offers Claude, or couldn't be identified, so Claude official requests are paused.";
+"claude.refresh.egress_guard_mismatch" = "The egress IP isn't on the allowlist, so Claude official requests are paused. You can adjust the IP allowlist in Settings › Advanced.";
+"claude.refresh.egress_guard_check_failed" = "Couldn't confirm the egress IP, so Claude official requests are paused. You can adjust the IP allowlist in Settings › Advanced.";
+"claude.refresh.egress_guard_no_targets" = "The IP allowlist is empty, so Claude official requests are paused. You can adjust the IP allowlist in Settings › Advanced.";
+"claude.refresh.egress_guard_unsupported_region" = "The egress region isn't one where Anthropic offers Claude, or couldn't be identified, so Claude official requests are paused. You can adjust the IP allowlist in Settings › Advanced.";
 "claude.refresh.egress_guard_disabled" = "Claude official requests are off. Turn on the IP allowlist in Settings › Advanced.";
 "claude.timeline.failure.egress_guard" = "Blocked by IP allowlist";
 "quota.failure.open_egress_guard_settings" = "Set Up IP Allowlist";

@@ -6,7 +6,7 @@
     case keyBalanceYesterday = "balance.yesterday"
     case keyBalanceUsed = "balance.used"
     case keyBalanceRecordingStartedOn = "balance.recording.started_on"
-    case keyBalanceRecordingStarted = "balance.recording.started"
+    case keyBalanceRechargeNotRecorded = "balance.recharge.not_recorded"
     case keyBalanceReferenceOn = "balance.reference_on"
     case keyBalanceReference = "balance.reference"
     case keyBalanceReferenceUnavailable = "balance.reference_unavailable"

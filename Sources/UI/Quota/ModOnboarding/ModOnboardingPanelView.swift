@@ -346,7 +346,6 @@ final class ModPromptRowView: NSView {
     static let rowHeight: CGFloat = 52
     /// The row is exactly as wide as the quota card, whatever the language.
     static let width: CGFloat = OpenCodexCardLayout.cardWidth
-    static let maximumMainLines = 2
     static let contentPadding: CGFloat = 10
     static let blockInset: CGFloat = OpenCodexCardLayout.horizontalInset
 
@@ -383,7 +382,7 @@ final class ModPromptRowView: NSView {
     init(mainText: String, detailText: String, symbolName: String, tint: NSColor) {
         self.tint = tint
         mainLabel = NSTextField(wrappingLabelWithString: mainText)
-        whyLabel = NSTextField(labelWithString: detailText)
+        whyLabel = NSTextField(wrappingLabelWithString: detailText)
         super.init(frame: NSRect(x: 0, y: 0, width: Self.width, height: Self.rowHeight))
         autoresizingMask = [.width]
         setAccessibilityRole(.button)
@@ -398,23 +397,19 @@ final class ModPromptRowView: NSView {
         iconView.contentTintColor = tint
         iconView.setContentHuggingPriority(.required, for: .horizontal)
 
+        // Issue #710: both lines wrap to the available width, so no language loses the guidance.
         mainLabel.font = .systemFont(ofSize: 13, weight: .medium)
-        mainLabel.textColor = tint
-        mainLabel.lineBreakMode = .byWordWrapping
-        mainLabel.cell?.truncatesLastVisibleLine = true
-        mainLabel.maximumNumberOfLines = Self.maximumMainLines
-        mainLabel.preferredMaxLayoutWidth = Self.textWidth
-        mainLabel.isSelectable = false
-
         whyLabel.font = .systemFont(ofSize: 11)
-        whyLabel.textColor = tint
-        whyLabel.lineBreakMode = .byTruncatingTail
-        whyLabel.preferredMaxLayoutWidth = Self.textWidth
+        for label in [mainLabel, whyLabel] {
+            label.textColor = tint
+            label.lineBreakMode = .byWordWrapping
+            label.maximumNumberOfLines = 0
+            label.preferredMaxLayoutWidth = Self.textWidth
+            label.isSelectable = false
+        }
 
         // Size the row to the wording (other languages are longer than Chinese).
-        let mainHeight = mainLabel.cell?.cellSize(forBounds: NSRect(x: 0, y: 0, width: Self.textWidth, height: .greatestFiniteMagnitude)).height ?? 16
-        let whyHeight = whyLabel.cell?.cellSize.height ?? 14
-        height = max(Self.rowHeight, ceil(mainHeight + 1 + whyHeight) + 20)
+        height = measuredHeight()
         setFrameSize(NSSize(width: Self.width, height: height))
 
         let texts = NSStackView(views: [mainLabel, whyLabel])
@@ -443,6 +438,13 @@ final class ModPromptRowView: NSView {
     }
 
     required init?(coder: NSCoder) { nil }
+
+    private func measuredHeight() -> CGFloat {
+        func textHeight(_ label: NSTextField) -> CGFloat {
+            label.cell?.cellSize(forBounds: NSRect(x: 0, y: 0, width: Self.textWidth, height: .greatestFiniteMagnitude)).height ?? 16
+        }
+        return max(Self.rowHeight, ceil(textHeight(mainLabel) + 1 + textHeight(whyLabel)) + 20)
+    }
 
     private static func symbol(_ name: String, size: CGFloat) -> NSImage? {
         NSImage(systemSymbolName: name, accessibilityDescription: nil)?
@@ -480,6 +482,13 @@ final class ModPromptRowView: NSView {
         mainLabel.textColor = tint
         whyLabel.textColor = tint
         setAccessibilityLabel(mainText + ", " + detailText)
+        // The confirmation may need more lines; never shrink while the menu is open.
+        let needed = measuredHeight()
+        if needed > height {
+            height = needed
+            setFrameSize(NSSize(width: frame.width, height: height))
+            invalidateIntrinsicContentSize()
+        }
         updateBackground()
     }
 

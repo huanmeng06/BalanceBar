@@ -1222,9 +1222,23 @@ struct Snapshot: Equatable {
             return tr(.keyBalanceRechargeLabel) + " +" + balanceMoney(cents: recharge.amountCents)
                 + " · " + recharge.dateText(now: now, timeZone: timeZone)
         }
-        guard let context = balanceProgressContext else { return tr(.keyBalanceRecordingStarted) }
+        guard let context = balanceProgressContext else { return tr(.keyBalanceRechargeNotRecorded) }
         let used = balanceMoney(cents: context.consumedCents)
-        return context.consumedCents > 0 ? tr(.keyBalanceUsed, arguments: [used]) : tr(.keyBalanceRecordingStarted)
+        return context.consumedCents > 0 ? tr(.keyBalanceUsed, arguments: [used]) : tr(.keyBalanceRechargeNotRecorded)
+    }
+
+    /// Every subtitle this balance card can show at its current amount scale. The card sizes its
+    /// subtitle row for the widest, so it keeps its height as the subtitle changes (Issue #710).
+    func balanceSubtitleLayoutSamples(now: Date = Date(), timeZone: TimeZone) -> [String] {
+        let money = balanceMoney(cents: Int(((amount ?? 0) * 100).rounded()))
+        let day = BalanceRecharge.dateText(for: date ?? now, now: now, timeZone: timeZone)
+        return [
+            balanceSubtitle(now: now, timeZone: timeZone),
+            tr(.keyBalanceUsedSinceRecharge, arguments: [tr(.keyBalanceLastRecharge), money]),
+            tr(.keyBalanceUsed, arguments: [money]),
+            tr(.keyBalanceRechargeLabel) + " +" + money + " · " + day,
+            tr(.keyBalanceRechargeNotRecorded),
+        ]
     }
 
     func balanceProgressTooltip(now: Date = Date(), timeZone: TimeZone) -> String {
@@ -1606,6 +1620,19 @@ struct Snapshot: Equatable {
 
     var hasCachedBalance: Bool {
         kind == .error && amount != nil && unit != nil && date != nil
+    }
+
+    /// Issue #710: a balance error that kept the last balance is shown as that balance card,
+    /// with the failure as its stale reason (orange time, red subtitle). Official failures keep
+    /// their own error card.
+    var keptBalanceSnapshot: Snapshot? {
+        guard hasCachedBalance, quotaStatus == nil, failureClient == nil,
+              let amount, let unit, let date else { return nil }
+        var kept = Snapshot.balance(provider, amount, unit, websiteURL, date,
+            progressPercentage: balanceProgressPercentage, recharge: balanceRecharge,
+            progressContext: balanceProgressContext)
+        kept.staleReason = message
+        return kept
     }
 
     var progressPercentage: Double? {

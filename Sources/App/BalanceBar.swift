@@ -2863,9 +2863,6 @@ enum ErrorCardLayout {
     static let amountFont = NSFont.monospacedDigitSystemFont(ofSize: 31, weight: .semibold)
     static let refreshTimeFont = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)
 
-    /// Height of the "open usage page" button row added to a Claude official failure card.
-    static let usagePageButtonHeight: CGFloat = 28
-
     struct ErrorFrames {
         let cardSize: NSSize
         let title: NSRect

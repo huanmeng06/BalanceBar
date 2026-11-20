@@ -575,13 +575,13 @@
 "balance.yesterday" = "hier";
 "balance.used" = "%1$@ utilisés";
 "balance.recording.started_on" = "Suivi depuis le %1$@";
-"balance.recording.started" = "Suivi commencé";
+"balance.recharge.not_recorded" = "Aucune recharge notée";
 "balance.reference_on" = "Sur le solde du %1$@ de %2$@, %3$@ restants";
 "balance.reference" = "Sur le solde initial de %1$@, %2$@ restants";
 "balance.reference_unavailable" = "Solde de référence indisponible";
 
 "balance.recharge.last" = "dernière recharge";
-"balance.used_since_recharge" = "Depuis la %1$@ : %2$@ utilisés";
+"balance.used_since_recharge" = "Utilisé depuis la %1$@ : %2$@";
 
 "balance.elapsed.ago" = "il y a %1$@";
 
@@ -856,10 +856,10 @@
 "ccswitch.database_unreadable" = "Impossible de lire la base de données de CC Switch. Rouvrez CC Switch puis réessayez";
 "ccswitch.database_busy" = "La base de données de CC Switch est occupée. BalanceBar continue de réessayer";
 "aggregation.not_configured" = "Aucune requête d'utilisation n'est configurée pour ce fournisseur. Configurez un script d'utilisation dans CC Switch";
-"claude.refresh.egress_guard_mismatch" = "L’IP de sortie ne figure pas dans la liste d’IP autorisées ; les requêtes officielles Claude sont suspendues.";
-"claude.refresh.egress_guard_check_failed" = "Impossible de confirmer l’IP de sortie ; les requêtes officielles Claude sont suspendues.";
-"claude.refresh.egress_guard_no_targets" = "La liste d’IP autorisées est vide ; les requêtes officielles Claude sont suspendues.";
-"claude.refresh.egress_guard_unsupported_region" = "La région de sortie n’est pas prise en charge par Anthropic ou n’a pas pu être identifiée ; les requêtes officielles Claude sont en pause.";
+"claude.refresh.egress_guard_mismatch" = "L’IP de sortie ne figure pas dans la liste d’IP autorisées ; les requêtes officielles Claude sont suspendues. Vous pouvez modifier la liste d’IP autorisées dans Réglages › Avancé.";
+"claude.refresh.egress_guard_check_failed" = "Impossible de confirmer l’IP de sortie ; les requêtes officielles Claude sont suspendues. Vous pouvez modifier la liste d’IP autorisées dans Réglages › Avancé.";
+"claude.refresh.egress_guard_no_targets" = "La liste d’IP autorisées est vide ; les requêtes officielles Claude sont suspendues. Vous pouvez modifier la liste d’IP autorisées dans Réglages › Avancé.";
+"claude.refresh.egress_guard_unsupported_region" = "La région de sortie n’est pas prise en charge par Anthropic ou n’a pas pu être identifiée ; les requêtes officielles Claude sont en pause. Vous pouvez modifier la liste d’IP autorisées dans Réglages › Avancé.";
 "claude.refresh.egress_guard_disabled" = "Les requêtes officielles Claude sont désactivées. Activez la liste d’IP autorisées dans Réglages › Avancé.";
 "claude.timeline.failure.egress_guard" = "Bloqué par la liste d’IP autorisées";
 "quota.failure.open_egress_guard_settings" = "Configurer les IP autorisées";

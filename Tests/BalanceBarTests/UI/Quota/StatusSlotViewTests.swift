@@ -460,6 +460,22 @@ final class StatusSlotViewTests: XCTestCase {
         XCTAssertEqual(row.iconView.contentTintColor, .systemGreen)
     }
 
+    func testPromptRowWrapsLongCopyInsteadOfTruncating() {
+        let short = ModPromptRowView(mainText: "Codex 登录已过期", detailText: "点此复制",
+                                     symbolName: "exclamationmark.triangle.fill", tint: .systemOrange)
+        let long = ModPromptRowView(
+            mainText: "Codex-Anmeldung abgelaufen; die angezeigten Daten sind älter",
+            detailText: "Klicken, um den Befehl codex login zu kopieren und im Terminal auszuführen",
+            symbolName: "exclamationmark.triangle.fill", tint: .systemOrange)
+        XCTAssertEqual(short.height, ModPromptRowView.rowHeight)
+        XCTAssertGreaterThan(long.height, short.height, "Issue #710: both lines wrap and the row grows")
+        long.layoutSubtreeIfNeeded()
+        for label in long.descendantTextFields() {
+            XCTAssertEqual(label.maximumNumberOfLines, 0)
+            XCTAssertEqual(label.lineBreakMode, .byWordWrapping)
+        }
+    }
+
     func testErrorDetailLeavesCJKLineBreakingToTheTextSystem() {
         let chinese = "无法读取钥匙串中的 Claude Code 登录信息。请点击“立即刷新”，并在弹出的钥匙串对话框中选择“始终允许”。"
         XCTAssertEqual(ErrorCardLayout.detailText(for: chinese, width: 120), chinese,

@@ -3617,8 +3617,8 @@ extension DomainModelsTests {
         XCTAssertEqual(snapshot().balanceSubtitle(now: now, timeZone: zone), tr(.keyBalanceUsedSinceRecharge, arguments: [tr(.keyBalanceLastRecharge), "$0.66"]))
         XCTAssertEqual(snapshot(last: 400).balanceSubtitle(now: now, timeZone: zone), tr(.keyBalanceUsedSinceRecharge, arguments: [tr(.keyBalanceLastRecharge), "$0.00"]))
         XCTAssertEqual(snapshot(date: nil).balanceSubtitle(now: now, timeZone: zone), tr(.keyBalanceUsed, arguments: ["$0.66"]))
-        XCTAssertEqual(snapshot(last: 400, date: nil).balanceSubtitle(now: now, timeZone: zone), tr(.keyBalanceRecordingStarted))
-        XCTAssertEqual(Snapshot.balance("old", 3.34, "USD", nil, now).balanceSubtitle(now: now, timeZone: zone), tr(.keyBalanceRecordingStarted))
+        XCTAssertEqual(snapshot(last: 400, date: nil).balanceSubtitle(now: now, timeZone: zone), tr(.keyBalanceRechargeNotRecorded))
+        XCTAssertEqual(Snapshot.balance("old", 3.34, "USD", nil, now).balanceSubtitle(now: now, timeZone: zone), tr(.keyBalanceRechargeNotRecorded))
         let recharge = BalanceRecharge(amountCents: 100, observedAt: now)
         XCTAssertEqual(snapshot(recharge: recharge).balanceSubtitle(now: now, timeZone: zone), tr(.keyBalanceUsedSinceRecharge, arguments: [tr(.keyBalanceLastRecharge), "$0.66"]))
         let lastYear = try XCTUnwrap(parser.date(from: "2025-12-31T23:30:00Z"))
@@ -3665,7 +3665,7 @@ extension DomainModelsTests {
             (.keyBalanceUsedSinceYesterday, ["14:20", "$0.66"]),
             (.keyBalanceUsed, ["$0.66"]),
             (.keyBalanceRecordingStartedOn, ["10/12"]),
-            (.keyBalanceRecordingStarted, []),
+            (.keyBalanceRechargeNotRecorded, []),
             (.keyBalanceReferenceOn, ["10/12", "$4.00", "84%"]),
             (.keyBalanceReference, ["$4.00", "84%"]),
             (.keyBalanceReferenceUnavailable, [])]

@@ -575,7 +575,7 @@
 "balance.yesterday" = "昨日";
 "balance.used" = "已用 %1$@";
 "balance.recording.started_on" = "%1$@ 開始記錄";
-"balance.recording.started" = "開始記錄";
+"balance.recharge.not_recorded" = "尚未記錄到上次儲值";
 "balance.reference_on" = "相對 %1$@ 的 %2$@，剩餘 %3$@";
 "balance.reference" = "相對基準餘額 %1$@，剩餘 %2$@";
 "balance.reference_unavailable" = "尚無可確認的餘額基準";
@@ -856,10 +856,10 @@
 "ccswitch.database_unreadable" = "無法讀取 CC Switch 資料庫，請重新開啟 CC Switch 後再試";
 "ccswitch.database_busy" = "CC Switch 資料庫持續被佔用，BalanceBar 會繼續重試";
 "aggregation.not_configured" = "此供應商未設定用量查詢，請在 CC Switch 中設定用量腳本";
-"claude.refresh.egress_guard_mismatch" = "出口 IP 不在白名單中，已暫停 Claude 官方請求。";
-"claude.refresh.egress_guard_check_failed" = "無法確認出口 IP，已暫停 Claude 官方請求。";
-"claude.refresh.egress_guard_no_targets" = "IP 白名單為空，已暫停 Claude 官方請求。";
-"claude.refresh.egress_guard_unsupported_region" = "出口地區不在 Claude 可用地區內或無法辨識，已暫停 Claude 官方請求。";
+"claude.refresh.egress_guard_mismatch" = "出口 IP 不在白名單中，已暫停 Claude 官方請求。可在 設定 › 進階 中調整 IP 白名單。";
+"claude.refresh.egress_guard_check_failed" = "無法確認出口 IP，已暫停 Claude 官方請求。可在 設定 › 進階 中調整 IP 白名單。";
+"claude.refresh.egress_guard_no_targets" = "IP 白名單為空，已暫停 Claude 官方請求。可在 設定 › 進階 中調整 IP 白名單。";
+"claude.refresh.egress_guard_unsupported_region" = "出口地區不在 Claude 可用地區內或無法辨識，已暫停 Claude 官方請求。可在 設定 › 進階 中調整 IP 白名單。";
 "claude.refresh.egress_guard_disabled" = "Claude 官方請求已關閉。可在 設定 › 進階 中開啟 IP 白名單。";
 "claude.timeline.failure.egress_guard" = "被 IP 白名單攔截";
 "quota.failure.open_egress_guard_settings" = "設定 IP 白名單";

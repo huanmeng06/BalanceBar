@@ -575,7 +575,7 @@
 "balance.yesterday" = "ieri";
 "balance.used" = "%1$@ utilizzati";
 "balance.recording.started_on" = "Registrazione dal %1$@";
-"balance.recording.started" = "Registrazione iniziata";
+"balance.recharge.not_recorded" = "Nessuna ricarica nota";
 "balance.reference_on" = "Del saldo del %1$@ di %2$@, resta %3$@";
 "balance.reference" = "Del saldo iniziale di %1$@, resta %2$@";
 "balance.reference_unavailable" = "Saldo di riferimento non disponibile";
@@ -856,10 +856,10 @@
 "ccswitch.database_unreadable" = "Impossibile leggere il database di CC Switch. Riapri CC Switch e riprova";
 "ccswitch.database_busy" = "Il database di CC Switch è occupato. BalanceBar continuerà a riprovare";
 "aggregation.not_configured" = "Per questo provider non è configurata alcuna query di utilizzo. Configura uno script di utilizzo in CC Switch";
-"claude.refresh.egress_guard_mismatch" = "L’IP di uscita non è nell’elenco IP consentiti; le richieste ufficiali di Claude sono in pausa.";
-"claude.refresh.egress_guard_check_failed" = "Impossibile verificare l’IP di uscita; le richieste ufficiali di Claude sono in pausa.";
-"claude.refresh.egress_guard_no_targets" = "L’elenco IP consentiti è vuoto; le richieste ufficiali di Claude sono in pausa.";
-"claude.refresh.egress_guard_unsupported_region" = "L’area di uscita non è supportata da Anthropic o non è identificabile; le richieste ufficiali di Claude sono in pausa.";
+"claude.refresh.egress_guard_mismatch" = "L’IP di uscita non è nell’elenco IP consentiti; le richieste ufficiali di Claude sono in pausa. Puoi modificare l’elenco IP consentiti in Impostazioni › Avanzate.";
+"claude.refresh.egress_guard_check_failed" = "Impossibile verificare l’IP di uscita; le richieste ufficiali di Claude sono in pausa. Puoi modificare l’elenco IP consentiti in Impostazioni › Avanzate.";
+"claude.refresh.egress_guard_no_targets" = "L’elenco IP consentiti è vuoto; le richieste ufficiali di Claude sono in pausa. Puoi modificare l’elenco IP consentiti in Impostazioni › Avanzate.";
+"claude.refresh.egress_guard_unsupported_region" = "L’area di uscita non è supportata da Anthropic o non è identificabile; le richieste ufficiali di Claude sono in pausa. Puoi modificare l’elenco IP consentiti in Impostazioni › Avanzate.";
 "claude.refresh.egress_guard_disabled" = "Le richieste ufficiali di Claude sono disattivate. Attiva l’elenco IP consentiti in Impostazioni › Avanzate.";
 "claude.timeline.failure.egress_guard" = "Bloccato dall’elenco IP consentiti";
 "quota.failure.open_egress_guard_settings" = "Configura IP consentiti";
