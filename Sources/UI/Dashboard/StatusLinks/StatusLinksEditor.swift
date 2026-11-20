@@ -144,6 +144,7 @@ final class StatusLinksEditorHostingView: NSView,
     private var lastColumnLayoutWidth: CGFloat = -1
     private var baseNameColumnWidth: CGFloat = 0
     private var baseURLColumnWidth: CGFloat = 0
+    private lazy var urlMeasurementField = makeTextField()
     private var editingGeneration = 0
     private var pendingMoveSelection: Int?
     private var pendingDuplicateSelection: Int?
@@ -605,7 +606,6 @@ final class StatusLinksEditorHostingView: NSView,
         field.isBordered = false
         field.drawsBackground = false
         field.usesSingleLineMode = true
-        field.lineBreakMode = .byTruncatingTail
         field.focusRingType = .default
 
         return cell
@@ -1118,6 +1118,7 @@ final class StatusLinksEditorHostingView: NSView,
         field.isBordered = false
         field.drawsBackground = false
         field.usesSingleLineMode = true
+        field.lineBreakMode = .byTruncatingTail
         field.setContentHuggingPriority(.defaultLow, for: .horizontal)
         field.setContentCompressionResistancePriority(.required, for: .horizontal)
         return field
@@ -1145,12 +1146,12 @@ final class StatusLinksEditorHostingView: NSView,
             0,
             baseURLColumnWidth - Self.fieldHorizontalInset - Self.fieldTrailingInset
         )
-        let longestURLTextWidth = links.map { measuredTextWidth($0.url) }.max() ?? 0
-        let needsHorizontalScrolling = longestURLTextWidth
+        let longestURLFieldWidth = links.map { measuredURLFieldWidth($0.url) }.max() ?? 0
+        let needsHorizontalScrolling = longestURLFieldWidth
             > visibleURLFieldWidth + Self.horizontalOverflowTolerance
         let requiredURLColumnWidth = max(
             baseURLColumnWidth,
-            longestURLTextWidth + Self.fieldHorizontalInset + Self.fieldTrailingInset
+            longestURLFieldWidth + Self.fieldHorizontalInset + Self.fieldTrailingInset
         )
         let targetURLColumnWidth = needsHorizontalScrolling
             ? requiredURLColumnWidth
@@ -1174,8 +1175,12 @@ final class StatusLinksEditorHostingView: NSView,
         updateHorizontalScrollingState(needsHorizontalScrolling)
     }
 
-    private func measuredTextWidth(_ text: String) -> CGFloat {
-        (text as NSString).size(withAttributes: [.font: Self.tableFieldFont]).width
+    private func measuredURLFieldWidth(_ url: String) -> CGFloat {
+        guard !url.isEmpty else { return 0 }
+        urlMeasurementField.stringValue = url
+        // Glyph advances alone omit native cell padding. Reserve one extra
+        // point so pixel alignment can't reintroduce the trailing ellipsis.
+        return ceil(urlMeasurementField.cell?.cellSize.width ?? 0) + 1
     }
 
     private func updateHorizontalScrollingState(_ allowed: Bool) {
