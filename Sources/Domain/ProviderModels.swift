@@ -518,7 +518,7 @@ enum OpenCodexCardLayout {
     static let quotaProgressHeight: CGFloat = 5
     /// Compact balance cards keep the title close to the first body label.
     static let balanceHeaderGap: CGFloat = 4
-    /// Match the subtitle-to-reason spacing of the balance card without a progress bar.
+    /// Equal spacing above and below the stale reason on a balance card.
     static let balanceStaleReasonGap: CGFloat = 9
     /// How far the amount row rises when the subtitle moves below it. The amount frame keeps
     /// empty space under its digits, so less than a full row is needed.
@@ -874,7 +874,7 @@ enum OpenCodexCardLayout {
             let row = quotaRowFrames(includesProgress: includesQuotaProgress,
                                      hasSubtitle: (includesBalanceSubtitle || includesBalanceRecharge) && !subtitleBelow)
             let reasonY = includesQuotaProgress
-                ? row.progress.maxY + quotaProgressTopGap : (ownsBottomRow ? balanceNoProgressBottomInset : 0)
+                ? row.progress.maxY + balanceStaleReasonGap : (ownsBottomRow ? balanceNoProgressBottomInset : 0)
             let subtitleY = inlineRecharge || includesBalanceSubtitle ? row.reset.minY
                 : (includesQuotaProgress ? 18 : reasonY)
             // Place the reason above the bar, then lift the entire upper block just enough

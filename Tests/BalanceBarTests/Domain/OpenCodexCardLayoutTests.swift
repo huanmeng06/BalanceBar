@@ -948,7 +948,7 @@ extension OpenCodexCardLayoutTests {
                     XCTAssertEqual(reason.height, reasonHeight)
                     if showsProgress {
                         let bar = try XCTUnwrap(layout.progress)
-                        XCTAssertEqual(reason.minY - bar.maxY, OpenCodexCardLayout.quotaProgressTopGap)
+                        XCTAssertEqual(reason.minY - bar.maxY, 9)
                     } else {
                         XCTAssertNil(layout.progress)
                     }

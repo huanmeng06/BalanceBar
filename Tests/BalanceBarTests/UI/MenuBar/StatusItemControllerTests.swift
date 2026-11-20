@@ -3746,7 +3746,7 @@ extension StatusItemControllerTests {
         XCTAssertEqual(directGap, 9, accuracy: 0.5)
         let directBar = try XCTUnwrap(cached.subviews.compactMap { $0 as? QuotaProgressView }.first)
         XCTAssertEqual(directBar.percentage, 100)
-        XCTAssertEqual(reasonRow.frame.minY - directBar.frame.maxY, OpenCodexCardLayout.quotaProgressTopGap, accuracy: 0.5)
+        XCTAssertEqual(reasonRow.frame.minY - directBar.frame.maxY, 9, accuracy: 0.5)
 
         XCTAssertFalse(cached.subviews.contains { $0 is FailureStateView || $0 is NSButton })
 
@@ -3785,7 +3785,7 @@ extension StatusItemControllerTests {
         let walletBar = try XCTUnwrap(wallet.subviews.compactMap { $0 as? QuotaProgressView }.first)
         XCTAssertEqual(walletBar.percentage, 100)
         XCTAssertEqual(walletSubtitle.view.frame.minY - walletReason.frame.maxY, directGap, accuracy: 0.5)
-        XCTAssertEqual(walletReason.frame.minY - walletBar.frame.maxY, OpenCodexCardLayout.quotaProgressTopGap, accuracy: 0.5)
+        XCTAssertEqual(walletReason.frame.minY - walletBar.frame.maxY, 9, accuracy: 0.5)
 
         var recovered = display
         recovered.status = .fresh
