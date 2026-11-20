@@ -1,0 +1,16 @@
+{
+  "features": [],
+  "fixes": [
+    {
+      "zhHans": {
+        "title": "设置页重排、定位与无障碍改进",
+        "description": "重组通用、菜单栏、菜单和高级设置。依赖项置灰但仍可搜索并保留原值，菜单栏新增独立的微调与复位区。页内链接可用辅助技术激活，并能定位和高亮 IP 白名单开关；状态链接表可横向阅读长网址，缓存余额卡保留已有的官网入口。"
+      },
+      "en": {
+        "title": "Settings layout, navigation and accessibility improvements",
+        "description": "Reorganizes General, Menu Bar, Menu, and Advanced. Disabled dependent settings stay searchable and retain their values, and menu bar fine-tuning has a dedicated reset. Accessible links can reveal and highlight the IP allowlist switch. Long status URLs can be read by scrolling, and cached balance cards retain existing provider website links."
+      },
+      "sources": [{ "kind": "pr", "number": 715 }]
+    }
+  ]
+}
