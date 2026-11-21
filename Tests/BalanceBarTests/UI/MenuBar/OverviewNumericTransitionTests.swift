@@ -1251,6 +1251,73 @@ final class OverviewNumericPresentationControllerTests: XCTestCase {
         XCTAssertEqual(progressValues(in: switched), [30])
     }
 
+    func testRelayResetSectionsStayBelowBalanceWhenMenuRefreshesInPlace() throws {
+        for showsProbability in [false, true] {
+            let controller = makeController()
+            defer { controller.teardown() }
+            let date = Date()
+            let input = makeMenuInput()
+            let settings = makeSettings(showNonOfficialResetProbability: showsProbability)
+            let ticket = CodexBankedResetCard(id: "ticket", resetType: "codex_rate_limits", titleText: "Full",
+                expiresAt: date.addingTimeInterval(86_400), expiresText: "tomorrow")
+            let balance = Snapshot.balance("Relay", 10, "USD", nil, date, progressPercentage: 40,
+                bankedReset: CodexBankedReset(cards: [ticket]), resetForecast: .demo(updatedAt: date))
+            controller.start(snapshot: balance, refreshDate: date, menuInput: input, settings: settings)
+            let overview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+
+            func assertOrder(stale: Bool) throws {
+                let title = try XCTUnwrap(overview.subviews.first { $0.identifier?.rawValue == "overview.providerTitle" })
+                let refresh = try XCTUnwrap(overview.subviews.first { $0.identifier?.rawValue == "overview.refreshTime" })
+                let amount = try XCTUnwrap(overview.subviews.compactMap { $0 as? OverviewNumericTextView }.first)
+                let progress = try XCTUnwrap(overview.subviews.compactMap { $0 as? QuotaProgressView }.first)
+                let sections = overview.subviews.compactMap { $0 as? OpenCodexOverviewSectionView }
+                let cards = try XCTUnwrap(sections.first { $0.sectionID == .bankedReset })
+                let probability = sections.first { $0.sectionID == .resetProbability }
+                XCTAssertNotNil(cards.subviews.first { $0.identifier?.rawValue == "codex.bankedReset.nearestExpiry" })
+                XCTAssertGreaterThan(title.frame.minY, amount.frame.minY)
+                XCTAssertGreaterThan(refresh.frame.minY, amount.frame.minY)
+                XCTAssertGreaterThan(amount.frame.minY, progress.frame.minY)
+                XCTAssertGreaterThan(progress.frame.minY, (probability ?? cards).frame.maxY)
+                XCTAssertEqual(probability != nil, showsProbability)
+                if let probability { XCTAssertGreaterThan(probability.frame.minY, cards.frame.maxY) }
+                let reason = overview.subviews.first { $0.identifier?.rawValue == "balance.staleReason" }
+                XCTAssertEqual(reason != nil, stale)
+                if let reason { XCTAssertGreaterThan(reason.frame.minY, progress.frame.maxY) }
+            }
+
+            try assertOrder(stale: false)
+            controller.menuWillOpen(controller.statusMenuForTesting)
+            defer { controller.menuDidClose(controller.statusMenuForTesting) }
+            let stale = Snapshot.providerError("Relay", reason: "Balance unavailable. Showing the last successful balance.",
+                cachedBalance: balance)
+            controller.update(snapshot: stale, refreshDate: date, menuInput: input, settings: settings)
+            XCTAssertTrue(overview === controller.menuItemsForTesting.first?.view)
+            try assertOrder(stale: true)
+        }
+    }
+
+    func testRelayErrorWithoutCachedBalancePlacesResetSectionsBelowError() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        let date = Date()
+        var error = Snapshot.providerError("Relay", reason: "Balance unavailable", cachedBalance: nil)
+        error.bankedReset = CodexBankedReset(cards: [])
+        error.resetForecast = .demo(updatedAt: date)
+        controller.start(snapshot: error, refreshDate: date, menuInput: makeMenuInput(),
+            settings: makeSettings(showNonOfficialResetProbability: true))
+
+        let view = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        let detail = try XCTUnwrap(view.subviews.compactMap { $0 as? NSTextField }
+            .first { $0.stringValue == "Balance unavailable" })
+        let sections = view.subviews.compactMap { $0 as? OpenCodexMetricSectionView }
+        let probability = try XCTUnwrap(sections.first { $0.sectionID == .resetProbability })
+        let cards = try XCTUnwrap(sections.first { $0.sectionID == .bankedReset })
+        XCTAssertNotNil(probability.titleView)
+        XCTAssertGreaterThan(detail.frame.minY, probability.frame.maxY)
+        XCTAssertGreaterThan(probability.frame.minY, cards.frame.maxY)
+        XCTAssertEqual(cards.frame.minY, OpenCodexCardLayout.quotaBottomInset)
+    }
+
     func testThirdPartyBalanceReopenStartsFromLastSeenAmountAndProgress() throws {
         let controller = makeController()
         defer { controller.teardown() }
@@ -1659,13 +1726,15 @@ final class OverviewNumericPresentationControllerTests: XCTestCase {
         )
     }
 
-    private func makeSettings(timeZone: TimeZone = .autoupdatingCurrent) -> StatusItemController.MenuBarSettings {
+    private func makeSettings(timeZone: TimeZone = .autoupdatingCurrent,
+                              showNonOfficialResetProbability: Bool = false) -> StatusItemController.MenuBarSettings {
         StatusItemController.MenuBarSettings(
             showIcon: true,
             showAmount: true,
             showReset: true,
             horizontalPadding: 6,
             keepMenuOpenAfterRefresh: true,
+            showNonOfficialResetProbability: showNonOfficialResetProbability,
             displayTimeZone: timeZone
         )
     }

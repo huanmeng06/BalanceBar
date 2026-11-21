@@ -517,14 +517,14 @@ enum OfficialQuotaResponseParser {
         let labels = keys.compactMap { key -> String? in
             let mapped: (String, String)?
             switch key {
-            case "five_hour": mapped = (key, tr(.keyResponseParsers5HourQuota))
-            case "seven_day", "seven_day_overage_included": mapped = ("seven_day", tr(.keyResponseParsers7DayQuota))
+            case "five_hour": mapped = (key, tr(.keyBankedResetWindowFiveHourShort))
+            case "seven_day", "seven_day_overage_included": mapped = ("seven_day", tr(.keyBankedResetWindowSevenDayShort))
             default: mapped = nil
             }
             guard let mapped, seen.insert(mapped.0).inserted else { return nil }
             return mapped.1
         }
-        return labels.isEmpty ? nil : labels.joined(separator: " · ")
+        return labels.isEmpty ? nil : labels.joined(separator: " + ")
     }
 
     private static func parseCodexWindow(

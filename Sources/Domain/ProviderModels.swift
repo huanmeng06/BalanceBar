@@ -850,9 +850,12 @@ enum OpenCodexCardLayout {
             let resetSections = reset.sectionLayouts.filter {
                 $0.id == .resetProbability || $0.id == .bankedReset
             }
-            let resetMinY = resetSections.map(\.frame.minY).min() ?? 0
-            let resetOrigin = base.cardSize.height + metrics.sectionSpacing
-            let resetOffset = resetOrigin - resetMinY
+            guard let resetMinY = resetSections.map(\.frame.minY).min(),
+                  let resetMaxY = resetSections.map(\.frame.maxY).max() else { return base }
+            // AppKit uses bottom-up coordinates. Keep the reset stack at the bottom
+            // and lift the entire balance body above it.
+            let resetOffset = quotaBottomInset - resetMinY
+            let lift = resetMaxY - resetMinY + metrics.sectionSpacing
             let shiftedSections = resetSections.map { section in
                 OpenCodexOverviewSectionLayout(
                     id: section.id,
@@ -864,19 +867,18 @@ enum OpenCodexCardLayout {
             let shiftedMetrics = reset.bankedResetForecastMetrics?.offsetBy(dx: 0, dy: resetOffset)
             let shiftedConfidence = reset.bankedResetForecastConfidence?.offsetBy(dx: 0, dy: resetOffset)
             let shiftedViewport = reset.bankedResetTicketViewport?.offsetBy(dx: 0, dy: resetOffset)
-            let shiftedHeight = shiftedSections.map(\.frame.maxY).max() ?? base.cardSize.height
             return OpenCodexCardFrames(
-                cardSize: CGSize(width: base.cardSize.width, height: max(base.cardSize.height, shiftedHeight)),
-                title: base.title,
-                refreshTime: base.refreshTime,
-                account: base.account,
-                subscription: base.subscription,
-                quotaDetail: base.quotaDetail,
-                reset: base.reset,
-                amount: base.amount,
-                progress: base.progress,
-                linkPrefix: base.linkPrefix,
-                link: base.link,
+                cardSize: CGSize(width: base.cardSize.width, height: base.cardSize.height + lift),
+                title: base.title.offsetBy(dx: 0, dy: lift),
+                refreshTime: base.refreshTime.offsetBy(dx: 0, dy: lift),
+                account: base.account?.offsetBy(dx: 0, dy: lift),
+                subscription: base.subscription?.offsetBy(dx: 0, dy: lift),
+                quotaDetail: base.quotaDetail.offsetBy(dx: 0, dy: lift),
+                reset: base.reset?.offsetBy(dx: 0, dy: lift),
+                amount: base.amount.offsetBy(dx: 0, dy: lift),
+                progress: base.progress?.offsetBy(dx: 0, dy: lift),
+                linkPrefix: base.linkPrefix?.offsetBy(dx: 0, dy: lift),
+                link: base.link?.offsetBy(dx: 0, dy: lift),
                 quotaRows: base.quotaRows,
                 lunaReserveRow: base.lunaReserveRow,
                 bankedResetSummaryRow: reset.bankedResetSummaryRow?.offsetBy(dy: resetOffset),
@@ -885,12 +887,12 @@ enum OpenCodexCardLayout {
                 bankedResetForecastConfidence: shiftedConfidence,
                 bankedResetDetailRows: reset.bankedResetDetailRows,
                 bankedResetTicketViewport: shiftedViewport,
-                balanceRecharge: base.balanceRecharge,
-                balanceStaleReason: base.balanceStaleReason,
+                balanceRecharge: base.balanceRecharge?.offsetBy(dx: 0, dy: lift),
+                balanceStaleReason: base.balanceStaleReason?.offsetBy(dx: 0, dy: lift),
                 balanceSubtitleIsBelowAmount: base.balanceSubtitleIsBelowAmount,
                 sectionLayouts: [
                     .init(id: .legacyQuota,
-                        frame: CGRect(x: 0, y: 0, width: base.cardSize.width, height: base.cardSize.height),
+                        frame: CGRect(x: 0, y: lift, width: base.cardSize.width, height: base.cardSize.height),
                         row: nil)
                 ] + shiftedSections
             )

@@ -599,6 +599,8 @@
     case keyLunaReserveMenuResetValue = "luna.reserve.menu_reset_value"
     case keyLunaReserveMenuUnavailable = "luna.reserve.menu_unavailable"
     case keyLunaReserveSummaryValue = "luna.reserve.summary_value"
+    case keyBankedResetWindowFiveHourShort = "banked_reset.window.five_hour_short"
+    case keyBankedResetWindowSevenDayShort = "banked_reset.window.seven_day_short"
     case keyCodexBankedResetTitle = "codex.banked_reset.title"
     case keyCodexBankedResetFullResetTitle = "codex.banked_reset.full_reset_title"
     case keyCodexBankedResetFullResetWindow = "codex.banked_reset.full_reset_window"

@@ -475,6 +475,8 @@
 "luna.reserve.menu_reset_value" = "%1$@";
 "luna.reserve.menu_unavailable" = "%1$@ vorübergehend nicht verfügbar";
 "luna.reserve.summary_value" = "%1$@ · %2$@ · %3$@ · %4$@";
+"banked_reset.window.five_hour_short" = "5 Std.";
+"banked_reset.window.seven_day_short" = "7 Tage";
 "codex.banked_reset.title" = "Reset-Karten";
 "codex.banked_reset.full_reset_title" = "Vollständiger Reset";
 "codex.banked_reset.full_reset_window" = "Wöchentlich + 5-Stunden-Kontingent";

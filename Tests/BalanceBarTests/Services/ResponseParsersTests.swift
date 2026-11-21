@@ -819,7 +819,7 @@ final class ResponseParsersTests: XCTestCase {
         XCTAssertEqual(card.resetType, "full")
         XCTAssertEqual(card.resetCount, 2)
         XCTAssertEqual(card.titleText, tr(.keyCodexBankedResetFullResetTitle))
-        XCTAssertEqual(card.windowText, tr(.keyResponseParsers5HourQuota) + " · " + tr(.keyResponseParsers7DayQuota))
+        XCTAssertEqual(card.windowText, tr(.keyBankedResetWindowFiveHourShort) + " + " + tr(.keyBankedResetWindowSevenDayShort))
         XCTAssertEqual(card.expiresAt, expiresAt)
         XCTAssertEqual(card.remainingText, CodexBankedResetFormatting.remaining(until: expiresAt, now: now)?.text)
     }
@@ -864,7 +864,7 @@ final class ResponseParsersTests: XCTestCase {
         ], now: now))
         let card = try XCTUnwrap(reset.cards.first)
         XCTAssertEqual(card.titleText, tr(.keyCodexBankedResetFullResetTitle))
-        XCTAssertEqual(card.windowText, tr(.keyResponseParsers5HourQuota) + " · " + tr(.keyResponseParsers7DayQuota))
+        XCTAssertEqual(card.windowText, tr(.keyBankedResetWindowFiveHourShort) + " + " + tr(.keyBankedResetWindowSevenDayShort))
         XCTAssertEqual(reset.availableCount, 1, "paused/usable/starts semantics remain unchanged pending confirmation")
     }
 

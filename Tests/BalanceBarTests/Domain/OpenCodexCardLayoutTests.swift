@@ -94,8 +94,9 @@ final class OpenCodexCardLayoutTests: XCTestCase {
             bankedResetDisplayMode: .detailed
         )
 
-        XCTAssertEqual(withCards.amount, base.amount)
-        XCTAssertEqual(withCards.progress, base.progress)
+        let lift = withCards.cardSize.height - base.cardSize.height
+        XCTAssertEqual(withCards.amount, base.amount.offsetBy(dx: 0, dy: lift))
+        XCTAssertEqual(withCards.progress, base.progress?.offsetBy(dx: 0, dy: lift))
         XCTAssertTrue(withCards.cardSize.height > base.cardSize.height)
         XCTAssertEqual(
             withCards.sectionLayouts.map(\.id),
@@ -277,6 +278,30 @@ final class OpenCodexCardLayoutTests: XCTestCase {
                 XCTAssertGreaterThanOrEqual(row.amount.width, metrics.amountWidth)
                 XCTAssertEqual(row.amount.midY, row.window.midY)
             }
+        }
+    }
+
+    func testClaudeTwoWindowResetTicketStaysCompactInChineseAndEnglish() throws {
+        let previous = AppLanguage.selected
+        defer { AppLanguage.selected = previous }
+        for (language, expected) in [(AppLanguage.simplifiedChinese, "5 小时 + 7 日"), (.english, "5-hour + 7-day")] {
+            AppLanguage.selected = language
+            let window = try XCTUnwrap(OfficialQuotaResponseParser.claudeResetWindowText(["five_hour", "seven_day"]))
+            XCTAssertEqual(window, expected)
+            let pointSize = OpenCodexCardLayout.quotaDetailPointSize
+            func width(_ text: String, font: NSFont) -> CGFloat {
+                ceil((text as NSString).size(withAttributes: [.font: font]).width) + 4
+            }
+            let remaining = tr(.keyCodexBankedResetRemainingDaysHours, arguments: ["19", "1"])
+            let metrics = OpenCodexTicketTextMetrics(titleWidth: 0,
+                windowWidth: width(window, font: .systemFont(ofSize: OpenCodexCardLayout.quotaResetPointSize)),
+                resetWidth: 0,
+                amountWidth: width(remaining, font: .monospacedDigitSystemFont(ofSize: pointSize, weight: .medium)))
+            let frames = OpenCodexCardLayout.frames(for: .quota, includesBankedReset: true,
+                bankedResetCardCount: 1, bankedResetTicketMetrics: [metrics])
+            let row = try XCTUnwrap(frames.bankedResetDetailRows.first)
+            XCTAssertEqual(row.window.midY, row.amount.midY, language.rawValue)
+            XCTAssertEqual(row.chrome.height, 72, language.rawValue)
         }
     }
 
@@ -912,7 +937,9 @@ final class OpenCodexCardLayoutTests: XCTestCase {
         )
         let reset = try XCTUnwrap(withReset.sectionLayouts.first(where: { $0.id == .bankedReset }))
         let summary = try XCTUnwrap(reset.row)
-        XCTAssertGreaterThanOrEqual(reset.frame.minY, base.cardSize.height + OpenCodexCardLayout.metrics.sectionSpacing)
+        XCTAssertEqual(reset.frame.minY, OpenCodexCardLayout.quotaBottomInset)
+        let progress = try XCTUnwrap(withReset.progress)
+        XCTAssertEqual(progress.minY - reset.frame.maxY, OpenCodexCardLayout.metrics.sectionSpacing)
         XCTAssertGreaterThanOrEqual(summary.quotaDetail.minY, 0)
         XCTAssertLessThanOrEqual(summary.quotaDetail.maxY, reset.frame.height)
         XCTAssertEqual(withReset.bankedResetSummaryRow, reset.cardRow,

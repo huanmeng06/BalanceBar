@@ -475,6 +475,8 @@
 "luna.reserve.menu_reset_value" = "%1$@";
 "luna.reserve.menu_unavailable" = "%1$@ は一時的に利用できません";
 "luna.reserve.summary_value" = "%1$@ · %2$@ · %3$@ · %4$@";
+"banked_reset.window.five_hour_short" = "5時間";
+"banked_reset.window.seven_day_short" = "7日";
 "codex.banked_reset.title" = "リセットカード";
 "codex.banked_reset.full_reset_title" = "完全リセット";
 "codex.banked_reset.full_reset_window" = "週間 + 5時間の上限";
