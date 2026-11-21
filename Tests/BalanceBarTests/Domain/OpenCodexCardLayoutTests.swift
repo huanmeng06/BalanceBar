@@ -286,7 +286,7 @@ final class OpenCodexCardLayoutTests: XCTestCase {
         defer { AppLanguage.selected = previous }
         for (language, expected) in [(AppLanguage.simplifiedChinese, "5 小时 + 7 日"), (.english, "5-hour + 7-day")] {
             AppLanguage.selected = language
-            let window = try XCTUnwrap(OfficialQuotaResponseParser.claudeResetWindowText(["five_hour", "seven_day"]))
+            let window = try XCTUnwrap(OfficialQuotaResponseParser.resetCardWindowText(["five_hour", "seven_day"]))
             XCTAssertEqual(window, expected)
             let pointSize = OpenCodexCardLayout.quotaDetailPointSize
             func width(_ text: String, font: NSFont) -> CGFloat {

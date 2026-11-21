@@ -479,7 +479,7 @@
 "banked_reset.window.seven_day_short" = "7 jours";
 "codex.banked_reset.title" = "Cartes de réinitialisation";
 "codex.banked_reset.full_reset_title" = "Réinitialisation complète";
-"codex.banked_reset.full_reset_window" = "Quota hebdomadaire + 5 heures";
+"codex.banked_reset.full_reset_window" = "5 h + 7 jours";
 "codex.banked_reset.expires_value" = "Expire le %1$@";
 "codex.banked_reset.nearest_expiry" = "Prochaine expiration : %1$@";
 "codex.banked_reset.remaining_hours" = "%1$@ heures";

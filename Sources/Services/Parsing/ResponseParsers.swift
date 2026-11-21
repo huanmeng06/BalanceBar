@@ -490,28 +490,30 @@ enum OfficialQuotaResponseParser {
             let resetType = grant.type?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             let remaining = CodexBankedResetFormatting.remaining(until: expiresAt, now: now)
-            let titleText = resetType == "full"
-                ? tr(.keyCodexBankedResetFullResetTitle)
-                : tr(.keyCodexBankedResetTitle)
+            let titleKey: LocalizationKey = resetType == "full"
+                ? .keyCodexBankedResetFullResetTitle : .keyCodexBankedResetTitle
             let clearKeys = grant.clears ?? []
 
             return CodexBankedResetCard(
                 id: rawID?.isEmpty == true ? nil : rawID ?? "claude-reset-\(index)",
                 resetType: resetType,
-                titleText: titleText,
-                windowText: claudeResetWindowText(clearKeys),
+                titleText: tr(titleKey),
+                windowText: resetCardWindowText(clearKeys),
                 resetCount: count,
                 expiresAt: expiresAt,
                 expiresText: CodexBankedResetFormatting.expiryText(for: expiresAt, relativeTo: now),
                 remainingText: remaining?.text,
                 remainingIsWarning: remaining?.isWarning ?? false,
-                windowKeys: clearKeys
+                windowKeys: clearKeys,
+                titleLocalizationKey: titleKey
             )
         }
         return CodexBankedReset(cards: cards)
     }
 
-    static func claudeResetWindowText(_ keys: [String]?) -> String? {
+    static let fullCodexResetWindowKeys = ["five_hour", "seven_day"]
+
+    static func resetCardWindowText(_ keys: [String]?) -> String? {
         guard let keys else { return nil }
         var seen = Set<String>()
         let labels = keys.compactMap { key -> String? in
@@ -722,16 +724,20 @@ enum OfficialQuotaResponseParser {
         let apiTitle = ResponseParsingSupport.stringValue(object["title"])?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let titleText: String
-        let windowText: String?
+        let titleKey: LocalizationKey?
+        let windowKeys: [String]?
         if resetType == "codex_rate_limits" {
+            titleKey = .keyCodexBankedResetFullResetTitle
             titleText = tr(.keyCodexBankedResetFullResetTitle)
-            windowText = tr(.keyCodexBankedResetFullResetWindow)
+            windowKeys = fullCodexResetWindowKeys
         } else if let apiTitle, isUserReadableCreditTitle(apiTitle) {
+            titleKey = nil
             titleText = apiTitle
-            windowText = nil
+            windowKeys = nil
         } else {
+            titleKey = .keyCodexBankedResetTitle
             titleText = tr(.keyCodexBankedResetTitle)
-            windowText = nil
+            windowKeys = nil
         }
 
         let rawID = ResponseParsingSupport.stringValue(object["id"])?
@@ -742,11 +748,13 @@ enum OfficialQuotaResponseParser {
             id: rawID?.isEmpty == true ? nil : rawID,
             resetType: resetType,
             titleText: titleText,
-            windowText: windowText,
+            windowText: resetCardWindowText(windowKeys),
             expiresAt: expiresAt,
             expiresText: CodexBankedResetFormatting.expiryText(for: expiresAt, relativeTo: now),
             remainingText: remaining?.text,
-            remainingIsWarning: remaining?.isWarning ?? false
+            remainingIsWarning: remaining?.isWarning ?? false,
+            windowKeys: windowKeys,
+            titleLocalizationKey: titleKey
         )
     }
 

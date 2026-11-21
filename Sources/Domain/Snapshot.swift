@@ -123,13 +123,15 @@ struct CodexBankedResetCard: Equatable {
     let id: String?
     let resetType: String
     let titleText: String
+    let titleLocalizationKey: LocalizationKey?
+    var localizedTitleText: String { titleLocalizationKey.map { tr($0) } ?? titleText }
     let windowText: String?
     let resetCount: Int
     let expiresAt: Date?
     let expiresText: String?
     let remainingText: String?
     let remainingIsWarning: Bool
-    /// Raw Claude reset-window keys, retained so a local cache can rebuild
+    /// Raw reset-window keys, retained so a local cache can rebuild
     /// localized display text after a relaunch or language change.
     let windowKeys: [String]?
 
@@ -143,11 +145,13 @@ struct CodexBankedResetCard: Equatable {
         expiresText: String?,
         remainingText: String? = nil,
         remainingIsWarning: Bool = false,
-        windowKeys: [String]? = nil
+        windowKeys: [String]? = nil,
+        titleLocalizationKey: LocalizationKey? = nil
     ) {
         self.id = id
         self.resetType = resetType
         self.titleText = titleText
+        self.titleLocalizationKey = titleLocalizationKey
         self.windowText = windowText
         self.resetCount = max(1, resetCount)
         self.expiresAt = expiresAt

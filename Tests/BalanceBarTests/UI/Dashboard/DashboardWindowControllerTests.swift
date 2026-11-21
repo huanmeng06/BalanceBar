@@ -4439,6 +4439,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             keepMenuOpenAfterRefresh: true
         )
         let date = Date()
+        controller.bankedResetCountdownNowForTesting = date
         let windows = [
             OfficialQuotaWindow(
                 kind: .fiveHour,
@@ -6985,15 +6986,10 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                             XCTAssertLessThanOrEqual(measured + 4, label.frame.width)
                         }
                     }
-                    if language == .german {
-                        let marquee = try XCTUnwrap(textViews.first { $0.identifier?.rawValue == "codex.bankedReset.ticketWindow" } as? AccountMarqueeView)
-                        XCTAssertEqual(marquee.accountLabel.stringValue, tr(.keyCodexBankedResetFullResetWindow))
-                        XCTAssertFalse(marquee.hasActiveScrollTimer, "Closed menu must not animate ticket text")
-                    }
-                    if language == .spanish || language == .german || language == .french {
-                        XCTAssertEqual(chrome.frame.height, OpenCodexCardLayout.bankedResetExpandedDetailRowHeight)
-                        XCTAssertLessThanOrEqual(amount.frame.maxY, try XCTUnwrap(textViews.first { $0.identifier?.rawValue == "codex.bankedReset.ticketWindow" }).frame.minY)
-                    }
+                    let window = try XCTUnwrap(textViews.first { $0.identifier?.rawValue == "codex.bankedReset.ticketWindow" } as? NSTextField)
+                    XCTAssertEqual(window.stringValue, tr(.keyCodexBankedResetFullResetWindow))
+                    XCTAssertEqual(chrome.frame.height, OpenCodexCardLayout.bankedResetDetailRowHeight)
+                    XCTAssertEqual(window.frame.midY, amount.frame.midY, accuracy: 2)
                     XCTAssertEqual(chrome.frame.midY, try XCTUnwrap(allControls(of: overview, as: NSImageView.self).first {
                         $0.identifier?.rawValue == "codex.bankedReset.ticket" && chrome.frame.contains($0.frame)
                     }).frame.midY, accuracy: 0.001)

@@ -5140,15 +5140,72 @@ extension StatusItemControllerTests {
         let resetSection = try XCTUnwrap(card.subviews.compactMap { $0 as? OpenCodexOverviewSectionView }
             .first { $0.sectionID == .bankedReset })
         let sectionLayout = try XCTUnwrap(layout.sectionLayouts.first { $0.id == .bankedReset })
-        let balanceBodyBottom = max(layout.amount.maxY, layout.quotaDetail.maxY, layout.progress?.maxY ?? 0,
-            layout.balanceRecharge?.maxY ?? 0, layout.link?.maxY ?? 0)
-        XCTAssertGreaterThanOrEqual(sectionLayout.frame.minY,
-            balanceBodyBottom + OpenCodexCardLayout.metrics.sectionSpacing)
+        let progress = try XCTUnwrap(layout.progress)
+        XCTAssertEqual(progress.minY - sectionLayout.frame.maxY, OpenCodexCardLayout.metrics.sectionSpacing)
         XCTAssertEqual(resetSection.frame, sectionLayout.frame)
         XCTAssertNotNil(descendants(card).compactMap { $0 as? BankedResetTicketScrollView }.first,
             "long reset-card lists keep their bounded, scrollable viewport on relay cards")
         XCTAssertTrue(card.subviews.compactMap { $0 as? HoverLinkTextField }
             .contains { $0.identifier?.rawValue == "overview.providerTitle" && $0.onActivate != nil })
+    }
+
+    @MainActor
+    func testRelayBalanceLabelAndCachedResetTicketStayCorrectAcrossLanguageChange() throws {
+        let oldLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = oldLanguage }
+        let now = Date()
+        let expiration = ISO8601DateFormatter().string(from: now.addingTimeInterval(8 * 86_400 + 22.5 * 3_600))
+        let settings = StatusItemController.MenuBarSettings(showIcon: true, showAmount: true, showReset: true,
+            horizontalPadding: 6, keepMenuOpenAfterRefresh: true, showQuotaProgressBar: true,
+            showBankedReset: true, showNonOfficialBankedReset: true)
+        for client in [AssistantClient.codex, .claude] {
+            AppLanguage.selected = .german
+            let resets: CodexBankedReset
+            if client == .codex {
+                resets = try XCTUnwrap(OfficialQuotaResponseParser.parseBankedResetCredits(object: [
+                    "credits": [["id": "ticket", "reset_type": "codex_rate_limits", "expires_at": expiration]],
+                ], now: now))
+            } else {
+                resets = try XCTUnwrap(OfficialQuotaResponseParser.parseClaudeBankedReset(object: [
+                    "cedar_ember": ["eligible": true, "grants": [["id": "ticket", "type": "full",
+                        "resets_left": 1, "clears": ["five_hour", "seven_day"], "ends_at": expiration]]],
+                ], now: now))
+            }
+            let snapshot = Snapshot.balance("Relay", 1.87, "USD", nil, now, progressPercentage: 85,
+                progressContext: .init(baselineCents: 220, lastCents: 187, peakCents: 220, baselineObservedAt: now),
+                bankedReset: resets)
+            let controller = makeController()
+            defer { controller.teardown() }
+            controller.start(snapshot: snapshot, refreshDate: now, menuInput: makeMenuInput(activeClient: client), settings: settings)
+            let menu = controller.statusMenuForTesting
+            let host = try XCTUnwrap(menu.items.first?.view as? MenuHoverLinkHostView)
+            let detail = try XCTUnwrap(host.subviews.first { $0.identifier?.rawValue == "overview.quotaDetail" } as? AccountMarqueeView)
+            let balance = try XCTUnwrap(host.subviews.compactMap { $0 as? OverviewNumericTextView }.first)
+            let progress = try XCTUnwrap(host.overviewLayout?.progress)
+            XCTAssertTrue(try XCTUnwrap(host.overviewLayout).balanceSubtitleIsBelowAmount)
+            XCTAssertEqual(detail.accountLabel.stringValue, "Restguthaben")
+            XCTAssertGreaterThan(detail.frame.minY, progress.maxY)
+            XCTAssertEqual(StatusItemController.overviewBaselineY(for: detail.accountLabel, in: host),
+                StatusItemController.overviewBaselineY(for: balance.textField, in: host), accuracy: 0.5)
+
+            func ticketText(_ id: String, under view: NSView) -> String? {
+                if let label = view as? NSTextField, label.identifier?.rawValue == "codex.bankedReset." + id {
+                    return label.stringValue
+                }
+                return view.subviews.lazy.compactMap { ticketText(id, under: $0) }.first
+            }
+            XCTAssertEqual(ticketText("ticketTitle", under: host), "Vollständiger Reset")
+            XCTAssertEqual(ticketText("ticketWindow", under: host), "5 Std. + 7 Tage")
+            controller.menuWillOpen(menu)
+            defer { controller.menuDidClose(menu) }
+            AppLanguage.selected = .simplifiedChinese
+            controller.updateMenu(input: makeMenuInput(activeClient: client))
+            XCTAssertTrue(menu.items.first?.view === host)
+            XCTAssertEqual(detail.accountLabel.stringValue, "剩余余额")
+            XCTAssertEqual(ticketText("ticketTitle", under: host), "完全重置")
+            XCTAssertEqual(ticketText("ticketWindow", under: host), "5 小时 + 7 日")
+            XCTAssertEqual(ticketText("remaining", under: host), "8 天 22 小时")
+        }
     }
 
     @MainActor

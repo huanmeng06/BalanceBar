@@ -6994,7 +6994,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let singleLine = snapshot.balanceRecharge == nil && layout?.balanceRecharge == nil
         guard snapshot.kind == .balance, singleLine || layout?.balanceSubtitleIsBelowAmount == true,
               let host = card as? MenuHoverLinkHostView, host.overviewLayout?.link == nil,
-              let amount = descendantViews(of: card, as: OverviewNumericTextView.self).first,
+              let amount = host.subviews.compactMap({ $0 as? OverviewNumericTextView }).first,
               let detail = descendantViews(of: card, as: AccountMarqueeView.self).first(where: {
                   $0.identifier?.rawValue == "overview.quotaDetail"
               }) else { return }
@@ -7167,10 +7167,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let bankedReset = presentation.bankedReset
         let bankedResetTicketMetrics = bankedReset?.cards.map {
             OpenCodexTicketTextMetrics(
-                titleWidth: textWidth($0.titleText, font: .systemFont(ofSize: OpenCodexCardLayout.quotaDetailPointSize, weight: .medium)) + 4,
+                titleWidth: textWidth($0.localizedTitleText, font: .systemFont(ofSize: OpenCodexCardLayout.quotaDetailPointSize, weight: .medium)) + 4,
                 windowWidth: textWidth(resetTicketWindowText($0) ?? "", font: .systemFont(ofSize: OpenCodexCardLayout.quotaResetPointSize, weight: .regular)) + 4,
                 resetWidth: textWidth(CodexBankedResetFormatting.expiryText(for: $0.expiresAt, relativeTo: Date(), timeZone: settings.displayTimeZone) ?? $0.expiresText ?? "", font: .systemFont(ofSize: OpenCodexCardLayout.quotaResetPointSize, weight: .regular)) + 4,
-                amountWidth: textWidth($0.remainingText ?? "", font: .monospacedDigitSystemFont(ofSize: OpenCodexCardLayout.quotaDetailPointSize, weight: .medium)) + 4
+                amountWidth: textWidth(resetTicketRemaining($0).text ?? "", font: .monospacedDigitSystemFont(ofSize: OpenCodexCardLayout.quotaDetailPointSize, weight: .medium)) + 4
             )
         } ?? []
         let nearestExpiryText = bankedReset.flatMap {
@@ -7243,7 +7243,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     private func resetTicketWindowText(_ card: CodexBankedResetCard) -> String? {
         guard let keys = card.windowKeys else { return card.windowText }
-        return OfficialQuotaResponseParser.claudeResetWindowText(keys)
+        return OfficialQuotaResponseParser.resetCardWindowText(keys)
+    }
+
+    private func resetTicketRemaining(_ card: CodexBankedResetCard) -> (text: String?, isWarning: Bool) {
+        if let remaining = CodexBankedResetFormatting.remaining(until: card.expiresAt, now: bankedResetCountdownNow()) {
+            return remaining
+        }
+        return (card.remainingText, card.remainingIsWarning)
     }
 
     private func installBankedResetSections(
@@ -7328,7 +7335,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 icon.identifier = NSUserInterfaceItemIdentifier("codex.bankedReset.ticket")
                 ticketHost.addSubview(icon)
             }
-            ticketHost.addSubview(makeTicketOverviewLabel(card.titleText,
+            ticketHost.addSubview(makeTicketOverviewLabel(card.localizedTitleText,
                 font: .systemFont(ofSize: OpenCodexCardLayout.quotaDetailPointSize, weight: .medium),
                 textColor: .labelColor, frame: row.quotaDetail,
                 identifier: "codex.bankedReset.ticketTitle"))
@@ -7342,11 +7349,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 windowLine = label as? NSTextField
             }
             var remaining: NSTextField?
-            if let remainingText = card.remainingText, !remainingText.isEmpty {
+            let countdown = resetTicketRemaining(card)
+            if let remainingText = countdown.text, !remainingText.isEmpty {
                 let label = makeOverviewLabel(remainingText,
                     font: .monospacedDigitSystemFont(ofSize: OpenCodexCardLayout.quotaDetailPointSize, weight: .medium))
                 label.alignment = .right
-                label.textColor = card.remainingIsWarning ? .systemOrange : .labelColor
+                label.textColor = countdown.isWarning ? .systemOrange : .labelColor
                 label.frame = row.amount
                 label.identifier = NSUserInterfaceItemIdentifier("codex.bankedReset.remaining")
                 ticketHost.addSubview(label)
@@ -8831,7 +8839,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     let expiry = CodexBankedResetFormatting.expiryText(for: card.expiresAt, relativeTo: Date(), timeZone: settings.displayTimeZone)
                         ?? (card.expiresAt == nil ? card.expiresText : nil) ?? ""
                     let lines: [(String, String, NSRect, NSFont, NSColor)] = [
-                        ("codex.bankedReset.ticketTitle", card.titleText, row.quotaDetail,
+                        ("codex.bankedReset.ticketTitle", card.localizedTitleText, row.quotaDetail,
                          .systemFont(ofSize: OpenCodexCardLayout.quotaDetailPointSize, weight: .medium), .labelColor),
                         ("codex.bankedReset.ticketWindow", resetTicketWindowText(card) ?? "", row.window,
                          .systemFont(ofSize: OpenCodexCardLayout.quotaResetPointSize), .secondaryLabelColor),
@@ -8851,13 +8859,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     }
                 }
             }
-            let fields = descendantViews(of: section, as: NSTextField.self).filter {
-                $0.identifier?.rawValue == "codex.bankedReset.remaining"
-            }
-            for (field, card) in zip(fields, banked.cards) {
-                field.stringValue = card.remainingText ?? ""
-                field.textColor = card.remainingIsWarning ? .systemOrange : .labelColor
-            }
+            updateBankedResetTicketCountdowns(in: section, snapshot: snapshot)
             if let nearest = CodexBankedResetFormatting.nearestExpiryText(cards: banked.cards, timeZone: settings.displayTimeZone) {
                 (section.subtitleView as? AccountMarqueeView)?.updateText(nearest, preserveScrollPosition: true)
             }
@@ -8899,6 +8901,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             reconcileBalanceLayout(in: host, next: makeOverviewCardLayout(for: snapshot, presentation: presentation,
                 account: context.account, aggregation: !menuInput.aggregatedProviders.isEmpty,
                 context: context))
+            updateOverviewQuotaDetail(in: host, context: context)
             updateBalanceSubtitle(in: host, context: context)
             alignSingleLineBalance(in: host, snapshot: context.snapshot)
         }
@@ -8981,11 +8984,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let fields = descendantViews(of: overview, as: NSTextField.self).filter {
             $0.identifier?.rawValue == "codex.bankedReset.remaining"
         }
-        let now = bankedResetCountdownNow()
         for (field, card) in zip(fields, bankedReset.cards) {
-            let remaining = card.expiresAt.flatMap { CodexBankedResetFormatting.remaining(until: $0, now: now) }
-            field.stringValue = remaining?.text ?? card.remainingText ?? ""
-            field.textColor = (remaining?.isWarning ?? card.remainingIsWarning) ? .systemOrange : .labelColor
+            let remaining = resetTicketRemaining(card)
+            field.stringValue = remaining.text ?? ""
+            field.textColor = remaining.isWarning ? .systemOrange : .labelColor
         }
     }
 

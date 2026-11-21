@@ -246,7 +246,9 @@ enum DevelopmentBankedResetDemo {
                     relativeTo: now
                 ),
                 remainingText: remaining?.text,
-                remainingIsWarning: remaining?.isWarning ?? false
+                remainingIsWarning: remaining?.isWarning ?? false,
+                windowKeys: OfficialQuotaResponseParser.fullCodexResetWindowKeys,
+                titleLocalizationKey: .keyCodexBankedResetFullResetTitle
             )
         }
     }
