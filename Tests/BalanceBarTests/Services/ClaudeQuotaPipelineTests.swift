@@ -440,6 +440,92 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         XCTAssertTrue(pollUntil { PipelineStubProtocol.resetCardRequestCount == 3 })
     }
 
+    func testClaudeResetRetryAfterSurvivesRestartWithoutAnySuccessfulCache() throws {
+        PipelineStubProtocol.setResetCardReply(.init(status: 429, headers: ["Retry-After": "2400"]))
+        do {
+            let pipeline = makePipeline(configuration: claudeV1TestConfiguration)
+            pipeline.setResetCardDemand(true)
+            pipeline.requestFetch(reason: .initial)
+            waitForRequests(2)
+            quiet(pipeline)
+            XCTAssertNil(pipeline.latestState?.bankedReset)
+            XCTAssertFalse(FileManager.default.fileExists(atPath:
+                directory.appendingPathComponent("state/claude-reset-cards.json").path))
+        }
+        pipelines.removeAll()
+
+        clock.advance(by: 5 * 60)
+        let restarted = makePipeline(configuration: claudeV1TestConfiguration)
+        restarted.setResetCardDemand(true)
+        restarted.requestFetch(reason: .initial)
+        XCTAssertNotNil(waitForState(restarted) { $0.updatedAt == self.clock.now })
+        quiet(restarted)
+        XCTAssertEqual(PipelineStubProtocol.resetCardRequestCount, 1, "restart must not forget the 30-minute floor")
+
+        clock.advance(by: 25 * 60)
+        restarted.requestFetch(reason: .scheduled)
+        XCTAssertNotNil(waitForState(restarted) { $0.updatedAt == self.clock.now })
+        quiet(restarted)
+        XCTAssertEqual(PipelineStubProtocol.resetCardRequestCount, 1, "at 30 minutes the server backoff still applies")
+
+        PipelineStubProtocol.setResetCardReply(.init(data: Self.usageWithResetGrant))
+        clock.advance(by: 10 * 60)
+        restarted.requestFetch(reason: .scheduled)
+        XCTAssertNotNil(waitForState(restarted) { $0.bankedReset?.availableCount == 2 })
+        XCTAssertEqual(PipelineStubProtocol.resetCardRequestCount, 2, "one retry is allowed at 40 minutes")
+    }
+
+    func testClaudeResetNetworkFailureSurvivesRestartWithoutOverwritingSuccessfulCards() throws {
+        let cacheURL = directory.appendingPathComponent("state/claude-reset-cards.json")
+        let originalCache: Data
+        do {
+            PipelineStubProtocol.setResetCardReply(.init(data: Self.usageWithResetGrant))
+            let pipeline = makePipeline(configuration: claudeV1TestConfiguration)
+            pipeline.setResetCardDemand(true)
+            pipeline.requestFetch(reason: .initial)
+            XCTAssertNotNil(waitForState(pipeline) { $0.bankedReset?.availableCount == 2 })
+            originalCache = try Data(contentsOf: cacheURL)
+
+            clock.advance(by: 30 * 60)
+            PipelineStubProtocol.setResetCardReply(.init(error: URLError(.networkConnectionLost)))
+            pipeline.setResetCardDemand(true)
+            XCTAssertTrue(pollUntil { PipelineStubProtocol.resetCardRequestCount == 2 })
+            quiet(pipeline)
+        }
+        pipelines.removeAll()
+
+        clock.advance(by: 5 * 60)
+        let restarted = makePipeline(configuration: claudeV1TestConfiguration)
+        restarted.setResetCardDemand(true)
+        restarted.requestFetch(reason: .initial)
+        XCTAssertNotNil(waitForState(restarted) { $0.updatedAt == self.clock.now && $0.bankedReset?.availableCount == 2 })
+        quiet(restarted)
+        XCTAssertEqual(PipelineStubProtocol.resetCardRequestCount, 2, "the failed attempt, not the older success, sets the interval")
+        XCTAssertEqual(try Data(contentsOf: cacheURL), originalCache)
+    }
+
+    func testClaudeResetThrottleRestoresOnlyForMatchingAccount() throws {
+        PipelineStubProtocol.setResetCardReply(.init(status: 429, headers: ["Retry-After": "2400"]))
+        do {
+            let pipeline = makePipeline(configuration: claudeV1TestConfiguration)
+            pipeline.setResetCardDemand(true)
+            pipeline.requestFetch(reason: .initial)
+            waitForRequests(2)
+            quiet(pipeline)
+        }
+        pipelines.removeAll()
+
+        clock.advance(by: 5 * 60)
+        try writeAccount("account-b", email: "b@example.com")
+        PipelineStubProtocol.setResetCardReply(.init(data: Self.usageWithResetGrant))
+        let restarted = makePipeline(configuration: claudeV1TestConfiguration)
+        restarted.setResetCardDemand(true)
+        restarted.requestFetch(reason: .initial)
+        let state = try XCTUnwrap(waitForState(restarted) { $0.bankedReset?.availableCount == 2 })
+        XCTAssertEqual(state.predictionAccountKey, "b@example.com")
+        XCTAssertEqual(PipelineStubProtocol.resetCardRequestCount, 2, "account A's reset throttle must not block B")
+    }
+
     func testClaudeRelaySwitchWhileResetEgressCheckPendingPreventsTransport() throws {
         let lock = NSLock()
         let held = expectation(description: "reset-card egress probe is pending")

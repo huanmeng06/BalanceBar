@@ -146,6 +146,7 @@ final class ClaudeQuotaPipeline {
     private let stateStore: ObservedFetchSchedulerStateStore
     private let mergeFileStore: QuotaMergeFileStore
     private let bankedResetCacheURL: URL
+    private let bankedResetThrottleURL: URL
     private let notificationRouter = ClaudeNotificationRouter()
     private let realtimeTracker: ClaudeRealtimeTracker?
     private let sourceValidity: () -> ClaudeSourceValidity
@@ -196,9 +197,9 @@ final class ClaudeQuotaPipeline {
     private var bankedReset: CodexBankedReset?
     private var bankedResetPayload: ClaudeBankedResetPayload?
     private var bankedResetFetchInFlight = false
-    private var lastBankedResetAttemptAt: Date?
     private var lastBankedResetSuccessAt: Date?
-    private var bankedResetRetryAt: Date?
+    // Queue-owned deadlines keyed by the hashed account ID, independent of the successful cards cache.
+    private var bankedResetNotBeforeByAccount: [String: Date] = [:]
     static let bankedResetRefreshInterval: TimeInterval = 30 * 60
 
     private struct StoredClaudeResetCache: Codable, Equatable {
@@ -327,6 +328,7 @@ final class ClaudeQuotaPipeline {
             base: FileFetchSchedulerStateStore(fileURL: stateDirectory.appendingPathComponent("claude-fetch-scheduler.json")))
         mergeFileStore = QuotaMergeFileStore(url: stateDirectory.appendingPathComponent("claude-quota-merge.json"))
         bankedResetCacheURL = stateDirectory.appendingPathComponent("claude-reset-cards.json")
+        bankedResetThrottleURL = stateDirectory.appendingPathComponent("claude-reset-throttle.json")
         scheduler = FetchScheduler(
             transport: ClaudeUsageTransport(pipeline: self),
             identity: identity,
@@ -601,6 +603,10 @@ final class ClaudeQuotaPipeline {
         }
         let restoring = RebasingMergeStore(
             base: mergeFileStore, accountID: identity.accountIdentity?.stableID, epoch: identity.accountEpoch)
+        if let data = try? Data(contentsOf: bankedResetThrottleURL),
+           let deadlines = try? JSONDecoder().decode([String: Date].self, from: data) {
+            bankedResetNotBeforeByAccount = deadlines
+        }
         loadBankedResetCache()
         // Like the merge state, the source history comes back only for the same account.
         sourceTimeline.restore(accountKey: ClaudeSourceTimeline.accountKey(forStableID: identity.accountIdentity?.stableID))
@@ -735,9 +741,7 @@ final class ClaudeQuotaPipeline {
         sourceTimeline.reset(accountKey: ClaudeSourceTimeline.accountKey(forStableID: change.identity?.stableID))
         bankedReset = nil
         bankedResetPayload = nil
-        lastBankedResetAttemptAt = nil
         lastBankedResetSuccessAt = nil
-        bankedResetRetryAt = nil
         bankedResetFetchInFlight = false
         loadBankedResetCache()
         lock.withLock {
@@ -1091,16 +1095,15 @@ final class ClaudeQuotaPipeline {
 
     private func requestBankedResetCardsIfNeeded() {
         guard canSendBankedResetRequest, !bankedResetFetchInFlight else { return }
+        let epoch = identity.accountEpoch
+        guard let accountKey = ClaudeSourceTimeline.accountKey(forStableID: identity.accountIdentity?.stableID) else { return }
         let date = now()
         if let cooldown = stateStore.snapshot.cooldownUntil, cooldown > date { return }
-        if let bankedResetRetryAt, bankedResetRetryAt > date { return }
-        if let attempt = lastBankedResetAttemptAt,
-           date.timeIntervalSince(attempt) < Self.bankedResetRefreshInterval { return }
-        // Keep the persisted interval across launch, without modifying the last attempt on a cache read.
+        if let deadline = bankedResetNotBeforeByAccount[accountKey], deadline > date { return }
+        // Older versions persisted only successful reads. Keep honoring that cache timestamp.
         if let success = lastBankedResetSuccessAt,
            date.timeIntervalSince(success) < Self.bankedResetRefreshInterval { return }
         bankedResetFetchInFlight = true
-        let epoch = identity.accountEpoch
 
         func send(_ checkRoute: @escaping (CCSwitchProxyConfiguration) -> ClaudeEgressGuardBlock?) {
             // Credential lookup can block. Keep the pipeline queue available to process a
@@ -1114,26 +1117,32 @@ final class ClaudeQuotaPipeline {
                                 return .checkFailed
                             }
                             if let block = checkRoute(route) { return block }
-                            self.lastBankedResetAttemptAt = self.now()
-                            return nil
+                            // Reserve the interval on disk before transport; even quitting while
+                            // the request is in flight must not forget this attempt.
+                            let deadline = self.now().addingTimeInterval(Self.bankedResetRefreshInterval)
+                            return self.extendBankedResetThrottle(until: deadline, accountKey: accountKey)
+                                ? nil : .checkFailed
                         }
                     },
                     didReadToken: { [weak self] token in self?.recordCredentialRead(token, epoch: epoch) },
                     completion: { [weak self] result in
                         self?.queue.async {
-                            guard let self, self.identity.accountEpoch == epoch else { return }
+                            guard let self else { return }
+                            if case let .failure(.httpStatus(status, _, retryAt)) = result, status == 429 {
+                                let deadline = retryAt ?? self.now().addingTimeInterval(Self.bankedResetRefreshInterval)
+                                // A late response still belongs to the account that sent the request.
+                                self.extendBankedResetThrottle(until: deadline, accountKey: accountKey)
+                            }
+                            guard self.identity.accountEpoch == epoch else { return }
                             self.bankedResetFetchInFlight = false
                             switch result {
                             case let .success(payload):
                                 let fetchedAt = self.now()
                                 self.lastBankedResetSuccessAt = fetchedAt
-                                self.bankedResetRetryAt = nil
                                 self.bankedResetPayload = payload
                                 self.bankedReset = payload.flatMap { OfficialQuotaResponseParser.claudeBankedReset(from: $0, now: fetchedAt) }
                                 self.saveBankedResetCache(payload, fetchedAt: fetchedAt)
                                 self.publish()
-                            case let .failure(.httpStatus(status, _, retryAt)) where status == 429:
-                                self.bankedResetRetryAt = retryAt ?? self.now().addingTimeInterval(Self.bankedResetRefreshInterval)
                             case .failure:
                                 break
                             }
@@ -1164,6 +1173,21 @@ final class ClaudeQuotaPipeline {
                     self.diagnostics("claude reset-card request skipped; reason=\(block.rawValue)", .debug)
                 }
             }
+        }
+    }
+
+    @discardableResult
+    private func extendBankedResetThrottle(until deadline: Date, accountKey: String) -> Bool {
+        let date = now()
+        bankedResetNotBeforeByAccount = bankedResetNotBeforeByAccount.filter { $0.value > date }
+        bankedResetNotBeforeByAccount[accountKey] = max(deadline, bankedResetNotBeforeByAccount[accountKey] ?? .distantPast)
+        do {
+            try FileManager.default.createDirectory(at: bankedResetThrottleURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try JSONEncoder().encode(bankedResetNotBeforeByAccount).write(to: bankedResetThrottleURL, options: .atomic)
+            return true
+        } catch {
+            diagnostics("claude reset-card throttle write failed", .debug)
+            return false
         }
     }
 
