@@ -397,7 +397,7 @@ final class OfficialQuotaClientTests: XCTestCase {
         }
         let client = makeClient(claudeToken: "fixture-claude-value", now: { now })
         let done = expectation(description: "Claude reset cards completed")
-        var captured: Result<CodexBankedReset?, OfficialQuotaClientError>?
+        var captured: Result<ClaudeBankedResetPayload?, OfficialQuotaClientError>?
         client.fetchClaudeBankedResetCards { result in
             captured = result
             done.fulfill()
@@ -407,7 +407,7 @@ final class OfficialQuotaClientTests: XCTestCase {
         guard case .success(let reset)? = captured else {
             return XCTFail("expected Claude reset-card success, got \(String(describing: captured))")
         }
-        XCTAssertEqual(reset?.availableCount, 2)
+        XCTAssertEqual(reset?.grants.first?.resetsLeft, 2)
         let request = try XCTUnwrap(StubURLProtocol.lastRequest)
         XCTAssertEqual(request.url?.host, "api.anthropic.com")
         XCTAssertEqual(request.url?.path, "/api/oauth/usage")
@@ -422,7 +422,7 @@ final class OfficialQuotaClientTests: XCTestCase {
         }
         let client = makeClient(claudeToken: "fixture-claude-value", now: { now })
         let done = expectation(description: "Claude reset-card rate limit completed")
-        var captured: Result<CodexBankedReset?, OfficialQuotaClientError>?
+        var captured: Result<ClaudeBankedResetPayload?, OfficialQuotaClientError>?
         client.fetchClaudeBankedResetCards { result in
             captured = result
             done.fulfill()

@@ -380,7 +380,7 @@
 "dashboard.menu.page.show_banked_reset" = "Mostrar tarjetas de restablecimiento";
 "dashboard.menu.page.show_banked_reset_description" = "Al desactivarla, el menú desplegable ya no muestra las tarjetas de restablecimiento";
 "dashboard.menu.page.show_non_official_banked_reset" = "Mostrar tarjetas en proveedores Codex no oficiales";
-"dashboard.menu.page.show_non_official_banked_reset_description" = "Usa el inicio de sesión local de Codex para consultar las tarjetas al seleccionar un proveedor intermediario";
+"dashboard.menu.page.show_non_official_banked_reset_description" = "Muestra tarjetas de Codex con el inicio de sesión local y las de Claude desde la última caché cargada en la página oficial";
 "dashboard.menu.page.show_non_official_reset_probability" = "Mostrar probabilidad de restablecimiento en proveedores no oficiales";
 "dashboard.menu.page.show_non_official_reset_probability_description" = "Usa el pronóstico público de codex-reset.com y realiza una solicitud adicional";
 "dashboard.menu.page.banked_reset_display_mode" = "Estilo de visualización";

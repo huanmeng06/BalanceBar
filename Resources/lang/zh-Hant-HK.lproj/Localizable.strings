@@ -380,7 +380,7 @@
 "dashboard.menu.page.show_banked_reset" = "顯示重置卡";
 "dashboard.menu.page.show_banked_reset_description" = "關閉後，下拉選單不再顯示重置卡";
 "dashboard.menu.page.show_non_official_banked_reset" = "非官方渠道下也顯示重置卡";
-"dashboard.menu.page.show_non_official_banked_reset_description" = "選擇中轉站時，使用本機 Codex 登入狀態讀取重置卡";
+"dashboard.menu.page.show_non_official_banked_reset_description" = "選擇中轉站時，也顯示本機 Codex 官方帳號的重置卡；Claude 只顯示官方額度頁上次成功讀取的快取";
 "dashboard.menu.page.show_non_official_reset_probability" = "非官方渠道下顯示重置機率";
 "dashboard.menu.page.show_non_official_reset_probability_description" = "使用 codex-reset.com 的公開預測，會額外向第三方發出請求";
 "dashboard.menu.page.banked_reset_display_mode" = "顯示樣式";

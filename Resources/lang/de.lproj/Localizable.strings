@@ -380,7 +380,7 @@
 "dashboard.menu.page.show_banked_reset" = "Reset-Karten anzeigen";
 "dashboard.menu.page.show_banked_reset_description" = "Wenn ausgeschaltet, zeigt das Dropdown-Menü keine Reset-Karten mehr";
 "dashboard.menu.page.show_non_official_banked_reset" = "Reset-Karten bei inoffiziellen Codex-Anbietern anzeigen";
-"dashboard.menu.page.show_non_official_banked_reset_description" = "Verwendet die lokale Codex-Anmeldung, um Karten beim ausgewählten Vermittler abzurufen";
+"dashboard.menu.page.show_non_official_banked_reset_description" = "Zeigt Codex-Resetkarten aus dem lokalen Login und Claude-Karten aus dem zuletzt auf der offiziellen Seite geladenen Cache";
 "dashboard.menu.page.show_non_official_reset_probability" = "Reset-Wahrscheinlichkeit bei inoffiziellen Anbietern anzeigen";
 "dashboard.menu.page.show_non_official_reset_probability_description" = "Verwendet die öffentliche Prognose von codex-reset.com und sendet eine zusätzliche Anfrage";
 "dashboard.menu.page.banked_reset_display_mode" = "Anzeigestil";

@@ -456,45 +456,63 @@ enum OfficialQuotaResponseParser {
         object: [String: Any],
         now: Date = Date()
     ) -> CodexBankedReset? {
+        guard let payload = parseClaudeBankedResetPayload(object: object) else { return nil }
+        return claudeBankedReset(from: payload, now: now)
+    }
+
+    static func parseClaudeBankedResetPayload(object: [String: Any]) -> ClaudeBankedResetPayload? {
         guard let reset = object["cedar_ember"] as? [String: Any],
-              (reset["eligible"] as? Bool) == true,
-              let grants = reset["grants"] as? [[String: Any]] else {
-            return nil
+              let eligible = reset["eligible"] as? Bool else { return nil }
+        guard eligible else { return ClaudeBankedResetPayload(eligible: false, grants: []) }
+        let grants = (reset["grants"] as? [[String: Any]] ?? []).map { grant in
+            ClaudeBankedResetGrant(
+                id: ResponseParsingSupport.stringValue(grant["id"]),
+                type: ResponseParsingSupport.stringValue(grant["type"]),
+                resetsLeft: nonNegativeInt(grant["resets_left"]),
+                clears: grant["clears"] as? [String],
+                endsAt: grant["ends_at"].map { String(describing: $0) })
         }
+        return ClaudeBankedResetPayload(eligible: true, grants: grants)
+    }
+
+    static func claudeBankedReset(from payload: ClaudeBankedResetPayload, now: Date) -> CodexBankedReset? {
+        guard payload.eligible else { return nil }
 
         var seenIDs = Set<String>()
-        let cards = grants.enumerated().compactMap { index, grant -> CodexBankedResetCard? in
-            guard let count = nonNegativeInt(grant["resets_left"]), count > 0 else { return nil }
-            let expiresAt = ResponseParsingSupport.timestampDate(grant["ends_at"])
+        let cards = payload.grants.enumerated().compactMap { index, grant -> CodexBankedResetCard? in
+            guard let count = grant.resetsLeft, count > 0 else { return nil }
+            let expiresAt = ResponseParsingSupport.timestampDate(grant.endsAt)
             if let expiresAt, expiresAt <= now { return nil }
 
-            let rawID = ResponseParsingSupport.stringValue(grant["id"])?
+            let rawID = grant.id?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             if let rawID, !rawID.isEmpty, !seenIDs.insert(rawID).inserted { return nil }
-            let label = ResponseParsingSupport.stringValue(grant["label"])?
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            let resetType = ResponseParsingSupport.stringValue(grant["type"])?
+            let resetType = grant.type?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             let remaining = CodexBankedResetFormatting.remaining(until: expiresAt, now: now)
+            let titleText = resetType == "full"
+                ? tr(.keyCodexBankedResetFullResetTitle)
+                : tr(.keyCodexBankedResetTitle)
+            let clearKeys = grant.clears ?? []
 
             return CodexBankedResetCard(
                 id: rawID?.isEmpty == true ? nil : rawID ?? "claude-reset-\(index)",
                 resetType: resetType,
-                titleText: label.flatMap { $0.isEmpty ? nil : $0 } ?? tr(.keyCodexBankedResetTitle),
-                windowText: claudeResetWindowText(grant["clears"]),
+                titleText: titleText,
+                windowText: claudeResetWindowText(clearKeys),
                 resetCount: count,
                 expiresAt: expiresAt,
                 expiresText: CodexBankedResetFormatting.expiryText(for: expiresAt, relativeTo: now),
                 remainingText: remaining?.text,
-                remainingIsWarning: remaining?.isWarning ?? false
+                remainingIsWarning: remaining?.isWarning ?? false,
+                windowKeys: clearKeys
             )
         }
-        guard !cards.isEmpty else { return nil }
         return CodexBankedReset(cards: cards)
     }
 
-    private static func claudeResetWindowText(_ value: Any?) -> String? {
-        guard let keys = value as? [String] else { return nil }
+    static func claudeResetWindowText(_ keys: [String]?) -> String? {
+        guard let keys else { return nil }
         var seen = Set<String>()
         let labels = keys.compactMap { key -> String? in
             let mapped: (String, String)?

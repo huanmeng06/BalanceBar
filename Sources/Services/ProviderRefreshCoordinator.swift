@@ -450,7 +450,13 @@ final class ProviderRefreshCoordinator {
         let cards: CodexBankedReset?
         let forecast: CodexResetForecast
     }
+    private struct ProviderSnapshotKey: Hashable {
+        let clientID: String
+        let providerID: String
+        let revision: String
+    }
     private var nonOfficialResetCards: [String: ResetCardFetchState] = [:]
+    private var latestProviderSnapshots: [ProviderSnapshotKey: Snapshot] = [:]
     private var nonOfficialResetRequests: [String: UUID] = [:]
     private var nonOfficialResetRequestContexts: [String: OfficialQuotaRequestContext] = [:]
     static let nonOfficialResetCardRefreshInterval: TimeInterval = 5 * 60
@@ -868,26 +874,39 @@ final class ProviderRefreshCoordinator {
     func resetCardsPreferenceChanged() {
         performOnQueue { [weak self] in
             guard let self, self.lifetime.isCurrent() else { return }
-            self.claudeQuota?.setResetCardDemand(self.refreshPreferences?.showBankedReset == true)
-            self.nonOfficialResetCards.removeAll()
-            let inFlightContexts = Array(self.nonOfficialResetRequestContexts.values)
-            self.nonOfficialResetRequests.removeAll()
-            self.nonOfficialResetRequestContexts.removeAll()
-            inFlightContexts.forEach(self.officialQuotaClient.cancelQuota(context:))
+            let claudeProvider: CCSwitchProvider? = try? self.repository.loadCurrentChecked(appType: AssistantClient.claude.appType)
+            if let claudeProvider, !claudeProvider.isOfficial {
+                self.claudeQuota?.setDemand(false)
+                self.claudeQuota?.setResetCardDemand(self.refreshPreferences?.showBankedReset == true)
+                self.claudeQuota?.start()
+                if let state = self.claudeQuota?.latestState { self.applyClaudeState(state) }
+            } else {
+                self.claudeQuota?.setResetCardDemand(
+                    claudeProvider?.isOfficial == true && self.refreshPreferences?.showBankedReset == true)
+            }
+            let showCards = self.refreshPreferences?.showBankedReset == true
+                && self.refreshPreferences?.showNonOfficialBankedReset == true
+            if !showCards {
+                let inFlightContexts = Array(self.nonOfficialResetRequestContexts.values)
+                self.nonOfficialResetRequests.removeAll()
+                self.nonOfficialResetRequestContexts.removeAll()
+                inFlightContexts.forEach(self.officialQuotaClient.cancelQuota(context:))
+            }
             let current: CCSwitchProvider?
             do {
                 current = try self.repository.loadCurrentChecked(appType: AssistantClient.codex.appType)
             } catch {
                 return
             }
-            guard let current, !current.isOfficial, current.query != nil else { return }
-            self.refreshStandardProviderOnQueue(
-                current: current,
-                client: .codex,
-                forceBalance: true,
-                switched: false,
-                userInitiated: true
-            )
+            guard let current, !current.isOfficial else { return }
+            let revision = current.configurationRevision
+            self.refreshNonOfficialResetCardsIfNeeded(
+                providerID: current.id,
+                providerName: current.name,
+                configurationRevision: revision,
+                isValid: { [weak self] in
+                    self?.standardRequestIsCurrent(client: .codex, providerID: current.id, revision: revision) == true
+                })
         }
     }
 
@@ -944,6 +963,23 @@ final class ProviderRefreshCoordinator {
     ) {
         let sourceKey = "\(client.appType)|\(current.id)|\(current.configurationRevision)"
         let sourceChanged = lastStandardSourceKey != sourceKey
+        if client == .claude, !current.isOfficial {
+            claudeStandardTarget = nil
+            lastClaudePublication = nil
+            claudeQuota?.setDemand(false)
+            claudeQuota?.setResetCardDemand(refreshPreferences?.showBankedReset == true)
+            claudeQuota?.start()
+        }
+        if client == .codex, !current.isOfficial {
+            let revision = current.configurationRevision
+            refreshNonOfficialResetCardsIfNeeded(
+                providerID: current.id,
+                providerName: current.name,
+                configurationRevision: revision,
+                isValid: { [weak self] in
+                    self?.standardRequestIsCurrent(client: .codex, providerID: current.id, revision: revision) == true
+                })
+        }
         guard let query = current.query else {
             guard current.isOfficial, client == .codex || client == .claude else {
                 if current.isOfficial {
@@ -999,12 +1035,15 @@ final class ProviderRefreshCoordinator {
         lastStandardSourceKey = sourceKey
         lastBalanceFetch = currentDate
         let revision = current.configurationRevision
+        let includeCachedResetState = client == .claude
+            || (client == .codex && nonOfficialResetCards[current.id] != nil)
         fetchBalance(
             providerID: current.id,
             providerName: current.name,
             query: query,
             client: client,
             configurationRevision: revision,
+            includeNonOfficialResetState: includeCachedResetState,
             isValid: { [weak self] in self?.standardRequestIsCurrent(client: client, providerID: current.id, revision: revision) == true }
         )
     }
@@ -1012,11 +1051,21 @@ final class ProviderRefreshCoordinator {
     func prefetchCurrentBalance(for client: AssistantClient) {
         queue.async { [weak self] in
             guard let self, self.lifetime.isCurrent(), let current = self.repository.loadCurrent(appType: client.appType) else { return }
+            if client == .claude, !current.isOfficial {
+                self.claudeStandardTarget = nil
+                self.lastClaudePublication = nil
+                self.claudeQuota?.setDemand(false)
+                self.claudeQuota?.setResetCardDemand(self.refreshPreferences?.showBankedReset == true)
+                self.claudeQuota?.start()
+            }
             let revision = current.configurationRevision
             let isValid = { [weak self] in self?.standardRequestIsCurrent(client: client, providerID: current.id, revision: revision) == true }
             if let query = current.query {
                 self.fetchBalance(providerID: current.id, providerName: current.name, query: query, client: client,
-                    configurationRevision: revision, isValid: isValid)
+                    configurationRevision: revision,
+                    includeNonOfficialResetState: client == .claude
+                        || (client == .codex && self.nonOfficialResetCards[current.id] != nil),
+                    isValid: isValid)
             } else if current.isOfficial, client == .claude {
                 self.claudeStandardTarget = (current.id, current.name, revision)
                 self.claudeQuota?.start()
@@ -1329,6 +1378,7 @@ final class ProviderRefreshCoordinator {
         query: BalanceQuery,
         client: AssistantClient,
         configurationRevision: String = "",
+        includeNonOfficialResetState: Bool = false,
         isValid: @escaping () -> Bool = { true },
         onDiscard: (() -> Void)? = nil,
         completion: ((Snapshot) -> Void)? = nil
@@ -1399,7 +1449,7 @@ final class ProviderRefreshCoordinator {
                         client: client,
                         payload: .formatted(Self.formatBalanceSummary(observation.amount, unit: observation.unit))
                     )
-                    let balanceSnapshot = Snapshot.balance(
+                    var balanceSnapshot = Snapshot.balance(
                         providerName,
                         observation.amount,
                         observation.unit,
@@ -1409,6 +1459,12 @@ final class ProviderRefreshCoordinator {
                         recharge: observation.recharge,
                         progressContext: observation.progressContext
                     )
+                    if client == .codex, includeNonOfficialResetState {
+                        balanceSnapshot = self.snapshotWithNonOfficialResetState(balanceSnapshot,
+                            providerID: providerID, configurationRevision: configurationRevision)
+                    } else if client == .claude, includeNonOfficialResetState {
+                        balanceSnapshot = self.snapshotWithClaudeResetState(balanceSnapshot)
+                    }
                     guard requestIsCurrent else { return }
                     if let completion { completion(balanceSnapshot) }
                     else {
@@ -1462,16 +1518,17 @@ final class ProviderRefreshCoordinator {
         providerID: String,
         providerName: String,
         configurationRevision: String,
-        base: Snapshot,
+        base: Snapshot? = nil,
         isValid: @escaping () -> Bool
     ) {
-        let fetchCards = refreshPreferences?.showBankedReset == true
+        guard aggregationEntries.isEmpty else { return }
+        let showCards = refreshPreferences?.showBankedReset == true
             && refreshPreferences?.showNonOfficialBankedReset == true
-        let fetchForecast = refreshPreferences?.showNonOfficialResetProbability == true
-        guard fetchCards || fetchForecast else { return }
-
-        let credentials = fetchCards ? officialQuotaClient.codexRequestCredentials()
-            : CodexRequestCredentials(accessToken: nil, accountKey: nil)
+        let fetchCards = showCards
+        let fetchForecast = refreshPreferences?.showBankedReset == true
+            && refreshPreferences?.showNonOfficialResetProbability == true
+        guard showCards || fetchForecast || nonOfficialResetCards[providerID] != nil else { return }
+        let credentials = officialQuotaClient.codexRequestCredentials()
         let token = credentials.accessToken.flatMap { $0.isEmpty ? nil : $0 }
         let accountScope = token == nil ? nil : credentials.requestScope
         let cached = nonOfficialResetCards[providerID].flatMap { state in
@@ -1493,13 +1550,25 @@ final class ProviderRefreshCoordinator {
                 guard isCurrent() else { return }
                 self.nonOfficialResetCards[providerID] = ResetCardFetchState(
                     revision: configurationRevision,
-                    accountScope: accountScope,
-                    cardsFetchedAt: fetchedAt,
-                    cards: fetchCards ? cards : nil,
-                    forecast: fetchForecast ? forecast : .unavailable
+                    accountScope: fetchCards ? accountScope : (cached?.accountScope ?? accountScope),
+                    cardsFetchedAt: fetchCards ? fetchedAt : cached?.cardsFetchedAt,
+                    cards: fetchCards ? cards : cached?.cards,
+                    forecast: fetchForecast ? forecast : (cached?.forecast ?? .unavailable)
                 )
-                var next = base
-                next.bankedReset = fetchCards ? cards : nil
+                var next: Snapshot
+                let snapshotKey = ProviderSnapshotKey(clientID: AssistantClient.codex.rawValue,
+                    providerID: providerID, revision: configurationRevision)
+                if let latest = self.latestProviderSnapshots[snapshotKey]
+                    ?? self.providerBalanceSnapshots.snapshot(clientID: AssistantClient.codex.rawValue,
+                        providerID: providerID, configurationRevision: configurationRevision) ?? base {
+                    next = latest
+                } else {
+                    guard let current = self.actions.currentProvider(.codex), current.id == providerID,
+                          current.configurationRevision == configurationRevision, current.query == nil,
+                          let message = current.queryFailure?.userVisibleReason(language: AppLanguage.resolved) else { return }
+                    next = Snapshot.providerError(providerName, reason: message, cachedBalance: nil)
+                }
+                next.bankedReset = showCards ? (fetchCards ? cards : cached?.cards) : nil
                 next.resetForecast = fetchForecast ? forecast : .unavailable
                 self.renderForCurrentProvider(
                     next,
@@ -1527,7 +1596,11 @@ final class ProviderRefreshCoordinator {
             finish(cached?.cards, cached?.cardsFetchedAt)
             return
         }
-        guard nonOfficialResetRequests[providerID] == nil, let token else { return }
+        guard nonOfficialResetRequests[providerID] == nil else { return }
+        guard let token else {
+            finish(cached?.cards, cached?.cardsFetchedAt)
+            return
+        }
         let requestID = UUID()
         let requestContext = OfficialQuotaRequestContext(
             client: .codex,
@@ -1544,13 +1617,53 @@ final class ProviderRefreshCoordinator {
                 self.nonOfficialResetRequests.removeValue(forKey: providerID)
                 self.nonOfficialResetRequestContexts.removeValue(forKey: providerID)
                 let cards: CodexBankedReset?
+                let fetchedAt: Date?
                 switch result {
-                case .success(let fetched): cards = fetched
-                case .failure: cards = cached?.cards
+                case .success(let fetched):
+                    cards = fetched
+                    fetchedAt = self.now()
+                case .failure:
+                    cards = cached?.cards
+                    fetchedAt = self.now()
                 }
-                finish(cards, self.now())
+                finish(cards, fetchedAt)
             }
         }
+    }
+
+    private func snapshotWithNonOfficialResetState(
+        _ snapshot: Snapshot,
+        providerID: String,
+        configurationRevision: String
+    ) -> Snapshot {
+        guard snapshot.kind == .balance || snapshot.kind == .error,
+              let preferences = refreshPreferences else { return snapshot }
+        let showCards = preferences.showBankedReset && preferences.showNonOfficialBankedReset
+        let showForecast = preferences.showBankedReset && preferences.showNonOfficialResetProbability
+        guard showCards || showForecast,
+              let state = nonOfficialResetCards[providerID], state.revision == configurationRevision else {
+            return snapshot
+        }
+        let credentials = officialQuotaClient.codexRequestCredentials()
+        let scopeMatches = state.accountScope == nil || state.accountScope == credentials.requestScope
+        guard !showCards || scopeMatches else { return snapshot }
+        var next = snapshot
+        next.bankedReset = showCards ? state.cards : nil
+        next.resetForecast = showForecast ? state.forecast : .unavailable
+        return next
+    }
+
+    private func snapshotWithClaudeResetState(
+        _ snapshot: Snapshot
+    ) -> Snapshot {
+        guard snapshot.kind == .balance || snapshot.kind == .error,
+              refreshPreferences?.showBankedReset == true,
+              refreshPreferences?.showNonOfficialBankedReset == true,
+              let state = claudeQuota?.latestState else { return snapshot }
+        var next = snapshot
+        next.bankedReset = state.bankedReset
+        next.resetForecast = .unavailable
+        return next
     }
 
     /// Interval between automatic official reads. The user's setting is a desired
@@ -1601,7 +1714,22 @@ final class ProviderRefreshCoordinator {
         }
         if state.failure != nil { actions.notificationSamplesInvalidated?(.claude, claudeOfficialProviderIDs) }
         applyClaudeSummaries(state)
-        guard let target = claudeStandardTarget else { return }
+        guard let target = claudeStandardTarget else {
+            guard let current = repository.loadCurrent(appType: AssistantClient.claude.appType),
+                  !current.isOfficial,
+                  let balance = providerBalanceSnapshots.snapshot(
+                    clientID: AssistantClient.claude.rawValue,
+                    providerID: current.id,
+                    configurationRevision: current.configurationRevision) else { return }
+            var snapshot = balance
+            let showCards = refreshPreferences?.showBankedReset == true
+                && refreshPreferences?.showNonOfficialBankedReset == true
+            snapshot.bankedReset = showCards ? state.bankedReset : nil
+            snapshot.resetForecast = .unavailable
+            renderForCurrentProvider(snapshot, providerID: current.id, client: .claude,
+                configurationRevision: current.configurationRevision, notifies: false)
+            return
+        }
         let failureReason = state.failure.map { Self.claudeFailureReason($0) }
         let retryAt: Date?
         switch state.failure {
@@ -1645,6 +1773,7 @@ final class ProviderRefreshCoordinator {
             snapshot = off
         } else if let failure = state.failure, let failureReason {
             var error = Snapshot.officialQuotaError(target.providerName, reason: failureReason)
+            error.bankedReset = state.bankedReset
             error.officialRetryAt = retryAt
             error.quotaStatus = state.status
             error.failureRecovery = Self.claudeFailureRecovery(failure)
@@ -2246,6 +2375,8 @@ final class ProviderRefreshCoordinator {
                     configurationRevision: configurationRevision
                 )
             }
+            self.latestProviderSnapshots[ProviderSnapshotKey(clientID: client.rawValue,
+                providerID: providerID, revision: configurationRevision)] = next
             // A kept (stale) snapshot still reaches notifications so they can mark
             // the stored sample as not current; it is never evaluated as a sample.
             if notifies, next.kind == .official || next.kind == .balance {
@@ -2282,13 +2413,21 @@ final class ProviderRefreshCoordinator {
                   self.standardRequestIsCurrent(client: client, providerID: providerID, revision: configurationRevision),
                   client != .codex || self.aggregationEntries.isEmpty else { return }
             let epoch = self.standardPublicationEpoch
-            let snapshot = self.providerBalanceSnapshots.errorSnapshot(
+            var snapshot = self.providerBalanceSnapshots.errorSnapshot(
                 clientID: client.rawValue,
                 providerID: providerID,
                 providerName: providerName,
                 reason: reason,
                 configurationRevision: configurationRevision
             )
+            if client == .codex {
+                snapshot = self.snapshotWithNonOfficialResetState(
+                    snapshot, providerID: providerID, configurationRevision: configurationRevision)
+            } else if client == .claude {
+                snapshot = self.snapshotWithClaudeResetState(snapshot)
+            }
+            self.latestProviderSnapshots[ProviderSnapshotKey(clientID: client.rawValue,
+                providerID: providerID, revision: configurationRevision)] = snapshot
             DispatchQueue.main.async {
                 guard self.lifetime.isCurrent(), (client != .codex || epoch.isCurrent()),
                       self.actions.isActiveClient(client),

@@ -380,7 +380,7 @@
 "dashboard.menu.page.show_banked_reset" = "Показывать карты сброса";
 "dashboard.menu.page.show_banked_reset_description" = "Если выключено, выпадающее меню больше не показывает карты сброса";
 "dashboard.menu.page.show_non_official_banked_reset" = "Показывать карты сброса у неофициальных провайдеров Codex";
-"dashboard.menu.page.show_non_official_banked_reset_description" = "Использовать локальный вход Codex для загрузки карт при выборе прокси-провайдера";
+"dashboard.menu.page.show_non_official_banked_reset_description" = "Показывать карты Codex из локального входа и карты Claude из последнего кэша официальной страницы";
 "dashboard.menu.page.show_non_official_reset_probability" = "Показывать вероятность сброса у неофициальных провайдеров";
 "dashboard.menu.page.show_non_official_reset_probability_description" = "Используется публичный прогноз codex-reset.com и отправляется дополнительный запрос";
 "dashboard.menu.page.banked_reset_display_mode" = "Стиль отображения";

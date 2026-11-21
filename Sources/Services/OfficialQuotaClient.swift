@@ -640,7 +640,7 @@ final class OfficialQuotaClient {
     func fetchClaudeBankedResetCards(
         sendCheck: (CCSwitchProxyConfiguration) -> ClaudeEgressGuardBlock? = { _ in nil },
         didReadToken: (String) -> Void = { _ in },
-        completion: @escaping (Result<CodexBankedReset?, OfficialQuotaClientError>) -> Void
+        completion: @escaping (Result<ClaudeBankedResetPayload?, OfficialQuotaClientError>) -> Void
     ) {
         guard let token = claudeRequestCredentials(cacheFor: 2).accessToken, !token.isEmpty,
               let request = Self.makeClaudeBankedResetRequest(accessToken: token) else {
@@ -686,7 +686,7 @@ final class OfficialQuotaClient {
             }
             do {
                 let object = try ResponseParsingSupport.object(from: data)
-                completion(.success(OfficialQuotaResponseParser.parseClaudeBankedReset(object: object, now: now())))
+                completion(.success(OfficialQuotaResponseParser.parseClaudeBankedResetPayload(object: object)))
             } catch {
                 completion(.failure(.invalidJSON(dataSize: data.count)))
             }

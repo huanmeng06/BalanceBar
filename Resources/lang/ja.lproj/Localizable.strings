@@ -380,7 +380,7 @@
 "dashboard.menu.page.show_banked_reset" = "リセットカードを表示";
 "dashboard.menu.page.show_banked_reset_description" = "オフにすると、ドロップダウンメニューにリセットカードを表示しません";
 "dashboard.menu.page.show_non_official_banked_reset" = "非公式 Codex プロバイダーでもリセットカードを表示";
-"dashboard.menu.page.show_non_official_banked_reset_description" = "中継プロバイダーの選択中に、ローカルの Codex ログインでカードを取得します";
+"dashboard.menu.page.show_non_official_banked_reset_description" = "ローカルの Codex ログインで取得したカードと、公式ページで最後に読み込んだ Claude カードのキャッシュを表示します";
 "dashboard.menu.page.show_non_official_reset_probability" = "非公式プロバイダーでリセット確率を表示";
 "dashboard.menu.page.show_non_official_reset_probability_description" = "codex-reset.com の公開予測を使うため、追加のリクエストが発生します";
 "dashboard.menu.page.banked_reset_display_mode" = "表示スタイル";

@@ -380,7 +380,7 @@
 "dashboard.menu.page.show_banked_reset" = "리셋 카드 표시";
 "dashboard.menu.page.show_banked_reset_description" = "끄면 드롭다운 메뉴에 리셋 카드가 표시되지 않습니다";
 "dashboard.menu.page.show_non_official_banked_reset" = "비공식 Codex 제공자에서도 리셋 카드 표시";
-"dashboard.menu.page.show_non_official_banked_reset_description" = "중계 제공자를 선택하면 로컬 Codex 로그인으로 카드를 가져옵니다";
+"dashboard.menu.page.show_non_official_banked_reset_description" = "로컬 Codex 로그인 카드와 Claude 공식 페이지에서 마지막으로 불러온 캐시 카드를 표시합니다";
 "dashboard.menu.page.show_non_official_reset_probability" = "비공식 제공자에서 리셋 확률 표시";
 "dashboard.menu.page.show_non_official_reset_probability_description" = "codex-reset.com의 공개 예측을 사용하며 추가 요청이 발생합니다";
 "dashboard.menu.page.banked_reset_display_mode" = "표시 스타일";

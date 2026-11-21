@@ -898,6 +898,31 @@ final class OpenCodexCardLayoutTests: XCTestCase {
         XCTAssertLessThanOrEqual(frames.bankedResetTicketViewport?.height ?? 0, OpenCodexCardLayout.bankedResetTicketViewportMaxHeight)
         XCTAssertEqual(frames.bankedResetSummaryRow?.amount.height, OpenCodexCardLayout.bankedResetTextBandAmountHeight)
     }
+
+    func testBalanceResetSectionsStayBelowTheBalanceBodyAndKeepTicketFramesLocal() throws {
+        let base = OpenCodexCardLayout.frames(for: .balance, includesQuotaProgress: true)
+        let withReset = OpenCodexCardLayout.frames(
+            for: .balance,
+            includesQuotaProgress: true,
+            includesBankedReset: true,
+            bankedResetCardCount: 4,
+            bankedResetDisplayMode: .detailed,
+            includesBankedResetNearestExpiry: true,
+            includesResetProbability: false
+        )
+        let reset = try XCTUnwrap(withReset.sectionLayouts.first(where: { $0.id == .bankedReset }))
+        let summary = try XCTUnwrap(reset.row)
+        XCTAssertGreaterThanOrEqual(reset.frame.minY, base.cardSize.height + OpenCodexCardLayout.metrics.sectionSpacing)
+        XCTAssertGreaterThanOrEqual(summary.quotaDetail.minY, 0)
+        XCTAssertLessThanOrEqual(summary.quotaDetail.maxY, reset.frame.height)
+        XCTAssertEqual(withReset.bankedResetSummaryRow, reset.cardRow,
+                       "the exported summary row must share the shifted card coordinates")
+        XCTAssertEqual(withReset.bankedResetDetailRows.count, 4)
+        XCTAssertNotNil(withReset.bankedResetTicketViewport)
+        XCTAssertGreaterThan(withReset.cardSize.height, base.cardSize.height)
+        XCTAssertNotNil(withReset.amount)
+        XCTAssertNotNil(withReset.progress)
+    }
     func testQuickSwitchMenuEntriesContainOnlyCCSwitchProviderChoices() {
         let choices = [
             ProviderChoice(id: "opencodex", name: "OpenCodex", isCurrent: true),

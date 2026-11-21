@@ -380,7 +380,7 @@
 "dashboard.menu.page.show_banked_reset" = "Show Reset Cards";
 "dashboard.menu.page.show_banked_reset_description" = "When off, the dropdown menu no longer shows reset cards";
 "dashboard.menu.page.show_non_official_banked_reset" = "Show reset cards on non-official Codex providers";
-"dashboard.menu.page.show_non_official_banked_reset_description" = "Use your local Codex login to fetch reset cards while a non-official provider is selected";
+"dashboard.menu.page.show_non_official_banked_reset_description" = "Show Codex reset cards from your local login and Claude cards from the last cache loaded on Claude’s official page";
 "dashboard.menu.page.show_non_official_reset_probability" = "Show reset probability on non-official providers";
 "dashboard.menu.page.show_non_official_reset_probability_description" = "Uses the public codex-reset.com forecast and makes an extra request";
 "dashboard.menu.page.banked_reset_display_mode" = "Display style";

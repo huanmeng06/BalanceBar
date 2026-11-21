@@ -129,6 +129,9 @@ struct CodexBankedResetCard: Equatable {
     let expiresText: String?
     let remainingText: String?
     let remainingIsWarning: Bool
+    /// Raw Claude reset-window keys, retained so a local cache can rebuild
+    /// localized display text after a relaunch or language change.
+    let windowKeys: [String]?
 
     init(
         id: String?,
@@ -139,7 +142,8 @@ struct CodexBankedResetCard: Equatable {
         expiresAt: Date?,
         expiresText: String?,
         remainingText: String? = nil,
-        remainingIsWarning: Bool = false
+        remainingIsWarning: Bool = false,
+        windowKeys: [String]? = nil
     ) {
         self.id = id
         self.resetType = resetType
@@ -150,6 +154,7 @@ struct CodexBankedResetCard: Equatable {
         self.expiresText = expiresText
         self.remainingText = remainingText
         self.remainingIsWarning = remainingIsWarning
+        self.windowKeys = windowKeys
     }
 }
 
@@ -161,6 +166,30 @@ struct CodexBankedReset: Equatable {
         self.cards = cards
         self.availableCount = cards.reduce(0) { $0 + $1.resetCount }
     }
+}
+
+/// The persisted Claude `cedar_ember` payload. Keep API fields rather than
+/// presentation strings so expired grants and localized labels can be rebuilt
+/// whenever the cache is read.
+struct ClaudeBankedResetGrant: Codable, Equatable {
+    let id: String?
+    let type: String?
+    let resetsLeft: Int?
+    let clears: [String]?
+    let endsAt: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case type
+        case resetsLeft = "resets_left"
+        case clears
+        case endsAt = "ends_at"
+    }
+}
+
+struct ClaudeBankedResetPayload: Codable, Equatable {
+    let eligible: Bool
+    let grants: [ClaudeBankedResetGrant]
 }
 
 struct OfficialQuotaWindow: Equatable {
@@ -1294,6 +1323,8 @@ struct Snapshot: Equatable {
         )
         snapshot.balanceRecharge = cached?.balanceRecharge
         snapshot.balanceProgressContext = cached?.balanceProgressContext
+        snapshot.bankedReset = cached?.bankedReset
+        snapshot.resetForecast = cached?.resetForecast ?? .unavailable
         return snapshot
     }
 
@@ -1639,7 +1670,8 @@ struct Snapshot: Equatable {
               let amount, let unit, let date else { return nil }
         var kept = Snapshot.balance(provider, amount, unit, websiteURL, date,
             progressPercentage: balanceProgressPercentage, recharge: balanceRecharge,
-            progressContext: balanceProgressContext)
+            progressContext: balanceProgressContext, bankedReset: bankedReset,
+            resetForecast: resetForecast)
         kept.staleReason = message
         return kept
     }

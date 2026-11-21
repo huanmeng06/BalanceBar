@@ -380,7 +380,7 @@
 "dashboard.menu.page.show_banked_reset" = "Mostrar cartões de redefinição";
 "dashboard.menu.page.show_banked_reset_description" = "Quando desativada, o menu suspenso não mostra mais os cartões de redefinição";
 "dashboard.menu.page.show_non_official_banked_reset" = "Mostrar cartões em provedores Codex não oficiais";
-"dashboard.menu.page.show_non_official_banked_reset_description" = "Usa o login local do Codex para buscar cartões quando um provedor intermediário está selecionado";
+"dashboard.menu.page.show_non_official_banked_reset_description" = "Mostra cartões do Codex pelo login local e cartões do Claude usando o último cache carregado na página oficial";
 "dashboard.menu.page.show_non_official_reset_probability" = "Mostrar probabilidade de redefinição em provedores não oficiais";
 "dashboard.menu.page.show_non_official_reset_probability_description" = "Usa a previsão pública do codex-reset.com e faz uma solicitação adicional";
 "dashboard.menu.page.banked_reset_display_mode" = "Estilo de exibição";

@@ -380,7 +380,7 @@
 "dashboard.menu.page.show_banked_reset" = "Mostra le carte di reimpostazione";
 "dashboard.menu.page.show_banked_reset_description" = "Se disattivata, il menu a discesa non mostra più le carte di reimpostazione";
 "dashboard.menu.page.show_non_official_banked_reset" = "Mostra le carte nei provider Codex non ufficiali";
-"dashboard.menu.page.show_non_official_banked_reset_description" = "Usa l'accesso Codex locale per recuperare le carte quando è selezionato un provider intermediario";
+"dashboard.menu.page.show_non_official_banked_reset_description" = "Mostra le carte Codex con l’accesso locale e quelle Claude dall’ultima cache caricata nella pagina ufficiale";
 "dashboard.menu.page.show_non_official_reset_probability" = "Mostra la probabilità di reimpostazione nei provider non ufficiali";
 "dashboard.menu.page.show_non_official_reset_probability_description" = "Usa le previsioni pubbliche di codex-reset.com e invia una richiesta aggiuntiva";
 "dashboard.menu.page.banked_reset_display_mode" = "Stile di visualizzazione";

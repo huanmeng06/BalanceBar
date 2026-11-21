@@ -445,6 +445,49 @@ final class OverviewNumericTransitionTests: XCTestCase {
         )
     }
 
+    func testBalanceResetNumbersRespectParentAndChildPreferences() {
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let snapshot = Snapshot.balance("Relay", 10, "USD", nil, date,
+            bankedReset: CodexBankedReset(cards: [
+                CodexBankedResetCard(id: "ticket", resetType: "codex_rate_limits", titleText: "Full",
+                    expiresAt: date.addingTimeInterval(86_400), expiresText: "later")
+            ]),
+            resetForecast: .demo(updatedAt: date))
+
+        let parentOff = OverviewNumericPresentation.samples(snapshot: snapshot,
+            lunaReserveDisplayMode: .disabled, hideExhaustedQuota: false,
+            showBankedReset: false, showNonOfficialBankedReset: true,
+            showNonOfficialResetProbability: true)
+        XCTAssertEqual(parentOff.map(\.identity), [.thirdPartyBalance(provider: "Relay", unit: "USD")])
+
+        let cardsOnly = OverviewNumericPresentation.samples(snapshot: snapshot,
+            lunaReserveDisplayMode: .disabled, hideExhaustedQuota: false,
+            showBankedReset: true, showNonOfficialBankedReset: true,
+            showNonOfficialResetProbability: false)
+        XCTAssertEqual(cardsOnly.map(\.identity), [
+            .thirdPartyBalance(provider: "Relay", unit: "USD"),
+            .bankedResetCount(provider: "Relay")
+        ])
+
+        let forecastOnly = OverviewNumericPresentation.samples(snapshot: snapshot,
+            lunaReserveDisplayMode: .disabled, hideExhaustedQuota: false,
+            showBankedReset: true, showNonOfficialBankedReset: false,
+            showNonOfficialResetProbability: true)
+        XCTAssertTrue(forecastOnly.contains { $0.identity == .bankedResetProbability24h(provider: "Relay") })
+
+        let claudeForecastSuppressed = OverviewNumericPresentation.samples(snapshot: snapshot,
+            lunaReserveDisplayMode: .disabled, hideExhaustedQuota: false,
+            showBankedReset: true, showNonOfficialBankedReset: true,
+            showNonOfficialResetProbability: true, showResetProbabilityForClient: false)
+        XCTAssertFalse(claudeForecastSuppressed.contains { sample in
+            switch sample.identity {
+            case .bankedResetProbability24h, .bankedResetProbability48h, .bankedResetProbabilitySignal,
+                 .bankedResetProbabilityCountdown: return true
+            default: return false
+            }
+        })
+    }
+
     func testSameIdentityCurrencyTransitionAnimatesAndUnchangedValueDoesNot() {
         let previous = balanceSample(amount: 1.70, progress: 40)
         let current = balanceSample(amount: 1.50, progress: 30)

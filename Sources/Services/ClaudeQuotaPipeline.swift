@@ -145,6 +145,7 @@ final class ClaudeQuotaPipeline {
     private let identityQueue: DispatchQueue
     private let stateStore: ObservedFetchSchedulerStateStore
     private let mergeFileStore: QuotaMergeFileStore
+    private let bankedResetCacheURL: URL
     private let notificationRouter = ClaudeNotificationRouter()
     private let realtimeTracker: ClaudeRealtimeTracker?
     private let sourceValidity: () -> ClaudeSourceValidity
@@ -188,12 +189,22 @@ final class ClaudeQuotaPipeline {
     /// this process (a restored merge state does not count). Guarded by `lock`.
     private var officialReadSinceActivation = false
     private var state: ClaudeQuotaState?
+    /// Account-change reads are needed only while the official Claude provider is active.
+    /// A relay card may reuse the local reset-card cache without starting an official read.
+    private var officialQuotaDemand = false
     private var resetCardDemand = false
     private var bankedReset: CodexBankedReset?
+    private var bankedResetPayload: ClaudeBankedResetPayload?
     private var bankedResetFetchInFlight = false
     private var lastBankedResetFetchAt: Date?
     private var bankedResetRetryAt: Date?
-    static let bankedResetRefreshInterval: TimeInterval = 5 * 60
+    static let bankedResetRefreshInterval: TimeInterval = 30 * 60
+
+    private struct StoredClaudeResetCache: Codable, Equatable {
+        let accountKey: String
+        let fetchedAt: Date
+        let payload: ClaudeBankedResetPayload?
+    }
     /// Set while the Mod is known to be uninstalled or disabled (its lifecycle, not its data
     /// validity): its readings keep their value and time but are neither live nor fresh
     /// scheduler evidence. Cleared only by a Mod snapshot produced after this moment, so a
@@ -314,6 +325,7 @@ final class ClaudeQuotaPipeline {
         stateStore = ObservedFetchSchedulerStateStore(
             base: FileFetchSchedulerStateStore(fileURL: stateDirectory.appendingPathComponent("claude-fetch-scheduler.json")))
         mergeFileStore = QuotaMergeFileStore(url: stateDirectory.appendingPathComponent("claude-quota-merge.json"))
+        bankedResetCacheURL = stateDirectory.appendingPathComponent("claude-reset-cards.json")
         scheduler = FetchScheduler(
             transport: ClaudeUsageTransport(pipeline: self),
             identity: identity,
@@ -485,6 +497,10 @@ final class ClaudeQuotaPipeline {
     /// the 401 pause against the current credential version.
     func requestFetch(reason: FetchRequestReason) {
         queue.async { [self] in
+            // An explicit usage request is an official quota demand. Relay-only
+            // cards never call this entry point, so they can keep the pipeline
+            // alive for cache/account scoping without waking the network path.
+            lock.withLock { officialQuotaDemand = true }
             guard engine != nil else {
                 pendingReasons.append(reason)
                 startOnQueue()
@@ -496,7 +512,10 @@ final class ClaudeQuotaPipeline {
 
     /// Enables scheduler-owned automatic calibration while Claude is being monitored.
     func setDemand(_ enabled: Bool) {
-        scheduler.setDemand(enabled)
+        queue.async { [self] in
+            lock.withLock { officialQuotaDemand = enabled }
+            scheduler.setDemand(enabled)
+        }
     }
 
     /// Enables the low-frequency Claude reset-grant request used by the menu card.
@@ -504,18 +523,21 @@ final class ClaudeQuotaPipeline {
     func setResetCardDemand(_ enabled: Bool) {
         queue.async { [self] in
             guard resetCardDemand != enabled else {
-                if enabled { requestBankedResetCardsIfNeeded() }
+                if enabled {
+                    loadBankedResetCache()
+                    publish()
+                    requestBankedResetCardsIfNeeded()
+                }
                 return
             }
             resetCardDemand = enabled
             if !enabled {
-                bankedReset = nil
-                lastBankedResetFetchAt = nil
-                bankedResetRetryAt = nil
                 bankedResetFetchInFlight = false
                 publish()
             } else {
-                requestBankedResetCardsIfNeeded(force: true)
+                loadBankedResetCache()
+                publish()
+                requestBankedResetCardsIfNeeded()
             }
         }
     }
@@ -579,11 +601,15 @@ final class ClaudeQuotaPipeline {
         }
         let restoring = RebasingMergeStore(
             base: mergeFileStore, accountID: identity.accountIdentity?.stableID, epoch: identity.accountEpoch)
+        loadBankedResetCache()
         // Like the merge state, the source history comes back only for the same account.
         sourceTimeline.restore(accountKey: ClaudeSourceTimeline.accountKey(forStableID: identity.accountIdentity?.stableID))
         let adapter = QuotaNotificationAdapter(processor: notificationRouter, providerID: "claude")
         self.adapter = adapter
-        let engine = QuotaMergeEngine(scheduler: scheduler, notifications: adapter, store: restoring, now: now)
+        let gatedScheduler = ClaudeDemandGatedScheduler(base: scheduler) { [weak self] in
+            self?.lock.withLock { self?.officialQuotaDemand } ?? false
+        }
+        let engine = QuotaMergeEngine(scheduler: gatedScheduler, notifications: adapter, store: restoring, now: now)
         self.engine = engine
         reportRestoredLiveModReadings(engine)
         snapshotInbox?.start { [weak self] observation in
@@ -615,6 +641,7 @@ final class ClaudeQuotaPipeline {
     }
 
     private func prepareAndRequest(_ reason: FetchRequestReason) {
+        guard lock.withLock({ officialQuotaDemand }) else { return }
         let epoch = identity.accountEpoch
         if reason == .manual { client.allowClaudeKeychainRetry() }
         let token = client.claudeRequestCredentials(cacheFor: 2).accessToken
@@ -707,9 +734,11 @@ final class ClaudeQuotaPipeline {
         realtimeTracker?.reset(epoch: change.epoch)
         sourceTimeline.reset(accountKey: ClaudeSourceTimeline.accountKey(forStableID: change.identity?.stableID))
         bankedReset = nil
+        bankedResetPayload = nil
         lastBankedResetFetchAt = nil
         bankedResetRetryAt = nil
         bankedResetFetchInFlight = false
+        loadBankedResetCache()
         lock.withLock {
             setFailureLocked(nil)
             refreshing = false
@@ -987,6 +1016,7 @@ final class ClaudeQuotaPipeline {
     /// A new account must be read immediately, subject only to auth, cooldown, budget and
     /// failure-backoff constraints.
     private func requestForNewAccount() {
+        guard lock.withLock({ officialQuotaDemand }) else { return }
         prepareAndRequest(.accountChanged)
     }
 
@@ -1053,11 +1083,13 @@ final class ClaudeQuotaPipeline {
     }
 
     private func requestBankedResetCardsIfNeeded(force: Bool = false) {
-        guard resetCardDemand, hasAccount, !bankedResetFetchInFlight else { return }
+        guard resetCardDemand, lock.withLock({ officialQuotaDemand }), hasAccount, !bankedResetFetchInFlight else { return }
+        guard lock.withLock({ officialReadSinceActivation }), !awaitsLogin else { return }
         let date = now()
         if let cooldown = stateStore.snapshot.cooldownUntil, cooldown > date { return }
-        if let bankedResetRetryAt, bankedResetRetryAt > date { return }
-        if !force, let last = lastBankedResetFetchAt,
+        let retryReady = bankedResetRetryAt.map { $0 <= date } ?? false
+        if let bankedResetRetryAt, !retryReady, bankedResetRetryAt > date { return }
+        if !force, !retryReady, let last = lastBankedResetFetchAt,
            date.timeIntervalSince(last) < Self.bankedResetRefreshInterval { return }
         bankedResetFetchInFlight = true
         lastBankedResetFetchAt = date
@@ -1072,9 +1104,12 @@ final class ClaudeQuotaPipeline {
                         guard let self, self.identity.accountEpoch == epoch, self.resetCardDemand else { return }
                         self.bankedResetFetchInFlight = false
                         switch result {
-                        case let .success(cards):
+                        case let .success(payload):
+                            let cards = payload.flatMap { OfficialQuotaResponseParser.claudeBankedReset(from: $0, now: self.now()) }
                             self.bankedResetRetryAt = nil
+                            self.bankedResetPayload = payload
                             self.bankedReset = cards
+                            self.saveBankedResetCache(payload)
                             self.publish()
                         case let .failure(.httpStatus(status, _, retryAt)) where status == 429:
                             self.bankedResetRetryAt = retryAt ?? self.now().addingTimeInterval(Self.bankedResetRefreshInterval)
@@ -1107,6 +1142,43 @@ final class ClaudeQuotaPipeline {
                 }
             }
         }
+    }
+
+    private func loadBankedResetCache() {
+        guard let accountKey = ClaudeSourceTimeline.accountKey(forStableID: identity.accountIdentity?.stableID),
+              let data = try? Data(contentsOf: bankedResetCacheURL),
+              let cache = Self.decodeBankedResetCache(data),
+              cache.accountKey == accountKey else {
+            bankedReset = nil
+            bankedResetPayload = nil
+            lastBankedResetFetchAt = nil
+            return
+        }
+        lastBankedResetFetchAt = cache.fetchedAt
+        bankedResetPayload = cache.payload
+        bankedReset = cache.payload.flatMap { OfficialQuotaResponseParser.claudeBankedReset(from: $0, now: now()) }
+    }
+
+    private func saveBankedResetCache(_ payload: ClaudeBankedResetPayload?) {
+        guard let accountKey = ClaudeSourceTimeline.accountKey(forStableID: identity.accountIdentity?.stableID) else { return }
+        let stored = StoredClaudeResetCache(
+            accountKey: accountKey,
+            fetchedAt: now(),
+            payload: payload)
+        do {
+            try FileManager.default.createDirectory(at: bankedResetCacheURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            try encoder.encode(stored).write(to: bankedResetCacheURL, options: .atomic)
+        } catch {
+            diagnostics("claude reset-card cache write failed", .debug)
+        }
+    }
+
+    private static func decodeBankedResetCache(_ data: Data) -> StoredClaudeResetCache? {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try? decoder.decode(StoredClaudeResetCache.self, from: data)
     }
 
     private static func timelineValues(
@@ -1372,7 +1444,7 @@ final class ClaudeQuotaPipeline {
             failure: failure,
             status: status,
             newestReadingSource: Self.statusSource(of: standard),
-            bankedReset: bankedReset)
+            bankedReset: bankedResetPayload.flatMap { OfficialQuotaResponseParser.claudeBankedReset(from: $0, now: date) })
         next.officialDisabled = officialDisabled
         let changed = lock.withLock { () -> Bool in
             guard state != next else { return false }
@@ -1515,6 +1587,23 @@ final class ClaudeQuotaPipeline {
     fileprivate var hasAccount: Bool { identity.accountIdentity != nil }
     fileprivate var currentEpoch: AccountEpoch { identity.accountEpoch }
     fileprivate var transportClient: OfficialQuotaClient { client }
+}
+
+/// Prevents merge-engine reset confirmations from waking Claude's official
+/// transport while a relay-only card is using the pipeline for cache scoping.
+private final class ClaudeDemandGatedScheduler: FetchScheduling {
+    private let base: FetchScheduling
+    private let isDemanded: () -> Bool
+
+    init(base: FetchScheduling, isDemanded: @escaping () -> Bool) {
+        self.base = base
+        self.isDemanded = isDemanded
+    }
+
+    func requestFetch(reason: FetchRequestReason) {
+        guard isDemanded() else { return }
+        base.requestFetch(reason: reason)
+    }
 }
 
 /// Scheduler transport that performs the single Claude usage request.
