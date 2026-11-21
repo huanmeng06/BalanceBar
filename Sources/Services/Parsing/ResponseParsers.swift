@@ -412,7 +412,7 @@ enum OfficialQuotaResponseParser {
         if client == .claude {
             let windows = claudeReadings(object: object, now: now).map(\.window)
             guard !windows.isEmpty else { throw ResponseParserError.unsupportedFormat }
-            return Output(windows: windows)
+            return Output(windows: windows, bankedReset: parseClaudeBankedReset(object: object, now: now))
         }
 
         let limits = (object["rate_limit"] as? [String: Any]) ?? object
@@ -450,6 +450,81 @@ enum OfficialQuotaResponseParser {
             return nil
         }
         return bankedReset(from: credits, now: now) ?? CodexBankedReset(cards: [])
+    }
+
+    static func parseClaudeBankedReset(
+        object: [String: Any],
+        now: Date = Date()
+    ) -> CodexBankedReset? {
+        guard let payload = parseClaudeBankedResetPayload(object: object) else { return nil }
+        return claudeBankedReset(from: payload, now: now)
+    }
+
+    static func parseClaudeBankedResetPayload(object: [String: Any]) -> ClaudeBankedResetPayload? {
+        guard let reset = object["cedar_ember"] as? [String: Any],
+              let eligible = reset["eligible"] as? Bool else { return nil }
+        guard eligible else { return ClaudeBankedResetPayload(eligible: false, grants: []) }
+        let grants = (reset["grants"] as? [[String: Any]] ?? []).map { grant in
+            ClaudeBankedResetGrant(
+                id: ResponseParsingSupport.stringValue(grant["id"]),
+                type: ResponseParsingSupport.stringValue(grant["type"]),
+                resetsLeft: nonNegativeInt(grant["resets_left"]),
+                clears: grant["clears"] as? [String],
+                endsAt: grant["ends_at"].map { String(describing: $0) })
+        }
+        return ClaudeBankedResetPayload(eligible: true, grants: grants)
+    }
+
+    static func claudeBankedReset(from payload: ClaudeBankedResetPayload, now: Date) -> CodexBankedReset? {
+        guard payload.eligible else { return nil }
+
+        var seenIDs = Set<String>()
+        let cards = payload.grants.enumerated().compactMap { index, grant -> CodexBankedResetCard? in
+            guard let count = grant.resetsLeft, count > 0 else { return nil }
+            let expiresAt = ResponseParsingSupport.timestampDate(grant.endsAt)
+            if let expiresAt, expiresAt <= now { return nil }
+
+            let rawID = grant.id?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if let rawID, !rawID.isEmpty, !seenIDs.insert(rawID).inserted { return nil }
+            let resetType = grant.type?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let remaining = CodexBankedResetFormatting.remaining(until: expiresAt, now: now)
+            let titleText = resetType == "full"
+                ? tr(.keyCodexBankedResetFullResetTitle)
+                : tr(.keyCodexBankedResetTitle)
+            let clearKeys = grant.clears ?? []
+
+            return CodexBankedResetCard(
+                id: rawID?.isEmpty == true ? nil : rawID ?? "claude-reset-\(index)",
+                resetType: resetType,
+                titleText: titleText,
+                windowText: claudeResetWindowText(clearKeys),
+                resetCount: count,
+                expiresAt: expiresAt,
+                expiresText: CodexBankedResetFormatting.expiryText(for: expiresAt, relativeTo: now),
+                remainingText: remaining?.text,
+                remainingIsWarning: remaining?.isWarning ?? false,
+                windowKeys: clearKeys
+            )
+        }
+        return CodexBankedReset(cards: cards)
+    }
+
+    static func claudeResetWindowText(_ keys: [String]?) -> String? {
+        guard let keys else { return nil }
+        var seen = Set<String>()
+        let labels = keys.compactMap { key -> String? in
+            let mapped: (String, String)?
+            switch key {
+            case "five_hour": mapped = (key, tr(.keyResponseParsers5HourQuota))
+            case "seven_day", "seven_day_overage_included": mapped = ("seven_day", tr(.keyResponseParsers7DayQuota))
+            default: mapped = nil
+            }
+            guard let mapped, seen.insert(mapped.0).inserted else { return nil }
+            return mapped.1
+        }
+        return labels.isEmpty ? nil : labels.joined(separator: " · ")
     }
 
     private static func parseCodexWindow(

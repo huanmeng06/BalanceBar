@@ -124,29 +124,37 @@ struct CodexBankedResetCard: Equatable {
     let resetType: String
     let titleText: String
     let windowText: String?
+    let resetCount: Int
     let expiresAt: Date?
     let expiresText: String?
     let remainingText: String?
     let remainingIsWarning: Bool
+    /// Raw Claude reset-window keys, retained so a local cache can rebuild
+    /// localized display text after a relaunch or language change.
+    let windowKeys: [String]?
 
     init(
         id: String?,
         resetType: String,
         titleText: String,
         windowText: String? = nil,
+        resetCount: Int = 1,
         expiresAt: Date?,
         expiresText: String?,
         remainingText: String? = nil,
-        remainingIsWarning: Bool = false
+        remainingIsWarning: Bool = false,
+        windowKeys: [String]? = nil
     ) {
         self.id = id
         self.resetType = resetType
         self.titleText = titleText
         self.windowText = windowText
+        self.resetCount = max(1, resetCount)
         self.expiresAt = expiresAt
         self.expiresText = expiresText
         self.remainingText = remainingText
         self.remainingIsWarning = remainingIsWarning
+        self.windowKeys = windowKeys
     }
 }
 
@@ -156,8 +164,32 @@ struct CodexBankedReset: Equatable {
 
     init(cards: [CodexBankedResetCard]) {
         self.cards = cards
-        self.availableCount = cards.count
+        self.availableCount = cards.reduce(0) { $0 + $1.resetCount }
     }
+}
+
+/// The persisted Claude `cedar_ember` payload. Keep API fields rather than
+/// presentation strings so expired grants and localized labels can be rebuilt
+/// whenever the cache is read.
+struct ClaudeBankedResetGrant: Codable, Equatable {
+    let id: String?
+    let type: String?
+    let resetsLeft: Int?
+    let clears: [String]?
+    let endsAt: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case type
+        case resetsLeft = "resets_left"
+        case clears
+        case endsAt = "ends_at"
+    }
+}
+
+struct ClaudeBankedResetPayload: Codable, Equatable {
+    let eligible: Bool
+    let grants: [ClaudeBankedResetGrant]
 }
 
 struct OfficialQuotaWindow: Equatable {
@@ -1065,8 +1097,8 @@ struct Snapshot: Equatable {
     let quotaPredictionContexts: [QuotaPredictionContext]
     let quotaPredictionAccountKey: String?
     let lunaReserve: LunaReserveQuota?
-    let bankedReset: CodexBankedReset?
-    let resetForecast: CodexResetForecast
+    var bankedReset: CodexBankedReset?
+    var resetForecast: CodexResetForecast
     /// The window selected for the compact/menu-bar presentation. The full
     /// quota card keeps all source windows, so this marker prevents the
     /// selected row's exact reset timestamp from being replaced by the
@@ -1187,7 +1219,9 @@ struct Snapshot: Equatable {
         _ date: Date,
         progressPercentage: Double? = nil,
         recharge: BalanceRecharge? = nil,
-        progressContext: BalanceProgressContext? = nil
+        progressContext: BalanceProgressContext? = nil,
+        bankedReset: CodexBankedReset? = nil,
+        resetForecast: CodexResetForecast = .unavailable
     ) -> Snapshot {
         var snapshot = Snapshot(
             kind: .balance,
@@ -1202,6 +1236,8 @@ struct Snapshot: Equatable {
         )
         snapshot.balanceRecharge = recharge
         snapshot.balanceProgressContext = progressContext
+        snapshot.bankedReset = bankedReset
+        snapshot.resetForecast = resetForecast
         return snapshot
     }
 
@@ -1287,6 +1323,8 @@ struct Snapshot: Equatable {
         )
         snapshot.balanceRecharge = cached?.balanceRecharge
         snapshot.balanceProgressContext = cached?.balanceProgressContext
+        snapshot.bankedReset = cached?.bankedReset
+        snapshot.resetForecast = cached?.resetForecast ?? .unavailable
         return snapshot
     }
 
@@ -1305,14 +1343,14 @@ struct Snapshot: Equatable {
         return recognized.isEmpty ? Array(officialQuotaWindows.prefix(1)) : recognized
     }
 
-    /// Resolve the official quota rows shown in the status menu. This keeps
+    /// Resolve quota and reset-card rows shown in the status menu. This keeps
     /// menu-only visibility preferences out of the snapshot and never changes
     /// the source windows used by the Dashboard provider page.
     func officialQuotaMenuPresentation(
         lunaReserveDisplayMode: LunaReserveDisplayMode,
         hideExhaustedQuota: Bool
     ) -> OfficialQuotaMenuPresentation {
-        guard kind == .official else {
+        guard kind == .official || kind == .balance else {
             return OfficialQuotaMenuPresentation(
                 windows: [],
                 lunaReserve: nil,
@@ -1321,11 +1359,12 @@ struct Snapshot: Equatable {
             )
         }
 
-        let windows = officialQuotaWindowsForMenu
-        let displayMode = LunaReserveUserFacing.isCurrentlyEnabled
+        let isOfficial = kind == .official
+        let windows = isOfficial ? officialQuotaWindowsForMenu : []
+        let displayMode = isOfficial && LunaReserveUserFacing.isCurrentlyEnabled
             ? lunaReserveDisplayMode
             : .disabled
-        let hideExhausted = LunaReserveUserFacing.isCurrentlyEnabled && hideExhaustedQuota
+        let hideExhausted = isOfficial && LunaReserveUserFacing.isCurrentlyEnabled && hideExhaustedQuota
         let hasExhaustedQuota = windows.contains {
             $0.kind != .other && $0.remaining <= 0
         }
@@ -1378,7 +1417,8 @@ struct Snapshot: Equatable {
         }
         let presentedBankedReset: CodexBankedReset? = {
             guard let bankedReset,
-                  bankedReset.availableCount == bankedReset.cards.count else {
+                  bankedReset.availableCount >= bankedReset.cards.count,
+                  bankedReset.cards.allSatisfy({ $0.resetCount > 0 }) else {
                 return nil
             }
             return bankedReset
@@ -1630,7 +1670,8 @@ struct Snapshot: Equatable {
               let amount, let unit, let date else { return nil }
         var kept = Snapshot.balance(provider, amount, unit, websiteURL, date,
             progressPercentage: balanceProgressPercentage, recharge: balanceRecharge,
-            progressContext: balanceProgressContext)
+            progressContext: balanceProgressContext, bankedReset: bankedReset,
+            resetForecast: resetForecast)
         kept.staleReason = message
         return kept
     }

@@ -120,6 +120,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         return formatter
     }()
     private static let usage = Data(#"{"five_hour":{"utilization":23,"resets_at":"2023-11-15T03:00:00Z"},"seven_day":{"utilization":41,"resets_at":"2023-11-20T00:00:00Z"}}"#.utf8)
+    private static let usageWithResetGrant = Data(#"{"five_hour":{"utilization":23,"resets_at":"2023-11-15T03:00:00Z"},"seven_day":{"utilization":41,"resets_at":"2023-11-20T00:00:00Z"},"cedar_ember":{"eligible":true,"grants":[{"id":"cached-grant","type":"full","resets_left":2,"ends_at":"2027-01-22T00:00:00Z","clears":["five_hour","seven_day"]}]}}"#.utf8)
     private static let nextCycle = Data(#"{"five_hour":{"utilization":2,"resets_at":"2023-11-15T08:00:00Z"},"seven_day":{"utilization":42,"resets_at":"2023-11-20T00:00:00Z"}}"#.utf8)
     /// Old-cycle data whose five-hour reset lies only a minute ahead, so a test can cross it
     /// while still inside Claude V1's five-minute minimum interval.
@@ -316,6 +317,140 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         XCTAssertEqual(state.updatedAt, Self.start)
         XCTAssertEqual(state.windows.map(\.label), [tr(.keyResponseParsers5HourQuota), tr(.keyResponseParsers7DayQuota)])
         XCTAssertEqual(PipelineStubProtocol.requestCount, 1)
+    }
+
+    func testClaudeResetCardsUseCacheAcrossRestartAndWaitThirtyMinutesBetweenReads() throws {
+        PipelineStubProtocol.set(.init(data: Self.usageWithResetGrant))
+        let pipeline = makePipeline(configuration: claudeV1TestConfiguration)
+        pipeline.start()
+        pipeline.setResetCardDemand(true)
+        pipeline.requestFetch(reason: .initial)
+
+        let first = try XCTUnwrap(waitForState(pipeline) { $0.bankedReset?.availableCount == 2 })
+        XCTAssertEqual(first.bankedReset?.cards.first?.titleText, tr(.keyCodexBankedResetFullResetTitle))
+        XCTAssertEqual(PipelineStubProtocol.requestCount, 2, "one usage read and one reset-grant read")
+        XCTAssertTrue(FileManager.default.fileExists(atPath:
+            directory.appendingPathComponent("state/claude-reset-cards.json").path))
+
+        let restarted = makePipeline(configuration: claudeV1TestConfiguration)
+        restarted.start()
+        restarted.setResetCardDemand(true)
+        let restored = try XCTUnwrap(waitForState(restarted) { $0.bankedReset?.availableCount == 2 })
+        XCTAssertEqual(restored.bankedReset, first.bankedReset,
+            "the matching account's raw cache restores before another official usage read")
+        XCTAssertEqual(PipelineStubProtocol.requestCount, 2)
+
+        // A normal five-minute Claude usage poll does not repeat the secondary endpoint.
+        clock.advance(by: 5 * 60)
+        restarted.requestFetch(reason: .scheduled)
+        _ = try XCTUnwrap(waitForState(restarted) { $0.updatedAt == Self.start.addingTimeInterval(5 * 60) })
+        quiet(restarted)
+        XCTAssertEqual(PipelineStubProtocol.requestCount, 3)
+
+        clock.advance(by: 25 * 60)
+        restarted.requestFetch(reason: .scheduled)
+        _ = try XCTUnwrap(waitForState(restarted) { $0.updatedAt == Self.start.addingTimeInterval(30 * 60) })
+        waitForRequests(5)
+        XCTAssertEqual(ClaudeQuotaPipeline.bankedResetRefreshInterval, 30 * 60)
+    }
+
+    func testClaudeResetCacheDoesNotCrossAccountSwitch() throws {
+        PipelineStubProtocol.set(.init(data: Self.usageWithResetGrant))
+        let pipeline = makePipeline(configuration: claudeV1TestConfiguration)
+        pipeline.start()
+        pipeline.setResetCardDemand(true)
+        pipeline.requestFetch(reason: .initial)
+        let first = try XCTUnwrap(waitForState(pipeline) { $0.bankedReset?.availableCount == 2 })
+
+        try writeAccount("account-b", email: "b@example.com")
+        let changed = try XCTUnwrap(waitForState(pipeline) {
+            $0.accountEpoch != first.accountEpoch && $0.bankedReset == nil
+        })
+        XCTAssertEqual(changed.predictionAccountKey, "b@example.com")
+    }
+
+    func testClaudeResetCardsDoNotFetchDuringUnauthorizedPause() throws {
+        PipelineStubProtocol.set(.init(status: 401, data: Data("{}".utf8)))
+        let pipeline = makePipeline(configuration: claudeV1TestConfiguration)
+        pipeline.start()
+        pipeline.setResetCardDemand(true)
+        pipeline.requestFetch(reason: .initial)
+        XCTAssertNotNil(waitForState(pipeline) { $0.failure == .unauthorized })
+        quiet(pipeline)
+        XCTAssertEqual(PipelineStubProtocol.requestCount, 1, "the reset endpoint is not called after a 401")
+
+        clock.advance(by: ClaudeQuotaPipeline.bankedResetRefreshInterval)
+        pipeline.requestFetch(reason: .scheduled)
+        quiet(pipeline)
+        XCTAssertEqual(PipelineStubProtocol.requestCount, 1,
+            "the main usage request remains paused and reset-card demand cannot bypass it")
+    }
+
+    func testResetCardCacheDoesNotWakeOfficialReadsWithoutQuotaDemand() throws {
+        let pipeline = makePipeline(configuration: claudeV1TestConfiguration)
+        pipeline.start()
+        pipeline.setDemand(false)
+        pipeline.setResetCardDemand(true)
+        pipeline.waitUntilIdle()
+
+        try writeAccount("account-b", email: "b@example.com")
+        XCTAssertTrue(pollUntil {
+            self.lastIdentity.accountIdentity?.stableID == "claude:account-b:org"
+        }, "the account monitor still follows local account changes for cache scoping")
+        quiet(pipeline)
+        XCTAssertEqual(PipelineStubProtocol.requestCount, 0,
+            "reading relay-card cache and observing an account switch must not send official usage or reset requests")
+    }
+
+    func testRelayStartupRestoresNewlySignedInAccountsResetCacheWithoutOfficialRequests() throws {
+        try writeAccount("account-b", email: "b@example.com")
+        let stateDirectory = directory.appendingPathComponent("state", isDirectory: true)
+        try FileManager.default.createDirectory(at: stateDirectory, withIntermediateDirectories: true)
+        let payload: [String: Any] = [
+            "eligible": true,
+            "grants": [[
+                "id": "relay-cache-card",
+                "type": "full",
+                "resets_left": 1,
+                "clears": ["five_hour"],
+                "ends_at": "2027-01-22T00:00:00Z",
+            ]],
+        ]
+        let cache: [String: Any] = [
+            "accountKey": try XCTUnwrap(ClaudeSourceTimeline.accountKey(forStableID: "claude:account-b:org")),
+            "fetchedAt": Self.isoFormatter.string(from: Self.start),
+            "payload": payload,
+        ]
+        let data = try JSONSerialization.data(withJSONObject: cache)
+        try data.write(to: stateDirectory.appendingPathComponent("claude-reset-cards.json"))
+
+        let pipeline = makePipeline(configuration: claudeV1TestConfiguration)
+        pipeline.start()
+        pipeline.setDemand(false)
+        pipeline.setResetCardDemand(true)
+        let state = try XCTUnwrap(waitForState(pipeline) { $0.bankedReset?.cards.first?.id == "relay-cache-card" })
+        XCTAssertEqual(state.accountEpoch, .initial)
+        XCTAssertEqual(state.bankedReset?.availableCount, 1)
+        quiet(pipeline)
+        XCTAssertEqual(PipelineStubProtocol.requestCount, 0,
+            "a relay selected at startup restores the matching account cache without reading Claude's official endpoints")
+    }
+
+    func testPendingResetConfirmationDoesNotFetchWithoutOfficialDemand() throws {
+        let pipeline = makePipeline(configuration: claudeV1TestConfiguration)
+        pipeline.start()
+        pipeline.setDemand(true)
+        pipeline.requestFetch(reason: .initial)
+        _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+        XCTAssertEqual(PipelineStubProtocol.requestCount, 1)
+
+        clock.advance(by: Self.usageFiveReset.timeIntervalSince(Self.start) + 1)
+        pipeline.setDemand(false)
+        pipeline.tick()
+        pipeline.waitUntilIdle()
+        quiet(pipeline)
+        XCTAssertEqual(PipelineStubProtocol.requestCount, 1,
+            "a pending merge-engine reset confirmation must stay local while the relay is selected")
     }
 
     // MARK: Egress guard (Issue #686)
@@ -897,6 +1032,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
 
         let restarted = makePipeline()
         restarted.start()
+        restarted.setDemand(true)
         restarted.tick()
         let pending = try XCTUnwrap(waitForState(restarted) {
             if case .resetPending = $0.status { return true }

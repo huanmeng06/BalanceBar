@@ -197,6 +197,9 @@ enum OverviewNumericPresentation {
         lunaReserveDisplayMode: LunaReserveDisplayMode,
         hideExhaustedQuota: Bool,
         showBankedReset: Bool,
+        showNonOfficialBankedReset: Bool = true,
+        showNonOfficialResetProbability: Bool = false,
+        showResetProbabilityForClient: Bool = true,
         quotaValueMode: MenuBarQuotaValueMode = .defaultValue,
         now: Date = Date()
     ) -> [OverviewNumericSample] {
@@ -206,7 +209,7 @@ enum OverviewNumericPresentation {
             return []
         case .balance:
             guard let amount = snapshot.amount, let unit = snapshot.unit else { return [] }
-            return [
+            var samples = [
                 OverviewNumericSample(
                     identity: .thirdPartyBalance(provider: provider, unit: unit),
                     format: .currency(unit: unit),
@@ -214,6 +217,38 @@ enum OverviewNumericPresentation {
                     progressPercentage: snapshot.progressPercentage
                 )
             ]
+            let showResetCards = showBankedReset && showNonOfficialBankedReset
+            let showForecast = showResetProbabilityForClient && showBankedReset && showNonOfficialResetProbability
+            if showResetCards, let bankedReset = snapshot.bankedReset {
+                samples.append(OverviewNumericSample(
+                    identity: .bankedResetCount(provider: provider),
+                    format: .integerCount,
+                    value: Double(bankedReset.availableCount),
+                    progressPercentage: nil))
+            }
+            if showForecast && (snapshot.bankedReset != nil || snapshot.resetForecast.hasAnyValue) {
+                if snapshot.resetForecast.isOfficialResetConfirmed { return samples }
+                switch snapshot.resetForecast.menuProbabilityPresentation {
+                case .ordinary:
+                    if case .percent(let percent) = snapshot.resetForecast.probability24h {
+                        samples.append(OverviewNumericSample(identity: .bankedResetProbability24h(provider: provider),
+                            format: .integerPercent, value: Double(percent), progressPercentage: nil))
+                    }
+                    if case .percent(let percent) = snapshot.resetForecast.probability48h {
+                        samples.append(OverviewNumericSample(identity: .bankedResetProbability48h(provider: provider),
+                            format: .integerPercent, value: Double(percent), progressPercentage: nil))
+                    }
+                case .strongSignal:
+                    if let minutes = snapshot.resetForecast.remainingCountdownMinutes(now: now) {
+                        samples.append(OverviewNumericSample(identity: .bankedResetProbabilityCountdown(provider: provider),
+                            format: .remainingMinutes, value: Double(minutes), progressPercentage: nil))
+                    } else if case .percent(let percent) = snapshot.resetForecast.officialSignal?.probability {
+                        samples.append(OverviewNumericSample(identity: .bankedResetProbabilitySignal(provider: provider),
+                            format: .integerPercent, value: Double(percent), progressPercentage: nil))
+                    }
+                }
+            }
+            return samples
         case .official:
             let presentation = snapshot.officialQuotaMenuPresentation(
                 lunaReserveDisplayMode: lunaReserveDisplayMode,
@@ -243,7 +278,8 @@ enum OverviewNumericPresentation {
                     )
                 )
             }
-            if showBankedReset && (presentation.bankedReset != nil || presentation.resetForecast.hasAnyValue) {
+            if showResetProbabilityForClient && showBankedReset
+                && (presentation.bankedReset != nil || presentation.resetForecast.hasAnyValue) {
                 if presentation.resetForecast.isOfficialResetConfirmed {
                     return samples
                 }

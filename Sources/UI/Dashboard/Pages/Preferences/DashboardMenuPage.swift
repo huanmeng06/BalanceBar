@@ -434,6 +434,8 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
     private weak var showQuotaPaceIndicatorSwitch: NSSwitch?
     private var progressBarDetailRows: [SettingsRowView] = []
     private weak var showBankedResetSwitch: NSSwitch?
+    private weak var showNonOfficialBankedResetSwitch: NSSwitch?
+    private weak var showNonOfficialResetProbabilitySwitch: NSSwitch?
     private var bankedResetDetailRows: [SettingsRowView] = []
 
     func make(_ input: Input) -> NSView {
@@ -450,6 +452,8 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         showQuotaPaceIndicatorSwitch = nil
         progressBarDetailRows = []
         showBankedResetSwitch = nil
+        showNonOfficialBankedResetSwitch = nil
+        showNonOfficialResetProbabilitySwitch = nil
         bankedResetDetailRows = []
 
         let lunaReserveRows: [NSView]
@@ -598,6 +602,30 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
             subtitle: tr(.keyDashboardMenuPageShowBankedResetDescription),
             control: showBankedResetSwitch
         )
+        let showNonOfficialBankedResetSwitch = DashboardSettingsComponents.makeSwitch(
+            identifier: AppPreferences.showNonOfficialBankedResetKey,
+            isOn: input.preferences.showNonOfficialBankedReset,
+            target: input.relay,
+            action: #selector(DashboardPreferencePageRelay.toggle(_:))
+        )
+        self.showNonOfficialBankedResetSwitch = showNonOfficialBankedResetSwitch
+        let showNonOfficialBankedResetRow = makeRow(
+            tr(.keyDashboardMenuPageShowNonOfficialBankedReset),
+            subtitle: tr(.keyDashboardMenuPageShowNonOfficialBankedResetDescription),
+            control: showNonOfficialBankedResetSwitch
+        )
+        let showNonOfficialResetProbabilitySwitch = DashboardSettingsComponents.makeSwitch(
+            identifier: AppPreferences.showNonOfficialResetProbabilityKey,
+            isOn: input.preferences.showNonOfficialResetProbability,
+            target: input.relay,
+            action: #selector(DashboardPreferencePageRelay.toggle(_:))
+        )
+        self.showNonOfficialResetProbabilitySwitch = showNonOfficialResetProbabilitySwitch
+        let showNonOfficialResetProbabilityRow = makeRow(
+            tr(.keyDashboardMenuPageShowNonOfficialResetProbability),
+            subtitle: tr(.keyDashboardMenuPageShowNonOfficialResetProbabilityDescription),
+            control: showNonOfficialResetProbabilitySwitch
+        )
         let bankedResetDisplayModeControl = makeBankedResetDisplayModeControl(
             value: input.preferences.menuBankedResetDisplayMode,
             relay: input.relay
@@ -608,12 +636,18 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
             subtitle: tr(.keyDashboardMenuPageBankedResetDisplayModeDescription),
             control: bankedResetDisplayModeControl
         )
-        bankedResetDetailRows = [bankedResetDisplayModeRow]
+        bankedResetDetailRows = [
+            bankedResetDisplayModeRow,
+            showNonOfficialBankedResetRow,
+            showNonOfficialResetProbabilityRow
+        ]
         let bankedReset = SettingsSectionView(
             title: tr(.keyCodexBankedResetTitle),
             contentViews: [
                 showBankedResetRow,
-                bankedResetDisplayModeRow
+                bankedResetDisplayModeRow,
+                showNonOfficialBankedResetRow,
+                showNonOfficialResetProbabilityRow
             ]
         )
         updateBankedResetSettingsVisibility(input.preferences.showBankedReset)
@@ -798,6 +832,8 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         showQuotaPaceIndicatorSwitch?.state = preferences.showQuotaPaceIndicator ? .on : .off
         updateProgressBarSettingsVisibility(preferences.showQuotaProgressBar)
         showBankedResetSwitch?.state = preferences.showBankedReset ? .on : .off
+        showNonOfficialBankedResetSwitch?.state = preferences.showNonOfficialBankedReset ? .on : .off
+        showNonOfficialResetProbabilitySwitch?.state = preferences.showNonOfficialResetProbability ? .on : .off
         updateBankedResetSettingsVisibility(preferences.showBankedReset)
         let statusLinks = preferences.statusLinks
         if statusLinksEditor?.links != statusLinks {
@@ -862,6 +898,8 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         lunaReserveHideExhaustedQuotaSwitch = nil
         bankedResetDisplayModeControl = nil
         showBankedResetSwitch = nil
+        showNonOfficialBankedResetSwitch = nil
+        showNonOfficialResetProbabilitySwitch = nil
         bankedResetDetailRows = []
         onBalanceDisplayThresholdChanged = nil
         onQuotaProgressColorConfigurationChanged = nil
