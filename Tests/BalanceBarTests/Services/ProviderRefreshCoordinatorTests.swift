@@ -517,6 +517,71 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 2)
     }
 
+    func testNonOfficialCodexResetFailureClearsPriorCardsButKeepsAttemptThrottle() throws {
+        try setCurrentProvider("codex-custom")
+        let clock = TestClock(date: Date())
+        let cardInterval = ProviderRefreshCoordinator.nonOfficialResetCardRefreshInterval
+        let lock = NSLock()
+        var resetRequests = 0
+        var balanceRequests = 0
+        var onRender: ((Snapshot) -> Void)?
+        DelayedBalanceURLProtocol.setHandler { request in
+            guard request.url?.path.contains("rate-limit-reset-credits") == true else {
+                let count = lock.withLock { balanceRequests += 1; return balanceRequests }
+                return DelayedBalanceURLProtocol.success(amount: count < 3 ? "9.87" : "6.54", unit: "USD")
+            }
+            let count = lock.withLock { resetRequests += 1; return resetRequests }
+            if count == 2 { return .init(data: Data("{}".utf8), statusCode: 500) }
+            return .init(data: Data(#"{"available_count":1,"credits":[{"id":"relay-card","reset_type":"codex_rate_limits","status":"available","expires_at":"2099-01-01T00:00:00Z"}]}"#.utf8), statusCode: 200)
+        }
+        let suiteName = "ProviderRefreshCoordinatorTests.NonOfficialResetEviction.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.showBankedReset = true
+        preferences.showNonOfficialBankedReset = true
+        let actions = ProviderRefreshActions(
+            currentProvider: { [repository] client in repository?.loadCurrent(appType: client.appType) },
+            isActiveClient: { _ in true },
+            render: { snapshot in onRender?(snapshot) },
+            storeClientSnapshot: { _, _, _ in }, quickSwitchSummaryChanged: { _ in })
+        let coordinator = makeCoordinator(repository: repository,
+            officialQuotaClient: OfficialQuotaClient(session: session, credentialReader: FixtureCredentialReader(codexToken: "fixture-token")),
+            actions: actions, refreshPreferences: preferences, now: { clock.now })
+        let current = try XCTUnwrap(repository.loadCurrent(appType: "codex"))
+        func refresh(rendering description: String, where matches: @escaping (Snapshot) -> Bool) throws -> Snapshot {
+            let rendered = expectation(description: description)
+            var result: Snapshot?
+            onRender = { snapshot in
+                guard result == nil, matches(snapshot) else { return }
+                result = snapshot
+                rendered.fulfill()
+            }
+            defer { onRender = nil }
+            coordinator.refreshStandardProvider(current: current, client: .codex, forceBalance: true, switched: false)
+            wait(for: [rendered], timeout: 3)
+            return try XCTUnwrap(result)
+        }
+        _ = try refresh(rendering: "successful reset credits") { $0.bankedReset?.availableCount == 1 }
+
+        clock.advance(by: cardInterval)
+        let failed = try refresh(rendering: "balance preserved after reset failure") {
+            lock.withLock { resetRequests == 2 } && $0.bankedReset == nil
+        }
+        XCTAssertEqual(failed.kind, .balance)
+        XCTAssertEqual(failed.amount, 9.87)
+
+        clock.advance(by: cardInterval - 1)
+        let stillHidden = try refresh(rendering: "a new balance inside the reset throttle") { $0.amount == 6.54 }
+        XCTAssertEqual(lock.withLock { resetRequests }, 2)
+        XCTAssertNil(stillHidden.bankedReset)
+
+        clock.advance(by: 1)
+        _ = try refresh(rendering: "reset credits recover at the next allowed attempt") {
+            lock.withLock { resetRequests == 3 } && $0.bankedReset?.availableCount == 1
+        }
+    }
+
     func testResetPreferenceChangeRendersCacheAndDoesNotRefetchBalance() throws {
         try setCurrentProvider("codex-custom")
         let lock = NSLock()

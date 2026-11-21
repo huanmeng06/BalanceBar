@@ -13,16 +13,28 @@ private final class PipelineStubProtocol: URLProtocol {
 
     private static let lock = NSLock()
     private static var reply = Reply()
+    private static var resetCardReply: Reply?
     private static var requests = 0
+    private static var resetCardRequests = 0
 
     static func reset(_ reply: Reply = Reply()) {
-        lock.lock(); self.reply = reply; requests = 0; lock.unlock()
+        lock.withLock {
+            self.reply = reply
+            resetCardReply = nil
+            requests = 0
+            resetCardRequests = 0
+        }
     }
 
     static func set(_ reply: Reply) {
         lock.lock(); self.reply = reply; lock.unlock()
     }
 
+    static func setResetCardReply(_ reply: Reply) {
+        lock.withLock { resetCardReply = reply }
+    }
+
+    static var resetCardRequestCount: Int { lock.withLock { resetCardRequests } }
     static var requestCount: Int { lock.lock(); defer { lock.unlock() }; return requests }
 
     override class func canInit(with request: URLRequest) -> Bool { true }
@@ -31,7 +43,9 @@ private final class PipelineStubProtocol: URLProtocol {
     override func startLoading() {
         Self.lock.lock()
         Self.requests += 1
-        let reply = Self.reply
+        let isResetCard = request.url?.query?.contains("cedar_ember=1") == true
+        if isResetCard { Self.resetCardRequests += 1 }
+        let reply = (isResetCard ? Self.resetCardReply : nil) ?? Self.reply
         Self.lock.unlock()
         if let error = reply.error {
             client?.urlProtocol(self, didFailWithError: error)
@@ -352,6 +366,113 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         _ = try XCTUnwrap(waitForState(restarted) { $0.updatedAt == Self.start.addingTimeInterval(30 * 60) })
         waitForRequests(5)
         XCTAssertEqual(ClaudeQuotaPipeline.bankedResetRefreshInterval, 30 * 60)
+    }
+
+    func testClaudeFailedResetAttemptSurvivesDemandRefreshWithoutCache() throws {
+        PipelineStubProtocol.setResetCardReply(.init(error: URLError(.networkConnectionLost)))
+        let pipeline = makePipeline(configuration: claudeV1TestConfiguration)
+        pipeline.setResetCardDemand(true)
+        pipeline.requestFetch(reason: .initial)
+        waitForRequests(2)
+        quiet(pipeline)
+        XCTAssertNil(pipeline.latestState?.bankedReset)
+
+        clock.advance(by: 5 * 60)
+        // Standard official refresh reasserts the demand before requesting usage again.
+        pipeline.setResetCardDemand(true)
+        pipeline.requestFetch(reason: .scheduled)
+        XCTAssertNotNil(waitForState(pipeline) { $0.updatedAt == self.clock.now })
+        quiet(pipeline)
+        XCTAssertEqual(PipelineStubProtocol.resetCardRequestCount, 1)
+
+        clock.advance(by: 25 * 60)
+        pipeline.setResetCardDemand(true)
+        XCTAssertTrue(pollUntil { PipelineStubProtocol.resetCardRequestCount == 2 })
+    }
+
+    func testClaudeFailedResetAttemptDoesNotRewindToOlderSuccessfulCache() throws {
+        PipelineStubProtocol.setResetCardReply(.init(data: Self.usageWithResetGrant))
+        let pipeline = makePipeline(configuration: claudeV1TestConfiguration)
+        pipeline.setResetCardDemand(true)
+        pipeline.requestFetch(reason: .initial)
+        XCTAssertNotNil(waitForState(pipeline) { $0.bankedReset?.availableCount == 2 })
+
+        PipelineStubProtocol.setResetCardReply(.init(error: URLError(.networkConnectionLost)))
+        clock.advance(by: 30 * 60)
+        pipeline.setResetCardDemand(true)
+        XCTAssertTrue(pollUntil { PipelineStubProtocol.resetCardRequestCount == 2 })
+        quiet(pipeline)
+
+        clock.advance(by: 5 * 60)
+        pipeline.setResetCardDemand(false)
+        pipeline.setResetCardDemand(true)
+        quiet(pipeline)
+        XCTAssertEqual(PipelineStubProtocol.resetCardRequestCount, 2)
+        XCTAssertEqual(pipeline.latestState?.bankedReset?.availableCount, 2, "Claude keeps its last successful grants")
+    }
+
+    func testClaudeResetRateLimitRequiresBothThirtyMinutesAndRetryAfter() throws {
+        PipelineStubProtocol.setResetCardReply(.init(status: 429, headers: ["Retry-After": "60"]))
+        let pipeline = makePipeline(configuration: claudeV1TestConfiguration)
+        pipeline.setResetCardDemand(true)
+        pipeline.requestFetch(reason: .initial)
+        waitForRequests(2)
+        quiet(pipeline)
+
+        clock.advance(by: 60)
+        pipeline.setResetCardDemand(true)
+        quiet(pipeline)
+        XCTAssertEqual(PipelineStubProtocol.resetCardRequestCount, 1, "a short Retry-After is not a waiver")
+
+        PipelineStubProtocol.setResetCardReply(.init(status: 429, headers: ["Retry-After": "2400"]))
+        clock.advance(by: 29 * 60)
+        pipeline.setResetCardDemand(true)
+        XCTAssertTrue(pollUntil { PipelineStubProtocol.resetCardRequestCount == 2 })
+        quiet(pipeline)
+
+        clock.advance(by: 30 * 60)
+        pipeline.setResetCardDemand(true)
+        quiet(pipeline)
+        XCTAssertEqual(PipelineStubProtocol.resetCardRequestCount, 2, "a longer Retry-After still applies")
+
+        clock.advance(by: 10 * 60)
+        pipeline.setResetCardDemand(true)
+        XCTAssertTrue(pollUntil { PipelineStubProtocol.resetCardRequestCount == 3 })
+    }
+
+    func testClaudeRelaySwitchWhileResetEgressCheckPendingPreventsTransport() throws {
+        let lock = NSLock()
+        let held = expectation(description: "reset-card egress probe is pending")
+        var pending: ((ClaudeEgressGuard.ProbeResult) -> Void)?
+        var probes = 0
+        let trace = EgressTrace(ip: "203.0.113.7", country: "US")
+        let guardrail = ClaudeEgressGuard(
+            settings: { .init(enabled: true, allowedIPs: [trace.ip]) },
+            probe: { completion in
+                let shouldHold = lock.withLock {
+                    probes += 1
+                    if probes == 2 { pending = completion; return true }
+                    return false
+                }
+                if shouldHold { held.fulfill() } else { completion(.success(trace)) }
+            }, diagnostics: { _ in })
+        let pipeline = makePipeline(configuration: claudeV1TestConfiguration, egressGuard: guardrail)
+        pipeline.setResetCardDemand(true)
+        pipeline.requestFetch(reason: .initial)
+        wait(for: [held], timeout: 3)
+
+        // This is the relay transition: cache demand remains on, official demand is withdrawn.
+        pipeline.setDemand(false)
+        pipeline.waitUntilIdle()
+        try XCTUnwrap(lock.withLock { pending })(.success(trace))
+        quiet(pipeline)
+        XCTAssertEqual(PipelineStubProtocol.requestCount, 1)
+        XCTAssertEqual(PipelineStubProtocol.resetCardRequestCount, 0)
+
+        pipeline.setDemand(true)
+        pipeline.setResetCardDemand(true)
+        XCTAssertTrue(pollUntil { PipelineStubProtocol.resetCardRequestCount == 1 },
+            "the canceled preflight was not a network attempt and must not consume the interval")
     }
 
     func testClaudeResetCacheDoesNotCrossAccountSwitch() throws {

@@ -1616,17 +1616,13 @@ final class ProviderRefreshCoordinator {
                 guard self.nonOfficialResetRequests[providerID] == requestID else { return }
                 self.nonOfficialResetRequests.removeValue(forKey: providerID)
                 self.nonOfficialResetRequestContexts.removeValue(forKey: providerID)
-                let cards: CodexBankedReset?
-                let fetchedAt: Date?
                 switch result {
-                case .success(let fetched):
-                    cards = fetched
-                    fetchedAt = self.now()
+                case .success(let cards):
+                    finish(cards, self.now())
                 case .failure:
-                    cards = cached?.cards
-                    fetchedAt = self.now()
+                    // Keep the five-minute throttle, not stale Codex reset credits.
+                    finish(nil, self.now())
                 }
-                finish(cards, fetchedAt)
             }
         }
     }
