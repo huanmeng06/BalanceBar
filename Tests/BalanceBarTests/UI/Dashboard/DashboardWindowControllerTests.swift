@@ -6115,7 +6115,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             showReset: true,
             horizontalPadding: 6,
             keepMenuOpenAfterRefresh: true,
-            showBankedReset: false
+            showBankedReset: false,
+            showResetProbability: false
         )
         let date = Date()
         let windows = [
@@ -6512,7 +6513,12 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             $0.identifier?.rawValue == "codex.bankedReset.remaining"
         }
         XCTAssertEqual(remainingFields.count, 10)
-        XCTAssertEqual(remainingFields.map(\.stringValue), cards.map { $0.remainingText ?? "" })
+        // Ticket countdowns render live from each card's expiry, not the fetched text.
+        let renderNow = Date()
+        XCTAssertEqual(
+            remainingFields.map(\.stringValue),
+            cards.map { CodexBankedResetFormatting.remaining(until: $0.expiresAt, now: renderNow)?.text ?? "" }
+        )
         let visibleMinY = scrollView.contentView.bounds.minY
         let visibleMaxY = visibleMinY + scrollView.contentView.bounds.height
         XCTAssertEqual(
