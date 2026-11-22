@@ -7304,6 +7304,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     amountText: plan.layoutReservationText), label: titleLink)
             titleLink.identifier = NSUserInterfaceItemIdentifier("codex.bankedReset.ownerHint")
             titleLink.decoratesOnHover = false
+            titleLink.underlinesHoverPhrase = true
+            titleLink.hoverPhrase = titleText
             titleLink.restingTextColor = .labelColor
             titleLink.hoverHintDelay = 0.3
             titleLink.opensHoverHintAbove = true
@@ -8863,6 +8865,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             if let title = section.titleView as? AccountMarqueeView {
                 title.updateText(tr(.keyCodexBankedResetTitle), preserveScrollPosition: true)
                 if let link = title.accountLabel as? HoverLinkTextField {
+                    link.hoverPhrase = tr(.keyCodexBankedResetTitle)
                     updateResetCardOwnerHint(link, bankedReset: banked, client: context.paceClient)
                 }
             }

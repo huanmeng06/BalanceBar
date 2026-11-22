@@ -5176,6 +5176,10 @@ extension StatusItemControllerTests {
             let ink = title.visibleTextHitRect
             host.forwardHover(atHostPoint: host.convert(NSPoint(x: ink.midX, y: ink.midY), from: title))
             XCTAssertTrue(title.isHoverHintScheduled)
+            XCTAssertEqual(title.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil) as? Int,
+                NSUnderlineStyle.single.rawValue)
+            host.forwardHover(atHostPoint: NSPoint(x: -1, y: -1))
+            XCTAssertNil(title.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil))
             controller.update(snapshot: snapshot("other@example.com"), refreshDate: now, menuInput: input, settings: settings)
             XCTAssertEqual(title.hoverHint, "\(name) 账户：other@example.com")
             controller.update(snapshot: snapshot(nil), refreshDate: now, menuInput: input, settings: settings)
