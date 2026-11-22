@@ -2220,6 +2220,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let startModUpdate: () -> Void
         /// Opens the Claude egress guard settings from a guarded failure card (Issue #686).
         let openEgressGuardSettings: () -> Void
+        let copyLoginCommand: (String) -> Void
         let iconChanged: (NSImage?) -> Void
         let frameImageChanged: (NSImage?) -> Void
         let animationStateChanged: (Bool) -> Void
@@ -2250,9 +2251,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             manualRefreshBlockedUntil: @escaping () -> Date? = { nil },
             showModOnboarding: @escaping () -> Void = {},
             startModUpdate: @escaping () -> Void = {},
-            openEgressGuardSettings: @escaping () -> Void = {}
+            openEgressGuardSettings: @escaping () -> Void = {},
+            copyLoginCommand: @escaping (String) -> Void = { command in
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(command, forType: .string)
+            }
         ) {
             self.openEgressGuardSettings = openEgressGuardSettings
+            self.copyLoginCommand = copyLoginCommand
             self.manualRefreshBlockedUntil = manualRefreshBlockedUntil
                 self.manualRefresh = manualRefresh
             self.openDashboard = openDashboard
@@ -2409,6 +2415,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         /// Claude official's login failed while the card still has data: show the re-login row,
         /// worded for old data or for live Mod data.
         let claudeLoginPrompt: ClaudeLoginPrompt?
+        let claudeLoginPromptNeedsRelogin: Bool
 
         init(
             choices: [ProviderChoice],
@@ -2429,6 +2436,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             showsAvailableUpdateBadge: Bool = false,
             modRow: ModMenuRow = .none,
             claudeLoginPrompt: ClaudeLoginPrompt? = nil,
+            claudeLoginPromptNeedsRelogin: Bool = false,
             aggregatedProviders: [AggregatedProviderDisplay] = [],
             aggregationQuickSwitchBlocked: Bool = false,
             quickSwitchSafety: CCSwitchQuickSwitchSafety? = nil
@@ -2455,6 +2463,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             self.showsAvailableUpdateBadge = showsAvailableUpdateBadge
             self.modRow = modRow
             self.claudeLoginPrompt = claudeLoginPrompt
+            self.claudeLoginPromptNeedsRelogin = claudeLoginPromptNeedsRelogin
         }
 
         static func == (lhs: Self, rhs: Self) -> Bool {
@@ -2482,6 +2491,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 && lhs.showsAvailableUpdateBadge == rhs.showsAvailableUpdateBadge
                 && lhs.modRow == rhs.modRow
                 && lhs.claudeLoginPrompt == rhs.claudeLoginPrompt
+                && lhs.claudeLoginPromptNeedsRelogin == rhs.claudeLoginPromptNeedsRelogin
         }
         func hasSameNativeItems(as other: Self) -> Bool {
             activeClient == other.activeClient
@@ -2490,6 +2500,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 && showStatusMenu == other.showStatusMenu && showsAvailableUpdateBadge == other.showsAvailableUpdateBadge
                 && language == other.language && modRow == other.modRow
                 && claudeLoginPrompt == other.claudeLoginPrompt
+                && claudeLoginPromptNeedsRelogin == other.claudeLoginPromptNeedsRelogin
         }
     }
 
@@ -6210,11 +6221,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     /// The accent-tinted realtime-boost prompt row under the quota card.
     private func makeClaudeLoginPromptItem() -> NSMenuItem? {
         guard let prompt = menuInput.claudeLoginPrompt else { return makeCodexLoginPromptItem() }
+        let relogin = menuInput.claudeLoginPromptNeedsRelogin
         return makeLoginPromptItem(
             mainText: tr(prompt == .liveData ? .keyClaudeLoginPromptTitleLive : .keyClaudeLoginPromptTitle),
-            detailText: tr(.keyClaudeLoginPromptAction),
+            detailText: tr(relogin ? .keyClaudeLoginPromptActionRelogin : .keyClaudeLoginPromptAction),
             command: FailureStateView.signInCommand,
             copiedTitle: tr(.keyClaudeLoginPromptCopiedTitle),
+            copiedDetail: tr(relogin ? .keyClaudeLoginPromptCopiedDetailRelogin : .keyClaudeLoginPromptCopiedDetail),
             identifier: "menu.claudeLoginPrompt")
     }
 
@@ -6241,7 +6254,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func makeLoginPromptItem(mainText: String, detailText: String, command: String,
-                                     copiedTitle: String, identifier: String) -> NSMenuItem {
+                                     copiedTitle: String, copiedDetail: String = tr(.keyClaudeLoginPromptCopiedDetail),
+                                     identifier: String) -> NSMenuItem {
         let view = ModPromptRowView(
             mainText: mainText,
             detailText: detailText,
@@ -6251,11 +6265,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         view.identifier = NSUserInterfaceItemIdentifier(identifier)
         // Stay open and confirm in place, so the user sees the copy succeeded.
         view.closesMenuOnClick = false
-        view.onClick = { [weak view] in
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(command, forType: .string)
+        view.onClick = { [weak view, copy = actions.copyLoginCommand] in
+            copy(command)
             view?.showConfirmation(mainText: copiedTitle,
-                                   detailText: tr(.keyClaudeLoginPromptCopiedDetail),
+                                   detailText: copiedDetail,
                                    symbolName: "checkmark.circle.fill", tint: .systemOrange)
         }
         let item = NSMenuItem()

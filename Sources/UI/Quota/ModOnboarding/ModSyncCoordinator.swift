@@ -20,6 +20,23 @@ final class ModSyncCoordinator {
 
     private(set) var status: ModSyncStatus = .detecting
     private var environment: ModEnvironment?
+    var tokenRefreshMarketplaceAvailability: ClaudeTokenRefreshModAvailability {
+        Self.tokenRefreshMarketplaceAvailability(for: environment)
+    }
+
+    static func tokenRefreshMarketplaceAvailability(for environment: ModEnvironment?) -> ClaudeTokenRefreshModAvailability {
+        guard let environment else { return .detecting }
+        if case .failed = environment.installationCheck { return .unknown }
+        return environment.claudeFound && environment.installation != nil ? .available : .unavailable
+    }
+
+    var isOperationInProgress: Bool {
+        switch controller.state {
+        case .installing, .uninstalling, .updating: return true
+        default: return false
+        }
+    }
+
     private var evidence = ModSnapshotEvidence()
     /// Demo bundle only: the outdated-Mod state is pinned and live snapshots are ignored.
     private let simulatedOutdatedMod: Bool
@@ -127,6 +144,8 @@ final class ModSyncCoordinator {
         detector.detect(claudeProcessRunning: processRunning) { [weak self] environment in
             guard let self else { return }
             self.detectionInFlight = false
+            let previousAvailability = self.tokenRefreshMarketplaceAvailability
+            let previousStatus = self.status
             self.environment = environment
             // An uninstall done outside BalanceBar (CLI / plugin manager) must invalidate
             // the old plugin's evidence just like the in-app path; a missing CLI or a failed
@@ -143,6 +162,9 @@ final class ModSyncCoordinator {
                 self.resetSnapshotEvidence()
             } else {
                 self.recomputeStatus()
+            }
+            if self.status == previousStatus, self.tokenRefreshMarketplaceAvailability != previousAvailability {
+                self.onStatusChange?(self.status)
             }
             if self.detectionRerunRequested {
                 self.detectionRerunRequested = false

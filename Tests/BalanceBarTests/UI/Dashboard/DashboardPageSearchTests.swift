@@ -5,6 +5,15 @@ import XCTest
 
 @MainActor
 final class DashboardPageSearchTests: XCTestCase {
+    func testClaudeTokenRefreshTitleMatchesGeneralInChineseAndEnglish() {
+        let old = AppLanguage.selected
+        defer { AppLanguage.selected = old }
+        for (language, query) in [(AppLanguage.english, "Auto-refresh sign-in token"), (.simplifiedChinese, "自动刷新令牌")] {
+            AppLanguage.selected = language
+            XCTAssertEqual(DashboardSettingsSearchCatalog.firstMatchingSection(query: query), .general)
+        }
+    }
+
     func testFixedSectionPagesReuseLifecycleAndInstrumentation() throws {
         var makeCounts: [DashboardSection: Int] = [:]
         var suspended: [DashboardSection] = []
@@ -4043,6 +4052,35 @@ extension DashboardPageSearchTests {
                 onManageModSync: { _ in }, onCheckForUpdates: {}, onInstallUpdate: {}, onOpenUpdateNotes: {},
                 onClamp: {}, onStatusLinksChanged: {}, onDidShowPage: {}, onDidClose: {}, onDidResize: {},
                 onModSyncVisibilityChanged: visibilityChanged))
+    }
+
+    func testTokenRefreshStateUpdatesBothGeneralAndSearchRows() throws {
+        let old = AppLanguage.selected
+        AppLanguage.selected = .english
+        defer { AppLanguage.selected = old }
+        let suite = "TokenRefreshSearch.\(UUID())"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let composition = modCardComposition(ModCardRefreshState(), defaults: defaults)
+        defer { composition.teardownForTesting() }
+        let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .general))
+        window.setContentSize(NSSize(width: 1000, height: 700))
+        window.layoutIfNeeded()
+        func tokenRow() throws -> SettingsRowView {
+            try XCTUnwrap(firstDescendant(of: composition.currentHostedPageContentForTesting()) { view in
+                (view as? SettingsRowView)?.titleLabel.stringValue == tr(.keyClaudeTokenRefreshTitle)
+            } as? SettingsRowView)
+        }
+        let general = try tokenRow()
+        composition.applySearchQueryForTesting(tr(.keyClaudeTokenRefreshTitle))
+        window.layoutIfNeeded()
+        let search = try tokenRow()
+        XCTAssertFalse(search === general)
+        composition.refreshClaudeTokenAutoRefresh(DashboardGeneralPage.claudeTokenRefreshPresentation(
+            enabled: true, guardEnabled: true, allowedIPs: ["203.0.113.20"], mod: .available, state: .paused))
+        for row in [general, search] {
+            XCTAssertTrue(row.detailLabel.stringValue.contains(tr(.keyClaudeTokenRefreshReasonLoginInvalid)))
+        }
     }
 
     func testSearchFollowsTheClaudeFootnoteAfterTheCalibrationIntervalChanges() throws {

@@ -242,6 +242,7 @@ final class OfficialQuotaClient {
     }
 
     private let session: URLSession
+    private let childProcessProbeBaseSession: URLSession?
     private let claudeProxyConfigurationProvider: (() -> CCSwitchProxyConfiguration)?
     private let claudeSessionLock = NSLock()
     private var claudeSessionStorage: URLSession?
@@ -268,6 +269,7 @@ final class OfficialQuotaClient {
     ) {
         let baseSession = session ?? .shared
         self.session = baseSession
+        self.childProcessProbeBaseSession = session
         self.claudeSessionStorage = claudeSession
             ?? (claudeProxyConfiguration == nil && claudeProxyConfigurationProvider == nil && session != nil ? baseSession : nil)
         self.claudeSessionConfiguration = claudeSession != nil || (session != nil && claudeProxyConfiguration == nil && claudeProxyConfigurationProvider == nil)
@@ -373,21 +375,28 @@ final class OfficialQuotaClient {
 
     /// Claude's usage endpoint is account-wide; the token is the account scope.
     func claudeRequestCredentials(cacheFor maxAge: TimeInterval = 0.1) -> CodexRequestCredentials {
+        claudeCredentialSnapshot(cacheFor: maxAge).credentials
+    }
+
+    /// Returns matching access-token and expiry facts even if another reader updates the cache.
+    func claudeCredentialSnapshot(cacheFor maxAge: TimeInterval)
+        -> (credentials: CodexRequestCredentials, expiresAt: Date?, unreadable: Bool) {
         claudeProbeCondition.lock()
         if maxAge > 0, let probe = claudeAccountProbe, now().timeIntervalSince(probe.readAt) < maxAge {
             claudeProbeCondition.unlock()
-            return probe.credentials
+            return (probe.credentials, probe.expiresAt, probe.keychainUnreadable)
         }
         if claudeProbeInFlight {
             let deadline = Date().addingTimeInterval(2.5)
             while claudeProbeInFlight, claudeProbeCondition.wait(until: deadline) {}
             guard !claudeProbeInFlight else {
                 claudeProbeCondition.unlock()
-                return CodexRequestCredentials(accessToken: nil, accountKey: nil)
+                return (CodexRequestCredentials(accessToken: nil, accountKey: nil), nil, true)
             }
-            let credentials = claudeAccountProbe?.credentials ?? CodexRequestCredentials(accessToken: nil, accountKey: nil)
+            let probe = claudeAccountProbe
             claudeProbeCondition.unlock()
-            return credentials
+            return (probe?.credentials ?? CodexRequestCredentials(accessToken: nil, accountKey: nil),
+                    probe?.expiresAt, probe?.keychainUnreadable ?? true)
         }
         claudeProbeInFlight = true
         let previous = claudeAccountProbe
@@ -409,7 +418,7 @@ final class OfficialQuotaClient {
         claudeProbeInFlight = false
         claudeProbeCondition.broadcast()
         claudeProbeCondition.unlock()
-        return credentials
+        return (credentials, stored.expiresAt, stored.keychainUnreadable)
     }
 
     /// Lets the next Claude credential read raise the keychain prompt again (manual refresh only).
@@ -718,19 +727,51 @@ final class OfficialQuotaClient {
 
     static let claudeEgressTraceURL = URL(string: "https://claude.ai/cdn-cgi/trace")!
 
+    static let claudePlatformEgressTraceURL = URL(string: "https://platform.claude.com/cdn-cgi/trace")!
+
+    static func makeClaudeChildProcessProbeSession(baseSession: URLSession? = nil,
+                                                   route: CCSwitchProxyConfiguration) -> URLSession? {
+        guard ClaudeTokenAutoRefresher.supportedRoute(route) else { return nil }
+        let configuration = baseSession?.configuration ?? URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 6
+        configuration.timeoutIntervalForResource = 6
+        configuration.httpCookieStorage = nil
+        configuration.urlCredentialStorage = nil
+        configuration.urlCache = nil
+        configuration.connectionProxyDictionary = route.isEmpty ? [:] : nil
+        configuration.proxyConfigurations = proxyConfigurations(for: route)
+        guard route.isEmpty || !configuration.proxyConfigurations.isEmpty else { return nil }
+        return URLSession(configuration: configuration, delegate: ClaudeChildProcessTraceDelegate(), delegateQueue: nil)
+    }
+
+    func probeEgressTraceForChildProcess(url: URL, route: CCSwitchProxyConfiguration,
+                                         completion: @escaping (ClaudeEgressGuard.ProbeResult) -> Void) {
+        guard let session = Self.makeClaudeChildProcessProbeSession(baseSession: childProcessProbeBaseSession, route: route) else {
+            return completion(.failure(.unknown))
+        }
+        probeEgressTrace(url: url, session: session, configuration: route, completion: completion)
+        session.finishTasksAndInvalidate()
+    }
+
     /// Reads the egress IP and country Cloudflare sees for `claude.ai`, through the same proxy
     /// route as `fetchClaudeUsage`. Carries no token, cookie or account data. Non-2xx and a body
     /// without a valid IP are failures; a missing country is not.
     func probeClaudeEgressIP(completion: @escaping (Result<EgressTrace, OfficialQuotaTransportError>) -> Void) {
-        var request = URLRequest(url: Self.claudeEgressTraceURL)
+        let route = claudeRoute()
+        probeEgressTrace(url: Self.claudeEgressTraceURL, session: route.session, configuration: route.configuration,
+                         completion: completion)
+    }
+
+    private func probeEgressTrace(url: URL, session: URLSession, configuration: CCSwitchProxyConfiguration,
+                                  completion: @escaping (ClaudeEgressGuard.ProbeResult) -> Void) {
+        var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.timeoutInterval = 6
         request.httpShouldHandleCookies = false
         request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
         request.setValue("text/plain", forHTTPHeaderField: "Accept")
         request.setValue("BalanceBar/1.0 (+https://github.com/huanmeng06/BalanceBar)", forHTTPHeaderField: "User-Agent")
-        let route = claudeRoute()
-        route.session.dataTask(with: request) { data, response, error in
+        session.dataTask(with: request) { data, response, error in
             if let error {
                 completion(.failure(Self.transportError(from: error, client: .claude)))
                 return
@@ -740,7 +781,7 @@ final class OfficialQuotaClient {
                 completion(.failure(.unknown))
                 return
             }
-            completion(.success(EgressTrace(ip: trace.ip, country: trace.country, route: route.configuration)))
+            completion(.success(EgressTrace(ip: trace.ip, country: trace.country, route: configuration)))
         }.resume()
     }
 
@@ -990,5 +1031,13 @@ final class OfficialQuotaClient {
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         return request
+    }
+}
+
+/// A redirect would make the trace describe a different host than the one being authorized.
+private final class ClaudeChildProcessTraceDelegate: NSObject, URLSessionTaskDelegate {
+    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+                    newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
+        completionHandler(nil)
     }
 }

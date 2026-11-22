@@ -493,6 +493,21 @@ final class ModInstallerUninstallTests: XCTestCase {
 }
 
 final class ModSyncStatusTests: XCTestCase {
+    func testTokenRefreshAvailabilityUsesUserInstallationRatherThanSyncStatus() {
+        let availability = ModSyncCoordinator.tokenRefreshMarketplaceAvailability(for:)
+        XCTAssertEqual(availability(nil), .detecting)
+        var env = ModEnvironment(claudeFound: true, claudeVersion: ClaudeCodeVersion(major: 1, minor: 0, patch: 0),
+                                 installation: nil, hasNonUserScopeInstall: true, inboxReady: false, claudeProcessRunning: false)
+        XCTAssertEqual(availability(env), .unavailable)
+        env.installation = .init(scope: "user", isEnabled: false, version: nil, installedAt: nil)
+        XCTAssertEqual(availability(env), .available)
+        env.installationCheck = .failed(reason: "fixture")
+        XCTAssertEqual(availability(env), .unknown)
+        env.installationCheck = .ok
+        env.claudeFound = false
+        XCTAssertEqual(availability(env), .unavailable)
+    }
+
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
     private let version = ClaudeCodeVersion(major: 2, minor: 1, patch: 291)
 

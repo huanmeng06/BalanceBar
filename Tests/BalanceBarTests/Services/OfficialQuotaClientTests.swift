@@ -3,6 +3,27 @@ import XCTest
 @testable import BalanceBar
 
 final class OfficialQuotaClientTests: XCTestCase {
+    func testChildProcessTraceProbeTransportIsExplicitAndRejectsSOCKS() throws {
+        let direct = try XCTUnwrap(OfficialQuotaClient.makeClaudeChildProcessProbeSession(route: .init()))
+        defer { direct.invalidateAndCancel() }
+        XCTAssertEqual(direct.configuration.connectionProxyDictionary?.count, 0)
+        XCTAssertTrue(direct.configuration.proxyConfigurations.isEmpty)
+        XCTAssertNil(direct.configuration.httpCookieStorage)
+        XCTAssertNil(direct.configuration.urlCache)
+        XCTAssertEqual(direct.configuration.timeoutIntervalForRequest, 6)
+        let proxy = try XCTUnwrap(URL(string: "https://proxy.invalid:8443"))
+        let proxied = try XCTUnwrap(OfficialQuotaClient.makeClaudeChildProcessProbeSession(route: .init(allProxy: proxy)))
+        defer { proxied.invalidateAndCancel() }
+        XCTAssertEqual(proxied.configuration.proxyConfigurations.count, 1)
+        let socks = CCSwitchProxyConfiguration(allProxy: URL(string: "socks5://proxy.invalid:1080"))
+        XCTAssertNil(OfficialQuotaClient.makeClaudeChildProcessProbeSession(route: socks))
+        var failed = false
+        OfficialQuotaClient().probeEgressTraceForChildProcess(url: OfficialQuotaClient.claudePlatformEgressTraceURL, route: socks) {
+            if case .failure = $0 { failed = true }
+        }
+        XCTAssertTrue(failed)
+    }
+
     private struct StubResult {
         let statusCode: Int
         let data: Data?

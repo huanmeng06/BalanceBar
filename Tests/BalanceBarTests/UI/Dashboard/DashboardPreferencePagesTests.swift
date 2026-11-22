@@ -2262,6 +2262,109 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertFalse(link.accessibilityPerformPress())
     }
 
+    func testClaudeTokenRefreshRowDimmingAndStatusCopy() throws {
+        let suite = "TokenRefreshRow.\(UUID())"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        let relay = DashboardPreferencePageRelay()
+        var opened = 0
+        relay.onOpenEgressGuardSettings = { opened += 1 }
+        let page = DashboardGeneralPage()
+        _ = page.make(.init(preferences: preferences, relay: relay,
+                            updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6")))))
+        let row = try XCTUnwrap(page.claudeTokenRefreshRow)
+        let toggle = try XCTUnwrap(page.claudeTokenRefreshSwitch)
+        let label = try XCTUnwrap(row.detailLabel as? InlineRangeLinkTextField)
+        let matrix: [(Bool, ClaudeTokenRefreshModAvailability, Bool, LocalizationKey)] = [
+            (false, .available, false, .keyClaudeTokenRefreshOffDetail),
+            (true, .detecting, false, .keyClaudeTokenRefreshModDetecting),
+            (true, .unavailable, false, .keyClaudeTokenRefreshModRequired),
+            (true, .unknown, false, .keyClaudeTokenRefreshModUnknown),
+            (true, .available, true, .keyClaudeTokenRefreshDetail),
+        ]
+        for (guardOn, mod, interactive, detail) in matrix {
+            let presentation = DashboardGeneralPage.claudeTokenRefreshPresentation(enabled: true, guardEnabled: guardOn,
+                allowedIPs: [], mod: mod, state: .paused)
+            page.refreshClaudeTokenAutoRefresh(presentation)
+            XCTAssertEqual(toggle.isEnabled, interactive)
+            XCTAssertEqual(toggle.state, .on)
+            XCTAssertTrue(label.stringValue.hasPrefix(tr(detail)))
+            XCTAssertEqual(label.hasLink, !guardOn)
+            if !guardOn { XCTAssertTrue(label.accessibilityPerformPress()) }
+        }
+        XCTAssertEqual(opened, 1)
+        XCTAssertTrue(label.stringValue.contains(tr(.keyClaudeTokenRefreshReasonNoTargets)))
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let rows: [(ClaudeTokenRefreshState, NSColor, LocalizationKey)] = [
+            (.idle, .tertiaryLabelColor, .keyClaudeTokenRefreshStatusWaiting),
+            (.running, .tertiaryLabelColor, .keyClaudeTokenRefreshStatusRunning),
+            (.succeeded(at: now), .systemGreen, .keyClaudeTokenRefreshStatusSucceeded),
+            (.paused, .systemOrange, .keyClaudeTokenRefreshStatusPaused),
+            (.failed(.egress(.mismatch), nextTryAt: now.addingTimeInterval(1800)), .systemOrange, .keyClaudeTokenRefreshReasonMismatch),
+        ]
+        for (state, color, key) in rows {
+            page.refreshClaudeTokenAutoRefresh(DashboardGeneralPage.claudeTokenRefreshPresentation(
+                enabled: true, guardEnabled: true, allowedIPs: ["203.0.113.20"], mod: .available, state: state, now: now))
+            let expected = key == .keyClaudeTokenRefreshStatusSucceeded
+                ? tr(key, arguments: [OfficialQuotaResetFormatter.bankedResetString(
+                    for: now, relativeTo: now, timeZone: .autoupdatingCurrent, includeExpired: true) ?? ""])
+                : tr(key)
+            XCTAssertTrue(label.stringValue.contains(expected), "\(state): \(label.stringValue)")
+            let dot = (label.stringValue as NSString).range(of: "●")
+            XCTAssertNotEqual(dot.location, NSNotFound)
+            if dot.location != NSNotFound {
+                XCTAssertEqual(label.attributedStringValue.attribute(.foregroundColor, at: dot.location, effectiveRange: nil) as? NSColor, color)
+            }
+        }
+    }
+
+    func testClaudeTokenRefreshToggleRequiresAllowlistAndExplicitConfirmation() throws {
+        let suite = "TokenRefreshConfirm.\(UUID())"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.claudeEgressGuardEnabled = true
+        let page = DashboardGeneralPage()
+        let relay = DashboardPreferencePageRelay()
+        var opens = 0
+        relay.onOpenEgressGuardSettings = { opens += 1 }
+        var saved: [Bool] = []
+        var shown: [NSAlert] = []
+        var respond: ((NSApplication.ModalResponse) -> Void)?
+        page.presentTokenRefreshAlert = { alert, _, completion in shown.append(alert); respond = completion }
+        let root = page.make(.init(preferences: preferences, relay: relay,
+            updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6"))),
+            claudeTokenAutoRefresh: DashboardGeneralPage.claudeTokenRefreshPresentation(enabled: false, guardEnabled: true,
+                allowedIPs: [], mod: .available, state: .idle), onClaudeTokenAutoRefresh: { saved.append($0) }))
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
+                              styleMask: .titled, backing: .buffered, defer: false)
+        window.contentView = root
+        let toggle = try XCTUnwrap(page.claudeTokenRefreshSwitch)
+        func toggleOn() { toggle.state = .on; relay.claudeTokenAutoRefresh(toggle); XCTAssertEqual(toggle.state, .off) }
+        toggleOn()
+        XCTAssertEqual(shown.last?.messageText, tr(.keyClaudeTokenRefreshEmptyTitle))
+        XCTAssertEqual(shown.last?.buttons.first?.title, tr(.keyClaudeTokenRefreshEmptyOpenSettings))
+        respond?(.alertFirstButtonReturn)
+        XCTAssertEqual(opens, 1)
+        XCTAssertTrue(saved.isEmpty)
+
+        preferences.claudeEgressGuardAllowedIPs = ["203.0.113.21", "2001:db8::2"]
+        toggleOn()
+        XCTAssertTrue(shown.last?.informativeText.contains("203.0.113.21\n2001:db8::2") == true)
+        XCTAssertEqual(shown.last?.buttons.map(\.keyEquivalent), ["\r", "\u{1b}"])
+        respond?(.alertSecondButtonReturn)
+        XCTAssertTrue(saved.isEmpty)
+        toggleOn()
+        respond?(.alertFirstButtonReturn)
+        XCTAssertEqual(saved, [true])
+        toggle.state = .off
+        relay.claudeTokenAutoRefresh(toggle)
+        XCTAssertEqual(saved, [true, false])
+        XCTAssertEqual(shown.count, 3)
+        withExtendedLifetime(window) {}
+    }
+
     func testClaudeLoginLineWordsEachStateLikeTheModStatusLine() {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let utc = TimeZone(identifier: "UTC")!
@@ -2359,7 +2462,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 .first { $0.titleLabel.stringValue == tr(.keyClaudeQuotaCalibration) })))
         XCTAssertFalse(claudeSection === section)
         XCTAssertTrue(claudeSection.headingLabel.isHidden, "the second card has no heading of its own")
-        XCTAssertEqual(claudeSection.contentViews.count, 2)
+        XCTAssertEqual(claudeSection.contentViews.count, 3)
         let calibrationRow = try XCTUnwrap(claudeSection.contentViews[0] as? SettingsRowView)
         XCTAssertEqual(calibrationRow.titleLabel.stringValue, tr(.keyClaudeQuotaCalibration))
         // The IP allowlist is off by default, so official requests are off: the row is dimmed and
@@ -2371,7 +2474,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertFalse(calibrationPopup.isEnabled)
         XCTAssertEqual(calibrationPopup.itemTitles.count, AppPreferences.claudeCalibrationIntervals.count)
         XCTAssertEqual(calibrationPopup.titleOfSelectedItem, tr(.keyClaudeRefreshEveryMinutes, arguments: ["5"]))
-        let modRow = try XCTUnwrap(claudeSection.contentViews[1] as? SettingsRowView)
+        XCTAssertEqual((claudeSection.contentViews[1] as? SettingsRowView)?.titleLabel.stringValue, tr(.keyClaudeTokenRefreshTitle))
+        let modRow = try XCTUnwrap(claudeSection.contentViews[2] as? SettingsRowView)
         XCTAssertEqual(modRow.titleLabel.stringValue, tr(.modCardRowTitle))
         let tags = [calibrationRow, modRow].map { ($0.titleAccessory as? AgentIconTagAccessoryView)?.tagView.text }
         XCTAssertEqual(tags, [tr(.keyClaudeSourceTagAllClients), tr(.keyClaudeSourceTagDesktop)],

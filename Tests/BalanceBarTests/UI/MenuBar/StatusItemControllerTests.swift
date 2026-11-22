@@ -3,6 +3,32 @@ import XCTest
 @testable import BalanceBar
 
 final class StatusItemControllerTests: XCTestCase {
+    @MainActor
+    func testClaudeLoginPromptUpdatesItsDetailWhenAutoRefreshNeedsRelogin() throws {
+        var copied: String?
+        let controller = makeController(copyLoginCommand: { copied = $0 })
+        defer { controller.teardown() }
+        func input(_ needsRelogin: Bool) -> StatusItemController.MenuInput {
+            .init(choices: [], quickSwitchSummaries: [:], activeClient: .claude, openAIAccount: nil,
+                  statusLinks: [], showQuickSwitchMenu: false, showOpenChatGPTMenu: false,
+                  showOpenCCSwitchMenu: false, showStatusMenu: false, claudeLoginPrompt: .staleData,
+                  claudeLoginPromptNeedsRelogin: needsRelogin)
+        }
+        func row() throws -> ModPromptRowView {
+            try XCTUnwrap(controller.menuItemsForTesting.compactMap { $0.view as? ModPromptRowView }
+                .first { $0.identifier?.rawValue == "menu.claudeLoginPrompt" })
+        }
+        controller.start(snapshot: .placeholder, refreshDate: nil, menuInput: input(false), settings: makeSettings())
+        XCTAssertEqual(try row().whyText, tr(.keyClaudeLoginPromptAction))
+        controller.updateMenu(input: input(true))
+        let relogin = try row()
+        XCTAssertEqual(relogin.mainText, tr(.keyClaudeLoginPromptTitle))
+        XCTAssertEqual(relogin.whyText, tr(.keyClaudeLoginPromptActionRelogin))
+        relogin.onClick()
+        XCTAssertEqual(relogin.whyText, tr(.keyClaudeLoginPromptCopiedDetailRelogin))
+        XCTAssertEqual(copied, "claude")
+    }
+
     func testRechargeTooltipIncludesElapsedHoursAndMinutes() throws {
         let previous = AppLanguage.selected
         defer { AppLanguage.selected = previous }
@@ -3156,7 +3182,8 @@ final class StatusItemControllerTests: XCTestCase {
         openDashboard: @escaping () -> Void = {},
         openChatGPT: @escaping () -> Void = {},
         openCCSwitch: @escaping () -> Void = {},
-        openStatusLink: @escaping (URL) -> Void = { _ in }
+        openStatusLink: @escaping (URL) -> Void = { _ in },
+        copyLoginCommand: @escaping (String) -> Void = { _ in }
     ) -> StatusItemController {
         StatusItemController(
             actions: StatusItemController.Actions(
@@ -3168,7 +3195,7 @@ final class StatusItemControllerTests: XCTestCase {
                 switchProvider: { _ in },
                 openProviderWebsite: {},
                 openStatusLink: openStatusLink,
-                iconChanged: { _ in }
+                iconChanged: { _ in }, copyLoginCommand: copyLoginCommand
             ),
             codexAnimationBackend: codexAnimationBackend,
             forceNativeCodexAnimationFailureForTesting: forceNativeCodexAnimationFailureForTesting
