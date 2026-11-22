@@ -5103,6 +5103,204 @@ extension StatusItemControllerTests {
         XCTAssertNotNil(updated.overviewLayout?.balanceRecharge)
         XCTAssertNotNil(updated.overviewLayout?.progress)
     }
+
+    @MainActor
+    func testNonOfficialCodexResetCardsKeepBalanceBodyAndScrollBelowIt() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        let now = Date()
+        let resets = CodexBankedReset(cards: (0..<4).map { index in
+            CodexBankedResetCard(id: "relay-\(index)", resetType: "codex_rate_limits",
+                titleText: tr(.keyCodexBankedResetFullResetTitle),
+                windowText: tr(.keyCodexBankedResetFullResetWindow),
+                expiresAt: now.addingTimeInterval(Double(index + 1) * 86_400),
+                expiresText: "later", remainingText: "1d", windowKeys: nil)
+        })
+        let snapshot = Snapshot.balance("tokenshop", 12.5, "USD", URL(string: "https://fixture.example"), now,
+            progressPercentage: 62.5, bankedReset: resets)
+        let settings = StatusItemController.MenuBarSettings(showIcon: true, showAmount: true, showReset: true,
+            horizontalPadding: 6, keepMenuOpenAfterRefresh: true, showQuotaProgressBar: true,
+            showBankedReset: true, showNonOfficialBankedReset: true)
+        controller.start(snapshot: snapshot, refreshDate: now, menuInput: makeMenuInput(), settings: settings)
+
+        let card = try XCTUnwrap(controller.statusMenuForTesting.items.first?.view as? MenuHoverLinkHostView)
+        let layout = try XCTUnwrap(card.overviewLayout)
+        func descendants(_ view: NSView) -> [NSView] {
+            view.subviews + view.subviews.flatMap(descendants)
+        }
+        let balanceAmount = try XCTUnwrap(descendants(card).compactMap { $0 as? OverviewNumericTextView }.first {
+            if case .thirdPartyBalance = $0.sample?.identity { return true }
+            return false
+        })
+        XCTAssertEqual(balanceAmount.currentValue, 12.5, accuracy: 0.001)
+        XCTAssertTrue(descendants(card).contains { $0.identifier?.rawValue == "overview.providerTitle" })
+        XCTAssertNotNil(layout.progress, "the balance layout retains its progress slot")
+        XCTAssertTrue(descendants(card).contains { $0 is QuotaProgressView },
+            "the original balance progress bar remains visible")
+        let resetSection = try XCTUnwrap(card.subviews.compactMap { $0 as? OpenCodexOverviewSectionView }
+            .first { $0.sectionID == .bankedReset })
+        let sectionLayout = try XCTUnwrap(layout.sectionLayouts.first { $0.id == .bankedReset })
+        let progress = try XCTUnwrap(layout.progress)
+        XCTAssertEqual(progress.minY - sectionLayout.frame.maxY, OpenCodexCardLayout.metrics.sectionSpacing)
+        XCTAssertEqual(resetSection.frame, sectionLayout.frame)
+        XCTAssertNotNil(descendants(card).compactMap { $0 as? BankedResetTicketScrollView }.first,
+            "long reset-card lists keep their bounded, scrollable viewport on relay cards")
+        XCTAssertTrue(descendants(card).compactMap { $0 as? HoverLinkTextField }
+            .contains { $0.identifier?.rawValue == "overview.providerTitle" && $0.onActivate != nil })
+    }
+
+    @MainActor
+    func testResetCardTitleHoverNamesTheOwnerAndUpdatesWithoutReplacingTheMenu() throws {
+        let previous = AppLanguage.selected
+        defer { AppLanguage.selected = previous }
+        AppLanguage.selected = .simplifiedChinese
+        let now = Date()
+        for (client, name) in [(AssistantClient.codex, "ChatGPT"), (.claude, "Claude")] {
+            let controller = makeController()
+            defer { controller.teardown() }
+            let settings = StatusItemController.MenuBarSettings(showIcon: true, showAmount: true, showReset: true,
+                horizontalPadding: 6, keepMenuOpenAfterRefresh: true, showBankedReset: true, showNonOfficialBankedReset: true)
+            let input = makeMenuInput(activeClient: client)
+            func snapshot(_ email: String?) -> Snapshot {
+                .balance("Relay", 1.15, "USD", nil, now, progressPercentage: 75, bankedReset: CodexBankedReset(cards: [], ownerEmail: email))
+            }
+            controller.start(snapshot: snapshot("owner@example.com"), refreshDate: now, menuInput: input, settings: settings)
+            let menu = controller.statusMenuForTesting
+            let host = try XCTUnwrap(menu.items.first?.view as? MenuHoverLinkHostView)
+            let section = try XCTUnwrap(host.subviews.compactMap { $0 as? OpenCodexBankedResetSectionView }.first)
+            let title = try XCTUnwrap((section.titleView as? AccountMarqueeView)?.accountLabel as? HoverLinkTextField)
+            XCTAssertEqual(title.hoverHint, "\(name) 账户：owner@example.com")
+            XCTAssertNil(title.onActivate)
+            controller.menuWillOpen(menu)
+            defer { controller.menuDidClose(menu) }
+            let ink = title.visibleTextHitRect
+            host.forwardHover(atHostPoint: host.convert(NSPoint(x: ink.midX, y: ink.midY), from: title))
+            XCTAssertTrue(title.isHoverHintScheduled)
+            let balanceSection = try XCTUnwrap(host.sectionFocus.sections[.legacyQuota])
+            let identifiers = Set(balanceSection.subviews.compactMap { $0.identifier?.rawValue })
+            XCTAssertTrue(["overview.providerTitle", "overview.refreshTime", "overview.quotaDetail", "balance.subtitle"]
+                .allSatisfy { identifiers.contains($0) })
+            XCTAssertTrue(balanceSection.subviews.contains { $0 is OverviewNumericTextView })
+            XCTAssertTrue(balanceSection.subviews.contains { $0 is QuotaProgressView })
+            balanceSection.focusReduceMotionForTesting = true
+            balanceSection.focusReduceTransparencyForTesting = false
+            host.sectionFocus.setHintFocus(.bankedReset, from: .bankedReset)
+            XCTAssertEqual(balanceSection.focusState, .receded)
+            XCTAssertEqual(balanceSection.alphaValue, 0.5)
+            XCTAssertFalse(balanceSection.contentFilters.isEmpty)
+            XCTAssertEqual(section.focusState, .focused)
+            host.sectionFocus.setHintFocus(nil, from: .bankedReset)
+            XCTAssertEqual(balanceSection.focusState, .normal)
+            XCTAssertTrue(balanceSection.contentFilters.isEmpty)
+            XCTAssertEqual(title.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil) as? Int,
+                NSUnderlineStyle.single.rawValue)
+            host.forwardHover(atHostPoint: NSPoint(x: -1, y: -1))
+            XCTAssertNil(title.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil))
+            controller.update(snapshot: snapshot("other@example.com"), refreshDate: now, menuInput: input, settings: settings)
+            XCTAssertEqual(title.hoverHint, "\(name) 账户：other@example.com")
+            controller.update(snapshot: snapshot(nil), refreshDate: now, menuInput: input, settings: settings)
+            XCTAssertEqual(title.hoverHint, "")
+            XCTAssertTrue(menu.items.first?.view === host)
+        }
+    }
+
+    @MainActor
+    func testRelayBalanceLabelAndCachedResetTicketStayCorrectAcrossLanguageChange() throws {
+        let oldLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = oldLanguage }
+        let now = Date()
+        let expiration = ISO8601DateFormatter().string(from: now.addingTimeInterval(8 * 86_400 + 22.5 * 3_600))
+        let settings = StatusItemController.MenuBarSettings(showIcon: true, showAmount: true, showReset: true,
+            horizontalPadding: 6, keepMenuOpenAfterRefresh: true, showQuotaProgressBar: true,
+            showBankedReset: true, showNonOfficialBankedReset: true)
+        for client in [AssistantClient.codex, .claude] {
+            AppLanguage.selected = .german
+            let resets: CodexBankedReset
+            if client == .codex {
+                resets = try XCTUnwrap(OfficialQuotaResponseParser.parseBankedResetCredits(object: [
+                    "credits": [["id": "ticket", "reset_type": "codex_rate_limits", "expires_at": expiration]],
+                ], now: now))
+            } else {
+                resets = try XCTUnwrap(OfficialQuotaResponseParser.parseClaudeBankedReset(object: [
+                    "cedar_ember": ["eligible": true, "grants": [["id": "ticket", "type": "full",
+                        "resets_left": 1, "clears": ["five_hour", "seven_day"], "ends_at": expiration]]],
+                ], now: now))
+            }
+            let snapshot = Snapshot.balance("Relay", 1.87, "USD", nil, now, progressPercentage: 85,
+                progressContext: .init(baselineCents: 220, lastCents: 187, peakCents: 220, baselineObservedAt: now),
+                bankedReset: resets)
+            let controller = makeController()
+            defer { controller.teardown() }
+            controller.start(snapshot: snapshot, refreshDate: now, menuInput: makeMenuInput(activeClient: client), settings: settings)
+            let menu = controller.statusMenuForTesting
+            let host = try XCTUnwrap(menu.items.first?.view as? MenuHoverLinkHostView)
+            let balanceSection = try XCTUnwrap(host.subviews.compactMap { $0 as? OpenCodexOverviewSectionView }
+                .first { $0.sectionID == .legacyQuota })
+            let detail = try XCTUnwrap(balanceSection.subviews.first { $0.identifier?.rawValue == "overview.quotaDetail" } as? AccountMarqueeView)
+            let balance = try XCTUnwrap(balanceSection.subviews.compactMap { $0 as? OverviewNumericTextView }.first)
+            let progress = try XCTUnwrap(host.overviewLayout?.progress)
+            XCTAssertTrue(try XCTUnwrap(host.overviewLayout).balanceSubtitleIsBelowAmount)
+            XCTAssertEqual(detail.accountLabel.stringValue, "Restguthaben")
+            XCTAssertGreaterThan(detail.frame.minY, progress.maxY)
+            XCTAssertEqual(StatusItemController.overviewBaselineY(for: detail.accountLabel, in: host),
+                StatusItemController.overviewBaselineY(for: balance.textField, in: host), accuracy: 0.5)
+
+            func ticketText(_ id: String, under view: NSView) -> String? {
+                if let label = view as? NSTextField, label.identifier?.rawValue == "codex.bankedReset." + id {
+                    return label.stringValue
+                }
+                return view.subviews.lazy.compactMap { ticketText(id, under: $0) }.first
+            }
+            XCTAssertEqual(ticketText("ticketTitle", under: host), "Vollständiger Reset")
+            XCTAssertEqual(ticketText("ticketWindow", under: host), "5 Std. + 7 Tage")
+            controller.menuWillOpen(menu)
+            defer { controller.menuDidClose(menu) }
+            AppLanguage.selected = .simplifiedChinese
+            controller.updateMenu(input: makeMenuInput(activeClient: client))
+            XCTAssertTrue(menu.items.first?.view === host)
+            XCTAssertEqual(detail.accountLabel.stringValue, "剩余余额")
+            XCTAssertEqual(ticketText("ticketTitle", under: host), "完全重置")
+            XCTAssertEqual(ticketText("ticketWindow", under: host), "5 小时 + 7 日")
+            XCTAssertEqual(ticketText("remaining", under: host), "8 天 22 小时")
+        }
+    }
+
+    @MainActor
+    func testNonOfficialClaudeResetCardsUseCachedCardsBelowBalanceAndRespectToggle() throws {
+        let now = Date()
+        let reset = CodexBankedReset(cards: [
+            CodexBankedResetCard(id: "claude-relay", resetType: "full",
+                titleText: tr(.keyCodexBankedResetFullResetTitle),
+                windowText: tr(.keyCodexBankedResetFullResetWindow),
+                expiresAt: now.addingTimeInterval(86_400), expiresText: "later", remainingText: "1d")
+        ])
+        let snapshot = Snapshot.balance("claude-relay", 8.5, "USD", URL(string: "https://fixture.example"), now,
+            progressPercentage: 42.5, bankedReset: reset)
+        func settings(showNonOfficial: Bool) -> StatusItemController.MenuBarSettings {
+            StatusItemController.MenuBarSettings(showIcon: true, showAmount: true, showReset: true,
+                horizontalPadding: 6, keepMenuOpenAfterRefresh: true, showQuotaProgressBar: true,
+                showBankedReset: true, showNonOfficialBankedReset: showNonOfficial)
+        }
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.start(snapshot: snapshot, refreshDate: now,
+            menuInput: makeMenuInput(activeClient: .claude), settings: settings(showNonOfficial: true))
+        let card = try XCTUnwrap(controller.statusMenuForTesting.items.first?.view as? MenuHoverLinkHostView)
+        let layout = try XCTUnwrap(card.overviewLayout)
+        XCTAssertNotNil(layout.progress)
+        XCTAssertTrue(card.subviews.contains { $0 is OpenCodexBankedResetSectionView })
+        let balanceSection = try XCTUnwrap(card.subviews.compactMap { $0 as? OpenCodexOverviewSectionView }
+            .first { $0.sectionID == .legacyQuota })
+        XCTAssertTrue(balanceSection.subviews.compactMap { $0 as? HoverLinkTextField }
+            .contains { $0.identifier?.rawValue == "overview.providerTitle" && $0.onActivate != nil })
+
+        let hidden = makeController()
+        defer { hidden.teardown() }
+        hidden.start(snapshot: snapshot, refreshDate: now,
+            menuInput: makeMenuInput(activeClient: .claude), settings: settings(showNonOfficial: false))
+        let hiddenCard = try XCTUnwrap(hidden.statusMenuForTesting.items.first?.view as? MenuHoverLinkHostView)
+        XCTAssertFalse(hiddenCard.subviews.contains { $0 is OpenCodexBankedResetSectionView })
+    }
 }
 
 extension StatusItemControllerTests {

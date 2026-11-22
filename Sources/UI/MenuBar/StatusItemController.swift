@@ -2305,6 +2305,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let showQuotaProgressBar: Bool
         let showQuotaPaceIndicator: Bool
         let showBankedReset: Bool
+        let showNonOfficialBankedReset: Bool
+        let showNonOfficialResetProbability: Bool
+        let showEmptyBankedReset: Bool
+        let showResetProbability: Bool
         let displayTimeZone: TimeZone
 
         init(
@@ -2334,6 +2338,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             showQuotaProgressBar: Bool = true,
             showQuotaPaceIndicator: Bool = true,
             showBankedReset: Bool = true,
+            showNonOfficialBankedReset: Bool = true,
+            showNonOfficialResetProbability: Bool = false,
+            showEmptyBankedReset: Bool = true,
+            showResetProbability: Bool = true,
             displayTimeZone: TimeZone = .autoupdatingCurrent
         ) {
             self.showIcon = showIcon
@@ -2360,6 +2368,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             self.showQuotaProgressBar = showQuotaProgressBar
             self.showQuotaPaceIndicator = showQuotaPaceIndicator
             self.showBankedReset = showBankedReset
+            self.showNonOfficialBankedReset = showNonOfficialBankedReset
+            self.showNonOfficialResetProbability = showNonOfficialResetProbability
+            self.showEmptyBankedReset = showEmptyBankedReset
+            self.showResetProbability = showResetProbability
             self.displayTimeZone = displayTimeZone
             self.fontSize = CGFloat(
                 AppPreferences.normalizedMenuBarFontSize(
@@ -6751,21 +6763,27 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     if snapshot.kind == .balance {
                         let presentation = snapshot.officialQuotaMenuPresentation(
                             lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
-                            hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota)
+                            hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota,
+            showsEmptyBankedReset: settings.showEmptyBankedReset)
                         let layout = makeOverviewCardLayout(for: snapshot, presentation: presentation, account: context.account,
                                                             aggregation: true, context: context)
                         reconcileBalanceLayout(in: host, next: layout)
+                        let content = balanceContent(in: host)
                         if layout.progress == nil {
-                            host.subviews.compactMap { $0 as? QuotaProgressView }.forEach { $0.removeFromSuperview() }
-                        } else if !host.subviews.contains(where: { $0 is QuotaProgressView }),
+                            content.subviews.compactMap { $0 as? QuotaProgressView }.forEach { $0.removeFromSuperview() }
+                        } else if !content.subviews.contains(where: { $0 is QuotaProgressView }),
                                   let frame = layout.progress,
                                   let sample = OverviewNumericPresentation.samples(snapshot: snapshot, providerIdentity: context.identity,
                                       lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
                                       hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota,
-                                      showBankedReset: settings.showBankedReset).first {
-                            host.addSubview(makeOverviewNumericProgress(plan: overviewNumericPlan(for: sample), frame: frame))
+                                      showBankedReset: settings.showBankedReset,
+                                      showNonOfficialBankedReset: settings.showNonOfficialBankedReset,
+                                      showNonOfficialResetProbability: settings.showNonOfficialResetProbability,
+                                      showEmptyBankedReset: settings.showEmptyBankedReset,
+                                      showResetProbability: settings.showResetProbability).first {
+                            content.addSubview(makeOverviewNumericProgress(plan: overviewNumericPlan(for: sample), frame: frame))
                         }
-                        let labels = existing.card.subviews.compactMap { $0 as? NSTextField }
+                        let labels = content.subviews.compactMap { $0 as? NSTextField }
                         labels.first { $0.font?.pointSize == 15 }?.stringValue = snapshot.overviewProvider
                     }
                 } else if existing.snapshot != snapshot || existing.errorRetryReason != errorRetryReason {
@@ -6879,8 +6897,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let existing = header.subviews.compactMap { $0 as? AggregationNoteTagView }
         let titleFrame: NSRect
         if let layout = (card as? MenuHoverLinkHostView)?.overviewLayout {
-            titleFrame = layout.title.offsetBy(dx: header === card ? 0 : -header.frame.minX,
-                                              dy: header === card ? 0 : -header.frame.minY)
+            titleFrame = header.convert(layout.title, from: card)
         } else { titleFrame = existing.first?.originalTitleFrame ?? title.frame }
         let raw = context.noteTags ?? context.notes.map { [$0] } ?? []
         let notes = raw.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
@@ -6959,11 +6976,45 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         detail.updateText(context.snapshot.overviewQuotaDetail, preserveScrollPosition: false)
     }
 
+    private func balanceContent(in card: NSView) -> NSView {
+        let section = card.subviews.compactMap { $0 as? OpenCodexOverviewSectionView }
+            .first { $0.sectionID == .legacyQuota }
+        return section ?? card
+    }
+
+    private func installBalanceSection(in host: MenuHoverLinkHostView, layout: OpenCodexCardFrames) {
+        guard balanceContent(in: host) === host,
+              let placement = layout.sectionLayouts.first(where: { $0.id == .legacyQuota }) else { return }
+        let children = host.subviews.filter { !($0 is OpenCodexOverviewSectionView) && !($0 is OverviewSectionOutlineView) }
+        let section = OpenCodexOverviewSectionView(layout: placement)
+        // Keep child frames in card coordinates when the reset stack lifts the balance block.
+        section.setBoundsOrigin(placement.frame.origin)
+        host.addSubview(section)
+        for child in children {
+            child.removeFromSuperview()
+            section.addSubview(child)
+        }
+    }
+
     private func reconcileBalanceLayout(in host: MenuHoverLinkHostView, next: OpenCodexCardFrames) {
         guard let previous = host.overviewLayout, previous != next else { return }
-        let shift = next.cardSize.height - previous.cardSize.height
-        for child in host.subviews where !(child is QuotaProgressView) {
-            if child is OverviewNumericTextView || (child as? NSTextField)?.font?.pointSize == OpenCodexCardLayout.quotaAmountPointSize {
+        let shift = next.title.minY - previous.title.minY
+        let content = balanceContent(in: host)
+        if let section = content as? OpenCodexOverviewSectionView {
+            let frame = next.sectionLayouts.first { $0.id == .legacyQuota }?.frame
+                ?? CGRect(origin: .zero, size: next.cardSize)
+            section.frame = frame
+            section.setBoundsOrigin(frame.origin)
+        }
+        for section in host.subviews.compactMap({ $0 as? OpenCodexOverviewSectionView }) where section !== content {
+            if let placement = next.sectionLayouts.first(where: { $0.id == section.sectionID }) {
+                section.updatePlacement(placement)
+            }
+        }
+        for child in content.subviews where !(child is OverviewSectionOutlineView) && !(child is OpenCodexOverviewSectionView) {
+            if child is QuotaProgressView {
+                if let progress = next.progress { child.frame = progress }
+            } else if child is OverviewNumericTextView || (child as? NSTextField)?.font?.pointSize == OpenCodexCardLayout.quotaAmountPointSize {
                 child.frame = next.amount
             } else if child.identifier?.rawValue == "overview.quotaDetail" {
                 child.frame.origin.y = next.quotaDetail.minY
@@ -6973,6 +7024,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         host.frame.size = next.cardSize
         host.overviewLayout = next
+        installBalanceSection(in: host, layout: next)
     }
 
     private func alignSingleLineBalance(in card: NSView, snapshot: Snapshot) {
@@ -6980,7 +7032,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let singleLine = snapshot.balanceRecharge == nil && layout?.balanceRecharge == nil
         guard snapshot.kind == .balance, singleLine || layout?.balanceSubtitleIsBelowAmount == true,
               let host = card as? MenuHoverLinkHostView, host.overviewLayout?.link == nil,
-              let amount = descendantViews(of: card, as: OverviewNumericTextView.self).first,
+              let amount = balanceContent(in: host).subviews.compactMap({ $0 as? OverviewNumericTextView }).first,
               let detail = descendantViews(of: card, as: AccountMarqueeView.self).first(where: {
                   $0.identifier?.rawValue == "overview.quotaDetail"
               }) else { return }
@@ -6998,8 +7050,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     /// Issue #710: the reason a kept balance could not be refreshed, as a full-width red row
     /// between the subtitle and the progress bar. Removed once the balance refreshes again.
     private func updateBalanceStaleReason(in card: NSView, context: OverviewCardContext) {
+        let content = balanceContent(in: card)
         let id = NSUserInterfaceItemIdentifier("balance.staleReason")
-        let existing = card.subviews.first { $0.identifier == id } as? NSTextField
+        let existing = content.subviews.first { $0.identifier == id } as? NSTextField
         guard context.snapshot.kind == .balance, let reason = context.staleBalanceReason,
               let frame = (card as? MenuHoverLinkHostView)?.overviewLayout?.balanceStaleReason else {
             existing?.removeFromSuperview()
@@ -7011,13 +7064,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         label.stringValue = text
         label.frame = frame
         label.setAccessibilityLabel(reason)
-        if existing == nil { card.addSubview(label) }
+        if existing == nil { content.addSubview(label) }
     }
 
     private func updateBalanceSubtitle(in card: NSView, context: OverviewCardContext) {
         updateBalanceStaleReason(in: card, context: context)
+        let content = balanceContent(in: card)
         if context.snapshot.kind == .balance,
-           let amount = card.subviews.compactMap({ $0 as? OverviewNumericTextView }).first {
+           let amount = content.subviews.compactMap({ $0 as? OverviewNumericTextView }).first {
             amount.setTextColor(context.staleBalanceReason == nil ? .labelColor : .secondaryLabelColor)
         }
         let id = NSUserInterfaceItemIdentifier("balance.subtitle")
@@ -7033,7 +7087,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         guard (aggregation || context.snapshot.balanceRecharge != nil),
               let row = (card as? MenuHoverLinkHostView)?.overviewLayout?.balanceRecharge,
               context.snapshot.unit != nil else {
-            card.subviews.first { $0.identifier == id }?.removeFromSuperview()
+            content.subviews.first { $0.identifier == id }?.removeFromSuperview()
             return
         }
         let text = context.snapshot.balanceSubtitle(timeZone: settings.displayTimeZone)
@@ -7043,7 +7097,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let frame = (card as? MenuHoverLinkHostView)?.overviewLayout
             .map { balanceSubtitleFrame(row: row, layout: $0, context: context) } ?? row
         let needsMarquee = textWidth(text, font: subtitleFont) > frame.width + 0.5
-        let existing = card.subviews.first { $0.identifier == id }
+        let existing = content.subviews.first { $0.identifier == id }
         let label: NSView
         if needsMarquee {
             let marquee: AccountMarqueeView
@@ -7056,7 +7110,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 marquee = AccountMarqueeView(text: text, font: subtitleFont,
                     textColor: textColor, frame: frame,
                     label: hasRechargeHint ? HoverLinkTextField(text: text) : nil)
-                card.addSubview(marquee)
+                content.addSubview(marquee)
             }
             marquee.identifier = id
             marquee.frame = frame
@@ -7070,7 +7124,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             } else {
                 existing?.removeFromSuperview()
                 textField = hasRechargeHint ? HoverLinkTextField(text: text) : makeOverviewLabel("", font: subtitleFont)
-                card.addSubview(textField)
+                content.addSubview(textField)
             }
             textField.font = subtitleFont
             textField.textColor = textColor
@@ -7153,10 +7207,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let bankedReset = presentation.bankedReset
         let bankedResetTicketMetrics = bankedReset?.cards.map {
             OpenCodexTicketTextMetrics(
-                titleWidth: textWidth($0.titleText, font: .systemFont(ofSize: OpenCodexCardLayout.quotaDetailPointSize, weight: .medium)) + 4,
-                windowWidth: textWidth($0.windowText ?? "", font: .systemFont(ofSize: OpenCodexCardLayout.quotaResetPointSize, weight: .regular)) + 4,
+                titleWidth: textWidth($0.localizedTitleText, font: .systemFont(ofSize: OpenCodexCardLayout.quotaDetailPointSize, weight: .medium)) + 4,
+                windowWidth: textWidth(resetTicketWindowText($0) ?? "", font: .systemFont(ofSize: OpenCodexCardLayout.quotaResetPointSize, weight: .regular)) + 4,
                 resetWidth: textWidth(CodexBankedResetFormatting.expiryText(for: $0.expiresAt, relativeTo: Date(), timeZone: settings.displayTimeZone) ?? $0.expiresText ?? "", font: .systemFont(ofSize: OpenCodexCardLayout.quotaResetPointSize, weight: .regular)) + 4,
-                amountWidth: textWidth($0.remainingText ?? "", font: .monospacedDigitSystemFont(ofSize: OpenCodexCardLayout.quotaDetailPointSize, weight: .medium)) + 4
+                amountWidth: textWidth(resetTicketRemaining($0).text ?? "", font: .monospacedDigitSystemFont(ofSize: OpenCodexCardLayout.quotaDetailPointSize, weight: .medium)) + 4
             )
         } ?? []
         let nearestExpiryText = bankedReset.flatMap {
@@ -7186,16 +7240,23 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             includesQuotaProgress: settings.showQuotaProgressBar
                 && (!isBalance || snapshot.progressPercentage != nil),
             includesBankedReset: settings.showBankedReset
-                && snapshot.kind == .official
+                && (snapshot.kind == .official
+                    || snapshot.kind == .balance
+                        && settings.showNonOfficialBankedReset)
                 && bankedReset != nil,
             bankedResetCardCount: bankedReset?.cards.count ?? 0,
             bankedResetDisplayMode: menuInput.bankedResetDisplayMode,
             includesBankedResetNearestExpiry: nearestExpiryText != nil,
-            includesResetProbability: settings.showBankedReset && snapshot.kind == .official
-                && (bankedReset != nil || presentation.resetForecast.hasAnyValue),
-            includesBankedResetCountdownProgress: settings.showBankedReset
-                && snapshot.kind == .official
-                && presentation.resetForecast.showsOfficialWindowDeadlineProgress,
+            includesResetProbability: (
+                snapshot.kind == .official && context?.paceClient == .codex && settings.showResetProbability
+                || snapshot.kind == .balance && context?.paceClient == .codex && settings.showResetProbability
+                    && settings.showNonOfficialResetProbability
+            ) && (bankedReset != nil || presentation.resetForecast.hasAnyValue),
+            includesBankedResetCountdownProgress: (
+                snapshot.kind == .official && context?.paceClient == .codex && settings.showResetProbability
+                || snapshot.kind == .balance && context?.paceClient == .codex && settings.showResetProbability
+                    && settings.showNonOfficialResetProbability
+            ) && presentation.resetForecast.showsOfficialWindowDeadlineProgress,
             bankedResetTicketMetrics: bankedResetTicketMetrics
         ) }
         let inline = frames(subtitleBelowAmount: false)
@@ -7220,6 +7281,170 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             minimumAmountGap: 12)
     }
 
+    private func resetTicketWindowText(_ card: CodexBankedResetCard) -> String? {
+        guard let keys = card.windowKeys else { return card.windowText }
+        return OfficialQuotaResponseParser.resetCardWindowText(keys)
+    }
+
+    private func resetTicketRemaining(_ card: CodexBankedResetCard) -> (text: String?, isWarning: Bool) {
+        if let remaining = CodexBankedResetFormatting.remaining(until: card.expiresAt, now: bankedResetCountdownNow()) {
+            return remaining
+        }
+        return (card.remainingText, card.remainingIsWarning)
+    }
+
+    private func updateResetCardOwnerHint(_ link: HoverLinkTextField, bankedReset: CodexBankedReset, client: AssistantClient?) {
+        let hint: String
+        if let email = bankedReset.ownerEmail?.trimmingCharacters(in: .whitespacesAndNewlines), !email.isEmpty {
+            switch client {
+            case .codex: hint = tr(.keyBankedResetChatGPTAccount, arguments: [email])
+            case .claude: hint = tr(.keyBankedResetClaudeAccount, arguments: [email])
+            default: hint = ""
+            }
+        } else {
+            hint = ""
+        }
+        if link.hoverHint != hint {
+            link.hoverHint = ""
+            link.hoverHint = hint
+        }
+        link.setAccessibilityHelp(hint)
+    }
+
+    private func installBankedResetSections(
+        in host: NSView,
+        ticketScrollOwner: MenuHoverLinkHostView? = nil,
+        layout: OpenCodexCardFrames,
+        sections: [OpenCodexOverviewSectionID: OpenCodexOverviewSectionView],
+        context: OverviewCardContext,
+        bankedReset: CodexBankedReset?,
+        forecast: CodexResetForecast
+    ) {
+        if let sectionView = sections[.resetProbability],
+           let row = layout.sectionLayouts.first(where: { $0.id == .resetProbability })?.row {
+            addBankedResetProbabilityBlock(to: sectionView, eventHost: host as? MenuHoverLinkHostView, row: row,
+                forecast: forecast, provider: context.identity)
+        }
+        guard let bankedReset,
+              let section = layout.sectionLayouts.first(where: { $0.id == .bankedReset }),
+              let summaryRow = section.row,
+              let sectionView = sections[.bankedReset] as? OpenCodexBankedResetSectionView else { return }
+
+        if summaryRow.amount.width > 0 {
+            let sample = OverviewNumericSample(identity: .bankedResetCount(provider: context.identity),
+                format: .integerCount, value: Double(bankedReset.availableCount), progressPercentage: nil)
+            let plan = overviewNumericPlan(for: sample)
+            let amount = makeOverviewNumericAmount(plan: plan, sample: sample, frame: summaryRow.amount)
+            let titleText = tr(.keyCodexBankedResetTitle)
+            let titleLink = HoverLinkTextField(text: titleText)
+            let title = AccountMarqueeView(text: titleText,
+                font: .systemFont(ofSize: OpenCodexCardLayout.quotaDetailPointSize, weight: .medium),
+                textColor: .labelColor,
+                frame: overviewMarqueeFrame(summaryRow.quotaDetail, avoidingAmountFrame: amount.frame,
+                    amountText: plan.layoutReservationText), label: titleLink)
+            titleLink.identifier = NSUserInterfaceItemIdentifier("codex.bankedReset.ownerHint")
+            titleLink.decoratesOnHover = false
+            titleLink.underlinesHoverPhrase = true
+            titleLink.hoverPhrase = titleText
+            titleLink.restingTextColor = .labelColor
+            titleLink.hoverHintDelay = 0.3
+            titleLink.opensHoverHintAbove = true
+            updateResetCardOwnerHint(titleLink, bankedReset: bankedReset, client: context.paceClient)
+            (host as? MenuHoverLinkHostView)?.track(titleLink)
+            var nearest: NSView?
+            if summaryRow.reset.width > 0, let text = CodexBankedResetFormatting.nearestExpiryText(
+                cards: bankedReset.cards, timeZone: settings.displayTimeZone
+            ) {
+                let label = makeMarqueeOverviewLabel(text, font: .systemFont(ofSize: OpenCodexCardLayout.quotaResetPointSize),
+                    textColor: .secondaryLabelColor,
+                    frame: overviewMarqueeFrame(summaryRow.reset, avoidingAmountFrame: amount.frame,
+                        amountText: plan.layoutReservationText))
+                label.identifier = NSUserInterfaceItemIdentifier("codex.bankedReset.nearestExpiry")
+                nearest = label
+            }
+            sectionView.installMetric(title: title, subtitle: nearest, amount: amount)
+        }
+        guard menuInput.bankedResetDisplayMode != .compact else { return }
+
+        let ticketImage = Self.bankedResetTicketImage()
+        let ticketHost: NSView
+        let scrollView: BankedResetTicketScrollView?
+        if let viewport = layout.bankedResetTicketViewport,
+           layout.bankedResetDetailRows.map(\.chrome.height).reduce(0, +)
+                + CGFloat(max(0, layout.bankedResetDetailRows.count - 1)) * OpenCodexCardLayout.metrics.ticketSpacing
+                > viewport.height + 0.5 {
+            let document = BankedResetTicketDocumentView(frame: NSRect(x: 0, y: 0,
+                width: viewport.width, height: layout.bankedResetDetailRows.map(\.chrome.maxY).max() ?? 0))
+            let scroll = BankedResetTicketScrollView(frame: viewport.offsetBy(dx: 0, dy: -section.frame.minY))
+            scroll.identifier = NSUserInterfaceItemIdentifier("codex.bankedReset.ticketScroll")
+            scroll.documentView = document
+            sectionView.addSubview(scroll)
+            ticketScrollOwner?.trackTicketScroll(scroll)
+            ticketHost = document
+            scrollView = scroll
+        } else if let viewport = layout.bankedResetTicketViewport {
+            let document = BankedResetTicketDocumentView(frame: viewport.offsetBy(dx: 0, dy: -section.frame.minY))
+            sectionView.addSubview(document)
+            ticketHost = document
+            scrollView = nil
+        } else {
+            ticketHost = sectionView
+            scrollView = nil
+        }
+        for (card, row) in zip(bankedReset.cards, layout.bankedResetDetailRows) {
+            if row.chrome.width > 0 {
+                let chrome = BankedResetChromeView(frame: row.chrome)
+                chrome.identifier = NSUserInterfaceItemIdentifier("codex.bankedReset.chrome")
+                ticketHost.addSubview(chrome)
+            }
+            if row.icon.width > 0, let ticketImage {
+                let icon = NSImageView(frame: row.icon)
+                icon.image = ticketImage
+                icon.imageScaling = .scaleProportionallyUpOrDown
+                icon.identifier = NSUserInterfaceItemIdentifier("codex.bankedReset.ticket")
+                ticketHost.addSubview(icon)
+            }
+            ticketHost.addSubview(makeTicketOverviewLabel(card.localizedTitleText,
+                font: .systemFont(ofSize: OpenCodexCardLayout.quotaDetailPointSize, weight: .medium),
+                textColor: .labelColor, frame: row.quotaDetail,
+                identifier: "codex.bankedReset.ticketTitle"))
+            var windowLine: NSTextField?
+            if let windowText = resetTicketWindowText(card), !windowText.isEmpty {
+                let label = makeTicketOverviewLabel(windowText,
+                    font: .systemFont(ofSize: OpenCodexCardLayout.quotaResetPointSize, weight: .regular),
+                    textColor: .secondaryLabelColor, frame: row.window,
+                    identifier: "codex.bankedReset.ticketWindow")
+                ticketHost.addSubview(label)
+                windowLine = label as? NSTextField
+            }
+            var remaining: NSTextField?
+            let countdown = resetTicketRemaining(card)
+            if let remainingText = countdown.text, !remainingText.isEmpty {
+                let label = makeOverviewLabel(remainingText,
+                    font: .monospacedDigitSystemFont(ofSize: OpenCodexCardLayout.quotaDetailPointSize, weight: .medium))
+                label.alignment = .right
+                label.textColor = countdown.isWarning ? .systemOrange : .labelColor
+                label.frame = row.amount
+                label.identifier = NSUserInterfaceItemIdentifier("codex.bankedReset.remaining")
+                ticketHost.addSubview(label)
+                remaining = label
+            }
+            if let windowLine, let remaining,
+               row.chrome.height == OpenCodexCardLayout.bankedResetDetailRowHeight {
+                alignOverviewLabelBaseline(remaining, to: windowLine)
+            }
+            if let expiresText = CodexBankedResetFormatting.expiryText(
+                for: card.expiresAt, relativeTo: Date(), timeZone: settings.displayTimeZone
+            ) ?? (card.expiresAt == nil ? card.expiresText : nil), !expiresText.isEmpty {
+                ticketHost.addSubview(makeTicketOverviewLabel(expiresText,
+                    font: .systemFont(ofSize: OpenCodexCardLayout.quotaResetPointSize, weight: .regular),
+                    textColor: .secondaryLabelColor, frame: row.reset,
+                    identifier: "codex.bankedReset.ticketExpiry"))
+            }
+        }
+        scrollView?.scrollToTopOfDocument()
+    }
+
     private func makeOverviewMenuItem(for snapshot: Snapshot, context supplied: OverviewCardContext? = nil) -> NSMenuItem {
         let context = supplied ?? directCardContext(for: snapshot)
         // A kept balance after a failed refresh renders as its balance card (Issue #710).
@@ -7234,14 +7459,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let isBalance = snapshot.kind == .balance
         let quotaPresentation = snapshot.officialQuotaMenuPresentation(
             lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
-            hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota
+            hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota,
+            showsEmptyBankedReset: settings.showEmptyBankedReset
         )
         let officialQuotaWindows = quotaPresentation.windows
         let lunaReserve = quotaPresentation.lunaReserve
         let bankedReset = quotaPresentation.bankedReset
-        let nearestExpiryText = bankedReset.flatMap {
-            CodexBankedResetFormatting.nearestExpiryText(cards: $0.cards, timeZone: settings.displayTimeZone)
-        }
         let subscription = context.account?.subscription
         let layout = makeOverviewCardLayout(for: snapshot, presentation: quotaPresentation, account: context.account,
             aggregation: supplied != nil || (snapshot.kind == .balance && !menuInput.directProviderIsOfficial),
@@ -7269,8 +7492,22 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 view.addSubview(outline)
             }
         }
+        let hasNonOfficialResetCards = snapshot.kind == .balance
+            && settings.showBankedReset
+            && settings.showNonOfficialBankedReset
+            && bankedReset != nil
+        let hasNonOfficialResetForecast = snapshot.kind == .balance
+            && context.paceClient == .codex
+            && settings.showResetProbability
+            && settings.showNonOfficialResetProbability
+            && quotaPresentation.resetForecast.hasAnyValue
+        let hasNonOfficialResetSection = (context.paceClient == .codex || context.paceClient == .claude)
+            && (hasNonOfficialResetCards || hasNonOfficialResetForecast)
         let sectionViews: [OpenCodexOverviewSectionID: OpenCodexOverviewSectionView] =
-            snapshot.kind == .official ? Dictionary(uniqueKeysWithValues: layout.sectionLayouts.map { section in
+            (snapshot.kind == .official || hasNonOfficialResetSection) ? Dictionary(uniqueKeysWithValues: layout.sectionLayouts.filter {
+                // The balance body keeps its views when reset sections appear or disappear.
+                !isBalance || $0.id != .legacyQuota
+            }.map { section in
                 let child: OpenCodexOverviewSectionView
                 switch section.id {
                 case .account: child = OpenCodexAccountSectionView(layout: section)
@@ -7280,6 +7517,18 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 view.addSubview(child)
                 return (section.id, child)
             }) : [:]
+        func installNonOfficialResetSections() {
+            guard hasNonOfficialResetSection else { return }
+            installBankedResetSections(
+                in: view,
+                ticketScrollOwner: view,
+                layout: layout,
+                sections: sectionViews,
+                context: context,
+                bankedReset: bankedReset,
+                forecast: quotaPresentation.resetForecast
+            )
+        }
         let headerHost: NSView = sectionViews[.account] ?? view
         func headerFrame(_ frame: NSRect) -> NSRect {
             frame.offsetBy(dx: -headerHost.frame.minX, dy: headerHost === view ? 0 : -headerHost.frame.minY)
@@ -7336,9 +7585,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
         let cardNumerics = numericSamples(for: context)
         presentedOverviewNumerics = currentOverviewNumericSamples()
-        if (!officialQuotaWindows.isEmpty && !layout.quotaRows.isEmpty)
+        if snapshot.kind == .official && ((!officialQuotaWindows.isEmpty && !layout.quotaRows.isEmpty)
             || layout.lunaReserveRow != nil
-            || layout.bankedResetSummaryRow != nil || layout.bankedResetProbabilityRow != nil {
+            || layout.bankedResetSummaryRow != nil || layout.bankedResetProbabilityRow != nil) {
             for (index, rawWindow) in officialQuotaWindows.enumerated() {
                 let id = OpenCodexOverviewSectionID.quota(rawWindow, index: index)
                 let window = context.paceClient == .claude ? rawWindow.projectingIdleReset(now: quotaPaceNow) : rawWindow
@@ -7452,173 +7701,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 )
                 sectionView.installMetric(title: quotaDetail, subtitle: reset, amount: amount, progress: progress)
             }
-            if let sectionView = sectionViews[.resetProbability],
-               let row = layout.sectionLayouts.first(where: { $0.id == .resetProbability })?.row {
-                addBankedResetProbabilityBlock(
-                    to: sectionView, eventHost: view, row: row,
-                    forecast: quotaPresentation.resetForecast, provider: context.identity
-                )
-            }
-            if let bankedReset,
-               let section = layout.sectionLayouts.first(where: { $0.id == .bankedReset }),
-               let summaryRow = section.row, let sectionView = sectionViews[.bankedReset] as? OpenCodexBankedResetSectionView {
-                let isCompactBankedReset = menuInput.bankedResetDisplayMode == .compact
-                if summaryRow.amount.width > 0 {
-                    let sample = OverviewNumericSample(
-                        identity: .bankedResetCount(provider: context.identity),
-                        format: .integerCount,
-                        value: Double(bankedReset.availableCount),
-                        progressPercentage: nil
-                    )
-                    let plan = overviewNumericPlan(for: sample)
-                    let amount = makeOverviewNumericAmount(
-                        plan: plan,
-                        sample: sample,
-                        frame: summaryRow.amount
-                    )
-                    let summaryTitle = makeMarqueeOverviewLabel(
-                            tr(.keyCodexBankedResetTitle),
-                            font: .systemFont(
-                                ofSize: OpenCodexCardLayout.quotaDetailPointSize,
-                                weight: .medium
-                            ),
-                            textColor: .labelColor,
-                            frame: overviewMarqueeFrame(
-                                summaryRow.quotaDetail,
-                                avoidingAmountFrame: amount.frame,
-                                amountText: plan.layoutReservationText
-                            )
-                        )
-                    var subtitle: NSView?
-                    if let nearestExpiryText, summaryRow.reset.width > 0 {
-                        let nearest = makeMarqueeOverviewLabel(
-                            nearestExpiryText,
-                            font: .systemFont(
-                                ofSize: OpenCodexCardLayout.quotaResetPointSize,
-                                weight: .regular
-                            ),
-                            textColor: .secondaryLabelColor,
-                            frame: overviewMarqueeFrame(
-                                summaryRow.reset,
-                                avoidingAmountFrame: amount.frame,
-                                amountText: plan.layoutReservationText
-                            )
-                        )
-                        nearest.identifier = NSUserInterfaceItemIdentifier(
-                            "codex.bankedReset.nearestExpiry"
-                        )
-                        subtitle = nearest
-                    }
-                    sectionView.installMetric(title: summaryTitle, subtitle: subtitle, amount: amount)
-                }
-
-                if !isCompactBankedReset {
-                    let ticketImage = Self.bankedResetTicketImage()
-                    let ticketHost: NSView
-                    let ticketScrollView: BankedResetTicketScrollView?
-                    if let viewport = layout.bankedResetTicketViewport,
-                       layout.bankedResetDetailRows.map(\.chrome.height).reduce(0, +)
-                        + CGFloat(max(0, layout.bankedResetDetailRows.count - 1)) * OpenCodexCardLayout.metrics.ticketSpacing > viewport.height + 0.5 {
-                        let document = BankedResetTicketDocumentView(
-                            frame: NSRect(
-                                x: 0,
-                                y: 0,
-                                width: viewport.width,
-                                height: layout.bankedResetDetailRows.map(\.chrome.maxY).max() ?? 0
-                            )
-                        )
-                        let scrollView = BankedResetTicketScrollView(frame: viewport.offsetBy(dx: 0, dy: -section.frame.minY))
-                        scrollView.identifier = NSUserInterfaceItemIdentifier(
-                            "codex.bankedReset.ticketScroll"
-                        )
-                        scrollView.documentView = document
-                        sectionView.addSubview(scrollView)
-                        view.trackTicketScroll(scrollView)
-                        ticketHost = document
-                        ticketScrollView = scrollView
-                    } else {
-                        if let viewport = layout.bankedResetTicketViewport {
-                            let document = BankedResetTicketDocumentView(frame: viewport.offsetBy(dx: 0, dy: -section.frame.minY))
-                            sectionView.addSubview(document)
-                            ticketHost = document
-                        } else {
-                            ticketHost = sectionView
-                        }
-                        ticketScrollView = nil
-                    }
-                    for (card, row) in zip(bankedReset.cards, layout.bankedResetDetailRows) {
-                        if row.chrome.width > 0 {
-                            let chrome = BankedResetChromeView(frame: row.chrome)
-                            chrome.identifier = NSUserInterfaceItemIdentifier("codex.bankedReset.chrome")
-                            ticketHost.addSubview(chrome)
-                        }
-
-                        if row.icon.width > 0, let ticketImage {
-                            let icon = NSImageView(frame: row.icon)
-                            icon.image = ticketImage
-                            icon.imageScaling = .scaleProportionallyUpOrDown
-                            icon.identifier = NSUserInterfaceItemIdentifier("codex.bankedReset.ticket")
-                            ticketHost.addSubview(icon)
-                        }
-
-                        let title = makeTicketOverviewLabel(
-                            card.titleText,
-                            font: .systemFont(ofSize: OpenCodexCardLayout.quotaDetailPointSize, weight: .medium),
-                            textColor: .labelColor,
-                            frame: row.quotaDetail,
-                            identifier: "codex.bankedReset.ticketTitle"
-                        )
-                        ticketHost.addSubview(title)
-
-                        var windowLine: NSTextField?
-                        if let windowText = card.windowText, !windowText.isEmpty {
-                            let label = makeTicketOverviewLabel(
-                                windowText,
-                                font: .systemFont(ofSize: OpenCodexCardLayout.quotaResetPointSize, weight: .regular),
-                                textColor: .secondaryLabelColor,
-                                frame: row.window,
-                                identifier: "codex.bankedReset.ticketWindow"
-                            )
-                            ticketHost.addSubview(label)
-                            windowLine = label as? NSTextField
-                        }
-
-                        var remaining: NSTextField?
-                        if let remainingText = card.remainingText, !remainingText.isEmpty {
-                            let label = makeOverviewLabel(
-                                remainingText,
-                                font: .monospacedDigitSystemFont(
-                                    ofSize: OpenCodexCardLayout.quotaDetailPointSize,
-                                    weight: .medium
-                                )
-                            )
-                            label.alignment = .right
-                            label.textColor = card.remainingIsWarning ? .systemOrange : .labelColor
-                            label.frame = row.amount
-                            label.identifier = NSUserInterfaceItemIdentifier("codex.bankedReset.remaining")
-                            ticketHost.addSubview(label)
-                            remaining = label
-                        }
-
-                        if let windowLine, let remaining,
-                           row.chrome.height == OpenCodexCardLayout.bankedResetDetailRowHeight {
-                            alignOverviewLabelBaseline(remaining, to: windowLine)
-                        }
-
-                        if let expiresText = CodexBankedResetFormatting.expiryText(for: card.expiresAt, relativeTo: Date(), timeZone: settings.displayTimeZone) ?? (card.expiresAt == nil ? card.expiresText : nil), !expiresText.isEmpty {
-                            let subtitle = makeTicketOverviewLabel(
-                                expiresText,
-                                font: .systemFont(ofSize: OpenCodexCardLayout.quotaResetPointSize, weight: .regular),
-                                textColor: .secondaryLabelColor,
-                                frame: row.reset,
-                                identifier: "codex.bankedReset.ticketExpiry"
-                            )
-                            ticketHost.addSubview(subtitle)
-                        }
-                    }
-                    ticketScrollView?.scrollToTopOfDocument()
-                }
-            }
+            installBankedResetSections(
+                in: view,
+                ticketScrollOwner: view,
+                layout: layout,
+                sections: sectionViews,
+                context: context,
+                bankedReset: bankedReset,
+                forecast: quotaPresentation.resetForecast
+            )
             headerHost.addSubview(provider)
         } else {
             let bodyHost: NSView = sectionViews[.legacyQuota] ?? view
@@ -7715,6 +7806,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             }
             headerHost.addSubview(provider)
             [quotaDetail, amount].forEach(attachBody)
+            if isBalance { installBalanceSection(in: view, layout: layout) }
+            installNonOfficialResetSections()
         }
         item.view = view
         updateOverviewHeaderNotes(in: view, context: context)
@@ -7773,6 +7866,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         refreshTime.frame = frames.refreshTime
         view.addSubview(refreshTime)
         if accountOnlyInset != nil {
+            installStatusResetSections(in: view, snapshot: snapshot, context: context)
             updateOverviewHeaderNotes(in: view, context: context)
             item.view = view
             return item
@@ -7824,9 +7918,53 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             detail.frame = frames.detail
             view.addSubview(detail)
         }
+        installStatusResetSections(in: view, snapshot: snapshot, context: context)
         updateOverviewHeaderNotes(in: view, context: context)
         item.view = view
         return item
+    }
+
+    private func installStatusResetSections(in view: NSView, snapshot: Snapshot, context: OverviewCardContext) {
+        let showsCards = snapshot.bankedReset != nil
+            && (context.paceClient == .codex || context.paceClient == .claude)
+            && settings.showBankedReset
+            && (context.paceClient == .claude || settings.showNonOfficialBankedReset)
+        let showsForecast = context.paceClient == .codex
+            && settings.showResetProbability
+            && settings.showNonOfficialResetProbability
+            && snapshot.resetForecast.hasAnyValue
+        guard snapshot.kind == .error, showsCards || showsForecast else { return }
+        let date = context.date ?? Date()
+        let balance = Snapshot.balance(snapshot.provider, 0, "USD", nil, date,
+            bankedReset: showsCards ? snapshot.bankedReset : nil,
+            resetForecast: showsForecast ? snapshot.resetForecast : .unavailable)
+        let resetContext = OverviewCardContext(snapshot: balance, identity: context.identity,
+            account: context.account, date: date, paceClient: context.paceClient)
+        let presentation = balance.officialQuotaMenuPresentation(
+            lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
+            hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota,
+            showsEmptyBankedReset: settings.showEmptyBankedReset)
+        let initial = makeOverviewCardLayout(for: balance, presentation: presentation,
+            account: context.account, aggregation: true, context: resetContext)
+        let resetSections = initial.sectionLayouts.filter {
+            $0.id == .resetProbability || $0.id == .bankedReset
+        }
+        guard let firstResetY = resetSections.map(\.frame.minY).min(),
+              let lastResetY = resetSections.map(\.frame.maxY).max() else { return }
+        let lift = lastResetY - firstResetY + OpenCodexCardLayout.metrics.sectionSpacing
+        let layout = initial.offsetResetSections(by: OpenCodexCardLayout.quotaBottomInset - firstResetY)
+        for child in view.subviews { child.frame.origin.y += lift }
+        view.frame.size.height += lift
+        var sections: [OpenCodexOverviewSectionID: OpenCodexOverviewSectionView] = [:]
+        for section in layout.sectionLayouts where section.id == .resetProbability || section.id == .bankedReset {
+            let child: OpenCodexOverviewSectionView = section.id == .bankedReset
+                ? OpenCodexBankedResetSectionView(layout: section)
+                : OpenCodexMetricSectionView(layout: section)
+            view.addSubview(child)
+            sections[section.id] = child
+        }
+        installBankedResetSections(in: view, layout: layout, sections: sections,
+            context: resetContext, bankedReset: presentation.bankedReset, forecast: presentation.resetForecast)
     }
 
     private static func bankedResetTicketImage() -> NSImage? {
@@ -7946,6 +8084,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
             hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota,
             showBankedReset: settings.showBankedReset,
+            showNonOfficialBankedReset: settings.showNonOfficialBankedReset,
+            showNonOfficialResetProbability: settings.showNonOfficialResetProbability,
+            showEmptyBankedReset: settings.showEmptyBankedReset,
+            showResetProbability: settings.showResetProbability,
+            showResetProbabilityForClient: context.paceClient == .codex,
             quotaValueMode: settings.quotaValueMode,
             now: bankedResetCountdownNow()
         )
@@ -7978,7 +8121,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             let snapshot = context.snapshot
             let windows = snapshot.officialQuotaMenuPresentation(
                 lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
-                hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota
+                hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota,
+            showsEmptyBankedReset: settings.showEmptyBankedReset
             ).windows
             // Aggregated cards carry their own account; the direct card must
             // also match the account its snapshot was fetched for.
@@ -8021,13 +8165,26 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func syncBankedResetCountdownTimer() {
-        let shouldRun = settings.showBankedReset
-            && menuContentCardsForUpdate("countdown.timer").contains { card in
-                card.context.snapshot.kind == .official
-                    && card.context.snapshot.officialQuotaMenuPresentation(
-                        lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
-                        hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota
-                    ).resetForecast.remainingCountdownSeconds(now: bankedResetCountdownNow()) != nil
+        let date = bankedResetCountdownNow()
+        let shouldRun = menuContentCardsForUpdate("countdown.timer").contains { card in
+            let snapshot = card.context.snapshot
+            let presentation = snapshot.officialQuotaMenuPresentation(
+                lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
+                hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota,
+            showsEmptyBankedReset: settings.showEmptyBankedReset)
+            let showCards = settings.showBankedReset
+                && (snapshot.kind == .official
+                    || snapshot.kind == .balance && card.context.paceClient == .codex
+                        && settings.showNonOfficialBankedReset)
+            let showForecast = settings.showResetProbability
+                && card.context.paceClient == .codex
+                && (snapshot.kind == .official || snapshot.kind == .balance && settings.showNonOfficialResetProbability)
+            let hasTicketCountdown = showCards && (presentation.bankedReset?.cards.contains {
+                $0.expiresAt.map { $0 > date } == true
+            } ?? false)
+            let hasForecastCountdown = showForecast
+                && presentation.resetForecast.remainingCountdownSeconds(now: date) != nil
+            return hasTicketCountdown || hasForecastCountdown
             }
         if shouldRun {
             startBankedResetCountdownTimerIfNeeded()
@@ -8132,7 +8289,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     private func addBankedResetProbabilityBlock(
         to view: NSView,
-        eventHost: MenuHoverLinkHostView,
+        eventHost: MenuHoverLinkHostView?,
         row: OpenCodexQuotaRowFrames,
         forecast: CodexResetForecast,
         provider: String
@@ -8276,7 +8433,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             titleLink.restingTextColor = .labelColor
             titleLink.opensHoverHintAbove = true
             configureBankedResetSourceLink(titleLink, forecast: forecast)
-            eventHost.track(titleLink)
+            eventHost?.track(titleLink)
         }
         // The countdown variant reserves a dedicated subtitle line for the
         // absolute deadline and a separate bottom row for the progress bar.
@@ -8407,7 +8564,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }) else { return }
         let forecast = snapshot.officialQuotaMenuPresentation(
             lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
-            hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota
+            hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota,
+            showsEmptyBankedReset: settings.showEmptyBankedReset
         ).resetForecast
         guard forecast.showsOrdinaryForecastMetrics else { return }
         subtitle.updateText(bankedResetForecastSubtitleText(forecast), preserveScrollPosition: true)
@@ -8494,7 +8652,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             quotaValueMode: settings.quotaValueMode
         )
         host.frame = frame.insetBy(dx: 0, dy: -6.5)
-        if plan.animates, let target = plan.toProgress {
+        if plan.animatesProgress, let target = plan.toProgress {
             host.setPercentage(target, animated: true, duration: OverviewNumericTransition.duration(for: plan.format))
         }
         return host
@@ -8520,7 +8678,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         progress.frame = frame
         progress.identifier = OverviewNumericPresentation.progressIdentifier(for: plan.identity)
         if plan.identity.isOfficialQuota { progress.quotaValueMode = settings.quotaValueMode }
-        if plan.animates, let target = plan.toProgress {
+        if plan.animatesProgress, let target = plan.toProgress {
             progress.setPercentage(
                 target,
                 animated: true,
@@ -8628,12 +8786,26 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         // A lifted ticket floats as a snapshot; resync it with whatever changed.
         defer { host.refreshLiftedTickets() }
         let snapshot = context.snapshot
-        guard snapshot.kind == .official, let previous = host.overviewLayout else { return }
+        let hasNonOfficialResetCards = snapshot.kind == .balance
+            && settings.showBankedReset
+            && settings.showNonOfficialBankedReset
+            && snapshot.bankedReset != nil
+        let hasNonOfficialResetForecast = snapshot.kind == .balance
+            && context.paceClient == .codex
+            && settings.showResetProbability
+            && settings.showNonOfficialResetProbability
+            && snapshot.resetForecast.hasAnyValue
+        let hasNonOfficialReset = (context.paceClient == .codex || context.paceClient == .claude)
+            && (hasNonOfficialResetCards || hasNonOfficialResetForecast)
+        guard let previous = host.overviewLayout,
+              snapshot.kind == .official || hasNonOfficialReset || (snapshot.kind == .balance
+                && (previous.bankedResetSummaryRow != nil || previous.bankedResetProbabilityRow != nil)) else { return }
         let presentation = snapshot.officialQuotaMenuPresentation(
             lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
-            hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota)
+            hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota,
+            showsEmptyBankedReset: settings.showEmptyBankedReset)
         let next = makeOverviewCardLayout(for: snapshot, presentation: presentation, account: context.account,
-            aggregation: !menuInput.aggregatedProviders.isEmpty)
+            aggregation: !menuInput.aggregatedProviders.isEmpty, context: context)
         let nextForecastKey = forecastContentKey(presentation.resetForecast)
         let nextCardIDs = presentation.bankedReset?.cards.map(\.id) ?? []
         let providerChanged = host.providerIdentity != context.identity
@@ -8657,6 +8829,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             let oldScroll = descendantViews(of: host, as: BankedResetTicketScrollView.self).first
             let scrollOrigin = oldScroll?.contentView.bounds.origin
             for newSection in proposedSections {
+                if snapshot.kind == .balance, newSection.sectionID == .legacyQuota { continue }
                 let oldLayout = previous.sectionLayouts.first { $0.id == newSection.sectionID }
                 let newLayout = next.sectionLayouts.first { $0.id == newSection.sectionID }
                 let sameLocalGeometry = !providerChanged && !quotaIdentityChanged && oldLayout?.row == newLayout?.row
@@ -8673,10 +8846,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 }
             }
             for (id, old) in oldSections where !next.sectionLayouts.contains(where: { $0.id == id }) {
+                if snapshot.kind == .balance, id == .legacyQuota { continue }
                 old.removeFromSuperview()
             }
-            host.frame.size = next.cardSize
-            host.overviewLayout = next
+            if snapshot.kind == .balance {
+                reconcileBalanceLayout(in: host, next: next)
+            } else {
+                host.frame.size = next.cardSize
+                host.overviewLayout = next
+            }
             host.providerIdentity = context.identity
             host.quotaPaceAccount = context.account
             host.quotaPaceClient = context.paceClient
@@ -8740,15 +8918,21 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         if let banked = presentation.bankedReset,
            let section = sections.first(where: { $0.sectionID == .bankedReset }) {
-            (section.titleView as? AccountMarqueeView)?.updateText(tr(.keyCodexBankedResetTitle), preserveScrollPosition: true)
+            if let title = section.titleView as? AccountMarqueeView {
+                title.updateText(tr(.keyCodexBankedResetTitle), preserveScrollPosition: true)
+                if let link = title.accountLabel as? HoverLinkTextField {
+                    link.hoverPhrase = tr(.keyCodexBankedResetTitle)
+                    updateResetCardOwnerHint(link, bankedReset: banked, client: context.paceClient)
+                }
+            }
             if let document = descendantViews(of: section, as: BankedResetTicketDocumentView.self).first {
                 for (card, row) in zip(banked.cards, next.bankedResetDetailRows) {
                     let expiry = CodexBankedResetFormatting.expiryText(for: card.expiresAt, relativeTo: Date(), timeZone: settings.displayTimeZone)
                         ?? (card.expiresAt == nil ? card.expiresText : nil) ?? ""
                     let lines: [(String, String, NSRect, NSFont, NSColor)] = [
-                        ("codex.bankedReset.ticketTitle", card.titleText, row.quotaDetail,
+                        ("codex.bankedReset.ticketTitle", card.localizedTitleText, row.quotaDetail,
                          .systemFont(ofSize: OpenCodexCardLayout.quotaDetailPointSize, weight: .medium), .labelColor),
-                        ("codex.bankedReset.ticketWindow", card.windowText ?? "", row.window,
+                        ("codex.bankedReset.ticketWindow", resetTicketWindowText(card) ?? "", row.window,
                          .systemFont(ofSize: OpenCodexCardLayout.quotaResetPointSize), .secondaryLabelColor),
                         ("codex.bankedReset.ticketExpiry", expiry, row.reset,
                          .systemFont(ofSize: OpenCodexCardLayout.quotaResetPointSize), .secondaryLabelColor)
@@ -8766,13 +8950,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     }
                 }
             }
-            let fields = descendantViews(of: section, as: NSTextField.self).filter {
-                $0.identifier?.rawValue == "codex.bankedReset.remaining"
-            }
-            for (field, card) in zip(fields, banked.cards) {
-                field.stringValue = card.remainingText ?? ""
-                field.textColor = card.remainingIsWarning ? .systemOrange : .labelColor
-            }
+            updateBankedResetTicketCountdowns(in: section, snapshot: snapshot)
             if let nearest = CodexBankedResetFormatting.nearestExpiryText(cards: banked.cards, timeZone: settings.displayTimeZone) {
                 (section.subtitleView as? AccountMarqueeView)?.updateText(nearest, preserveScrollPosition: true)
             }
@@ -8810,12 +8988,19 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let snapshot = context.snapshot
         if snapshot.kind == .balance, let host = overview as? MenuHoverLinkHostView {
             let presentation = snapshot.officialQuotaMenuPresentation(lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
-                hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota)
+                hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota,
+            showsEmptyBankedReset: settings.showEmptyBankedReset)
             reconcileBalanceLayout(in: host, next: makeOverviewCardLayout(for: snapshot, presentation: presentation,
                 account: context.account, aggregation: !menuInput.aggregatedProviders.isEmpty,
                 context: context))
+            updateOverviewQuotaDetail(in: host, context: context)
             updateBalanceSubtitle(in: host, context: context)
             alignSingleLineBalance(in: host, snapshot: context.snapshot)
+            if let time = balanceContent(in: host).subviews.compactMap({ $0 as? NSTextField }).first(where: {
+                $0.identifier?.rawValue == "overview.refreshTime"
+            }) {
+                applyRefreshTime(to: time, date: context.date, staleReason: context.staleBalanceReason)
+            }
         }
         let samples = numericSamples(for: context)
         let reduceMotion = shouldReduceOverviewNumericMotion()
@@ -8875,7 +9060,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         updateBankedResetForecastSubtitleIfNeeded(in: overview, snapshot: snapshot)
         let forecast = snapshot.officialQuotaMenuPresentation(
             lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
-            hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota).resetForecast
+            hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota,
+            showsEmptyBankedReset: settings.showEmptyBankedReset).resetForecast
         let tooltipContent = Self.codexResetForecastTooltip(for: forecast, timeZone: settings.displayTimeZone)
         for link in descendantViews(of: overview, as: HoverLinkTextField.self)
             where link.forecastTooltipContent != nil {
@@ -8885,6 +9071,23 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             $0.identifier?.rawValue == "codex.bankedReset.officialHint"
         }) { label.updateText(hint, preserveScrollPosition: true) }
         applyOfficialCountdownProgressIfNeeded(in: overview, snapshot: snapshot)
+        updateBankedResetTicketCountdowns(in: overview, snapshot: snapshot)
+    }
+
+    private func updateBankedResetTicketCountdowns(in overview: NSView, snapshot: Snapshot) {
+        let presentation = snapshot.officialQuotaMenuPresentation(
+            lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
+            hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota,
+            showsEmptyBankedReset: settings.showEmptyBankedReset)
+        guard let bankedReset = presentation.bankedReset else { return }
+        let fields = descendantViews(of: overview, as: NSTextField.self).filter {
+            $0.identifier?.rawValue == "codex.bankedReset.remaining"
+        }
+        for (field, card) in zip(fields, bankedReset.cards) {
+            let remaining = resetTicketRemaining(card)
+            field.stringValue = remaining.text ?? ""
+            field.textColor = remaining.isWarning ? .systemOrange : .labelColor
+        }
     }
 
     private func applyOfficialCountdownProgressIfNeeded(in overview: NSView, snapshot: Snapshot) {
@@ -8893,7 +9096,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }) else { return }
         let forecast = snapshot.officialQuotaMenuPresentation(
             lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
-            hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota
+            hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota,
+            showsEmptyBankedReset: settings.showEmptyBankedReset
         ).resetForecast
         guard let remaining = forecast.officialCountdownRemainingFraction(
             now: bankedResetCountdownNow()

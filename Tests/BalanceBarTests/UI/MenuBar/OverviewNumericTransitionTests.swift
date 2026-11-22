@@ -445,6 +445,60 @@ final class OverviewNumericTransitionTests: XCTestCase {
         )
     }
 
+    func testBalanceResetNumbersRespectParentAndChildPreferences() {
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let snapshot = Snapshot.balance("Relay", 10, "USD", nil, date,
+            bankedReset: CodexBankedReset(cards: [
+                CodexBankedResetCard(id: "ticket", resetType: "codex_rate_limits", titleText: "Full",
+                    expiresAt: date.addingTimeInterval(86_400), expiresText: "later")
+            ]),
+            resetForecast: .demo(updatedAt: date))
+
+        let parentsOff = OverviewNumericPresentation.samples(snapshot: snapshot,
+            lunaReserveDisplayMode: .disabled, hideExhaustedQuota: false,
+            showBankedReset: false, showNonOfficialBankedReset: true,
+            showNonOfficialResetProbability: true, showResetProbability: false)
+        XCTAssertEqual(parentsOff.map(\.identity), [.thirdPartyBalance(provider: "Relay", unit: "USD")])
+
+        // Reset probability has its own section; turning reset cards off leaves it alone.
+        let cardsOffProbabilityOn = OverviewNumericPresentation.samples(snapshot: snapshot,
+            lunaReserveDisplayMode: .disabled, hideExhaustedQuota: false,
+            showBankedReset: false, showNonOfficialBankedReset: true,
+            showNonOfficialResetProbability: true)
+        XCTAssertEqual(cardsOffProbabilityOn.map(\.identity), [
+            .thirdPartyBalance(provider: "Relay", unit: "USD"),
+            .bankedResetProbability24h(provider: "Relay"),
+            .bankedResetProbability48h(provider: "Relay")
+        ])
+
+        let cardsOnly = OverviewNumericPresentation.samples(snapshot: snapshot,
+            lunaReserveDisplayMode: .disabled, hideExhaustedQuota: false,
+            showBankedReset: true, showNonOfficialBankedReset: true,
+            showNonOfficialResetProbability: false)
+        XCTAssertEqual(cardsOnly.map(\.identity), [
+            .thirdPartyBalance(provider: "Relay", unit: "USD"),
+            .bankedResetCount(provider: "Relay")
+        ])
+
+        let forecastOnly = OverviewNumericPresentation.samples(snapshot: snapshot,
+            lunaReserveDisplayMode: .disabled, hideExhaustedQuota: false,
+            showBankedReset: true, showNonOfficialBankedReset: false,
+            showNonOfficialResetProbability: true)
+        XCTAssertTrue(forecastOnly.contains { $0.identity == .bankedResetProbability24h(provider: "Relay") })
+
+        let claudeForecastSuppressed = OverviewNumericPresentation.samples(snapshot: snapshot,
+            lunaReserveDisplayMode: .disabled, hideExhaustedQuota: false,
+            showBankedReset: true, showNonOfficialBankedReset: true,
+            showNonOfficialResetProbability: true, showResetProbabilityForClient: false)
+        XCTAssertFalse(claudeForecastSuppressed.contains { sample in
+            switch sample.identity {
+            case .bankedResetProbability24h, .bankedResetProbability48h, .bankedResetProbabilitySignal,
+                 .bankedResetProbabilityCountdown: return true
+            default: return false
+            }
+        })
+    }
+
     func testSameIdentityCurrencyTransitionAnimatesAndUnchangedValueDoesNot() {
         let previous = balanceSample(amount: 1.70, progress: 40)
         let current = balanceSample(amount: 1.50, progress: 30)
@@ -473,6 +527,16 @@ final class OverviewNumericTransitionTests: XCTestCase {
         XCTAssertEqual(unchanged.startText, "¥1.70")
         XCTAssertEqual(unchanged.endText, "¥1.70")
         XCTAssertEqual(unchanged.startProgress, 40)
+    }
+
+    func testProgressOnlyUpdateAnimatesBarWithoutRollingSameAmount() {
+        let previous = balanceSample(amount: 1.02, progress: 40)
+        let next = balanceSample(amount: 1.02, progress: 20)
+        let plan = OverviewNumericTransition.plan(previous: previous, current: next, reduceMotion: false)
+        XCTAssertFalse(plan.animates)
+        XCTAssertTrue(plan.animatesProgress)
+        XCTAssertEqual(plan.startProgress, 40)
+        XCTAssertEqual(plan.toProgress, 20)
     }
 
     func testOpenDelayHoldsLastSeenValueForAShortBeat() {
@@ -1208,6 +1272,79 @@ final class OverviewNumericPresentationControllerTests: XCTestCase {
         XCTAssertEqual(progressValues(in: switched), [30])
     }
 
+    func testRelayResetSectionsStayBelowBalanceWhenMenuRefreshesInPlace() throws {
+        for showsProbability in [false, true] {
+            let controller = makeController()
+            defer { controller.teardown() }
+            let date = Date()
+            let input = makeMenuInput()
+            let settings = makeSettings(showNonOfficialResetProbability: showsProbability)
+            let ticket = CodexBankedResetCard(id: "ticket", resetType: "codex_rate_limits", titleText: "Full",
+                expiresAt: date.addingTimeInterval(86_400), expiresText: "tomorrow")
+            let balance = Snapshot.balance("Relay", 10, "USD", nil, date, progressPercentage: 40,
+                bankedReset: CodexBankedReset(cards: [ticket]), resetForecast: .demo(updatedAt: date))
+            controller.start(snapshot: balance, refreshDate: date, menuInput: input, settings: settings)
+            let overview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+
+            func assertOrder(stale: Bool) throws {
+                let content = try XCTUnwrap(overview.subviews.compactMap { $0 as? OpenCodexOverviewSectionView }
+                    .first { $0.sectionID == .legacyQuota })
+                let title = try XCTUnwrap(content.subviews.first { $0.identifier?.rawValue == "overview.providerTitle" })
+                let refresh = try XCTUnwrap(content.subviews.first { $0.identifier?.rawValue == "overview.refreshTime" })
+                let amount = try XCTUnwrap(amountViews(in: overview).first {
+                    if case .thirdPartyBalance = $0.sample?.identity { return true }
+                    return false
+                })
+                let amountFrame = overview.convert(amount.bounds, from: amount)
+                let progress = try XCTUnwrap(content.subviews.compactMap { $0 as? QuotaProgressView }.first)
+                let sections = overview.subviews.compactMap { $0 as? OpenCodexOverviewSectionView }
+                let cards = try XCTUnwrap(sections.first { $0.sectionID == .bankedReset })
+                let probability = sections.first { $0.sectionID == .resetProbability }
+                XCTAssertNotNil(cards.subviews.first { $0.identifier?.rawValue == "codex.bankedReset.nearestExpiry" })
+                XCTAssertGreaterThan(title.frame.minY, amountFrame.minY)
+                XCTAssertGreaterThan(refresh.frame.minY, amountFrame.minY)
+                XCTAssertGreaterThan(amountFrame.minY, progress.frame.minY)
+                XCTAssertGreaterThan(progress.frame.minY, (probability ?? cards).frame.maxY)
+                XCTAssertEqual(probability != nil, showsProbability)
+                if let probability { XCTAssertGreaterThan(probability.frame.minY, cards.frame.maxY) }
+                let reason = content.subviews.first { $0.identifier?.rawValue == "balance.staleReason" }
+                XCTAssertEqual(reason != nil, stale)
+                if let reason { XCTAssertGreaterThan(reason.frame.minY, progress.frame.maxY) }
+            }
+
+            try assertOrder(stale: false)
+            controller.menuWillOpen(controller.statusMenuForTesting)
+            defer { controller.menuDidClose(controller.statusMenuForTesting) }
+            let stale = Snapshot.providerError("Relay", reason: "Balance unavailable. Showing the last successful balance.",
+                cachedBalance: balance)
+            controller.update(snapshot: stale, refreshDate: date, menuInput: input, settings: settings)
+            XCTAssertTrue(overview === controller.menuItemsForTesting.first?.view)
+            try assertOrder(stale: true)
+        }
+    }
+
+    func testRelayErrorWithoutCachedBalancePlacesResetSectionsBelowError() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        let date = Date()
+        var error = Snapshot.providerError("Relay", reason: "Balance unavailable", cachedBalance: nil)
+        error.bankedReset = CodexBankedReset(cards: [])
+        error.resetForecast = .demo(updatedAt: date)
+        controller.start(snapshot: error, refreshDate: date, menuInput: makeMenuInput(),
+            settings: makeSettings(showNonOfficialResetProbability: true))
+
+        let view = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        let detail = try XCTUnwrap(view.subviews.compactMap { $0 as? NSTextField }
+            .first { $0.stringValue == "Balance unavailable" })
+        let sections = view.subviews.compactMap { $0 as? OpenCodexMetricSectionView }
+        let probability = try XCTUnwrap(sections.first { $0.sectionID == .resetProbability })
+        let cards = try XCTUnwrap(sections.first { $0.sectionID == .bankedReset })
+        XCTAssertNotNil(probability.titleView)
+        XCTAssertGreaterThan(detail.frame.minY, probability.frame.maxY)
+        XCTAssertGreaterThan(probability.frame.minY, cards.frame.maxY)
+        XCTAssertEqual(cards.frame.minY, OpenCodexCardLayout.quotaBottomInset)
+    }
+
     func testThirdPartyBalanceReopenStartsFromLastSeenAmountAndProgress() throws {
         let controller = makeController()
         defer { controller.teardown() }
@@ -1294,6 +1431,32 @@ final class OverviewNumericPresentationControllerTests: XCTestCase {
             controller.menuBarPrimaryTextForTesting,
             Snapshot.balance("Provider", 1.50, "CNY", nil, date, progressPercentage: 30).menuBarPrimary
         )
+    }
+
+    func testProgressOnlyUpdateKeepsBalanceDigitsStableAndUpdatesTimestamp() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.overviewNumericReduceMotionForTesting = false
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let input = makeMenuInput()
+        let settings = makeSettings(timeZone: TimeZone(secondsFromGMT: 0)!)
+        controller.start(snapshot: .balance("Relay", 1.02, "USD", nil, date, progressPercentage: 40),
+            refreshDate: date, menuInput: input, settings: settings)
+        let menu = controller.statusMenuForTesting
+        let host = try XCTUnwrap(menu.items.first?.view)
+        let time = try XCTUnwrap(host.subviews.first { $0.identifier?.rawValue == "overview.refreshTime" } as? NSTextField)
+        let initialTime = time.stringValue
+        controller.menuWillOpen(menu)
+        defer { controller.menuDidClose(menu) }
+        let next = date.addingTimeInterval(10)
+        controller.update(snapshot: .balance("Relay", 1.02, "USD", nil, next, progressPercentage: 20),
+            refreshDate: next, menuInput: input, settings: settings)
+        XCTAssertTrue(menu.items.first?.view === host)
+        XCTAssertNotEqual(time.stringValue, initialTime)
+        let amount = try XCTUnwrap(amountViews(in: host).first)
+        XCTAssertEqual(amount.textField.stringValue, "$1.02")
+        XCTAssertFalse(amount.hasPendingAnimationForTesting)
+        XCTAssertFalse(amount.isDigitRollingForTesting)
     }
 
     func testThirdPartyBalanceUnchangedValueDoesNotAnimate() throws {
@@ -1616,13 +1779,15 @@ final class OverviewNumericPresentationControllerTests: XCTestCase {
         )
     }
 
-    private func makeSettings(timeZone: TimeZone = .autoupdatingCurrent) -> StatusItemController.MenuBarSettings {
+    private func makeSettings(timeZone: TimeZone = .autoupdatingCurrent,
+                              showNonOfficialResetProbability: Bool = false) -> StatusItemController.MenuBarSettings {
         StatusItemController.MenuBarSettings(
             showIcon: true,
             showAmount: true,
             showReset: true,
             horizontalPadding: 6,
             keepMenuOpenAfterRefresh: true,
+            showNonOfficialResetProbability: showNonOfficialResetProbability,
             displayTimeZone: timeZone
         )
     }

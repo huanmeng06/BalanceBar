@@ -795,6 +795,13 @@ final class DomainModelsTests: XCTestCase {
             .ordinary(.percent(12))
         )
         XCTAssertTrue(zeroCountPresented.resetForecast.showsOrdinaryForecastMetrics)
+        let zeroCountHidden = zeroCountOfficial.officialQuotaMenuPresentation(
+            lunaReserveDisplayMode: .always,
+            hideExhaustedQuota: false,
+            showsEmptyBankedReset: false
+        )
+        XCTAssertNil(zeroCountHidden.bankedReset)
+        XCTAssertEqual(zeroCountHidden.resetForecast.probability24h, .percent(12))
 
         let strongSignalForecast = CodexResetForecast(
             probability24h: .percent(20),

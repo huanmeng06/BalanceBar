@@ -83,6 +83,29 @@ final class OpenCodexCardLayoutTests: XCTestCase {
         XCTAssertEqual(quota.cardRow, frames.quotaRows.first)
     }
 
+    func testBalanceFramesCanAppendResetSectionsWithoutDroppingBalanceBody() throws {
+        let base = OpenCodexCardLayout.frames(for: .balance, includesQuotaProgress: true)
+        let withCards = OpenCodexCardLayout.frames(
+            for: .balance,
+            includesBalanceSubtitle: true,
+            includesQuotaProgress: true,
+            includesBankedReset: true,
+            bankedResetCardCount: 2,
+            bankedResetDisplayMode: .detailed
+        )
+
+        let lift = withCards.cardSize.height - base.cardSize.height
+        XCTAssertEqual(withCards.amount, base.amount.offsetBy(dx: 0, dy: lift))
+        XCTAssertEqual(withCards.progress, base.progress?.offsetBy(dx: 0, dy: lift))
+        XCTAssertTrue(withCards.cardSize.height > base.cardSize.height)
+        XCTAssertEqual(
+            withCards.sectionLayouts.map(\.id),
+            [.legacyQuota, .resetProbability, .bankedReset]
+        )
+        XCTAssertNotNil(withCards.bankedResetSummaryRow)
+        XCTAssertEqual(withCards.bankedResetDetailRows.count, 2)
+    }
+
     func testCountdownProgressAddsIndependentFullWidthBottomBar() throws {
         let windows = [
             OfficialQuotaWindow(kind: .fiveHour, remaining: 80, label: "5h", daysText: "5 hours", reset: "2h", durationSeconds: 18_000),
@@ -255,6 +278,30 @@ final class OpenCodexCardLayoutTests: XCTestCase {
                 XCTAssertGreaterThanOrEqual(row.amount.width, metrics.amountWidth)
                 XCTAssertEqual(row.amount.midY, row.window.midY)
             }
+        }
+    }
+
+    func testClaudeTwoWindowResetTicketStaysCompactInChineseAndEnglish() throws {
+        let previous = AppLanguage.selected
+        defer { AppLanguage.selected = previous }
+        for (language, expected) in [(AppLanguage.simplifiedChinese, "5 小时 + 7 日"), (.english, "5-hour + 7-day")] {
+            AppLanguage.selected = language
+            let window = try XCTUnwrap(OfficialQuotaResponseParser.resetCardWindowText(["five_hour", "seven_day"]))
+            XCTAssertEqual(window, expected)
+            let pointSize = OpenCodexCardLayout.quotaDetailPointSize
+            func width(_ text: String, font: NSFont) -> CGFloat {
+                ceil((text as NSString).size(withAttributes: [.font: font]).width) + 4
+            }
+            let remaining = tr(.keyCodexBankedResetRemainingDaysHours, arguments: ["19", "1"])
+            let metrics = OpenCodexTicketTextMetrics(titleWidth: 0,
+                windowWidth: width(window, font: .systemFont(ofSize: OpenCodexCardLayout.quotaResetPointSize)),
+                resetWidth: 0,
+                amountWidth: width(remaining, font: .monospacedDigitSystemFont(ofSize: pointSize, weight: .medium)))
+            let frames = OpenCodexCardLayout.frames(for: .quota, includesBankedReset: true,
+                bankedResetCardCount: 1, bankedResetTicketMetrics: [metrics])
+            let row = try XCTUnwrap(frames.bankedResetDetailRows.first)
+            XCTAssertEqual(row.window.midY, row.amount.midY, language.rawValue)
+            XCTAssertEqual(row.chrome.height, 72, language.rawValue)
         }
     }
 
@@ -875,6 +922,33 @@ final class OpenCodexCardLayoutTests: XCTestCase {
         XCTAssertEqual(frames.bankedResetDetailRows.count, 10)
         XCTAssertLessThanOrEqual(frames.bankedResetTicketViewport?.height ?? 0, OpenCodexCardLayout.bankedResetTicketViewportMaxHeight)
         XCTAssertEqual(frames.bankedResetSummaryRow?.amount.height, OpenCodexCardLayout.bankedResetTextBandAmountHeight)
+    }
+
+    func testBalanceResetSectionsStayBelowTheBalanceBodyAndKeepTicketFramesLocal() throws {
+        let base = OpenCodexCardLayout.frames(for: .balance, includesQuotaProgress: true)
+        let withReset = OpenCodexCardLayout.frames(
+            for: .balance,
+            includesQuotaProgress: true,
+            includesBankedReset: true,
+            bankedResetCardCount: 4,
+            bankedResetDisplayMode: .detailed,
+            includesBankedResetNearestExpiry: true,
+            includesResetProbability: false
+        )
+        let reset = try XCTUnwrap(withReset.sectionLayouts.first(where: { $0.id == .bankedReset }))
+        let summary = try XCTUnwrap(reset.row)
+        XCTAssertEqual(reset.frame.minY, OpenCodexCardLayout.quotaBottomInset)
+        let progress = try XCTUnwrap(withReset.progress)
+        XCTAssertEqual(progress.minY - reset.frame.maxY, OpenCodexCardLayout.metrics.sectionSpacing)
+        XCTAssertGreaterThanOrEqual(summary.quotaDetail.minY, 0)
+        XCTAssertLessThanOrEqual(summary.quotaDetail.maxY, reset.frame.height)
+        XCTAssertEqual(withReset.bankedResetSummaryRow, reset.cardRow,
+                       "the exported summary row must share the shifted card coordinates")
+        XCTAssertEqual(withReset.bankedResetDetailRows.count, 4)
+        XCTAssertNotNil(withReset.bankedResetTicketViewport)
+        XCTAssertGreaterThan(withReset.cardSize.height, base.cardSize.height)
+        XCTAssertNotNil(withReset.amount)
+        XCTAssertNotNil(withReset.progress)
     }
     func testQuickSwitchMenuEntriesContainOnlyCCSwitchProviderChoices() {
         let choices = [
