@@ -5133,7 +5133,7 @@ extension StatusItemControllerTests {
             return false
         })
         XCTAssertEqual(balanceAmount.currentValue, 12.5, accuracy: 0.001)
-        XCTAssertTrue(card.subviews.contains { $0.identifier?.rawValue == "overview.providerTitle" })
+        XCTAssertTrue(descendants(card).contains { $0.identifier?.rawValue == "overview.providerTitle" })
         XCTAssertNotNil(layout.progress, "the balance layout retains its progress slot")
         XCTAssertTrue(descendants(card).contains { $0 is QuotaProgressView },
             "the original balance progress bar remains visible")
@@ -5145,7 +5145,7 @@ extension StatusItemControllerTests {
         XCTAssertEqual(resetSection.frame, sectionLayout.frame)
         XCTAssertNotNil(descendants(card).compactMap { $0 as? BankedResetTicketScrollView }.first,
             "long reset-card lists keep their bounded, scrollable viewport on relay cards")
-        XCTAssertTrue(card.subviews.compactMap { $0 as? HoverLinkTextField }
+        XCTAssertTrue(descendants(card).compactMap { $0 as? HoverLinkTextField }
             .contains { $0.identifier?.rawValue == "overview.providerTitle" && $0.onActivate != nil })
     }
 
@@ -5162,7 +5162,7 @@ extension StatusItemControllerTests {
                 horizontalPadding: 6, keepMenuOpenAfterRefresh: true, showBankedReset: true, showNonOfficialBankedReset: true)
             let input = makeMenuInput(activeClient: client)
             func snapshot(_ email: String?) -> Snapshot {
-                .balance("Relay", 1.15, "USD", nil, now, bankedReset: CodexBankedReset(cards: [], ownerEmail: email))
+                .balance("Relay", 1.15, "USD", nil, now, progressPercentage: 75, bankedReset: CodexBankedReset(cards: [], ownerEmail: email))
             }
             controller.start(snapshot: snapshot("owner@example.com"), refreshDate: now, menuInput: input, settings: settings)
             let menu = controller.statusMenuForTesting
@@ -5177,6 +5177,11 @@ extension StatusItemControllerTests {
             host.forwardHover(atHostPoint: host.convert(NSPoint(x: ink.midX, y: ink.midY), from: title))
             XCTAssertTrue(title.isHoverHintScheduled)
             let balanceSection = try XCTUnwrap(host.sectionFocus.sections[.legacyQuota])
+            let identifiers = Set(balanceSection.subviews.compactMap { $0.identifier?.rawValue })
+            XCTAssertTrue(["overview.providerTitle", "overview.refreshTime", "overview.quotaDetail", "balance.subtitle"]
+                .allSatisfy { identifiers.contains($0) })
+            XCTAssertTrue(balanceSection.subviews.contains { $0 is OverviewNumericTextView })
+            XCTAssertTrue(balanceSection.subviews.contains { $0 is QuotaProgressView })
             balanceSection.focusReduceMotionForTesting = true
             balanceSection.focusReduceTransparencyForTesting = false
             host.sectionFocus.setHintFocus(.bankedReset, from: .bankedReset)
@@ -5229,9 +5234,9 @@ extension StatusItemControllerTests {
             controller.start(snapshot: snapshot, refreshDate: now, menuInput: makeMenuInput(activeClient: client), settings: settings)
             let menu = controller.statusMenuForTesting
             let host = try XCTUnwrap(menu.items.first?.view as? MenuHoverLinkHostView)
-            let detail = try XCTUnwrap(host.subviews.first { $0.identifier?.rawValue == "overview.quotaDetail" } as? AccountMarqueeView)
             let balanceSection = try XCTUnwrap(host.subviews.compactMap { $0 as? OpenCodexOverviewSectionView }
                 .first { $0.sectionID == .legacyQuota })
+            let detail = try XCTUnwrap(balanceSection.subviews.first { $0.identifier?.rawValue == "overview.quotaDetail" } as? AccountMarqueeView)
             let balance = try XCTUnwrap(balanceSection.subviews.compactMap { $0 as? OverviewNumericTextView }.first)
             let progress = try XCTUnwrap(host.overviewLayout?.progress)
             XCTAssertTrue(try XCTUnwrap(host.overviewLayout).balanceSubtitleIsBelowAmount)
@@ -5284,7 +5289,9 @@ extension StatusItemControllerTests {
         let layout = try XCTUnwrap(card.overviewLayout)
         XCTAssertNotNil(layout.progress)
         XCTAssertTrue(card.subviews.contains { $0 is OpenCodexBankedResetSectionView })
-        XCTAssertTrue(card.subviews.compactMap { $0 as? HoverLinkTextField }
+        let balanceSection = try XCTUnwrap(card.subviews.compactMap { $0 as? OpenCodexOverviewSectionView }
+            .first { $0.sectionID == .legacyQuota })
+        XCTAssertTrue(balanceSection.subviews.compactMap { $0 as? HoverLinkTextField }
             .contains { $0.identifier?.rawValue == "overview.providerTitle" && $0.onActivate != nil })
 
         let hidden = makeController()

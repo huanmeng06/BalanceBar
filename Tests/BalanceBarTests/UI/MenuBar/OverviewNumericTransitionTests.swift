@@ -1276,14 +1276,16 @@ final class OverviewNumericPresentationControllerTests: XCTestCase {
             let overview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
 
             func assertOrder(stale: Bool) throws {
-                let title = try XCTUnwrap(overview.subviews.first { $0.identifier?.rawValue == "overview.providerTitle" })
-                let refresh = try XCTUnwrap(overview.subviews.first { $0.identifier?.rawValue == "overview.refreshTime" })
+                let content = try XCTUnwrap(overview.subviews.compactMap { $0 as? OpenCodexOverviewSectionView }
+                    .first { $0.sectionID == .legacyQuota })
+                let title = try XCTUnwrap(content.subviews.first { $0.identifier?.rawValue == "overview.providerTitle" })
+                let refresh = try XCTUnwrap(content.subviews.first { $0.identifier?.rawValue == "overview.refreshTime" })
                 let amount = try XCTUnwrap(amountViews(in: overview).first {
                     if case .thirdPartyBalance = $0.sample?.identity { return true }
                     return false
                 })
                 let amountFrame = overview.convert(amount.bounds, from: amount)
-                let progress = try XCTUnwrap(overview.subviews.compactMap { $0 as? QuotaProgressView }.first)
+                let progress = try XCTUnwrap(content.subviews.compactMap { $0 as? QuotaProgressView }.first)
                 let sections = overview.subviews.compactMap { $0 as? OpenCodexOverviewSectionView }
                 let cards = try XCTUnwrap(sections.first { $0.sectionID == .bankedReset })
                 let probability = sections.first { $0.sectionID == .resetProbability }
@@ -1294,7 +1296,7 @@ final class OverviewNumericPresentationControllerTests: XCTestCase {
                 XCTAssertGreaterThan(progress.frame.minY, (probability ?? cards).frame.maxY)
                 XCTAssertEqual(probability != nil, showsProbability)
                 if let probability { XCTAssertGreaterThan(probability.frame.minY, cards.frame.maxY) }
-                let reason = overview.subviews.first { $0.identifier?.rawValue == "balance.staleReason" }
+                let reason = content.subviews.first { $0.identifier?.rawValue == "balance.staleReason" }
                 XCTAssertEqual(reason != nil, stale)
                 if let reason { XCTAssertGreaterThan(reason.frame.minY, progress.frame.maxY) }
             }
