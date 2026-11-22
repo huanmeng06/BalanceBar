@@ -477,6 +477,8 @@
 "luna.reserve.summary_value" = "%1$@ · %2$@ · %3$@ · %4$@";
 "banked_reset.window.five_hour_short" = "5時間";
 "banked_reset.window.seven_day_short" = "7日";
+"banked_reset.owner.chatgpt" = "ChatGPT アカウント：%1$@";
+"banked_reset.owner.claude" = "Claude アカウント：%1$@";
 "codex.banked_reset.title" = "リセットカード";
 "codex.banked_reset.full_reset_title" = "完全リセット";
 "codex.banked_reset.full_reset_window" = "5時間 + 7日";

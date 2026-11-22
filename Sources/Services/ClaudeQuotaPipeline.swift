@@ -196,6 +196,7 @@ final class ClaudeQuotaPipeline {
     private var resetCardDemand = false
     private var bankedReset: CodexBankedReset?
     private var bankedResetPayload: ClaudeBankedResetPayload?
+    private var bankedResetPayloadAccountKey: String?
     private var bankedResetFetchInFlight = false
     private var lastBankedResetSuccessAt: Date?
     // Queue-owned deadlines keyed by the hashed account ID, independent of the successful cards cache.
@@ -1140,8 +1141,9 @@ final class ClaudeQuotaPipeline {
                                 let fetchedAt = self.now()
                                 self.lastBankedResetSuccessAt = fetchedAt
                                 self.bankedResetPayload = payload
+                                self.bankedResetPayloadAccountKey = accountKey
                                 self.bankedReset = payload.flatMap { OfficialQuotaResponseParser.claudeBankedReset(from: $0, now: fetchedAt) }
-                                self.saveBankedResetCache(payload, fetchedAt: fetchedAt)
+                                self.saveBankedResetCache(payload, fetchedAt: fetchedAt, accountKey: accountKey)
                                 self.publish()
                             case .failure:
                                 break
@@ -1202,11 +1204,11 @@ final class ClaudeQuotaPipeline {
         }
         lastBankedResetSuccessAt = max(lastBankedResetSuccessAt ?? .distantPast, cache.fetchedAt)
         bankedResetPayload = cache.payload
+        bankedResetPayloadAccountKey = cache.accountKey
         bankedReset = cache.payload.flatMap { OfficialQuotaResponseParser.claudeBankedReset(from: $0, now: now()) }
     }
 
-    private func saveBankedResetCache(_ payload: ClaudeBankedResetPayload?, fetchedAt: Date) {
-        guard let accountKey = ClaudeSourceTimeline.accountKey(forStableID: identity.accountIdentity?.stableID) else { return }
+    private func saveBankedResetCache(_ payload: ClaudeBankedResetPayload?, fetchedAt: Date, accountKey: String) {
         let stored = StoredClaudeResetCache(
             accountKey: accountKey,
             fetchedAt: fetchedAt,
@@ -1478,6 +1480,13 @@ final class ClaudeQuotaPipeline {
                 // (a Mod snapshot read at launch may have been written minutes earlier).
                 updatedAt: newestStandard?.effectiveTime ?? updatedAt,
                 lastSource: Self.statusSource(of: standard)))
+        let account = identity.accountIdentity
+        var ownedReset = bankedResetPayload.flatMap { OfficialQuotaResponseParser.claudeBankedReset(from: $0, now: date) }
+        if ClaudeSourceTimeline.accountKey(forStableID: account?.stableID) == bankedResetPayloadAccountKey {
+            ownedReset?.ownerEmail = Self.predictionAccountKey(for: account)
+        } else {
+            ownedReset = nil
+        }
         var next = ClaudeQuotaState(
             display: model,
             windows: DevelopmentClaudeIdleDemo.windows() ?? Self.cardWindows(from: presented, now: date),
@@ -1490,7 +1499,7 @@ final class ClaudeQuotaPipeline {
             failure: failure,
             status: status,
             newestReadingSource: Self.statusSource(of: standard),
-            bankedReset: bankedResetPayload.flatMap { OfficialQuotaResponseParser.claudeBankedReset(from: $0, now: date) })
+            bankedReset: ownedReset)
         next.officialDisabled = officialDisabled
         let changed = lock.withLock { () -> Bool in
             guard state != next else { return false }

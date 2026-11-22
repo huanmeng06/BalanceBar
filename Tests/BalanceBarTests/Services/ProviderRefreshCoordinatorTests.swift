@@ -435,7 +435,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
             repository: repository,
             officialQuotaClient: OfficialQuotaClient(
                 session: session,
-                credentialReader: FixtureCredentialReader(codexToken: "fixture-codex-token")
+                credentialReader: FixtureCredentialReader(codexToken: "fixture-codex-token", codexEmail: "owner@example.com")
             ),
             balanceAPIClient: BalanceAPIClient(session: session),
             actions: ProviderRefreshActions(
@@ -462,6 +462,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         XCTAssertEqual(balance.kind, .balance)
         XCTAssertEqual(try XCTUnwrap(balance.amount), 12.34, accuracy: 0.000001)
         XCTAssertEqual(balance.bankedReset?.availableCount, 1)
+        XCTAssertEqual(balance.bankedReset?.ownerEmail, "owner@example.com")
         XCTAssertEqual(balance.bankedReset?.cards.first?.id, "relay-card")
         XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 2)
     }
@@ -3217,9 +3218,10 @@ private final class PublicationRecorder {
 private struct FixtureCredentialReader: OfficialQuotaCredentialReading {
     let codexToken: String?
     var claudeToken: String? = nil
+    var codexEmail: String? = nil
 
     func codexAccessToken() -> String? { codexToken }
-    func codexAccountProfile() -> CodexAccountProfile? { nil }
+    func codexAccountProfile() -> CodexAccountProfile? { codexEmail.map { CodexAccountProfile(email: $0, planType: nil) } }
     func claudeAccessToken() -> String? { claudeToken }
 }
 

@@ -165,9 +165,11 @@ struct CodexBankedResetCard: Equatable {
 struct CodexBankedReset: Equatable {
     let availableCount: Int
     let cards: [CodexBankedResetCard]
+    var ownerEmail: String? = nil
 
-    init(cards: [CodexBankedResetCard]) {
+    init(cards: [CodexBankedResetCard], ownerEmail: String? = nil) {
         self.cards = cards
+        self.ownerEmail = ownerEmail
         self.availableCount = cards.reduce(0) { $0 + $1.resetCount }
     }
 }

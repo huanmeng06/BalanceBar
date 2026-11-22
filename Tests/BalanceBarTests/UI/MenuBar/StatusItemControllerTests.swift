@@ -5150,6 +5150,41 @@ extension StatusItemControllerTests {
     }
 
     @MainActor
+    func testResetCardTitleHoverNamesTheOwnerAndUpdatesWithoutReplacingTheMenu() throws {
+        let previous = AppLanguage.selected
+        defer { AppLanguage.selected = previous }
+        AppLanguage.selected = .simplifiedChinese
+        let now = Date()
+        for (client, name) in [(AssistantClient.codex, "ChatGPT"), (.claude, "Claude")] {
+            let controller = makeController()
+            defer { controller.teardown() }
+            let settings = StatusItemController.MenuBarSettings(showIcon: true, showAmount: true, showReset: true,
+                horizontalPadding: 6, keepMenuOpenAfterRefresh: true, showBankedReset: true, showNonOfficialBankedReset: true)
+            let input = makeMenuInput(activeClient: client)
+            func snapshot(_ email: String?) -> Snapshot {
+                .balance("Relay", 1.15, "USD", nil, now, bankedReset: CodexBankedReset(cards: [], ownerEmail: email))
+            }
+            controller.start(snapshot: snapshot("owner@example.com"), refreshDate: now, menuInput: input, settings: settings)
+            let menu = controller.statusMenuForTesting
+            let host = try XCTUnwrap(menu.items.first?.view as? MenuHoverLinkHostView)
+            let section = try XCTUnwrap(host.subviews.compactMap { $0 as? OpenCodexBankedResetSectionView }.first)
+            let title = try XCTUnwrap((section.titleView as? AccountMarqueeView)?.accountLabel as? HoverLinkTextField)
+            XCTAssertEqual(title.hoverHint, "\(name) 账户：owner@example.com")
+            XCTAssertNil(title.onActivate)
+            controller.menuWillOpen(menu)
+            defer { controller.menuDidClose(menu) }
+            let ink = title.visibleTextHitRect
+            host.forwardHover(atHostPoint: host.convert(NSPoint(x: ink.midX, y: ink.midY), from: title))
+            XCTAssertTrue(title.isHoverHintScheduled)
+            controller.update(snapshot: snapshot("other@example.com"), refreshDate: now, menuInput: input, settings: settings)
+            XCTAssertEqual(title.hoverHint, "\(name) 账户：other@example.com")
+            controller.update(snapshot: snapshot(nil), refreshDate: now, menuInput: input, settings: settings)
+            XCTAssertEqual(title.hoverHint, "")
+            XCTAssertTrue(menu.items.first?.view === host)
+        }
+    }
+
+    @MainActor
     func testRelayBalanceLabelAndCachedResetTicketStayCorrectAcrossLanguageChange() throws {
         let oldLanguage = AppLanguage.selected
         defer { AppLanguage.selected = oldLanguage }

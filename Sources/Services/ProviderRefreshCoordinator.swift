@@ -1619,7 +1619,8 @@ final class ProviderRefreshCoordinator {
                 self.nonOfficialResetRequests.removeValue(forKey: providerID)
                 self.nonOfficialResetRequestContexts.removeValue(forKey: providerID)
                 switch result {
-                case .success(let cards):
+                case .success(var cards):
+                    cards?.ownerEmail = credentials.accountKey
                     finish(cards, self.now())
                 case .failure:
                     // Keep the five-minute throttle, not stale Codex reset credits.
@@ -2005,6 +2006,8 @@ final class ProviderRefreshCoordinator {
                             accountKey: accountKey,
                             client: client
                         ) : .unavailable
+                        var ownedReset = bankedReset
+                        ownedReset?.ownerEmail = accountKey
                         var snapshot = Snapshot.official(
                             providerName,
                             response.output.remaining,
@@ -2013,7 +2016,7 @@ final class ProviderRefreshCoordinator {
                             response.fetchedAt,
                             windows: response.output.windows,
                             lunaReserve: response.output.lunaReserve,
-                            bankedReset: client == .codex ? bankedReset : nil,
+                            bankedReset: client == .codex ? ownedReset : nil,
                             resetForecast: resolvedForecast,
                             quotaPredictionContexts: predictionContexts,
                             quotaPredictionAccountKey: client == .codex ? accountKey : nil

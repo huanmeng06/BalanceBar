@@ -7253,6 +7253,24 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         return (card.remainingText, card.remainingIsWarning)
     }
 
+    private func updateResetCardOwnerHint(_ link: HoverLinkTextField, bankedReset: CodexBankedReset, client: AssistantClient?) {
+        let hint: String
+        if let email = bankedReset.ownerEmail?.trimmingCharacters(in: .whitespacesAndNewlines), !email.isEmpty {
+            switch client {
+            case .codex: hint = tr(.keyBankedResetChatGPTAccount, arguments: [email])
+            case .claude: hint = tr(.keyBankedResetClaudeAccount, arguments: [email])
+            default: hint = ""
+            }
+        } else {
+            hint = ""
+        }
+        if link.hoverHint != hint {
+            link.hoverHint = ""
+            link.hoverHint = hint
+        }
+        link.setAccessibilityHelp(hint)
+    }
+
     private func installBankedResetSections(
         in host: NSView,
         ticketScrollOwner: MenuHoverLinkHostView? = nil,
@@ -7277,11 +7295,20 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 format: .integerCount, value: Double(bankedReset.availableCount), progressPercentage: nil)
             let plan = overviewNumericPlan(for: sample)
             let amount = makeOverviewNumericAmount(plan: plan, sample: sample, frame: summaryRow.amount)
-            let title = makeMarqueeOverviewLabel(tr(.keyCodexBankedResetTitle),
+            let titleText = tr(.keyCodexBankedResetTitle)
+            let titleLink = HoverLinkTextField(text: titleText)
+            let title = AccountMarqueeView(text: titleText,
                 font: .systemFont(ofSize: OpenCodexCardLayout.quotaDetailPointSize, weight: .medium),
                 textColor: .labelColor,
                 frame: overviewMarqueeFrame(summaryRow.quotaDetail, avoidingAmountFrame: amount.frame,
-                    amountText: plan.layoutReservationText))
+                    amountText: plan.layoutReservationText), label: titleLink)
+            titleLink.identifier = NSUserInterfaceItemIdentifier("codex.bankedReset.ownerHint")
+            titleLink.decoratesOnHover = false
+            titleLink.restingTextColor = .labelColor
+            titleLink.hoverHintDelay = 0.3
+            titleLink.opensHoverHintAbove = true
+            updateResetCardOwnerHint(titleLink, bankedReset: bankedReset, client: context.paceClient)
+            (host as? MenuHoverLinkHostView)?.track(titleLink)
             var nearest: NSView?
             if summaryRow.reset.width > 0, let text = CodexBankedResetFormatting.nearestExpiryText(
                 cards: bankedReset.cards, timeZone: settings.displayTimeZone
@@ -8833,7 +8860,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         if let banked = presentation.bankedReset,
            let section = sections.first(where: { $0.sectionID == .bankedReset }) {
-            (section.titleView as? AccountMarqueeView)?.updateText(tr(.keyCodexBankedResetTitle), preserveScrollPosition: true)
+            if let title = section.titleView as? AccountMarqueeView {
+                title.updateText(tr(.keyCodexBankedResetTitle), preserveScrollPosition: true)
+                if let link = title.accountLabel as? HoverLinkTextField {
+                    updateResetCardOwnerHint(link, bankedReset: banked, client: context.paceClient)
+                }
+            }
             if let document = descendantViews(of: section, as: BankedResetTicketDocumentView.self).first {
                 for (card, row) in zip(banked.cards, next.bankedResetDetailRows) {
                     let expiry = CodexBankedResetFormatting.expiryText(for: card.expiresAt, relativeTo: Date(), timeZone: settings.displayTimeZone)

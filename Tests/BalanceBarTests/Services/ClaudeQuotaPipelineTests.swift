@@ -350,6 +350,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         restarted.start()
         restarted.setResetCardDemand(true)
         let restored = try XCTUnwrap(waitForState(restarted) { $0.bankedReset?.availableCount == 2 })
+        XCTAssertEqual(restored.bankedReset?.ownerEmail, "a@example.com")
         XCTAssertEqual(restored.bankedReset, first.bankedReset,
             "the matching account's raw cache restores before another official usage read")
         XCTAssertEqual(PipelineStubProtocol.requestCount, 2)

@@ -477,6 +477,8 @@
 "luna.reserve.summary_value" = "%1$@ · %2$@ · %3$@ · %4$@";
 "banked_reset.window.five_hour_short" = "5 h";
 "banked_reset.window.seven_day_short" = "7 dias";
+"banked_reset.owner.chatgpt" = "Conta do ChatGPT: %1$@";
+"banked_reset.owner.claude" = "Conta do Claude: %1$@";
 "codex.banked_reset.title" = "Cartões de redefinição";
 "codex.banked_reset.full_reset_title" = "Redefinição completa";
 "codex.banked_reset.full_reset_window" = "5 h + 7 dias";
