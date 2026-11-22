@@ -5176,6 +5176,17 @@ extension StatusItemControllerTests {
             let ink = title.visibleTextHitRect
             host.forwardHover(atHostPoint: host.convert(NSPoint(x: ink.midX, y: ink.midY), from: title))
             XCTAssertTrue(title.isHoverHintScheduled)
+            let balanceSection = try XCTUnwrap(host.sectionFocus.sections[.legacyQuota])
+            balanceSection.focusReduceMotionForTesting = true
+            balanceSection.focusReduceTransparencyForTesting = false
+            host.sectionFocus.setHintFocus(.bankedReset, from: .bankedReset)
+            XCTAssertEqual(balanceSection.focusState, .receded)
+            XCTAssertEqual(balanceSection.alphaValue, 0.5)
+            XCTAssertFalse(balanceSection.contentFilters.isEmpty)
+            XCTAssertEqual(section.focusState, .focused)
+            host.sectionFocus.setHintFocus(nil, from: .bankedReset)
+            XCTAssertEqual(balanceSection.focusState, .normal)
+            XCTAssertTrue(balanceSection.contentFilters.isEmpty)
             XCTAssertEqual(title.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil) as? Int,
                 NSUnderlineStyle.single.rawValue)
             host.forwardHover(atHostPoint: NSPoint(x: -1, y: -1))
@@ -5219,7 +5230,9 @@ extension StatusItemControllerTests {
             let menu = controller.statusMenuForTesting
             let host = try XCTUnwrap(menu.items.first?.view as? MenuHoverLinkHostView)
             let detail = try XCTUnwrap(host.subviews.first { $0.identifier?.rawValue == "overview.quotaDetail" } as? AccountMarqueeView)
-            let balance = try XCTUnwrap(host.subviews.compactMap { $0 as? OverviewNumericTextView }.first)
+            let balanceSection = try XCTUnwrap(host.subviews.compactMap { $0 as? OpenCodexOverviewSectionView }
+                .first { $0.sectionID == .legacyQuota })
+            let balance = try XCTUnwrap(balanceSection.subviews.compactMap { $0 as? OverviewNumericTextView }.first)
             let progress = try XCTUnwrap(host.overviewLayout?.progress)
             XCTAssertTrue(try XCTUnwrap(host.overviewLayout).balanceSubtitleIsBelowAmount)
             XCTAssertEqual(detail.accountLabel.stringValue, "Restguthaben")

@@ -6967,12 +6967,32 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         detail.updateText(context.snapshot.overviewQuotaDetail, preserveScrollPosition: false)
     }
 
+    private func balanceAmountView(in card: NSView) -> OverviewNumericTextView? {
+        let amountSection = card.subviews.compactMap { $0 as? OpenCodexOverviewSectionView }
+            .first { $0.sectionID == .legacyQuota }
+        return (amountSection ?? card).subviews.compactMap { $0 as? OverviewNumericTextView }.first
+    }
+
+    private func installBalanceAmountFocus(in host: MenuHoverLinkHostView, layout: OpenCodexCardFrames) {
+        guard layout.bankedResetSummaryRow != nil || layout.bankedResetProbabilityRow != nil,
+              let amount = host.subviews.compactMap({ $0 as? OverviewNumericTextView }).first else { return }
+        // Give the balance amount a focus target without replacing its numeric view or rolling state.
+        let section = OpenCodexOverviewSectionView(layout: .init(id: .legacyQuota, frame: layout.amount, row: nil))
+        host.addSubview(section)
+        amount.removeFromSuperview()
+        amount.frame = section.bounds
+        section.addSubview(amount)
+    }
+
     private func reconcileBalanceLayout(in host: MenuHoverLinkHostView, next: OpenCodexCardFrames) {
         guard let previous = host.overviewLayout, previous != next else { return }
         let shift = next.title.minY - previous.title.minY
         for child in host.subviews where !(child is OverviewSectionOutlineView) {
             if let section = child as? OpenCodexOverviewSectionView {
-                if let placement = next.sectionLayouts.first(where: { $0.id == section.sectionID }) {
+                if section.sectionID == .legacyQuota {
+                    section.frame = next.amount
+                    balanceAmountView(in: host)?.frame = section.bounds
+                } else if let placement = next.sectionLayouts.first(where: { $0.id == section.sectionID }) {
                     section.updatePlacement(placement)
                 }
             } else if child is QuotaProgressView {
@@ -6987,6 +7007,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         host.frame.size = next.cardSize
         host.overviewLayout = next
+        installBalanceAmountFocus(in: host, layout: next)
     }
 
     private func alignSingleLineBalance(in card: NSView, snapshot: Snapshot) {
@@ -6994,7 +7015,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let singleLine = snapshot.balanceRecharge == nil && layout?.balanceRecharge == nil
         guard snapshot.kind == .balance, singleLine || layout?.balanceSubtitleIsBelowAmount == true,
               let host = card as? MenuHoverLinkHostView, host.overviewLayout?.link == nil,
-              let amount = host.subviews.compactMap({ $0 as? OverviewNumericTextView }).first,
+              let amount = balanceAmountView(in: host),
               let detail = descendantViews(of: card, as: AccountMarqueeView.self).first(where: {
                   $0.identifier?.rawValue == "overview.quotaDetail"
               }) else { return }
@@ -7031,7 +7052,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private func updateBalanceSubtitle(in card: NSView, context: OverviewCardContext) {
         updateBalanceStaleReason(in: card, context: context)
         if context.snapshot.kind == .balance,
-           let amount = card.subviews.compactMap({ $0 as? OverviewNumericTextView }).first {
+           let amount = balanceAmountView(in: card) {
             amount.setTextColor(context.staleBalanceReason == nil ? .labelColor : .secondaryLabelColor)
         }
         let id = NSUserInterfaceItemIdentifier("balance.subtitle")
@@ -7765,6 +7786,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             }
             headerHost.addSubview(provider)
             [quotaDetail, amount].forEach(attachBody)
+            if isBalance { installBalanceAmountFocus(in: view, layout: layout) }
             installNonOfficialResetSections()
         }
         item.view = view
@@ -8775,6 +8797,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             let oldScroll = descendantViews(of: host, as: BankedResetTicketScrollView.self).first
             let scrollOrigin = oldScroll?.contentView.bounds.origin
             for newSection in proposedSections {
+                if snapshot.kind == .balance, newSection.sectionID == .legacyQuota { continue }
                 let oldLayout = previous.sectionLayouts.first { $0.id == newSection.sectionID }
                 let newLayout = next.sectionLayouts.first { $0.id == newSection.sectionID }
                 let sameLocalGeometry = !providerChanged && !quotaIdentityChanged && oldLayout?.row == newLayout?.row
@@ -8791,6 +8814,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 }
             }
             for (id, old) in oldSections where !next.sectionLayouts.contains(where: { $0.id == id }) {
+                if snapshot.kind == .balance, id == .legacyQuota { continue }
                 old.removeFromSuperview()
             }
             if snapshot.kind == .balance {
