@@ -2307,6 +2307,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let showBankedReset: Bool
         let showNonOfficialBankedReset: Bool
         let showNonOfficialResetProbability: Bool
+        let showEmptyBankedReset: Bool
+        let showResetProbability: Bool
         let displayTimeZone: TimeZone
 
         init(
@@ -2338,6 +2340,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             showBankedReset: Bool = true,
             showNonOfficialBankedReset: Bool = true,
             showNonOfficialResetProbability: Bool = false,
+            showEmptyBankedReset: Bool = true,
+            showResetProbability: Bool = true,
             displayTimeZone: TimeZone = .autoupdatingCurrent
         ) {
             self.showIcon = showIcon
@@ -2366,6 +2370,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             self.showBankedReset = showBankedReset
             self.showNonOfficialBankedReset = showNonOfficialBankedReset
             self.showNonOfficialResetProbability = showNonOfficialResetProbability
+            self.showEmptyBankedReset = showEmptyBankedReset
+            self.showResetProbability = showResetProbability
             self.displayTimeZone = displayTimeZone
             self.fontSize = CGFloat(
                 AppPreferences.normalizedMenuBarFontSize(
@@ -6757,7 +6763,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     if snapshot.kind == .balance {
                         let presentation = snapshot.officialQuotaMenuPresentation(
                             lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
-                            hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota)
+                            hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota,
+            showsEmptyBankedReset: settings.showEmptyBankedReset)
                         let layout = makeOverviewCardLayout(for: snapshot, presentation: presentation, account: context.account,
                                                             aggregation: true, context: context)
                         reconcileBalanceLayout(in: host, next: layout)
@@ -6771,7 +6778,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                                       hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota,
                                       showBankedReset: settings.showBankedReset,
                                       showNonOfficialBankedReset: settings.showNonOfficialBankedReset,
-                                      showNonOfficialResetProbability: settings.showNonOfficialResetProbability).first {
+                                      showNonOfficialResetProbability: settings.showNonOfficialResetProbability,
+                                      showEmptyBankedReset: settings.showEmptyBankedReset,
+                                      showResetProbability: settings.showResetProbability).first {
                             content.addSubview(makeOverviewNumericProgress(plan: overviewNumericPlan(for: sample), frame: frame))
                         }
                         let labels = content.subviews.compactMap { $0 as? NSTextField }
@@ -7239,13 +7248,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             bankedResetDisplayMode: menuInput.bankedResetDisplayMode,
             includesBankedResetNearestExpiry: nearestExpiryText != nil,
             includesResetProbability: (
-                snapshot.kind == .official && context?.paceClient == .codex && settings.showBankedReset
-                || snapshot.kind == .balance && context?.paceClient == .codex && settings.showBankedReset
+                snapshot.kind == .official && context?.paceClient == .codex && settings.showResetProbability
+                || snapshot.kind == .balance && context?.paceClient == .codex && settings.showResetProbability
                     && settings.showNonOfficialResetProbability
             ) && (bankedReset != nil || presentation.resetForecast.hasAnyValue),
             includesBankedResetCountdownProgress: (
-                snapshot.kind == .official && context?.paceClient == .codex && settings.showBankedReset
-                || snapshot.kind == .balance && context?.paceClient == .codex && settings.showBankedReset
+                snapshot.kind == .official && context?.paceClient == .codex && settings.showResetProbability
+                || snapshot.kind == .balance && context?.paceClient == .codex && settings.showResetProbability
                     && settings.showNonOfficialResetProbability
             ) && presentation.resetForecast.showsOfficialWindowDeadlineProgress,
             bankedResetTicketMetrics: bankedResetTicketMetrics
@@ -7450,7 +7459,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let isBalance = snapshot.kind == .balance
         let quotaPresentation = snapshot.officialQuotaMenuPresentation(
             lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
-            hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota
+            hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota,
+            showsEmptyBankedReset: settings.showEmptyBankedReset
         )
         let officialQuotaWindows = quotaPresentation.windows
         let lunaReserve = quotaPresentation.lunaReserve
@@ -7488,7 +7498,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             && bankedReset != nil
         let hasNonOfficialResetForecast = snapshot.kind == .balance
             && context.paceClient == .codex
-            && settings.showBankedReset
+            && settings.showResetProbability
             && settings.showNonOfficialResetProbability
             && quotaPresentation.resetForecast.hasAnyValue
         let hasNonOfficialResetSection = (context.paceClient == .codex || context.paceClient == .claude)
@@ -7915,19 +7925,25 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func installStatusResetSections(in view: NSView, snapshot: Snapshot, context: OverviewCardContext) {
-        guard snapshot.kind == .error,
-              snapshot.bankedReset != nil,
-              context.paceClient == .codex || context.paceClient == .claude,
-              settings.showBankedReset,
-              (context.paceClient == .claude || settings.showNonOfficialBankedReset) else { return }
+        let showsCards = snapshot.bankedReset != nil
+            && (context.paceClient == .codex || context.paceClient == .claude)
+            && settings.showBankedReset
+            && (context.paceClient == .claude || settings.showNonOfficialBankedReset)
+        let showsForecast = context.paceClient == .codex
+            && settings.showResetProbability
+            && settings.showNonOfficialResetProbability
+            && snapshot.resetForecast.hasAnyValue
+        guard snapshot.kind == .error, showsCards || showsForecast else { return }
         let date = context.date ?? Date()
         let balance = Snapshot.balance(snapshot.provider, 0, "USD", nil, date,
-            bankedReset: snapshot.bankedReset, resetForecast: snapshot.resetForecast)
+            bankedReset: showsCards ? snapshot.bankedReset : nil,
+            resetForecast: showsForecast ? snapshot.resetForecast : .unavailable)
         let resetContext = OverviewCardContext(snapshot: balance, identity: context.identity,
             account: context.account, date: date, paceClient: context.paceClient)
         let presentation = balance.officialQuotaMenuPresentation(
             lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
-            hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota)
+            hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota,
+            showsEmptyBankedReset: settings.showEmptyBankedReset)
         let initial = makeOverviewCardLayout(for: balance, presentation: presentation,
             account: context.account, aggregation: true, context: resetContext)
         let resetSections = initial.sectionLayouts.filter {
@@ -8070,6 +8086,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             showBankedReset: settings.showBankedReset,
             showNonOfficialBankedReset: settings.showNonOfficialBankedReset,
             showNonOfficialResetProbability: settings.showNonOfficialResetProbability,
+            showEmptyBankedReset: settings.showEmptyBankedReset,
+            showResetProbability: settings.showResetProbability,
             showResetProbabilityForClient: context.paceClient == .codex,
             quotaValueMode: settings.quotaValueMode,
             now: bankedResetCountdownNow()
@@ -8103,7 +8121,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             let snapshot = context.snapshot
             let windows = snapshot.officialQuotaMenuPresentation(
                 lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
-                hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota
+                hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota,
+            showsEmptyBankedReset: settings.showEmptyBankedReset
             ).windows
             // Aggregated cards carry their own account; the direct card must
             // also match the account its snapshot was fetched for.
@@ -8151,12 +8170,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             let snapshot = card.context.snapshot
             let presentation = snapshot.officialQuotaMenuPresentation(
                 lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
-                hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota)
+                hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota,
+            showsEmptyBankedReset: settings.showEmptyBankedReset)
             let showCards = settings.showBankedReset
                 && (snapshot.kind == .official
                     || snapshot.kind == .balance && card.context.paceClient == .codex
                         && settings.showNonOfficialBankedReset)
-            let showForecast = settings.showBankedReset
+            let showForecast = settings.showResetProbability
                 && card.context.paceClient == .codex
                 && (snapshot.kind == .official || snapshot.kind == .balance && settings.showNonOfficialResetProbability)
             let hasTicketCountdown = showCards && (presentation.bankedReset?.cards.contains {
@@ -8544,7 +8564,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }) else { return }
         let forecast = snapshot.officialQuotaMenuPresentation(
             lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
-            hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota
+            hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota,
+            showsEmptyBankedReset: settings.showEmptyBankedReset
         ).resetForecast
         guard forecast.showsOrdinaryForecastMetrics else { return }
         subtitle.updateText(bankedResetForecastSubtitleText(forecast), preserveScrollPosition: true)
@@ -8771,7 +8792,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             && snapshot.bankedReset != nil
         let hasNonOfficialResetForecast = snapshot.kind == .balance
             && context.paceClient == .codex
-            && settings.showBankedReset
+            && settings.showResetProbability
             && settings.showNonOfficialResetProbability
             && snapshot.resetForecast.hasAnyValue
         let hasNonOfficialReset = (context.paceClient == .codex || context.paceClient == .claude)
@@ -8781,7 +8802,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 && (previous.bankedResetSummaryRow != nil || previous.bankedResetProbabilityRow != nil)) else { return }
         let presentation = snapshot.officialQuotaMenuPresentation(
             lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
-            hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota)
+            hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota,
+            showsEmptyBankedReset: settings.showEmptyBankedReset)
         let next = makeOverviewCardLayout(for: snapshot, presentation: presentation, account: context.account,
             aggregation: !menuInput.aggregatedProviders.isEmpty, context: context)
         let nextForecastKey = forecastContentKey(presentation.resetForecast)
@@ -8966,7 +8988,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let snapshot = context.snapshot
         if snapshot.kind == .balance, let host = overview as? MenuHoverLinkHostView {
             let presentation = snapshot.officialQuotaMenuPresentation(lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
-                hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota)
+                hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota,
+            showsEmptyBankedReset: settings.showEmptyBankedReset)
             reconcileBalanceLayout(in: host, next: makeOverviewCardLayout(for: snapshot, presentation: presentation,
                 account: context.account, aggregation: !menuInput.aggregatedProviders.isEmpty,
                 context: context))
@@ -9037,7 +9060,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         updateBankedResetForecastSubtitleIfNeeded(in: overview, snapshot: snapshot)
         let forecast = snapshot.officialQuotaMenuPresentation(
             lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
-            hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota).resetForecast
+            hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota,
+            showsEmptyBankedReset: settings.showEmptyBankedReset).resetForecast
         let tooltipContent = Self.codexResetForecastTooltip(for: forecast, timeZone: settings.displayTimeZone)
         for link in descendantViews(of: overview, as: HoverLinkTextField.self)
             where link.forecastTooltipContent != nil {
@@ -9053,7 +9077,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private func updateBankedResetTicketCountdowns(in overview: NSView, snapshot: Snapshot) {
         let presentation = snapshot.officialQuotaMenuPresentation(
             lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
-            hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota)
+            hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota,
+            showsEmptyBankedReset: settings.showEmptyBankedReset)
         guard let bankedReset = presentation.bankedReset else { return }
         let fields = descendantViews(of: overview, as: NSTextField.self).filter {
             $0.identifier?.rawValue == "codex.bankedReset.remaining"
@@ -9071,7 +9096,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }) else { return }
         let forecast = snapshot.officialQuotaMenuPresentation(
             lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
-            hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota
+            hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota,
+            showsEmptyBankedReset: settings.showEmptyBankedReset
         ).resetForecast
         guard let remaining = forecast.officialCountdownRemainingFraction(
             now: bankedResetCountdownNow()

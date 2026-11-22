@@ -1354,7 +1354,8 @@ struct Snapshot: Equatable {
     /// the source windows used by the Dashboard provider page.
     func officialQuotaMenuPresentation(
         lunaReserveDisplayMode: LunaReserveDisplayMode,
-        hideExhaustedQuota: Bool
+        hideExhaustedQuota: Bool,
+        showsEmptyBankedReset: Bool = true
     ) -> OfficialQuotaMenuPresentation {
         guard kind == .official || kind == .balance else {
             return OfficialQuotaMenuPresentation(
@@ -1424,7 +1425,8 @@ struct Snapshot: Equatable {
         let presentedBankedReset: CodexBankedReset? = {
             guard let bankedReset,
                   bankedReset.availableCount >= bankedReset.cards.count,
-                  bankedReset.cards.allSatisfy({ $0.resetCount > 0 }) else {
+                  bankedReset.cards.allSatisfy({ $0.resetCount > 0 }),
+                  showsEmptyBankedReset || bankedReset.availableCount > 0 else {
                 return nil
             }
             return bankedReset

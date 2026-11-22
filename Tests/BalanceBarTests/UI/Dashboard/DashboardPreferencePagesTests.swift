@@ -3856,20 +3856,20 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
         let bankedSection = try XCTUnwrap(SettingsSectionView.enclosing(bankedToggle))
         let bankedCard = bankedSection.cardView
-        XCTAssertEqual(bankedSection.contentViews.filter { !$0.isHidden }.count, 2)
+        XCTAssertEqual(bankedSection.contentViews.filter { !$0.isHidden }.count, 4)
         assertCardFollowsVisibleContent(bankedCard)
         let bankedExpanded = bankedCard.frame.height
 
         preferences.showBankedReset = false
         controller.refresh(preferences: preferences)
         assertCardFollowsVisibleContent(bankedCard)
-        XCTAssertEqual(bankedSection.contentViews.filter { !$0.isHidden }.count, 2)
+        XCTAssertEqual(bankedSection.contentViews.filter { !$0.isHidden }.count, 4)
         XCTAssertEqual(bankedCard.frame.height, bankedExpanded, accuracy: 0.5)
 
         preferences.showBankedReset = true
         controller.refresh(preferences: preferences)
         assertCardFollowsVisibleContent(bankedCard)
-        XCTAssertEqual(bankedSection.contentViews.filter { !$0.isHidden }.count, 2)
+        XCTAssertEqual(bankedSection.contentViews.filter { !$0.isHidden }.count, 4)
 
         let statusToggle = try XCTUnwrap(
             descendants(of: page)
@@ -4054,11 +4054,11 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertLessThan(progressBarIndex, bankedResetIndex)
         XCTAssertLessThan(bankedResetIndex, menuBehaviorIndex)
         XCTAssertTrue(labels.contains("显示重置卡"))
-        XCTAssertTrue(labels.contains("关闭后，下拉菜单不再显示重置卡"))
-        XCTAssertTrue(labels.contains("非官方渠道下也显示重置卡"))
-        XCTAssertTrue(labels.contains("非官方渠道下显示重置概率"))
+        XCTAssertTrue(labels.contains("在下拉菜单里显示 Codex 和 Claude 的重置卡"))
+        XCTAssertTrue(labels.contains("用第三方 API 时也显示"))
+        XCTAssertTrue(labels.contains("显示重置概率"))
         XCTAssertTrue(labels.contains("显示样式"))
-        XCTAssertTrue(labels.contains("简洁只显示张数和重置概率，详细列出每张卡"))
+        XCTAssertTrue(labels.contains("简洁只显示张数，详细列出每张卡"))
 
         let popup = try XCTUnwrap(
             descendants(of: page)
@@ -4173,6 +4173,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertTrue(bankedResetRows.allSatisfy { !$0.isHidden })
         XCTAssertTrue(separators.allSatisfy { !$0.isHidden })
         XCTAssertFalse(popup.isEnabled)
+        let emptySwitch = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSSwitch }
+                .first { $0.identifier?.rawValue == AppPreferences.showEmptyBankedResetKey }
+        )
+        XCTAssertFalse(emptySwitch.isEnabled)
         XCTAssertEqual(
             cardHeight(of: rowsStack),
             visibleArrangedHeight(in: rowsStack),
@@ -4202,10 +4208,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
             .english: "Show Reset Cards"
         ]
         let expectedSubtitles: [AppLanguage: String] = [
-            .simplifiedChinese: "关闭后，下拉菜单不再显示重置卡",
-            .traditionalChineseTaiwan: "關閉後，下拉選單不再顯示重置卡",
-            .traditionalChineseHongKong: "關閉後，下拉選單不再顯示重置卡",
-            .english: "When off, the dropdown menu no longer shows reset cards"
+            .simplifiedChinese: "在下拉菜单里显示 Codex 和 Claude 的重置卡",
+            .traditionalChineseTaiwan: "在下拉選單裡顯示 Codex 和 Claude 的重置卡",
+            .traditionalChineseHongKong: "在下拉選單裡顯示 Codex 和 Claude 的重置卡",
+            .english: "Show Codex and Claude reset cards in the dropdown menu"
         ]
 
         // Copy checks cover every language; mounting the page (the costly part) uses the
@@ -4256,7 +4262,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 settingsSection(withTitle: tr(.keyCodexBankedResetTitle, language: language), in: page)
             )
             let rows = settingsRows(in: section)
-            XCTAssertEqual(rows.count, 2, "reset-card row count for \(language)")
+            XCTAssertEqual(rows.count, 4, "reset-card row count for \(language)")
             let firstRowText = nonEmptyTextFields(in: rows[0])
             XCTAssertTrue(
                 firstRowText.contains(tr(.keyDashboardMenuPageShowBankedReset, language: language)),
@@ -4271,6 +4277,26 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 secondRowText.contains(tr(.keyDashboardMenuPageBankedResetDisplayMode, language: language)),
                 "second reset-card row keeps display-style copy for \(language)"
             )
+            let dependentTitles: [LocalizationKey] = [
+                .keyDashboardMenuPageShowEmptyBankedReset,
+                .keyDashboardMenuPageShowNonOfficialBankedReset
+            ]
+            for (offset, key) in dependentTitles.enumerated() {
+                XCTAssertTrue(
+                    nonEmptyTextFields(in: rows[offset + 2]).contains(tr(key, language: language)),
+                    "reset-card row \(offset + 2) title for \(language)"
+                )
+            }
+            let probabilitySection = try XCTUnwrap(
+                settingsSection(withTitle: tr(.keyCodexBankedResetProbabilityPrefix, language: language), in: page),
+                "reset-probability section for \(language)"
+            )
+            let probabilityRows = settingsRows(in: probabilitySection)
+            XCTAssertEqual(probabilityRows.count, 2, "reset-probability row count for \(language)")
+            XCTAssertTrue(nonEmptyTextFields(in: probabilityRows[0])
+                .contains(tr(.keyDashboardMenuPageShowResetProbability, language: language)))
+            XCTAssertTrue(nonEmptyTextFields(in: probabilityRows[1])
+                .contains(tr(.keyDashboardMenuPageShowNonOfficialResetProbability, language: language)))
         }
     }
 
@@ -4278,10 +4304,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
         let expected: [AppLanguage: (String, String)] = [
-            .simplifiedChinese: ("非官方渠道下也显示重置卡", "非官方渠道下显示重置概率"),
-            .traditionalChineseTaiwan: ("非官方管道下也顯示重置卡", "非官方管道下顯示重置機率"),
-            .traditionalChineseHongKong: ("非官方渠道下也顯示重置卡", "非官方渠道下顯示重置機率"),
-            .english: ("Show reset cards on non-official Codex providers", "Show reset probability on non-official providers")
+            .simplifiedChinese: ("用第三方 API 时也显示", "用第三方 API 时也显示"),
+            .traditionalChineseTaiwan: ("使用第三方 API 時也顯示", "使用第三方 API 時也顯示"),
+            .traditionalChineseHongKong: ("使用第三方 API 時也顯示", "使用第三方 API 時也顯示"),
+            .english: ("Also show with third-party APIs", "Also show with third-party APIs")
         ]
 
         for language in AppLanguage.allCases where language != .system {
@@ -4293,6 +4319,14 @@ final class DashboardPreferencePagesTests: XCTestCase {
             XCTAssertFalse(cardDescription.hasPrefix("⟦"), "reset-card description exists for \(language)")
             XCTAssertFalse(probabilityTitle.hasPrefix("⟦"), "probability title exists for \(language)")
             XCTAssertFalse(probabilityDescription.hasPrefix("⟦"), "probability description exists for \(language)")
+            XCTAssertFalse(tr(.keyDashboardMenuPageShowResetProbability, language: language).hasPrefix("⟦"),
+                "reset-probability title exists for \(language)")
+            XCTAssertFalse(tr(.keyDashboardMenuPageShowResetProbabilityDescription, language: language).hasPrefix("⟦"),
+                "reset-probability description exists for \(language)")
+            XCTAssertFalse(tr(.keyDashboardMenuPageShowEmptyBankedReset, language: language).hasPrefix("⟦"),
+                "empty reset-card title exists for \(language)")
+            XCTAssertFalse(tr(.keyDashboardMenuPageShowEmptyBankedResetDescription, language: language).hasPrefix("⟦"),
+                "empty reset-card description exists for \(language)")
             if let copy = expected[language] {
                 XCTAssertEqual(cardTitle, copy.0)
                 XCTAssertEqual(probabilityTitle, copy.1)

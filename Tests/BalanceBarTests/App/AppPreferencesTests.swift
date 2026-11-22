@@ -62,6 +62,16 @@ final class AppPreferencesTests: XCTestCase {
         preferences.showNonOfficialResetProbability = true
         XCTAssertTrue(AppPreferences(defaults: defaults).showNonOfficialResetProbability)
         XCTAssertTrue(PreferencesMigrationPlan.allKeys.contains(AppPreferences.showNonOfficialResetProbabilityKey))
+        XCTAssertTrue(preferences.showEmptyBankedReset)
+        XCTAssertNil(defaults.object(forKey: AppPreferences.showEmptyBankedResetKey))
+        preferences.showEmptyBankedReset = false
+        XCTAssertFalse(AppPreferences(defaults: defaults).showEmptyBankedReset)
+        XCTAssertTrue(PreferencesMigrationPlan.allKeys.contains(AppPreferences.showEmptyBankedResetKey))
+        XCTAssertTrue(preferences.showResetProbability)
+        XCTAssertNil(defaults.object(forKey: AppPreferences.showResetProbabilityKey))
+        preferences.showResetProbability = false
+        XCTAssertFalse(AppPreferences(defaults: defaults).showResetProbability)
+        XCTAssertTrue(PreferencesMigrationPlan.allKeys.contains(AppPreferences.showResetProbabilityKey))
         XCTAssertTrue(preferences.animateCodexActivity)
         XCTAssertTrue(preferences.showQuickSwitchMenu)
         XCTAssertTrue(preferences.showOpenCCSwitchMenu)

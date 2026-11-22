@@ -454,11 +454,22 @@ final class OverviewNumericTransitionTests: XCTestCase {
             ]),
             resetForecast: .demo(updatedAt: date))
 
-        let parentOff = OverviewNumericPresentation.samples(snapshot: snapshot,
+        let parentsOff = OverviewNumericPresentation.samples(snapshot: snapshot,
+            lunaReserveDisplayMode: .disabled, hideExhaustedQuota: false,
+            showBankedReset: false, showNonOfficialBankedReset: true,
+            showNonOfficialResetProbability: true, showResetProbability: false)
+        XCTAssertEqual(parentsOff.map(\.identity), [.thirdPartyBalance(provider: "Relay", unit: "USD")])
+
+        // Reset probability has its own section; turning reset cards off leaves it alone.
+        let cardsOffProbabilityOn = OverviewNumericPresentation.samples(snapshot: snapshot,
             lunaReserveDisplayMode: .disabled, hideExhaustedQuota: false,
             showBankedReset: false, showNonOfficialBankedReset: true,
             showNonOfficialResetProbability: true)
-        XCTAssertEqual(parentOff.map(\.identity), [.thirdPartyBalance(provider: "Relay", unit: "USD")])
+        XCTAssertEqual(cardsOffProbabilityOn.map(\.identity), [
+            .thirdPartyBalance(provider: "Relay", unit: "USD"),
+            .bankedResetProbability24h(provider: "Relay"),
+            .bankedResetProbability48h(provider: "Relay")
+        ])
 
         let cardsOnly = OverviewNumericPresentation.samples(snapshot: snapshot,
             lunaReserveDisplayMode: .disabled, hideExhaustedQuota: false,

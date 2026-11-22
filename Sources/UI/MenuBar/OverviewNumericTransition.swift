@@ -199,6 +199,8 @@ enum OverviewNumericPresentation {
         showBankedReset: Bool,
         showNonOfficialBankedReset: Bool = true,
         showNonOfficialResetProbability: Bool = false,
+        showEmptyBankedReset: Bool = true,
+        showResetProbability: Bool = true,
         showResetProbabilityForClient: Bool = true,
         quotaValueMode: MenuBarQuotaValueMode = .defaultValue,
         now: Date = Date()
@@ -218,8 +220,9 @@ enum OverviewNumericPresentation {
                 )
             ]
             let showResetCards = showBankedReset && showNonOfficialBankedReset
-            let showForecast = showResetProbabilityForClient && showBankedReset && showNonOfficialResetProbability
-            if showResetCards, let bankedReset = snapshot.bankedReset {
+            let showForecast = showResetProbabilityForClient && showResetProbability && showNonOfficialResetProbability
+            if showResetCards, let bankedReset = snapshot.bankedReset,
+               showEmptyBankedReset || bankedReset.availableCount > 0 {
                 samples.append(OverviewNumericSample(
                     identity: .bankedResetCount(provider: provider),
                     format: .integerCount,
@@ -252,7 +255,8 @@ enum OverviewNumericPresentation {
         case .official:
             let presentation = snapshot.officialQuotaMenuPresentation(
                 lunaReserveDisplayMode: lunaReserveDisplayMode,
-                hideExhaustedQuota: hideExhaustedQuota
+                hideExhaustedQuota: hideExhaustedQuota,
+                showsEmptyBankedReset: showEmptyBankedReset
             )
             var samples: [OverviewNumericSample] = presentation.windows.map { window in
                 quotaSample(
@@ -278,7 +282,7 @@ enum OverviewNumericPresentation {
                     )
                 )
             }
-            if showResetProbabilityForClient && showBankedReset
+            if showResetProbabilityForClient && showResetProbability
                 && (presentation.bankedReset != nil || presentation.resetForecast.hasAnyValue) {
                 if presentation.resetForecast.isOfficialResetConfirmed {
                     return samples

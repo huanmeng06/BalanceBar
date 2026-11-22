@@ -1527,7 +1527,7 @@ final class ProviderRefreshCoordinator {
         let showCards = refreshPreferences?.showBankedReset == true
             && refreshPreferences?.showNonOfficialBankedReset == true
         let fetchCards = showCards
-        let fetchForecast = refreshPreferences?.showBankedReset == true
+        let fetchForecast = refreshPreferences?.showResetProbability == true
             && refreshPreferences?.showNonOfficialResetProbability == true
         guard showCards || fetchForecast || nonOfficialResetCards[providerID] != nil else { return }
         let credentials = officialQuotaClient.codexRequestCredentials()
@@ -1638,7 +1638,7 @@ final class ProviderRefreshCoordinator {
         guard snapshot.kind == .balance || snapshot.kind == .error,
               let preferences = refreshPreferences else { return snapshot }
         let showCards = preferences.showBankedReset && preferences.showNonOfficialBankedReset
-        let showForecast = preferences.showBankedReset && preferences.showNonOfficialResetProbability
+        let showForecast = preferences.showResetProbability && preferences.showNonOfficialResetProbability
         guard showCards || showForecast,
               let state = nonOfficialResetCards[providerID], state.revision == configurationRevision else {
             return snapshot
