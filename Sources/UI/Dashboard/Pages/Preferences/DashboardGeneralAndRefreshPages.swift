@@ -418,6 +418,11 @@ final class DashboardGeneralPage {
     private(set) var claudeTokenRefreshRow: SettingsRowView?
     private(set) var claudeTokenRefreshSwitch: ClaudeTokenRefreshSwitch?
     private var tokenRefreshPresentation: ClaudeTokenRefreshPresentation?
+    private var tokenRefreshConfirmationGeneration = 0
+    private var tokenRefreshConfirmationPending = false
+    var scheduleTokenRefreshConfirmation: (TimeInterval, @escaping () -> Void) -> Void = { delay, action in
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: action)
+    }
     var presentTokenRefreshAlert: (NSAlert, NSWindow, @escaping (NSApplication.ModalResponse) -> Void) -> Void = {
         $0.beginSheetModal(for: $1, completionHandler: $2)
     }
@@ -629,25 +634,16 @@ final class DashboardGeneralPage {
         tokenSwitch.target = input.relay
         tokenSwitch.action = #selector(DashboardPreferencePageRelay.claudeTokenAutoRefresh(_:))
         let tokenRefreshRow = SettingsRowView(title: tr(.keyClaudeTokenRefreshTitle), detail: "",
-                                              detailLabel: InlineRangeLinkTextField(), accessoryView: tokenSwitch)
+                                              detailLabel: InlineRangeLinkTextField(),
+                                              titleAccessory: DashboardRefreshPage.agentIconStrip(["Claude"]),
+                                              accessoryView: tokenSwitch)
         let preferences = input.preferences
         let onTokenToggle = input.onClaudeTokenAutoRefresh
-        tokenSwitch.onToggle = { [weak self, weak tokenSwitch, weak relay = input.relay] enabled in
-            guard let self, let tokenSwitch, self.tokenRefreshPresentation?.dependencyEnabled == true else { return }
-            guard enabled else { return onTokenToggle(false) }
-            tokenSwitch.state = .off
-            guard let window = tokenSwitch.window, window.attachedSheet == nil else { return }
-            let ips = EgressIPAddress.sanitizedList(preferences.claudeEgressGuardAllowedIPs)
-            let alert = Self.claudeTokenRefreshAlert(ips: ips)
-            self.presentTokenRefreshAlert(alert, window) { [weak self, weak relay] response in
-                guard response == .alertFirstButtonReturn else { return }
-                if ips.isEmpty {
-                    relay?.openEgressGuardSettings(nil)
-                } else if self?.tokenRefreshPresentation?.dependencyEnabled == true,
-                          EgressIPAddress.sanitizedList(preferences.claudeEgressGuardAllowedIPs) == ips {
-                    onTokenToggle(true)
-                }
-            }
+        tokenRefreshConfirmationGeneration += 1
+        tokenRefreshConfirmationPending = false
+        tokenSwitch.onToggle = { [weak self, weak tokenSwitch] enabled in
+            guard let self, let tokenSwitch else { return }
+            self.handleTokenRefreshToggle(enabled, sender: tokenSwitch, preferences: preferences, save: onTokenToggle)
         }
         claudeTokenRefreshRow = tokenRefreshRow
         claudeTokenRefreshSwitch = tokenSwitch
@@ -869,18 +865,63 @@ final class DashboardGeneralPage {
         let text: String
     }
 
+    private func handleTokenRefreshToggle(_ enabled: Bool, sender: NSSwitch, preferences: AppPreferences,
+                                          save: @escaping (Bool) -> Void) {
+        guard let presentation = tokenRefreshPresentation, presentation.dependencyEnabled else { return }
+        tokenRefreshConfirmationGeneration += 1
+        tokenRefreshConfirmationPending = enabled && !presentation.isOn
+        guard enabled else {
+            if presentation.isOn { save(false) }
+            return
+        }
+        guard !presentation.isOn else { return }
+        let generation = tokenRefreshConfirmationGeneration
+        scheduleTokenRefreshConfirmation(DashboardSettingsComponents.switchAnimationDuration) { [weak self, weak sender] in
+            guard let self, let sender, self.tokenRefreshConfirmationGeneration == generation else { return }
+            guard self.tokenRefreshPresentation?.dependencyEnabled == true, sender.state == .on,
+                  let window = sender.window, window.attachedSheet == nil else {
+                self.tokenRefreshConfirmationPending = false
+                if sender.state != .off { sender.animator().state = .off }
+                return
+            }
+            let ips = EgressIPAddress.sanitizedList(preferences.claudeEgressGuardAllowedIPs)
+            if ips.isEmpty {
+                sender.animator().state = .off
+            }
+            self.presentTokenRefreshAlert(Self.claudeTokenRefreshAlert(ips: ips), window) { [weak self, weak sender] response in
+                guard let self, let sender, self.tokenRefreshConfirmationGeneration == generation else { return }
+                self.tokenRefreshConfirmationPending = false
+                let accepted = response == .alertFirstButtonReturn
+                if !ips.isEmpty, accepted, self.tokenRefreshPresentation?.dependencyEnabled == true,
+                   sender.state == .on, EgressIPAddress.sanitizedList(preferences.claudeEgressGuardAllowedIPs) == ips {
+                    save(true)
+                    // A dependency can change just before the app handles the save. Do not
+                    // leave the provisional ON state visible if the app declined it.
+                    if self.tokenRefreshPresentation?.isOn == true { return }
+                }
+                if sender.state != .off { sender.animator().state = .off }
+                if ips.isEmpty, accepted { self.relay?.openEgressGuardSettings(nil) }
+            }
+        }
+    }
+
     static func claudeTokenRefreshPresentation(enabled: Bool, guardEnabled: Bool, allowedIPs: [String],
                                                 mod: ClaudeTokenRefreshModAvailability, state: ClaudeTokenRefreshState,
                                                 now: Date = Date(), timeZone: TimeZone = .autoupdatingCurrent) -> ClaudeTokenRefreshPresentation {
-        func dimmed(_ key: LocalizationKey, link: String? = nil) -> ClaudeTokenRefreshPresentation {
-            .init(isOn: enabled, dependencyEnabled: false, detail: tr(key), linkPhrase: link, statusLine: nil)
+        guard guardEnabled else {
+            return .init(isOn: enabled, dependencyEnabled: false, detail: tr(.keyClaudeTokenRefreshOffDetail),
+                         linkPhrase: tr(.keyClaudeQuotaCalibrationOffLink), statusLine: nil)
         }
-        guard guardEnabled else { return dimmed(.keyClaudeTokenRefreshOffDetail, link: tr(.keyClaudeQuotaCalibrationOffLink)) }
-        switch mod {
-        case .detecting: return dimmed(.keyClaudeTokenRefreshModDetecting)
-        case .unavailable: return dimmed(.keyClaudeTokenRefreshModRequired)
-        case .unknown: return dimmed(.keyClaudeTokenRefreshModUnknown)
-        case .available: break
+        let detail = tr(.keyClaudeTokenRefreshDetail)
+        let modStatus: LocalizationKey? = switch mod {
+        case .detecting: .keyClaudeTokenRefreshModDetecting
+        case .unavailable: .keyClaudeTokenRefreshModRequired
+        case .unknown: .keyClaudeTokenRefreshModUnknown
+        case .available: nil
+        }
+        if let modStatus {
+            return .init(isOn: enabled, dependencyEnabled: false, detail: detail, linkPhrase: nil,
+                         statusLine: .init(tone: .neutral, text: tr(modStatus)))
         }
         func dateText(_ key: LocalizationKey, _ date: Date) -> String {
             tr(key, arguments: [OfficialQuotaResetFormatter.bankedResetString(
@@ -889,16 +930,17 @@ final class DashboardGeneralPage {
         func line(_ tone: ClaudeLoginLine.Tone, _ parts: [String]) -> ClaudeLoginLine {
             .init(tone: tone, text: parts.joined(separator: " · "))
         }
-        let status: ClaudeLoginLine?
+        let status: ClaudeLoginLine
+        let on = tr(.keyClaudeTokenRefreshStatusOn)
         if !enabled {
-            status = nil
+            status = line(.neutral, [tr(.keyClaudeTokenRefreshStatusOff)])
         } else if EgressIPAddress.sanitizedList(allowedIPs).isEmpty {
             status = line(.warning, [tr(.keyClaudeTokenRefreshStatusInactive), tr(.keyClaudeTokenRefreshReasonNoTargets)])
         } else {
             switch state {
-            case .idle: status = line(.neutral, [tr(.keyClaudeTokenRefreshStatusWaiting)])
-            case .running: status = line(.neutral, [tr(.keyClaudeTokenRefreshStatusRunning)])
-            case let .succeeded(at): status = line(.good, [dateText(.keyClaudeTokenRefreshStatusSucceeded, at)])
+            case .idle: status = line(.good, [on])
+            case .running: status = line(.neutral, [on, tr(.keyClaudeTokenRefreshStatusRunning)])
+            case let .succeeded(at): status = line(.good, [on, dateText(.keyClaudeTokenRefreshStatusSucceeded, at)])
             case .paused: status = line(.warning, [tr(.keyClaudeTokenRefreshStatusPaused), tr(.keyClaudeTokenRefreshReasonLoginInvalid)])
             case let .failed(failure, nextTryAt):
                 var parts = [tr(.keyClaudeTokenRefreshStatusFailed), tokenRefreshFailureText(failure)]
@@ -906,7 +948,7 @@ final class DashboardGeneralPage {
                 status = line(.warning, parts)
             }
         }
-        return .init(isOn: enabled, dependencyEnabled: true, detail: tr(.keyClaudeTokenRefreshDetail), linkPhrase: nil, statusLine: status)
+        return .init(isOn: enabled, dependencyEnabled: true, detail: detail, linkPhrase: nil, statusLine: status)
     }
 
     private static func tokenRefreshFailureText(_ failure: ClaudeTokenRefreshFailure) -> String {
@@ -927,8 +969,24 @@ final class DashboardGeneralPage {
     static func claudeTokenRefreshAlert(ips: [String]) -> NSAlert {
         let alert = NSAlert()
         alert.messageText = tr(ips.isEmpty ? .keyClaudeTokenRefreshEmptyTitle : .keyClaudeTokenRefreshConfirmTitle)
-        alert.informativeText = ips.isEmpty ? tr(.keyClaudeTokenRefreshEmptyMessage)
-            : tr(.keyClaudeTokenRefreshConfirmMessage, arguments: [ips.joined(separator: "\n")])
+        alert.informativeText = tr(ips.isEmpty ? .keyClaudeTokenRefreshEmptyMessage : .keyClaudeTokenRefreshConfirmMessage)
+        if !ips.isEmpty {
+            let command = "claude plugin marketplace update balancebar-mods"
+            let width = max(300, CopyableCommandBlockView.singleLineWidth(for: command))
+            let block = CopyableCommandBlockView(command: command, width: width)
+            let allowlist = NSTextField(wrappingLabelWithString: tr(.keyClaudeTokenRefreshConfirmAllowlist,
+                                                                    arguments: [ips.joined(separator: "\n")]))
+            allowlist.font = .systemFont(ofSize: NSFont.systemFontSize)
+            allowlist.textColor = .secondaryLabelColor
+            allowlist.preferredMaxLayoutWidth = width
+            let accessory = NSStackView(views: [block, allowlist])
+            accessory.orientation = .vertical
+            accessory.alignment = .leading
+            accessory.spacing = 8
+            for view in [block, allowlist] { view.widthAnchor.constraint(equalToConstant: width).isActive = true }
+            accessory.setFrameSize(NSSize(width: width, height: ceil(accessory.fittingSize.height)))
+            alert.accessoryView = accessory
+        }
         alert.addButton(withTitle: tr(ips.isEmpty ? .keyClaudeTokenRefreshEmptyOpenSettings : .keyClaudeTokenRefreshConfirmTurnOn))
             .keyEquivalent = "\r"
         let cancel = alert.addButton(withTitle: tr(.keyClaudeTokenRefreshConfirmCancel))
@@ -942,7 +1000,15 @@ final class DashboardGeneralPage {
         guard let row = claudeTokenRefreshRow, presentation != tokenRefreshPresentation else { return false }
         tokenRefreshPresentation = presentation
         row.setDependencyEnabled(presentation.dependencyEnabled)
-        claudeTokenRefreshSwitch?.state = presentation.isOn ? .on : .off
+        if tokenRefreshConfirmationPending, !presentation.dependencyEnabled || presentation.isOn {
+            tokenRefreshConfirmationGeneration += 1
+            tokenRefreshConfirmationPending = false
+        }
+        // An unrelated status redraw must not reverse the native slide while confirmation is pending.
+        if !tokenRefreshConfirmationPending, let toggle = claudeTokenRefreshSwitch {
+            let savedState: NSControl.StateValue = presentation.isOn ? .on : .off
+            if toggle.state != savedState { toggle.animator().state = savedState }
+        }
         let label = row.detailLabel as? InlineRangeLinkTextField
         if let link = presentation.linkPhrase {
             let detail = presentation.detail + "\n" + link

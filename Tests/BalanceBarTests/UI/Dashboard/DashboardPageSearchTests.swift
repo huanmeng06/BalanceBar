@@ -14,6 +14,13 @@ final class DashboardPageSearchTests: XCTestCase {
         }
     }
 
+    func testTokenRefreshSearchIncludesOnAndOffInsteadOfWaiting() {
+        let keys = DashboardSettingsSearchCatalog.keys(for: .general)
+        XCTAssertTrue(keys.contains(.keyClaudeTokenRefreshStatusOff))
+        XCTAssertTrue(keys.contains(.keyClaudeTokenRefreshStatusOn))
+        XCTAssertFalse(keys.contains { $0.rawValue == "claude.token_refresh.status.waiting" })
+    }
+
     func testFixedSectionPagesReuseLifecycleAndInstrumentation() throws {
         var makeCounts: [DashboardSection: Int] = [:]
         var suspended: [DashboardSection] = []

@@ -1628,6 +1628,16 @@ final class ModManagementUITests: XCTestCase {
         XCTAssertEqual(c.state, .intro(dismissChecked: false))
     }
 
+    func testSharedCopyableCommandBlockCopiesExactlyItsTextAndShowsCheckmark() {
+        var copied: String?
+        let command = "claude plugin marketplace update balancebar-mods"
+        let block = CopyableCommandBlockView(command: command, width: 400, copy: { copied = $0 })
+        XCTAssertFalse(block.copyButton.isShowingFeedback)
+        block.copyButton.performClick(nil)
+        XCTAssertEqual(copied, command)
+        XCTAssertTrue(block.copyButton.isShowingFeedback)
+    }
+
     func testCopyButtonsShowFeedbackAndCopyExactCommands() throws {
         var copied = ""
         let view = ModOnboardingPanelView(controller: controller(copied: { copied = $0 }),
@@ -1866,7 +1876,7 @@ final class RealtimeBoostAdvancedCardTests: XCTestCase {
         XCTAssertEqual(rows(.disabled).descriptionButton.title, "Learn more")
     }
 
-    func testGeneralRefreshSectionHostsTheModRowRightAfterNativeSyncAndAdvancedHasNoModRow() throws {
+    func testGeneralRefreshSectionHostsCalibrationThenTokenRefreshThenModAndAdvancedHasNoModRow() throws {
         let old = AppLanguage.selected
         AppLanguage.selected = .english
         defer { AppLanguage.selected = old }
@@ -1885,7 +1895,9 @@ final class RealtimeBoostAdvancedCardTests: XCTestCase {
         let rows = refreshSection.contentViews.compactMap { $0 as? SettingsRowView }
         let calibration = try XCTUnwrap(rows.firstIndex { $0.titleLabel.stringValue == tr(.keyClaudeQuotaCalibration) })
         let mod = try XCTUnwrap(rows.firstIndex { $0.titleLabel.stringValue == "BalanceBar Mod realtime boost" })
-        XCTAssertEqual(mod, calibration + 1, "the Mod row sits directly below the official calibration row")
+        let tokenRefresh = try XCTUnwrap(rows.firstIndex { $0.titleLabel.stringValue == tr(.keyClaudeTokenRefreshTitle) })
+        XCTAssertEqual(tokenRefresh, calibration + 1)
+        XCTAssertEqual(mod, tokenRefresh + 1, "the Mod row sits directly below token auto-refresh")
 
         let card = rows[mod]
         XCTAssertEqual(card.identifier, DashboardPageSearch.rowIdentifier)
