@@ -104,9 +104,10 @@ struct OverviewNumericTransitionPlan: Equatable {
     let fromProgress: Double?
     let toProgress: Double?
     let animates: Bool
+    let animatesProgress: Bool
 
     var startValue: Double { animates ? fromValue : toValue }
-    var startProgress: Double? { animates ? fromProgress : toProgress }
+    var startProgress: Double? { animatesProgress ? fromProgress : toProgress }
     var startText: String { format.displayText(for: startValue) }
     var endText: String { format.displayText(for: toValue) }
 
@@ -156,9 +157,7 @@ enum OverviewNumericTransition {
         let progressChanged = abs(
             (previous?.progressPercentage ?? .nan) - (current.progressPercentage ?? .nan)
         ) > 0.05
-        let animates = !reduceMotion
-            && previousMatches
-            && (displayChanged || progressChanged)
+        let canAnimate = !reduceMotion && previousMatches
 
         return OverviewNumericTransitionPlan(
             identity: current.identity,
@@ -167,7 +166,8 @@ enum OverviewNumericTransition {
             toValue: current.value,
             fromProgress: previous?.progressPercentage ?? current.progressPercentage,
             toProgress: current.progressPercentage,
-            animates: animates
+            animates: canAnimate && displayChanged,
+            animatesProgress: canAnimate && progressChanged
         )
     }
 

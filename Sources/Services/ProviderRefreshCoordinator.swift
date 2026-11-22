@@ -1557,29 +1557,29 @@ final class ProviderRefreshCoordinator {
                     cards: fetchCards ? cards : cached?.cards,
                     forecast: fetchForecast ? forecast : (cached?.forecast ?? .unavailable)
                 )
-                var next: Snapshot
-                let snapshotKey = ProviderSnapshotKey(clientID: AssistantClient.codex.rawValue,
-                    providerID: providerID, revision: configurationRevision)
-                if let latest = self.latestProviderSnapshots[snapshotKey]
-                    ?? self.providerBalanceSnapshots.snapshot(clientID: AssistantClient.codex.rawValue,
-                        providerID: providerID, configurationRevision: configurationRevision) ?? base {
-                    next = latest
-                } else {
-                    guard let current = self.actions.currentProvider(.codex), current.id == providerID,
-                          current.configurationRevision == configurationRevision, current.query == nil,
-                          let message = current.queryFailure?.userVisibleReason(language: AppLanguage.resolved) else { return }
-                    next = Snapshot.providerError(providerName, reason: message, cachedBalance: nil)
+                self.enqueueStandardPublication(
+                    providerID: providerID, client: .codex, configurationRevision: configurationRevision,
+                    notifies: false, isCurrentRequest: isCurrent
+                ) {
+                    // Resolve the base at publication time, after any already queued balance
+                    // success or failure. Reset metadata must not restore an older amount/date.
+                    let key = ProviderSnapshotKey(clientID: AssistantClient.codex.rawValue,
+                        providerID: providerID, revision: configurationRevision)
+                    var next: Snapshot
+                    if let latest = self.latestProviderSnapshots[key]
+                        ?? self.providerBalanceSnapshots.snapshot(clientID: AssistantClient.codex.rawValue,
+                            providerID: providerID, configurationRevision: configurationRevision) ?? base {
+                        next = latest
+                    } else {
+                        guard let current = self.actions.currentProvider(.codex), current.id == providerID,
+                              current.configurationRevision == configurationRevision, current.query == nil,
+                              let message = current.queryFailure?.userVisibleReason(language: AppLanguage.resolved) else { return nil }
+                        next = Snapshot.providerError(providerName, reason: message, cachedBalance: nil)
+                    }
+                    next.bankedReset = showCards ? (fetchCards ? cards : cached?.cards) : nil
+                    next.resetForecast = fetchForecast ? forecast : .unavailable
+                    return next
                 }
-                next.bankedReset = showCards ? (fetchCards ? cards : cached?.cards) : nil
-                next.resetForecast = fetchForecast ? forecast : .unavailable
-                self.renderForCurrentProvider(
-                    next,
-                    providerID: providerID,
-                    client: .codex,
-                    configurationRevision: configurationRevision,
-                    notifies: false,
-                    isCurrentRequest: isCurrent
-                )
             }
         }
 
@@ -2360,10 +2360,23 @@ final class ProviderRefreshCoordinator {
         notifies: Bool = true,
         isCurrentRequest: @escaping () -> Bool = { true }
     ) {
+        enqueueStandardPublication(providerID: providerID, client: client, configurationRevision: configurationRevision,
+            notifies: notifies, isCurrentRequest: isCurrentRequest) { next }
+    }
+
+    private func enqueueStandardPublication(
+        providerID: String,
+        client: AssistantClient,
+        configurationRevision: String,
+        notifies: Bool,
+        isCurrentRequest: @escaping () -> Bool,
+        snapshot: @escaping () -> Snapshot?
+    ) {
         queue.async { [weak self] in
             guard let self, self.lifetime.isCurrent(), isCurrentRequest(),
                   self.standardRequestIsCurrent(client: client, providerID: providerID, revision: configurationRevision),
-                  client != .codex || self.aggregationEntries.isEmpty else { return }
+                  client != .codex || self.aggregationEntries.isEmpty,
+                  let next = snapshot() else { return }
             let epoch = self.standardPublicationEpoch
             if client == .codex, next.kind == .official, next.staleReason == nil {
                 self.lastCodexOfficialSuccess[providerID] = (configurationRevision, next.quotaPredictionAccountKey, next)

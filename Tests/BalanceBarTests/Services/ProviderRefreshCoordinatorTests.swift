@@ -526,6 +526,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         var resetRequests = 0
         var balanceRequests = 0
         var onRender: ((Snapshot) -> Void)?
+        var latest: Snapshot?
         DelayedBalanceURLProtocol.setHandler { request in
             guard request.url?.path.contains("rate-limit-reset-credits") == true else {
                 let count = lock.withLock { balanceRequests += 1; return balanceRequests }
@@ -544,7 +545,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         let actions = ProviderRefreshActions(
             currentProvider: { [repository] client in repository?.loadCurrent(appType: client.appType) },
             isActiveClient: { _ in true },
-            render: { snapshot in onRender?(snapshot) },
+            render: { snapshot in latest = snapshot; onRender?(snapshot) },
             storeClientSnapshot: { _, _, _ in }, quickSwitchSummaryChanged: { _ in })
         let coordinator = makeCoordinator(repository: repository,
             officialQuotaClient: OfficialQuotaClient(session: session, credentialReader: FixtureCredentialReader(codexToken: "fixture-token")),
@@ -576,6 +577,13 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         let stillHidden = try refresh(rendering: "a new balance inside the reset throttle") { $0.amount == 6.54 }
         XCTAssertEqual(lock.withLock { resetRequests }, 2)
         XCTAssertNil(stillHidden.bankedReset)
+
+        waitForCoordinator(coordinator)
+        let drained = expectation(description: "all balance and reset-cache publications drained")
+        DispatchQueue.main.async { drained.fulfill() }
+        wait(for: [drained], timeout: 2)
+        XCTAssertEqual(latest?.amount, 6.54, "cached reset state must not republish an older balance after a success")
+        XCTAssertEqual(latest?.date, stillHidden.date)
 
         clock.advance(by: 1)
         _ = try refresh(rendering: "reset credits recover at the next allowed attempt") {

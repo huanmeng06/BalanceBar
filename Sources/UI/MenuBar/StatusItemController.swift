@@ -8597,7 +8597,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             quotaValueMode: settings.quotaValueMode
         )
         host.frame = frame.insetBy(dx: 0, dy: -6.5)
-        if plan.animates, let target = plan.toProgress {
+        if plan.animatesProgress, let target = plan.toProgress {
             host.setPercentage(target, animated: true, duration: OverviewNumericTransition.duration(for: plan.format))
         }
         return host
@@ -8623,7 +8623,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         progress.frame = frame
         progress.identifier = OverviewNumericPresentation.progressIdentifier(for: plan.identity)
         if plan.identity.isOfficialQuota { progress.quotaValueMode = settings.quotaValueMode }
-        if plan.animates, let target = plan.toProgress {
+        if plan.animatesProgress, let target = plan.toProgress {
             progress.setPercentage(
                 target,
                 animated: true,
@@ -8936,6 +8936,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             updateOverviewQuotaDetail(in: host, context: context)
             updateBalanceSubtitle(in: host, context: context)
             alignSingleLineBalance(in: host, snapshot: context.snapshot)
+            if let time = host.subviews.compactMap({ $0 as? NSTextField }).first(where: {
+                $0.identifier?.rawValue == "overview.refreshTime"
+            }) {
+                applyRefreshTime(to: time, date: context.date, staleReason: context.staleBalanceReason)
+            }
         }
         let samples = numericSamples(for: context)
         let reduceMotion = shouldReduceOverviewNumericMotion()

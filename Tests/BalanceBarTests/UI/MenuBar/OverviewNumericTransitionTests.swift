@@ -518,6 +518,16 @@ final class OverviewNumericTransitionTests: XCTestCase {
         XCTAssertEqual(unchanged.startProgress, 40)
     }
 
+    func testProgressOnlyUpdateAnimatesBarWithoutRollingSameAmount() {
+        let previous = balanceSample(amount: 1.02, progress: 40)
+        let next = balanceSample(amount: 1.02, progress: 20)
+        let plan = OverviewNumericTransition.plan(previous: previous, current: next, reduceMotion: false)
+        XCTAssertFalse(plan.animates)
+        XCTAssertTrue(plan.animatesProgress)
+        XCTAssertEqual(plan.startProgress, 40)
+        XCTAssertEqual(plan.toProgress, 20)
+    }
+
     func testOpenDelayHoldsLastSeenValueForAShortBeat() {
         XCTAssertGreaterThanOrEqual(OverviewNumericTransition.openDelay, 0.18)
         XCTAssertLessThanOrEqual(OverviewNumericTransition.openDelay, 0.25)
@@ -1404,6 +1414,32 @@ final class OverviewNumericPresentationControllerTests: XCTestCase {
             controller.menuBarPrimaryTextForTesting,
             Snapshot.balance("Provider", 1.50, "CNY", nil, date, progressPercentage: 30).menuBarPrimary
         )
+    }
+
+    func testProgressOnlyUpdateKeepsBalanceDigitsStableAndUpdatesTimestamp() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.overviewNumericReduceMotionForTesting = false
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let input = makeMenuInput()
+        let settings = makeSettings(timeZone: TimeZone(secondsFromGMT: 0)!)
+        controller.start(snapshot: .balance("Relay", 1.02, "USD", nil, date, progressPercentage: 40),
+            refreshDate: date, menuInput: input, settings: settings)
+        let menu = controller.statusMenuForTesting
+        let host = try XCTUnwrap(menu.items.first?.view)
+        let time = try XCTUnwrap(host.subviews.first { $0.identifier?.rawValue == "overview.refreshTime" } as? NSTextField)
+        let initialTime = time.stringValue
+        controller.menuWillOpen(menu)
+        defer { controller.menuDidClose(menu) }
+        let next = date.addingTimeInterval(10)
+        controller.update(snapshot: .balance("Relay", 1.02, "USD", nil, next, progressPercentage: 20),
+            refreshDate: next, menuInput: input, settings: settings)
+        XCTAssertTrue(menu.items.first?.view === host)
+        XCTAssertNotEqual(time.stringValue, initialTime)
+        let amount = try XCTUnwrap(amountViews(in: host).first)
+        XCTAssertEqual(amount.textField.stringValue, "$1.02")
+        XCTAssertFalse(amount.hasPendingAnimationForTesting)
+        XCTAssertFalse(amount.isDigitRollingForTesting)
     }
 
     func testThirdPartyBalanceUnchangedValueDoesNotAnimate() throws {
