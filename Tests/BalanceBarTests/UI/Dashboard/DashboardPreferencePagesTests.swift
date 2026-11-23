@@ -2353,7 +2353,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 guard canSave else { return }
                 saved.append(enabled)
                 page?.refreshClaudeTokenAutoRefresh(display(enabled))
-            }))
+            }, cachedAllowlistCountry: { $0 == "203.0.113.21" ? "US" : nil }))
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
                               styleMask: .titled, backing: .buffered, defer: false)
         window.contentView = root
@@ -2382,10 +2382,13 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let command = "claude plugin marketplace update balancebar-mods"
         XCTAssertFalse(alert.informativeText.contains(command))
         let stack = try XCTUnwrap(alert.accessoryView as? NSStackView)
-        let code = try XCTUnwrap(stack.arrangedSubviews.first as? CopyableCommandBlockView)
+        let logo = try XCTUnwrap(stack.arrangedSubviews.first as? NSImageView)
+        XCTAssertNotNil(logo.image, "the logo is explicit sheet content")
+        let code = try XCTUnwrap(stack.arrangedSubviews.dropFirst().first as? CopyableCommandBlockView)
         XCTAssertEqual(code.codeLabel.stringValue, command)
         XCTAssertGreaterThanOrEqual(stack.frame.width, CopyableCommandBlockView.singleLineWidth(for: command))
-        XCTAssertTrue((stack.arrangedSubviews.last as? NSTextField)?.stringValue.contains("203.0.113.21\n2001:db8::2") == true)
+        let listed = try XCTUnwrap((stack.arrangedSubviews.last as? NSTextField)?.stringValue)
+        XCTAssertTrue(listed.contains("• 203.0.113.21 \(IPCountryCode.displayTitle("US"))\n• 2001:db8::2"))
         XCTAssertEqual(alert.buttons.map(\.keyEquivalent), ["\r", "\u{1b}"])
         respond?(.alertSecondButtonReturn)
         XCTAssertEqual(toggle.state, .off)
@@ -2425,6 +2428,25 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertTrue(pending.isEmpty)
         XCTAssertEqual(shown.count, 5)
         withExtendedLifetime(window) {}
+    }
+
+    func testClaudeTokenRefreshConfirmShowsLocalizedCountryForCachedIPsOnly() throws {
+        let previous = AppLanguage.selected
+        defer { AppLanguage.selected = previous }
+        let languages = AppLanguage.allCases.filter { $0 != .system }
+        XCTAssertEqual(languages.count, 12)
+        for language in languages {
+            AppLanguage.selected = language
+            let alert = DashboardGeneralPage.claudeTokenRefreshAlert(ips: ["203.0.113.21", "2001:db8::2"],
+                cachedCountry: { $0 == "203.0.113.21" ? "US" : nil })
+            let stack = try XCTUnwrap(alert.accessoryView as? NSStackView)
+            let label = try XCTUnwrap(stack.arrangedSubviews.last as? NSTextField)
+            let name = try XCTUnwrap(TimeZoneCityCatalog.locale.localizedString(forRegionCode: "US"))
+            XCTAssertEqual(label.stringValue, tr(.keyClaudeTokenRefreshConfirmAllowlist,
+                arguments: ["• 203.0.113.21 🇺🇸 \(name)\n• 2001:db8::2"]))
+            if language == .simplifiedChinese { XCTAssertEqual(name, "美国") }
+            if language == .english { XCTAssertEqual(name, "United States") }
+        }
     }
 
     func testClaudeLoginLineWordsEachStateLikeTheModStatusLine() {

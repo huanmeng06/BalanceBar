@@ -378,6 +378,7 @@ final class DashboardGeneralPage {
         let claudeLoginStatus: ClaudeLoginStatus
         let claudeTokenAutoRefresh: ClaudeTokenRefreshPresentation?
         let onClaudeTokenAutoRefresh: (Bool) -> Void
+        let cachedAllowlistCountry: (String) -> String?
 
         init(
             preferences: AppPreferences,
@@ -390,7 +391,8 @@ final class DashboardGeneralPage {
             modPanelState: ModPanelState = .intro(dismissChecked: false),
             claudeLoginStatus: ClaudeLoginStatus = .unknown,
             claudeTokenAutoRefresh: ClaudeTokenRefreshPresentation? = nil,
-            onClaudeTokenAutoRefresh: @escaping (Bool) -> Void = { _ in }
+            onClaudeTokenAutoRefresh: @escaping (Bool) -> Void = { _ in },
+            cachedAllowlistCountry: @escaping (String) -> String? = { _ in nil }
         ) {
             self.preferences = preferences
             self.connectionSummaries = connectionSummaries
@@ -403,6 +405,7 @@ final class DashboardGeneralPage {
             self.claudeLoginStatus = claudeLoginStatus
             self.claudeTokenAutoRefresh = claudeTokenAutoRefresh
             self.onClaudeTokenAutoRefresh = onClaudeTokenAutoRefresh
+            self.cachedAllowlistCountry = cachedAllowlistCountry
         }
     }
 
@@ -639,11 +642,13 @@ final class DashboardGeneralPage {
                                               accessoryView: tokenSwitch)
         let preferences = input.preferences
         let onTokenToggle = input.onClaudeTokenAutoRefresh
+        let cachedAllowlistCountry = input.cachedAllowlistCountry
         tokenRefreshConfirmationGeneration += 1
         tokenRefreshConfirmationPending = false
         tokenSwitch.onToggle = { [weak self, weak tokenSwitch] enabled in
             guard let self, let tokenSwitch else { return }
-            self.handleTokenRefreshToggle(enabled, sender: tokenSwitch, preferences: preferences, save: onTokenToggle)
+            self.handleTokenRefreshToggle(enabled, sender: tokenSwitch, preferences: preferences,
+                                          cachedCountry: cachedAllowlistCountry, save: onTokenToggle)
         }
         claudeTokenRefreshRow = tokenRefreshRow
         claudeTokenRefreshSwitch = tokenSwitch
@@ -866,7 +871,7 @@ final class DashboardGeneralPage {
     }
 
     private func handleTokenRefreshToggle(_ enabled: Bool, sender: NSSwitch, preferences: AppPreferences,
-                                          save: @escaping (Bool) -> Void) {
+                                          cachedCountry: @escaping (String) -> String?, save: @escaping (Bool) -> Void) {
         guard let presentation = tokenRefreshPresentation, presentation.dependencyEnabled else { return }
         tokenRefreshConfirmationGeneration += 1
         tokenRefreshConfirmationPending = enabled && !presentation.isOn
@@ -888,7 +893,8 @@ final class DashboardGeneralPage {
             if ips.isEmpty {
                 sender.animator().state = .off
             }
-            self.presentTokenRefreshAlert(Self.claudeTokenRefreshAlert(ips: ips), window) { [weak self, weak sender] response in
+            let alert = Self.claudeTokenRefreshAlert(ips: ips, cachedCountry: cachedCountry)
+            self.presentTokenRefreshAlert(alert, window) { [weak self, weak sender] response in
                 guard let self, let sender, self.tokenRefreshConfirmationGeneration == generation else { return }
                 self.tokenRefreshConfirmationPending = false
                 let accepted = response == .alertFirstButtonReturn
@@ -966,7 +972,7 @@ final class DashboardGeneralPage {
         }
     }
 
-    static func claudeTokenRefreshAlert(ips: [String]) -> NSAlert {
+    static func claudeTokenRefreshAlert(ips: [String], cachedCountry: (String) -> String? = { _ in nil }) -> NSAlert {
         let alert = NSAlert()
         alert.messageText = tr(ips.isEmpty ? .keyClaudeTokenRefreshEmptyTitle : .keyClaudeTokenRefreshConfirmTitle)
         alert.informativeText = tr(ips.isEmpty ? .keyClaudeTokenRefreshEmptyMessage : .keyClaudeTokenRefreshConfirmMessage)
@@ -974,16 +980,31 @@ final class DashboardGeneralPage {
             let command = "claude plugin marketplace update balancebar-mods"
             let width = max(300, CopyableCommandBlockView.singleLineWidth(for: command))
             let block = CopyableCommandBlockView(command: command, width: width)
+            let entries = ips.map { ip in
+                let country = cachedCountry(ip).map { " " + IPCountryCode.displayTitle($0) } ?? ""
+                return "• \(ip)\(country)"
+            }.joined(separator: "\n")
             let allowlist = NSTextField(wrappingLabelWithString: tr(.keyClaudeTokenRefreshConfirmAllowlist,
-                                                                    arguments: [ips.joined(separator: "\n")]))
+                                                                    arguments: [entries]))
             allowlist.font = .systemFont(ofSize: NSFont.systemFontSize)
             allowlist.textColor = .secondaryLabelColor
             allowlist.preferredMaxLayoutWidth = width
-            let accessory = NSStackView(views: [block, allowlist])
+            // Some macOS sheet styles hide the native NSAlert icon. Put the bundled mark
+            // in the accessory so it is visible in the sheet as well as in a stand-alone alert.
+            let iconURL = Bundle.main.url(forResource: "BalanceBar", withExtension: "icns")
+            let logo = NSImageView(image: iconURL.flatMap(NSImage.init(contentsOf:)) ?? NSApp.applicationIconImage)
+            logo.imageScaling = .scaleProportionallyUpOrDown
+            logo.setAccessibilityElement(false)
+            let accessory = NSStackView(views: [logo, block, allowlist])
             accessory.orientation = .vertical
             accessory.alignment = .leading
             accessory.spacing = 8
-            for view in [block, allowlist] { view.widthAnchor.constraint(equalToConstant: width).isActive = true }
+            NSLayoutConstraint.activate([
+                logo.widthAnchor.constraint(equalToConstant: 32),
+                logo.heightAnchor.constraint(equalToConstant: 32),
+                block.widthAnchor.constraint(equalToConstant: width),
+                allowlist.widthAnchor.constraint(equalToConstant: width),
+            ])
             accessory.setFrameSize(NSSize(width: width, height: ceil(accessory.fittingSize.height)))
             alert.accessoryView = accessory
         }

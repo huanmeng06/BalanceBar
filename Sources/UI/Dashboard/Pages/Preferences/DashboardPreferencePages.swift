@@ -162,7 +162,8 @@ final class DashboardPreferencePages {
                 modPanelState: actions.modPanelStateProvider() ?? .intro(dismissChecked: false),
                 claudeLoginStatus: actions.claudeLoginStatusProvider(),
                 claudeTokenAutoRefresh: actions.claudeTokenAutoRefreshProvider(),
-                onClaudeTokenAutoRefresh: actions.onClaudeTokenAutoRefresh
+                onClaudeTokenAutoRefresh: actions.onClaudeTokenAutoRefresh,
+                cachedAllowlistCountry: actions.claudeEgressGuard.cachedCountry
             ))
         case .menuBar:
             return menuBarPage.make(.init(
