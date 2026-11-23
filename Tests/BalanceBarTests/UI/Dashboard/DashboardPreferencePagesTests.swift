@@ -2382,9 +2382,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let command = "claude plugin marketplace update balancebar-mods"
         XCTAssertFalse(alert.informativeText.contains(command))
         let stack = try XCTUnwrap(alert.accessoryView as? NSStackView)
-        let logo = try XCTUnwrap(stack.arrangedSubviews.first as? NSImageView)
-        XCTAssertNotNil(logo.image, "the logo is explicit sheet content")
-        let code = try XCTUnwrap(stack.arrangedSubviews.dropFirst().first as? CopyableCommandBlockView)
+        XCTAssertEqual(stack.arrangedSubviews.count, 2, "the logo is not part of the accessory")
+        let code = try XCTUnwrap(stack.arrangedSubviews.first as? CopyableCommandBlockView)
         XCTAssertEqual(code.codeLabel.stringValue, command)
         XCTAssertGreaterThanOrEqual(stack.frame.width, CopyableCommandBlockView.singleLineWidth(for: command))
         let listed = try XCTUnwrap((stack.arrangedSubviews.last as? NSTextField)?.stringValue)
@@ -2428,6 +2427,30 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertTrue(pending.isEmpty)
         XCTAssertEqual(shown.count, 5)
         withExtendedLifetime(window) {}
+    }
+
+    func testClaudeTokenRefreshSheetPlacesItsLogoAboveTheTitle() throws {
+        let host = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
+                            styleMask: .titled, backing: .buffered, defer: false)
+        let alert = DashboardGeneralPage.claudeTokenRefreshAlert(ips: ["203.0.113.21"])
+        let icon = try XCTUnwrap(alert.icon)
+        alert.beginSheetModal(for: host)
+        let sheet = try XCTUnwrap(host.attachedSheet)
+        defer { host.endSheet(sheet, returnCode: .cancel) }
+        let content = try XCTUnwrap(sheet.contentView)
+        content.layoutSubtreeIfNeeded()
+
+        func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(descendants) }
+        let visible = descendants(content).filter { !$0.isHiddenOrHasHiddenAncestor }
+        let logo = try XCTUnwrap(visible.compactMap { $0 as? NSImageView }.first { $0.image === icon })
+        let title = try XCTUnwrap(visible.compactMap { $0 as? NSTextField }.first { $0.stringValue == alert.messageText })
+        let logoFrame = logo.convert(logo.bounds, to: content)
+        let titleFrame = title.convert(title.bounds, to: content)
+        if content.isFlipped {
+            XCTAssertLessThanOrEqual(logoFrame.maxY, titleFrame.minY)
+        } else {
+            XCTAssertGreaterThanOrEqual(logoFrame.minY, titleFrame.maxY)
+        }
     }
 
     func testClaudeTokenRefreshConfirmShowsLocalizedCountryForCachedIPsOnly() throws {

@@ -989,19 +989,15 @@ final class DashboardGeneralPage {
             allowlist.font = .systemFont(ofSize: NSFont.systemFontSize)
             allowlist.textColor = .secondaryLabelColor
             allowlist.preferredMaxLayoutWidth = width
-            // Some macOS sheet styles hide the native NSAlert icon. Put the bundled mark
-            // in the accessory so it is visible in the sheet as well as in a stand-alone alert.
+            // Set the icon explicitly: the default app icon can be omitted in a sheet.
+            // NSAlert puts an explicit icon above the title, outside the accessory.
             let iconURL = Bundle.main.url(forResource: "BalanceBar", withExtension: "icns")
-            let logo = NSImageView(image: iconURL.flatMap(NSImage.init(contentsOf:)) ?? NSApp.applicationIconImage)
-            logo.imageScaling = .scaleProportionallyUpOrDown
-            logo.setAccessibilityElement(false)
-            let accessory = NSStackView(views: [logo, block, allowlist])
+            alert.icon = iconURL.flatMap(NSImage.init(contentsOf:)) ?? NSApp.applicationIconImage
+            let accessory = NSStackView(views: [block, allowlist])
             accessory.orientation = .vertical
             accessory.alignment = .leading
             accessory.spacing = 8
             NSLayoutConstraint.activate([
-                logo.widthAnchor.constraint(equalToConstant: 32),
-                logo.heightAnchor.constraint(equalToConstant: 32),
                 block.widthAnchor.constraint(equalToConstant: width),
                 allowlist.widthAnchor.constraint(equalToConstant: width),
             ])
