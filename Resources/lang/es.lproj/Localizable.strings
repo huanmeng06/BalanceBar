@@ -460,6 +460,8 @@
 "status.item.controller.open_grok" = "Abrir Grok";
 "status.item.controller.open_claude" = "Abrir Claude";
 "status.item.controller.open_cc_switch" = "Abrir CC Switch";
+"status.item.controller.copy_link" = "Copiar enlace";
+"status.item.controller.copy_version_number" = "Copiar número de versión";
 "status.item.controller.quit_balancebar" = "Salir de BalanceBar";
 "status.item.controller.view_status" = "Ver estado";
 "status.item.controller.view_status.2" = "Ver estado";

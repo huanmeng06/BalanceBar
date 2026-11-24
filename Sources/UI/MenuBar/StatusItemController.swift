@@ -2205,9 +2205,53 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private static let statusItemVisibilityStabilityDelay: TimeInterval = 0.2
     private static let subscriptionFont = NSFont.systemFont(ofSize: 13, weight: .regular)
 
+    struct VersionMenu {
+        struct CopyItem {
+            let titleKey: LocalizationKey
+            let text: String
+
+            var title: String { tr(titleKey) }
+        }
+
+        let buildVersion: DashboardAboutPage.BuildVersion
+        let pullRequestURL: URL?
+        let copyItem: CopyItem?
+
+        init(buildVersion: DashboardAboutPage.BuildVersion) {
+            self.buildVersion = buildVersion
+            let repository = DashboardAboutPage.githubRepositoryURL
+            if !buildVersion.isDevBuild {
+                pullRequestURL = nil
+                copyItem = buildVersion.shortVersion.flatMap { value in
+                    guard !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+                    let url = repository.appendingPathComponent("releases").appendingPathComponent("tag")
+                        .appendingPathComponent("v\(value)")
+                    return CopyItem(titleKey: .keyStatusItemControllerCopyLink, text: url.absoluteString)
+                }
+            } else if let number = buildVersion.pullRequestNumber {
+                let url = repository.appendingPathComponent("pull").appendingPathComponent(String(number))
+                pullRequestURL = url
+                copyItem = CopyItem(titleKey: .keyStatusItemControllerCopyLink, text: url.absoluteString)
+            } else {
+                pullRequestURL = nil
+                if let sha = buildVersion.sha, sha.count == 40 {
+                    let url = repository.appendingPathComponent("commit").appendingPathComponent(sha)
+                    copyItem = CopyItem(titleKey: .keyStatusItemControllerCopyLink, text: url.absoluteString)
+                } else {
+                    let versionNumber = DashboardAboutPage.BuildVersion(shortVersion: buildVersion.shortVersion, isDevBuild: true)
+                    copyItem = CopyItem(titleKey: .keyStatusItemControllerCopyVersionNumber, text: "BalanceBar \(versionNumber.value)")
+                }
+            }
+        }
+
+        var title: String { buildVersion.title }
+    }
+
     struct Actions {
         let manualRefresh: () -> Void
         let openDashboard: () -> Void
+        let openAbout: () -> Void
+        let copyText: (String) -> Void
         let openChatGPT: () -> Void
         let openCCSwitch: () -> Void
         let quit: () -> Void
@@ -2220,7 +2264,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let startModUpdate: () -> Void
         /// Opens the Claude egress guard settings from a guarded failure card (Issue #686).
         let openEgressGuardSettings: () -> Void
-        let copyLoginCommand: (String) -> Void
         let iconChanged: (NSImage?) -> Void
         let frameImageChanged: (NSImage?) -> Void
         let animationStateChanged: (Bool) -> Void
@@ -2252,16 +2295,18 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             showModOnboarding: @escaping () -> Void = {},
             startModUpdate: @escaping () -> Void = {},
             openEgressGuardSettings: @escaping () -> Void = {},
-            copyLoginCommand: @escaping (String) -> Void = { command in
+            openAbout: @escaping () -> Void = {},
+            copyText: @escaping (String) -> Void = { text in
                 NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(command, forType: .string)
+                NSPasteboard.general.setString(text, forType: .string)
             }
         ) {
             self.openEgressGuardSettings = openEgressGuardSettings
-            self.copyLoginCommand = copyLoginCommand
             self.manualRefreshBlockedUntil = manualRefreshBlockedUntil
                 self.manualRefresh = manualRefresh
             self.openDashboard = openDashboard
+            self.openAbout = openAbout
+            self.copyText = copyText
             self.openChatGPT = openChatGPT
             self.openCCSwitch = openCCSwitch
             self.quit = quit
@@ -2664,6 +2709,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var lastMenuBarOfficialTextYOffset: CGFloat = 0
     private var lastMenuBarEffectiveSnapshot = Snapshot.placeholder
     private let actions: Actions
+    private let versionMenu: VersionMenu
     private var lifecycleGeneration = 0
     private(set) var statusItemInstallCount = 0
     private(set) var statusItemVisibility: StatusItemVisibility = .unknown
@@ -2988,11 +3034,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     init(
         actions: Actions,
+        versionMenu: VersionMenu = .init(buildVersion: .init(shortVersion: nil, isDevBuild: false)),
         codexAnimationBackend: MenuBarCodexAnimationBackend = .stableBitmap,
         animationFrameRate: Int = MenuBarAnimationTiming.defaultFrameRate,
         forceNativeCodexAnimationFailureForTesting: Bool = false
     ) {
         self.actions = actions
+        self.versionMenu = versionMenu
         self.preferredCodexAnimationBackend = codexAnimationBackend
         self.codexAnimationBackend = codexAnimationBackend
         self.animationFrameRate = MenuBarAnimationTiming.clampedFrameRate(animationFrameRate)
@@ -6265,7 +6313,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         view.identifier = NSUserInterfaceItemIdentifier(identifier)
         // Stay open and confirm in place, so the user sees the copy succeeded.
         view.closesMenuOnClick = false
-        view.onClick = { [weak view, copy = actions.copyLoginCommand] in
+        view.onClick = { [weak view, copy = actions.copyText] in
             copy(command)
             view?.showConfirmation(mainText: copiedTitle,
                                    detailText: copiedDetail,
@@ -6309,11 +6357,28 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         DispatchQueue.main.async { [weak self] in self?.actions.showModOnboarding() }
     }
 
+    @objc private func openVersionMenuDestination() {
+        // Let the menu close before opening the repository link or Dashboard.
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            if let url = self.versionMenu.pullRequestURL {
+                self.actions.openStatusLink(url)
+            } else {
+                self.actions.openAbout()
+            }
+        }
+    }
+
+    @objc private func copyVersionMenuText() {
+        guard let copyItem = versionMenu.copyItem else { return }
+        actions.copyText(copyItem.text)
+    }
+
     private func makeOpenDashboardMenuItem() -> NSMenuItem {
         let item = NSMenuItem(
             title: tr(.keyStatusItemControllerOpenMainWindow),
             action: #selector(openDashboard),
-            keyEquivalent: ""
+            keyEquivalent: ","
         )
         item.target = self
         if menuInput.showsAvailableUpdateBadge {
@@ -6368,16 +6433,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             aggregationBoundsObserver = nil
         }
         if !replacingMenu { menu.removeAllItems() }
+        let aggregationItem: NSMenuItem?
         if menuInput.aggregatedProviders.isEmpty {
+            aggregationItem = nil
             clearAggregationOverview()
             menu.addItem(makeOverviewMenuItem(for: snapshot))
         } else {
             let item = NSMenuItem()
-            let viewport = makeAggregationOverview()
-            if let previousDistanceFromTop {
-                (viewport as? AggregationOverviewScrollView)?.restoreViewportAfterMount(distanceFromTop: previousDistanceFromTop)
-            }
-            item.view = viewport
+            aggregationItem = item
             menu.addItem(item)
         }
         // The re-login and realtime-boost prompts sit right under the quota card, above Quick Switch.
@@ -6414,10 +6477,30 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         menu.addItem(.separator())
         menu.addItem(
+            withTitle: versionMenu.title,
+            action: #selector(openVersionMenuDestination),
+            keyEquivalent: ""
+        ).target = self
+        if let copyItem = versionMenu.copyItem {
+            let alternate = NSMenuItem(title: copyItem.title, action: #selector(copyVersionMenuText), keyEquivalent: "")
+            alternate.target = self
+            alternate.keyEquivalentModifierMask = [.option]
+            alternate.isAlternate = true
+            menu.addItem(alternate)
+        }
+        menu.addItem(
             withTitle: tr(.keyStatusItemControllerQuitBalancebar),
             action: #selector(quit),
             keyEquivalent: "q"
         ).target = self
+        if let aggregationItem {
+            // Size the viewport against the complete menu, including the native footer.
+            let viewport = makeAggregationOverview()
+            if let previousDistanceFromTop {
+                (viewport as? AggregationOverviewScrollView)?.restoreViewportAfterMount(distanceFromTop: previousDistanceFromTop)
+            }
+            aggregationItem.view = viewport
+        }
         (menu.items.first?.view as? MenuHoverLinkHostView)?.setDismissalTrace(menuDismissalTrace)
         menuDismissalTrace?.record("menu.rebuild.complete", view: menu.items.first?.view,
             details: "reason=\(reason)")
@@ -6841,7 +6924,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         total = max(0, total - gap)
         let screen = statusItem?.button?.window?.screen ?? NSScreen.main
-        let footer = CGFloat(max(10, statusMenu.numberOfItems)) * 24 + 60
+        // An alternate replaces its primary item rather than occupying a second row.
+        let menuRowCount = statusMenu.items.count { !$0.isAlternate }
+        let footer = CGFloat(max(10, menuRowCount)) * 24 + 60
         let maximum = max(80, (screen?.visibleFrame.height ?? 800) - footer)
         let viewportSize = NSSize(width: OpenCodexCardLayout.cardWidth, height: min(total, maximum))
         if scroll.frame.size != viewportSize { needsPlacement = true }

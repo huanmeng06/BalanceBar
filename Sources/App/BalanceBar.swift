@@ -1134,8 +1134,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 },
                 openEgressGuardSettings: { [weak self] in
                     self?.openEgressGuardSettings()
+                },
+                openAbout: { [weak self] in
+                    guard let self else { return }
+                    self.openDashboard()
+                    self.showDashboardSection(.about)
                 }
             ),
+            versionMenu: .init(buildVersion: .init(bundle: .main, devBundleIdentifier: devBundleIdentifier)),
             codexAnimationBackend: MenuBarCodexAnimationBackend(
                 mode: preferences.menuBarAnimationMode
             ),
