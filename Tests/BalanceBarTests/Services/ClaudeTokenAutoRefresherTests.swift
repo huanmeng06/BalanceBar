@@ -16,6 +16,7 @@ final class ClaudeTokenAutoRefresherTests: XCTestCase {
         var token: String? = "test-access-secret"
         lazy var expiry: Date? = now.addingTimeInterval(-120)
         var unreadable = false
+        var credentialSource: (() -> ClaudeTokenAutoRefresher.Credentials)?
         var pause: String?
         var executable: String? = "/fixture/claude"
         var result: ModCommandResult? = .init(exitCode: 0, stdout: "test-access-secret", stderr: "unlogged output")
@@ -39,7 +40,7 @@ final class ClaudeTokenAutoRefresherTests: XCTestCase {
                 }, settings: { [unowned self] in settings },
                 credentials: { [unowned self] in
                     reads += 1; didReadCredential?(reads)
-                    return (token, expiry, unreadable)
+                    return credentialSource?() ?? (token, expiry, unreadable)
                 }, modAvailability: { [unowned self] in availability }, modOperationInProgress: { [unowned self] in busy },
                 locator: self, runner: self,
                 loadPause: loadPause ?? { [unowned self] in pause }, savePause: savePause ?? { [unowned self] in pause = $0 },
@@ -71,6 +72,84 @@ final class ClaudeTokenAutoRefresherTests: XCTestCase {
                                completion: { ran = $0; done.fulfill() }) { done.fulfill() }
         wait(for: [done], timeout: 3)
         return ran
+    }
+
+    private final class KeychainFixture: CredentialProcessRunning, CredentialFileReading {
+        var status: Int32 = 51
+        let original = Data(#"{"claudeAiOauth":{"accessToken":"keychain-fixture","expiresAt":1799999880}}"#.utf8)
+        let fallback = Data(#"{"claudeAiOauth":{"accessToken":"file-fixture","expiresAt":1799999940}}"#.utf8)
+        var file: Data?
+
+        func run(arguments: [String]) throws -> CredentialProcessResult {
+            return .init(terminationStatus: status, standardOutput: status == 0 ? original : Data())
+        }
+
+        func readData(from url: URL) throws -> Data {
+            guard url.lastPathComponent == ".credentials.json", let file else { throw CocoaError(.fileNoSuchFile) }
+            return file
+        }
+
+        func makeClient() -> OfficialQuotaClient {
+            let reader = CredentialReader(homeDirectoryURL: URL(fileURLWithPath: "/fixture-home"),
+                                          fileReader: self, processRunner: self,
+                                          keychainCooldown: KeychainPromptCooldown(duration: 0))
+            return OfficialQuotaClient(credentialReader: reader)
+        }
+    }
+
+    func testDeniedKeychainWithExpiredFileFallbackDoesNotProbeOrLaunchOrStartCooldown() {
+        let keychain = KeychainFixture()
+        keychain.file = keychain.fallback
+        let client = keychain.makeClient()
+        let quota = client.claudeCredentialSnapshot(cacheFor: 0)
+        XCTAssertEqual(quota.credentials.accessToken, "file-fixture")
+        XCTAssertLessThan(quota.expiresAt ?? .distantFuture, Date(timeIntervalSince1970: 1_800_000_000))
+        XCTAssertTrue(quota.keychainReadFailed)
+        XCTAssertFalse(client.lastClaudeKeychainUnreadable(), "Quota reads still accept the file fallback")
+        let fixture = Fixture()
+        fixture.credentialSource = client.claudeTokenRefreshCredentials
+        XCTAssertFalse(attempt(fixture))
+        XCTAssertTrue(fixture.probes.isEmpty)
+        XCTAssertTrue(fixture.commands.isEmpty)
+        XCTAssertEqual(fixture.refresher.state, .idle)
+        XCTAssertNil(fixture.pause)
+        XCTAssertTrue(fixture.logs.last?.contains("reason=keychain_unreadable") == true)
+
+        keychain.status = 0
+        XCTAssertTrue(attempt(fixture), "Normal automatic attempts are not held by a refresh cooldown")
+        XCTAssertEqual(fixture.commands.count, 1)
+    }
+
+    func testKeychainDenialAfterProbesPreventsLaunchDespiteExpiredFileFallback() {
+        let keychain = KeychainFixture()
+        keychain.status = 0
+        keychain.file = keychain.original // Match the token and expiry; only the raw read status changes.
+        let client = keychain.makeClient()
+        let fixture = Fixture()
+        fixture.credentialSource = client.claudeTokenRefreshCredentials
+        fixture.didReadCredential = { if $0 == 2 { keychain.status = 51 } }
+        XCTAssertFalse(attempt(fixture))
+        XCTAssertEqual(fixture.probes.count, 2)
+        XCTAssertTrue(fixture.commands.isEmpty)
+        XCTAssertEqual(fixture.refresher.state, .idle)
+        XCTAssertTrue(fixture.logs.last?.contains("reason=keychain_unreadable") == true)
+    }
+
+    func testKeychainDenialAfterCommandCannotTreatNewFileTokenAsSuccessOrSignOut() {
+        let keychain = KeychainFixture()
+        keychain.status = 0
+        let client = keychain.makeClient()
+        let fixture = Fixture()
+        fixture.credentialSource = client.claudeTokenRefreshCredentials
+        fixture.didRun = {
+            keychain.status = 51
+            keychain.file = Data(#"{"claudeAiOauth":{"accessToken":"other-file-token","expiresAt":1800003600}}"#.utf8)
+        }
+        XCTAssertTrue(attempt(fixture))
+        XCTAssertEqual(fixture.commands.count, 1)
+        XCTAssertEqual(fixture.refresher.state, .failed(.commandFailed(exitCode: 0), nextTryAt: fixture.now.addingTimeInterval(1800)))
+        XCTAssertNil(fixture.pause)
+        XCTAssertTrue(fixture.logs.last?.contains("result=failed") == true)
     }
 
     func testCurrentSettingsConflictIsReadOnlyAndReflectsRemoval() {

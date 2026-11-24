@@ -55,6 +55,8 @@ struct ClaudeStoredCredentials: Equatable {
     let planType: String?
     /// True when no token was found because the keychain could not be read, not because it is empty.
     var keychainUnreadable = false
+    /// Raw read failure, even if a file fallback supplied a token for quota reads.
+    var keychainReadFailed = false
     /// When Claude Code's access token stops working (`claudeAiOauth.expiresAt`). Claude Code renews
     /// it on its own use; BalanceBar only reads it and never refreshes or rewrites the credential.
     var expiresAt: Date? = nil
@@ -250,7 +252,7 @@ final class OfficialQuotaClient {
     private let credentialReader: OfficialQuotaCredentialReading
     private let parser: OfficialQuotaParsing
     private let now: () -> Date
-    private var claudeAccountProbe: (credentials: CodexRequestCredentials, profile: CodexAccountProfile?, readAt: Date, keychainUnreadable: Bool, expiresAt: Date?)?
+    private var claudeAccountProbe: (credentials: CodexRequestCredentials, profile: CodexAccountProfile?, readAt: Date, keychainUnreadable: Bool, keychainReadFailed: Bool, expiresAt: Date?)?
     private var claudeProbeInFlight = false
     private let claudeProbeCondition = NSCondition()
 
@@ -380,11 +382,11 @@ final class OfficialQuotaClient {
 
     /// Returns matching access-token and expiry facts even if another reader updates the cache.
     func claudeCredentialSnapshot(cacheFor maxAge: TimeInterval)
-        -> (credentials: CodexRequestCredentials, expiresAt: Date?, unreadable: Bool) {
+        -> (credentials: CodexRequestCredentials, expiresAt: Date?, keychainReadFailed: Bool) {
         claudeProbeCondition.lock()
         if maxAge > 0, let probe = claudeAccountProbe, now().timeIntervalSince(probe.readAt) < maxAge {
             claudeProbeCondition.unlock()
-            return (probe.credentials, probe.expiresAt, probe.keychainUnreadable)
+            return (probe.credentials, probe.expiresAt, probe.keychainReadFailed)
         }
         if claudeProbeInFlight {
             let deadline = Date().addingTimeInterval(2.5)
@@ -396,7 +398,7 @@ final class OfficialQuotaClient {
             let probe = claudeAccountProbe
             claudeProbeCondition.unlock()
             return (probe?.credentials ?? CodexRequestCredentials(accessToken: nil, accountKey: nil),
-                    probe?.expiresAt, probe?.keychainUnreadable ?? true)
+                    probe?.expiresAt, probe?.keychainReadFailed ?? true)
         }
         claudeProbeInFlight = true
         let previous = claudeAccountProbe
@@ -414,11 +416,18 @@ final class OfficialQuotaClient {
             profile = CodexAccountProfile(email: credentialReader.claudeAccountEmail(), planType: stored.planType)
         }
         claudeProbeCondition.lock()
-        claudeAccountProbe = (credentials, profile, now(), stored.keychainUnreadable, stored.expiresAt)
+        claudeAccountProbe = (credentials, profile, now(), stored.keychainUnreadable, stored.keychainReadFailed, stored.expiresAt)
         claudeProbeInFlight = false
         claudeProbeCondition.broadcast()
         claudeProbeCondition.unlock()
-        return (credentials, stored.expiresAt, stored.keychainUnreadable)
+        return (credentials, stored.expiresAt, stored.keychainReadFailed)
+    }
+
+    /// Auto-renewal must not trust a file fallback when the Keychain could not be read.
+    func claudeTokenRefreshCredentials() -> (token: String?, expiresAt: Date?, unreadable: Bool) {
+        let snapshot = claudeCredentialSnapshot(cacheFor: 0)
+        guard !snapshot.keychainReadFailed else { return (nil, nil, true) }
+        return (snapshot.credentials.accessToken, snapshot.expiresAt, false)
     }
 
     /// Lets the next Claude credential read raise the keychain prompt again (manual refresh only).

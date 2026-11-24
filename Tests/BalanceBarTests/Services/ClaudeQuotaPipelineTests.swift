@@ -688,8 +688,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         return ClaudeTokenAutoRefresher(isEnabled: enabled, egressGuard: guardrail, route: { .init() },
             probe: { _, _, completion in completion(.success(trace)) }, settings: { nil },
             credentials: { [official] in
-                let snapshot = official!.claudeCredentialSnapshot(cacheFor: 0)
-                return (snapshot.credentials.accessToken, snapshot.expiresAt, snapshot.unreadable)
+                official!.claudeTokenRefreshCredentials()
             }, modAvailability: { .available }, modOperationInProgress: { false }, locator: cli, runner: cli,
             loadPause: { pause }, savePause: { pause = $0 }, now: { [clock] in clock!.now }, log: logs.append)
     }

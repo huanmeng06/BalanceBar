@@ -825,10 +825,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 guard let data = try? Data(contentsOf: url) else { return nil }
                 return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
             },
-            credentials: {
-                let snapshot = officialQuotaClient.claudeCredentialSnapshot(cacheFor: 0)
-                return (snapshot.credentials.accessToken, snapshot.expiresAt, snapshot.unreadable)
-            },
+            credentials: officialQuotaClient.claudeTokenRefreshCredentials,
             modAvailability: { DispatchQueue.main.sync { modAvailability() } },
             modOperationInProgress: { DispatchQueue.main.sync { modBusy() } },
             locator: DefaultClaudeExecutableLocator(), runner: ProcessClaudeRefreshCommandRunner(),

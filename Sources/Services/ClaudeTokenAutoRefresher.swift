@@ -270,7 +270,7 @@ final class ClaudeTokenAutoRefresher {
         let finished = now()
         let newVersion = after.token.flatMap(ClaudeAccountIdentityProvider.credentialVersion(for:))?.value
         let changed = newVersion != version
-        let refreshed = newVersion != nil && (changed || after.expiresAt.map { $0 > finished } == true)
+        let refreshed = !after.unreadable && newVersion != nil && (changed || after.expiresAt.map { $0 > finished } == true)
         let outcome: String
         if refreshed {
             nextTryAt = nil
