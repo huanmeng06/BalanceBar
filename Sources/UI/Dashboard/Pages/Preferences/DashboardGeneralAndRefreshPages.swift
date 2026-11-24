@@ -974,6 +974,10 @@ final class DashboardGeneralPage {
 
     static func claudeTokenRefreshAlert(ips: [String], cachedCountry: (String) -> String? = { _ in nil }) -> NSAlert {
         let alert = NSAlert()
+        // Set the icon explicitly: the default app icon can be omitted in a sheet.
+        // NSAlert puts an explicit icon above the title, outside the accessory.
+        let iconURL = Bundle.main.url(forResource: "BalanceBar", withExtension: "icns")
+        alert.icon = iconURL.flatMap(NSImage.init(contentsOf:)) ?? NSApp.applicationIconImage
         alert.messageText = tr(ips.isEmpty ? .keyClaudeTokenRefreshEmptyTitle : .keyClaudeTokenRefreshConfirmTitle)
         alert.informativeText = tr(ips.isEmpty ? .keyClaudeTokenRefreshEmptyMessage : .keyClaudeTokenRefreshConfirmMessage)
         if !ips.isEmpty {
@@ -989,10 +993,6 @@ final class DashboardGeneralPage {
             allowlist.font = .systemFont(ofSize: NSFont.systemFontSize)
             allowlist.textColor = .secondaryLabelColor
             allowlist.preferredMaxLayoutWidth = width
-            // Set the icon explicitly: the default app icon can be omitted in a sheet.
-            // NSAlert puts an explicit icon above the title, outside the accessory.
-            let iconURL = Bundle.main.url(forResource: "BalanceBar", withExtension: "icns")
-            alert.icon = iconURL.flatMap(NSImage.init(contentsOf:)) ?? NSApp.applicationIconImage
             let accessory = NSStackView(views: [block, allowlist])
             accessory.orientation = .vertical
             accessory.alignment = .leading

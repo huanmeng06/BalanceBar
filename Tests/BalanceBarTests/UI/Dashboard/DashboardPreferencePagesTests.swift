@@ -2429,27 +2429,29 @@ final class DashboardPreferencePagesTests: XCTestCase {
         withExtendedLifetime(window) {}
     }
 
-    func testClaudeTokenRefreshSheetPlacesItsLogoAboveTheTitle() throws {
-        let host = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
-                            styleMask: .titled, backing: .buffered, defer: false)
-        let alert = DashboardGeneralPage.claudeTokenRefreshAlert(ips: ["203.0.113.21"])
-        let icon = try XCTUnwrap(alert.icon)
-        alert.beginSheetModal(for: host)
-        let sheet = try XCTUnwrap(host.attachedSheet)
-        defer { host.endSheet(sheet, returnCode: .cancel) }
-        let content = try XCTUnwrap(sheet.contentView)
-        content.layoutSubtreeIfNeeded()
+    func testBothClaudeTokenRefreshSheetsPlaceTheirLogoAboveTheTitle() throws {
+        for ips: [String] in [["203.0.113.21"], []] {
+            let host = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
+                                styleMask: .titled, backing: .buffered, defer: false)
+            let alert = DashboardGeneralPage.claudeTokenRefreshAlert(ips: ips)
+            let icon = try XCTUnwrap(alert.icon)
+            alert.beginSheetModal(for: host)
+            let sheet = try XCTUnwrap(host.attachedSheet)
+            defer { host.endSheet(sheet, returnCode: .cancel) }
+            let content = try XCTUnwrap(sheet.contentView)
+            content.layoutSubtreeIfNeeded()
 
-        func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(descendants) }
-        let visible = descendants(content).filter { !$0.isHiddenOrHasHiddenAncestor }
-        let logo = try XCTUnwrap(visible.compactMap { $0 as? NSImageView }.first { $0.image === icon })
-        let title = try XCTUnwrap(visible.compactMap { $0 as? NSTextField }.first { $0.stringValue == alert.messageText })
-        let logoFrame = logo.convert(logo.bounds, to: content)
-        let titleFrame = title.convert(title.bounds, to: content)
-        if content.isFlipped {
-            XCTAssertLessThanOrEqual(logoFrame.maxY, titleFrame.minY)
-        } else {
-            XCTAssertGreaterThanOrEqual(logoFrame.minY, titleFrame.maxY)
+            func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(descendants) }
+            let visible = descendants(content).filter { !$0.isHiddenOrHasHiddenAncestor }
+            let logo = try XCTUnwrap(visible.compactMap { $0 as? NSImageView }.first { $0.image === icon })
+            let title = try XCTUnwrap(visible.compactMap { $0 as? NSTextField }.first { $0.stringValue == alert.messageText })
+            let logoFrame = logo.convert(logo.bounds, to: content)
+            let titleFrame = title.convert(title.bounds, to: content)
+            if content.isFlipped {
+                XCTAssertLessThanOrEqual(logoFrame.maxY, titleFrame.minY)
+            } else {
+                XCTAssertGreaterThanOrEqual(logoFrame.minY, titleFrame.maxY)
+            }
         }
     }
 
