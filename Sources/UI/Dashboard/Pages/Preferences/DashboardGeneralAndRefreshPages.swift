@@ -426,8 +426,15 @@ final class DashboardGeneralPage {
     var scheduleTokenRefreshConfirmation: (TimeInterval, @escaping () -> Void) -> Void = { delay, action in
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: action)
     }
-    var presentTokenRefreshAlert: (NSAlert, NSWindow, @escaping (NSApplication.ModalResponse) -> Void) -> Void = {
-        $0.beginSheetModal(for: $1, completionHandler: $2)
+    var presentTokenRefreshAlert: (NSAlert, NSWindow, @escaping (NSApplication.ModalResponse) -> Void) -> Void = { alert, window, completion in
+        alert.beginSheetModal(for: window, completionHandler: completion)
+        // AppKit builds the native title and explanation during presentation. Leave them
+        // readable, but only the command block’s copy button should offer copying.
+        func disableSelection(in view: NSView) {
+            if let label = view as? NSTextField, !label.isEditable { label.isSelectable = false }
+            view.subviews.forEach(disableSelection(in:))
+        }
+        if let content = alert.window.contentView { disableSelection(in: content) }
     }
     /// The Claude card's section; its footnote summary toggles the comparison detail.
     private(set) var claudeSourcesSection: SettingsSectionView?
@@ -1003,15 +1010,25 @@ final class DashboardGeneralPage {
             let allowlist = NSTextField(wrappingLabelWithString: tr(.keyClaudeTokenRefreshConfirmAllowlist,
                                                                     arguments: [entries]))
             allowlist.font = .systemFont(ofSize: NSFont.systemFontSize)
-            allowlist.textColor = .secondaryLabelColor
-            allowlist.preferredMaxLayoutWidth = width
-            let accessory = NSStackView(views: [block, allowlist])
+            allowlist.textColor = .labelColor
+            // The accessory is wider than the native alert text. Inset only the
+            // allowlist so its text aligns with the body; leave the command box full width.
+            let textInset: CGFloat = 6
+            let allowlistContainer = NSView()
+            allowlist.preferredMaxLayoutWidth = width - 2 * textInset
+            allowlist.translatesAutoresizingMaskIntoConstraints = false
+            allowlistContainer.addSubview(allowlist)
+            let accessory = NSStackView(views: [block, allowlistContainer])
             accessory.orientation = .vertical
             accessory.alignment = .leading
             accessory.spacing = 8
             NSLayoutConstraint.activate([
                 block.widthAnchor.constraint(equalToConstant: width),
-                allowlist.widthAnchor.constraint(equalToConstant: width),
+                allowlistContainer.widthAnchor.constraint(equalToConstant: width),
+                allowlist.leadingAnchor.constraint(equalTo: allowlistContainer.leadingAnchor, constant: textInset),
+                allowlist.trailingAnchor.constraint(equalTo: allowlistContainer.trailingAnchor, constant: -textInset),
+                allowlist.topAnchor.constraint(equalTo: allowlistContainer.topAnchor),
+                allowlist.bottomAnchor.constraint(equalTo: allowlistContainer.bottomAnchor),
             ])
             accessory.setFrameSize(NSSize(width: width, height: ceil(accessory.fittingSize.height)))
             alert.accessoryView = accessory

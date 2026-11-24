@@ -2420,7 +2420,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let code = try XCTUnwrap(stack.arrangedSubviews.first as? CopyableCommandBlockView)
         XCTAssertEqual(code.codeLabel.stringValue, command)
         XCTAssertGreaterThanOrEqual(stack.frame.width, CopyableCommandBlockView.singleLineWidth(for: command))
-        let listed = try XCTUnwrap((stack.arrangedSubviews.last as? NSTextField)?.stringValue)
+        let listed = try XCTUnwrap(tokenRefreshAllowlistLabel(in: stack)).stringValue
         XCTAssertTrue(listed.contains("• 203.0.113.21 \(IPCountryCode.displayTitle("US"))\n• 2001:db8::2"))
         XCTAssertEqual(alert.buttons.map(\.keyEquivalent), ["\r", "\u{1b}"])
         respond?(.alertSecondButtonReturn)
@@ -2489,6 +2489,70 @@ final class DashboardPreferencePagesTests: XCTestCase {
         }
     }
 
+    func testClaudeTokenRefreshSheetsKeepOnlyTheCommandCopyButton() throws {
+        let page = DashboardGeneralPage()
+        for ips: [String] in [["203.0.113.21"], []] {
+            let host = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
+                                styleMask: .titled, backing: .buffered, defer: false)
+            let alert = DashboardGeneralPage.claudeTokenRefreshAlert(ips: ips)
+            page.presentTokenRefreshAlert(alert, host) { _ in }
+            let sheet = try XCTUnwrap(host.attachedSheet)
+            defer { host.endSheet(sheet, returnCode: .cancel) }
+            let content = try XCTUnwrap(sheet.contentView)
+            content.layoutSubtreeIfNeeded()
+            func labels(in view: NSView) -> [NSTextField] {
+                ([view as? NSTextField].compactMap { $0 }) + view.subviews.flatMap(labels(in:))
+            }
+            for text in [alert.messageText, alert.informativeText] {
+                let label = try XCTUnwrap(labels(in: content).first { $0.stringValue == text })
+                XCTAssertFalse(label.isSelectable, "The sheet’s title and explanation are static labels")
+            }
+            if !ips.isEmpty {
+                let accessory = try XCTUnwrap(alert.accessoryView as? NSStackView)
+                let command = try XCTUnwrap(accessory.arrangedSubviews.first as? CopyableCommandBlockView)
+                let allowlist = try XCTUnwrap(tokenRefreshAllowlistLabel(in: accessory))
+                XCTAssertFalse(command.codeLabel.isSelectable)
+                XCTAssertFalse(allowlist.isSelectable)
+                XCTAssertTrue(command.copyButton.isEnabled)
+                XCTAssertNotNil(command.copyButton.action)
+            }
+        }
+    }
+
+    private func tokenRefreshAllowlistLabel(in accessory: NSStackView) -> NSTextField? {
+        guard let list = accessory.arrangedSubviews.last else { return nil }
+        return descendants(of: list).compactMap { $0 as? NSTextField }.first
+    }
+
+    func testClaudeTokenRefreshAllowlistAlignsWithTheBodyAndUsesItsTextColor() throws {
+        for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+            let host = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
+                                styleMask: .titled, backing: .buffered, defer: false)
+            host.appearance = NSAppearance(named: appearance)
+            let page = DashboardGeneralPage()
+            let alert = DashboardGeneralPage.claudeTokenRefreshAlert(ips: ["203.0.113.21"])
+            page.presentTokenRefreshAlert(alert, host) { _ in }
+            let sheet = try XCTUnwrap(host.attachedSheet)
+            defer { host.endSheet(sheet, returnCode: .cancel) }
+            sheet.appearance = host.appearance
+            let content = try XCTUnwrap(sheet.contentView)
+            content.layoutSubtreeIfNeeded()
+            let body = try XCTUnwrap(descendants(of: content).compactMap { $0 as? NSTextField }.first { $0.stringValue == alert.informativeText })
+            let accessory = try XCTUnwrap(alert.accessoryView as? NSStackView)
+            let allowlist = try XCTUnwrap(tokenRefreshAllowlistLabel(in: accessory))
+            func textStart(_ label: NSTextField) -> CGFloat {
+                let rect = label.cell?.drawingRect(forBounds: label.bounds) ?? label.bounds
+                return label.convert(rect, to: content).minX
+            }
+            XCTAssertEqual(textStart(allowlist), textStart(body), accuracy: 0.5)
+            content.effectiveAppearance.performAsCurrentDrawingAppearance {
+                let bodyColor = body.attributedStringValue.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
+                    ?? body.textColor
+                XCTAssertEqual(allowlist.textColor?.usingColorSpace(.deviceRGB), bodyColor?.usingColorSpace(.deviceRGB))
+            }
+        }
+    }
+
     func testClaudeTokenRefreshConfirmShowsLocalizedCountryForCachedIPsOnly() throws {
         let previous = AppLanguage.selected
         defer { AppLanguage.selected = previous }
@@ -2499,7 +2563,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             let alert = DashboardGeneralPage.claudeTokenRefreshAlert(ips: ["203.0.113.21", "2001:db8::2"],
                 cachedCountry: { $0 == "203.0.113.21" ? "US" : nil })
             let stack = try XCTUnwrap(alert.accessoryView as? NSStackView)
-            let label = try XCTUnwrap(stack.arrangedSubviews.last as? NSTextField)
+            let label = try XCTUnwrap(tokenRefreshAllowlistLabel(in: stack))
             let name = try XCTUnwrap(TimeZoneCityCatalog.locale.localizedString(forRegionCode: "US"))
             XCTAssertEqual(label.stringValue, tr(.keyClaudeTokenRefreshConfirmAllowlist,
                 arguments: ["• 203.0.113.21 🇺🇸 \(name)\n• 2001:db8::2"]))
