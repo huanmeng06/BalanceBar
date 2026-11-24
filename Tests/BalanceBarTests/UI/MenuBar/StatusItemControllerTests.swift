@@ -1094,6 +1094,60 @@ final class StatusItemControllerTests: XCTestCase {
     }
 
     @MainActor
+    func testVersionMenuShowsOnlyValidatedDevMetadata() {
+        let previous = AppLanguage.selected
+        defer { AppLanguage.selected = previous }
+        AppLanguage.selected = .simplifiedChinese
+        let sha = "416559d347888094343958934b27f227aeb7c05b"
+        let prURL = "https://github.com/huanmeng06/BalanceBar/pull/721"
+
+        func check(_ isDev: Bool, _ pr: String?, _ revision: String?, _ title: String, url: String? = nil) {
+            let menu = StatusItemController.VersionMenu(
+                shortVersion: "1.2.3", isDevBuild: isDev, buildPR: pr, buildSHA: revision
+            )
+            XCTAssertEqual(menu.title, title)
+            XCTAssertEqual(menu.pullRequestURL?.absoluteString, url)
+        }
+
+        check(false, "721", sha, "版本 1.2.3")
+        check(false, nil, nil, "版本 1.2.3")
+        check(true, "721", sha, "版本 1.2.3 · Dev · #721", url: prURL)
+        check(true, nil, sha, "版本 1.2.3 · Dev · 416559d")
+        check(true, nil, nil, "版本 1.2.3 · Dev")
+        for invalid in ["", "0", "abc", "-1", "+721", "721\n", String(repeating: "9", count: 30)] {
+            check(true, invalid, sha, "版本 1.2.3 · Dev · 416559d")
+        }
+        for invalid in ["416559", "416559dg", "416559d\n"] {
+            check(true, nil, invalid, "版本 1.2.3 · Dev")
+        }
+        AppLanguage.selected = .english
+        check(true, "721", sha, "Version 1.2.3 · Dev · #721", url: prURL)
+    }
+
+    @MainActor
+    func testVersionMenuItemOpensPullRequestAsynchronouslyInsteadOfAbout() throws {
+        var openedURLs: [URL] = []
+        var aboutOpens = 0
+        let controller = makeController(
+            openStatusLink: { openedURLs.append($0) },
+            shortVersion: "1.2.3", isDevBuild: true, buildPR: "721",
+            openAbout: { aboutOpens += 1 }
+        )
+        defer { controller.teardown() }
+        controller.start(snapshot: .placeholder, refreshDate: nil, menuInput: makeMenuInput(), settings: makeSettings())
+        let item = try XCTUnwrap(controller.menuItemsForTesting.dropLast().last)
+        XCTAssertTrue(item.title.hasSuffix(" · Dev · #721"))
+        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(item.action), to: item.target, from: item))
+        XCTAssertTrue(openedURLs.isEmpty)
+
+        let drained = expectation(description: "queued PR action")
+        DispatchQueue.main.async { drained.fulfill() }
+        wait(for: [drained], timeout: 1)
+        XCTAssertEqual(openedURLs.map(\.absoluteString), ["https://github.com/huanmeng06/BalanceBar/pull/721"])
+        XCTAssertEqual(aboutOpens, 0)
+    }
+
+    @MainActor
     func testVersionMenuItemOpensAboutAsynchronously() throws {
         var aboutOpens = 0
         let controller = makeController(openAbout: { aboutOpens += 1 })
@@ -3237,6 +3291,7 @@ final class StatusItemControllerTests: XCTestCase {
         openStatusLink: @escaping (URL) -> Void = { _ in },
         shortVersion: String? = nil,
         isDevBuild: Bool = false,
+        buildPR: String? = nil,
         openAbout: @escaping () -> Void = {}
     ) -> StatusItemController {
         StatusItemController(
@@ -3252,8 +3307,7 @@ final class StatusItemControllerTests: XCTestCase {
                 iconChanged: { _ in },
                 openAbout: openAbout
             ),
-            shortVersion: shortVersion,
-            isDevBuild: isDevBuild,
+            versionMenu: .init(shortVersion: shortVersion, isDevBuild: isDevBuild, buildPR: buildPR),
             codexAnimationBackend: codexAnimationBackend,
             forceNativeCodexAnimationFailureForTesting: forceNativeCodexAnimationFailureForTesting
         )

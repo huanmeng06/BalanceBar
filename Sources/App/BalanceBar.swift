@@ -1028,6 +1028,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 observeGrokActivity: { [weak self] update in self?.observeGrokActivity(update) }
             )
         )
+        let bundle = Bundle.main
+        let isDevBuild = bundle.bundleIdentifier == devBundleIdentifier
         statusItemController = StatusItemController(
             actions: StatusItemController.Actions(
                 manualRefresh: { [weak self] in
@@ -1109,7 +1111,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                     self.showDashboardSection(.about)
                 }
             ),
-            isDevBuild: Bundle.main.bundleIdentifier == devBundleIdentifier,
+            versionMenu: .init(
+                shortVersion: bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
+                isDevBuild: isDevBuild,
+                buildPR: isDevBuild ? bundle.object(forInfoDictionaryKey: "BalanceBarBuildPR") as? String : nil,
+                buildSHA: isDevBuild ? bundle.object(forInfoDictionaryKey: "BalanceBarBuildSHA") as? String : nil
+            ),
             codexAnimationBackend: MenuBarCodexAnimationBackend(
                 mode: preferences.menuBarAnimationMode
             ),

@@ -2205,6 +2205,30 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private static let statusItemVisibilityStabilityDelay: TimeInterval = 0.2
     private static let subscriptionFont = NSFont.systemFont(ofSize: 13, weight: .regular)
 
+    struct VersionMenu {
+        let version: String
+        let pullRequestURL: URL?
+
+        init(shortVersion: String?, isDevBuild: Bool, buildPR: String? = nil, buildSHA: String? = nil) {
+            let base = DashboardAboutPage.displayedVersion(shortVersion: shortVersion, isDevBuild: isDevBuild)
+            if isDevBuild, let buildPR, buildPR.range(of: #"\A[0-9]+\z"#, options: .regularExpression) != nil,
+               let number = Int(buildPR), number > 0 {
+                version = "\(base) · #\(number)"
+                pullRequestURL = DashboardAboutPage.githubRepositoryURL
+                    .appendingPathComponent("pull").appendingPathComponent(String(number))
+            } else {
+                if isDevBuild, let buildSHA, buildSHA.range(of: #"\A[0-9a-fA-F]{7,}\z"#, options: .regularExpression) != nil {
+                    version = "\(base) · \(buildSHA.prefix(7))"
+                } else {
+                    version = base
+                }
+                pullRequestURL = nil
+            }
+        }
+
+        var title: String { tr(.keyDashboardAboutPageVersionValue, arguments: [version]) }
+    }
+
     struct Actions {
         let manualRefresh: () -> Void
         let openDashboard: () -> Void
@@ -2656,7 +2680,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var lastMenuBarOfficialTextYOffset: CGFloat = 0
     private var lastMenuBarEffectiveSnapshot = Snapshot.placeholder
     private let actions: Actions
-    private let displayedVersion: String
+    private let versionMenu: VersionMenu
     private var lifecycleGeneration = 0
     private(set) var statusItemInstallCount = 0
     private(set) var statusItemVisibility: StatusItemVisibility = .unknown
@@ -2981,14 +3005,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     init(
         actions: Actions,
-        shortVersion: String? = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
-        isDevBuild: Bool = false,
+        versionMenu: VersionMenu = .init(shortVersion: nil, isDevBuild: false),
         codexAnimationBackend: MenuBarCodexAnimationBackend = .stableBitmap,
         animationFrameRate: Int = MenuBarAnimationTiming.defaultFrameRate,
         forceNativeCodexAnimationFailureForTesting: Bool = false
     ) {
         self.actions = actions
-        self.displayedVersion = DashboardAboutPage.displayedVersion(shortVersion: shortVersion, isDevBuild: isDevBuild)
+        self.versionMenu = versionMenu
         self.preferredCodexAnimationBackend = codexAnimationBackend
         self.codexAnimationBackend = codexAnimationBackend
         self.animationFrameRate = MenuBarAnimationTiming.clampedFrameRate(animationFrameRate)
@@ -6303,9 +6326,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         DispatchQueue.main.async { [weak self] in self?.actions.showModOnboarding() }
     }
 
-    @objc private func openAbout() {
-        // Let the menu close before presenting the Dashboard.
-        DispatchQueue.main.async { [weak self] in self?.actions.openAbout() }
+    @objc private func openVersionMenuDestination() {
+        // Let the menu close before opening the repository link or Dashboard.
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            if let url = self.versionMenu.pullRequestURL {
+                self.actions.openStatusLink(url)
+            } else {
+                self.actions.openAbout()
+            }
+        }
     }
 
     private func makeOpenDashboardMenuItem() -> NSMenuItem {
@@ -6411,8 +6441,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         menu.addItem(.separator())
         menu.addItem(
-            withTitle: tr(.keyDashboardAboutPageVersionValue, arguments: [displayedVersion]),
-            action: #selector(openAbout),
+            withTitle: versionMenu.title,
+            action: #selector(openVersionMenuDestination),
             keyEquivalent: ""
         ).target = self
         menu.addItem(

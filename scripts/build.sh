@@ -347,8 +347,25 @@ bundle_minimum_system="$(plutil -extract LSMinimumSystemVersion raw -o - "$bundl
 [[ "$bundle_minimum_system" == "$balancebar_deployment_target" ]] \
     || die "Info.plist minimum OS is $bundle_minimum_system; expected $balancebar_deployment_target"
 if [[ "$variant" == "dev" ]]; then
-    task_build_sha="$(git -C "$repo_root" rev-parse HEAD)"
-    plutil -replace BalanceBarBuildSHA -string "$task_build_sha" "$bundle_plist"
+    if task_build_sha="$(git -C "$repo_root" rev-parse HEAD 2>/dev/null)"; then
+        plutil -replace BalanceBarBuildSHA -string "$task_build_sha" "$bundle_plist"
+    fi
+    task_build_pr="${BALANCEBAR_BUILD_PR:-}"
+    if [[ ! "$task_build_pr" =~ ^0*[1-9][0-9]*$ ]]; then
+        task_build_pr=""
+        if task_build_branch="$(git -C "$repo_root" symbolic-ref --quiet --short HEAD 2>/dev/null)" \
+            && [[ "$task_build_branch" != "main" ]] && command -v gh >/dev/null 2>&1; then
+            # The alarm survives exec, bounding the lookup without a GNU timeout dependency.
+            task_build_pr="$(/usr/bin/perl -e 'alarm 5; exec @ARGV or exit 1' \
+                gh pr list --repo huanmeng06/BalanceBar --head "$task_build_branch" --state all \
+                --json number --limit 1 --jq '.[0].number // empty' 2>/dev/null)" || task_build_pr=""
+        fi
+    fi
+    if [[ "$task_build_pr" =~ ^0*[1-9][0-9]*$ ]]; then
+        plutil -replace BalanceBarBuildPR -string "$task_build_pr" "$bundle_plist"
+    else
+        printf 'build-balancebar: no Dev build PR found; using SHA if available\n'
+    fi
     plutil -replace CFBundleName -string "$bundle_name" "$bundle_plist"
     plutil -replace CFBundleDisplayName -string "$bundle_name" "$bundle_plist"
 fi
