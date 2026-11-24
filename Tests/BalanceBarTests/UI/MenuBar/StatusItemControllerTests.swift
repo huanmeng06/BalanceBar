@@ -1038,6 +1038,193 @@ final class StatusItemControllerTests: XCTestCase {
     }
 
     @MainActor
+    func testOpenMainWindowMenuItemHasCommandCommaAndKeepsUpdateBadge() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.start(
+            snapshot: .placeholder,
+            refreshDate: nil,
+            menuInput: makeMenuInput(showsAvailableUpdateBadge: true),
+            settings: makeSettings()
+        )
+
+        let item = try XCTUnwrap(controller.menuItemsForTesting.first {
+            $0.title == tr(.keyStatusItemControllerOpenMainWindow)
+        })
+        XCTAssertEqual(item.keyEquivalent, ",")
+        XCTAssertEqual(item.keyEquivalentModifierMask, [.command])
+        XCTAssertNotNil(item.badge)
+    }
+
+    @MainActor
+    func testVersionMenuItemStaysAboveQuitWithAndWithoutOptionalItems() throws {
+        let previous = AppLanguage.selected
+        defer { AppLanguage.selected = previous }
+        AppLanguage.selected = .simplifiedChinese
+
+        for (isDevBuild, title) in [(false, "版本 1.2.3"), (true, "版本 1.2.3 (Dev)")] {
+            let controller = makeController(shortVersion: "1.2.3", isDevBuild: isDevBuild)
+            defer { controller.teardown() }
+            for showOptionalItems in [true, false] {
+                controller.start(
+                    snapshot: .placeholder,
+                    refreshDate: nil,
+                    menuInput: makeMenuInput(
+                        showQuickSwitchMenu: showOptionalItems,
+                        showOpenChatGPTMenu: showOptionalItems,
+                        showOpenCCSwitchMenu: showOptionalItems,
+                        showStatusMenu: showOptionalItems
+                    ),
+                    settings: makeSettings()
+                )
+
+                let items = controller.menuItemsForTesting
+                let footer = Array(items.suffix(4))
+                XCTAssertEqual(footer.count, 4)
+                XCTAssertTrue(footer.first?.isSeparatorItem == true)
+                let version = try XCTUnwrap(footer.dropFirst().first)
+                XCTAssertEqual(version.title, title)
+                XCTAssertTrue(version.isEnabled)
+                XCTAssertEqual(version.keyEquivalent, "")
+                XCTAssertNil(version.badge)
+                XCTAssertFalse(version.isAlternate)
+                let alternate = try XCTUnwrap(footer.dropFirst(2).first)
+                XCTAssertTrue(alternate.isAlternate)
+                XCTAssertEqual(alternate.keyEquivalent, version.keyEquivalent)
+                XCTAssertEqual(alternate.keyEquivalentModifierMask, [.option])
+                XCTAssertEqual(footer.last?.title, tr(.keyStatusItemControllerQuitBalancebar))
+                XCTAssertFalse(zip(items, items.dropFirst()).contains { $0.0.isSeparatorItem && $0.1.isSeparatorItem })
+            }
+        }
+    }
+
+    @MainActor
+    func testVersionMenuShowsOnlyValidatedDevMetadata() {
+        let previous = AppLanguage.selected
+        defer { AppLanguage.selected = previous }
+        AppLanguage.selected = .simplifiedChinese
+        let sha = "416559d347888094343958934b27f227aeb7c05b"
+        let prURL = "https://github.com/huanmeng06/BalanceBar/pull/721"
+
+        func check(_ isDev: Bool, _ pr: String?, _ revision: String?, _ title: String, url: String? = nil) {
+            let menu = StatusItemController.VersionMenu(
+                buildVersion: .init(shortVersion: "1.2.3", isDevBuild: isDev, buildPR: pr, buildSHA: revision)
+            )
+            XCTAssertEqual(menu.title, title)
+            XCTAssertEqual(menu.pullRequestURL?.absoluteString, url)
+        }
+
+        check(false, "721", sha, "版本 1.2.3")
+        check(false, nil, nil, "版本 1.2.3")
+        check(true, "721", sha, "版本 1.2.3 (Dev #721)", url: prURL)
+        check(true, nil, sha, "版本 1.2.3 (Dev 416559d)")
+        check(true, nil, nil, "版本 1.2.3 (Dev)")
+        for invalid in ["", "0", "abc", "-1", "+721", "721\n", String(repeating: "9", count: 30)] {
+            check(true, invalid, sha, "版本 1.2.3 (Dev 416559d)")
+        }
+        for invalid in ["416559", "416559dg", "416559d\n"] {
+            check(true, nil, invalid, "版本 1.2.3 (Dev)")
+        }
+        AppLanguage.selected = .english
+        check(true, "721", sha, "Version 1.2.3 (Dev #721)", url: prURL)
+    }
+
+    @MainActor
+    func testVersionMenuCopyTitlesAndPayloadsFollowBuildMetadata() {
+        let previous = AppLanguage.selected
+        defer { AppLanguage.selected = previous }
+        AppLanguage.selected = .simplifiedChinese
+        let sha = "416559d347888094343958934b27f227aeb7c05b"
+        let repo = "https://github.com/huanmeng06/BalanceBar"
+
+        func check(_ isDev: Bool, _ pr: String?, _ revision: String?, _ title: String, _ text: String) {
+            let menu = StatusItemController.VersionMenu(
+                buildVersion: .init(shortVersion: "1.2.3", isDevBuild: isDev, buildPR: pr, buildSHA: revision)
+            )
+            XCTAssertEqual(menu.copyItem?.title, title)
+            XCTAssertEqual(menu.copyItem?.text, text)
+        }
+
+        check(false, "721", sha, "拷贝链接", "\(repo)/releases/tag/v1.2.3")
+        check(true, "721", sha, "拷贝链接", "\(repo)/pull/721")
+        check(true, "0", sha, "拷贝链接", "\(repo)/commit/\(sha)")
+        check(true, nil, nil, "拷贝版本号", "BalanceBar 1.2.3 (Dev)")
+        check(true, nil, String(sha.prefix(7)), "拷贝版本号", "BalanceBar 1.2.3 (Dev)")
+        check(true, nil, String(sha.dropLast()) + "g", "拷贝版本号", "BalanceBar 1.2.3 (Dev)")
+        XCTAssertNil(StatusItemController.VersionMenu(buildVersion: .init(shortVersion: nil, isDevBuild: false)).copyItem)
+        XCTAssertNil(StatusItemController.VersionMenu(buildVersion: .init(shortVersion: "", isDevBuild: false)).copyItem)
+
+        AppLanguage.selected = .english
+        check(false, nil, nil, "Copy Link", "\(repo)/releases/tag/v1.2.3")
+        check(true, "721", nil, "Copy Link", "\(repo)/pull/721")
+        check(true, nil, sha, "Copy Link", "\(repo)/commit/\(sha)")
+        check(true, nil, nil, "Copy Version Number", "BalanceBar 1.2.3 (Dev)")
+    }
+
+    @MainActor
+    func testVersionMenuAlternateCopiesWithoutOpeningAnything() throws {
+        var copied: [String] = []
+        let controller = makeController(
+            openStatusLink: { _ in XCTFail("Copy should not open a browser") },
+            shortVersion: "1.2.3", isDevBuild: true, buildPR: "721",
+            openAbout: { XCTFail("Copy should not open About") },
+            copyText: { copied.append($0) }
+        )
+        defer { controller.teardown() }
+        controller.start(snapshot: .placeholder, refreshDate: nil, menuInput: makeMenuInput(), settings: makeSettings())
+        let item = try XCTUnwrap(controller.menuItemsForTesting.dropLast().last)
+        XCTAssertTrue(item.isAlternate)
+        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(item.action), to: item.target, from: item))
+        XCTAssertEqual(copied, ["https://github.com/huanmeng06/BalanceBar/pull/721"])
+    }
+
+    @MainActor
+    func testVersionMenuItemOpensPullRequestAsynchronouslyInsteadOfAbout() throws {
+        var openedURLs: [URL] = []
+        var aboutOpens = 0
+        let controller = makeController(
+            openStatusLink: { openedURLs.append($0) },
+            shortVersion: "1.2.3", isDevBuild: true, buildPR: "721",
+            openAbout: { aboutOpens += 1 }
+        )
+        defer { controller.teardown() }
+        controller.start(snapshot: .placeholder, refreshDate: nil, menuInput: makeMenuInput(), settings: makeSettings())
+        let item = try XCTUnwrap(controller.menuItemsForTesting.dropLast(2).last)
+        XCTAssertTrue(item.title.hasSuffix(" (Dev #721)"))
+        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(item.action), to: item.target, from: item))
+        XCTAssertTrue(openedURLs.isEmpty)
+
+        let drained = expectation(description: "queued PR action")
+        DispatchQueue.main.async { drained.fulfill() }
+        wait(for: [drained], timeout: 1)
+        XCTAssertEqual(openedURLs.map(\.absoluteString), ["https://github.com/huanmeng06/BalanceBar/pull/721"])
+        XCTAssertEqual(aboutOpens, 0)
+    }
+
+    @MainActor
+    func testVersionMenuItemOpensAboutAsynchronously() throws {
+        var aboutOpens = 0
+        let controller = makeController(openAbout: { aboutOpens += 1 })
+        defer { controller.teardown() }
+        controller.start(
+            snapshot: .placeholder,
+            refreshDate: nil,
+            menuInput: makeMenuInput(),
+            settings: makeSettings()
+        )
+        let item = try XCTUnwrap(controller.menuItemsForTesting.dropLast().last)
+        XCTAssertFalse(item.isAlternate, "A release without a bundle version has no copy alternate")
+        let action = try XCTUnwrap(item.action)
+        XCTAssertTrue(NSApp.sendAction(action, to: item.target, from: item))
+        XCTAssertEqual(aboutOpens, 0)
+
+        let drained = expectation(description: "queued About action")
+        DispatchQueue.main.async { drained.fulfill() }
+        wait(for: [drained], timeout: 1)
+        XCTAssertEqual(aboutOpens, 1)
+    }
+
+    @MainActor
     func testOpenCurrentAgentMenuTitleFollowsActiveClient() {
         let controller = makeController()
         defer { controller.teardown() }
@@ -3156,7 +3343,12 @@ final class StatusItemControllerTests: XCTestCase {
         openDashboard: @escaping () -> Void = {},
         openChatGPT: @escaping () -> Void = {},
         openCCSwitch: @escaping () -> Void = {},
-        openStatusLink: @escaping (URL) -> Void = { _ in }
+        openStatusLink: @escaping (URL) -> Void = { _ in },
+        shortVersion: String? = nil,
+        isDevBuild: Bool = false,
+        buildPR: String? = nil,
+        openAbout: @escaping () -> Void = {},
+        copyText: @escaping (String) -> Void = { _ in }
     ) -> StatusItemController {
         StatusItemController(
             actions: StatusItemController.Actions(
@@ -3168,8 +3360,11 @@ final class StatusItemControllerTests: XCTestCase {
                 switchProvider: { _ in },
                 openProviderWebsite: {},
                 openStatusLink: openStatusLink,
-                iconChanged: { _ in }
+                iconChanged: { _ in },
+                openAbout: openAbout,
+                copyText: copyText
             ),
+            versionMenu: .init(buildVersion: .init(shortVersion: shortVersion, isDevBuild: isDevBuild, buildPR: buildPR)),
             codexAnimationBackend: codexAnimationBackend,
             forceNativeCodexAnimationFailureForTesting: forceNativeCodexAnimationFailureForTesting
         )
@@ -3179,7 +3374,10 @@ final class StatusItemControllerTests: XCTestCase {
         activeClient: AssistantClient = .codex,
         showQuickSwitchMenu: Bool = false,
         showOpenChatGPTMenu: Bool = false,
-        quickSwitchSummaries: [String: String]? = nil
+        quickSwitchSummaries: [String: String]? = nil,
+        showOpenCCSwitchMenu: Bool = false,
+        showStatusMenu: Bool = false,
+        showsAvailableUpdateBadge: Bool = false
     ) -> StatusItemController.MenuInput {
         StatusItemController.MenuInput(
             choices: showQuickSwitchMenu
@@ -3191,8 +3389,9 @@ final class StatusItemControllerTests: XCTestCase {
             statusLinks: [],
             showQuickSwitchMenu: showQuickSwitchMenu,
             showOpenChatGPTMenu: showOpenChatGPTMenu,
-            showOpenCCSwitchMenu: false,
-            showStatusMenu: false
+            showOpenCCSwitchMenu: showOpenCCSwitchMenu,
+            showStatusMenu: showStatusMenu,
+            showsAvailableUpdateBadge: showsAvailableUpdateBadge
         )
     }
 

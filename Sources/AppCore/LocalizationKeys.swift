@@ -584,6 +584,8 @@
     case keyStatusItemControllerOpenGrok = "status.item.controller.open_grok"
     case keyStatusItemControllerOpenClaude = "status.item.controller.open_claude"
     case keyStatusItemControllerOpenCcSwitch = "status.item.controller.open_cc_switch"
+    case keyStatusItemControllerCopyLink = "status.item.controller.copy_link"
+    case keyStatusItemControllerCopyVersionNumber = "status.item.controller.copy_version_number"
     case keyStatusItemControllerQuitBalancebar = "status.item.controller.quit_balancebar"
     case keyStatusItemControllerViewStatus = "status.item.controller.view_status"
     case keyStatusItemControllerViewStatus2 = "status.item.controller.view_status.2"

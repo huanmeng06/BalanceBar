@@ -460,6 +460,8 @@
 "status.item.controller.open_grok" = "Открыть Grok";
 "status.item.controller.open_claude" = "Открыть Claude";
 "status.item.controller.open_cc_switch" = "Открыть CC Switch";
+"status.item.controller.copy_link" = "Скопировать ссылку";
+"status.item.controller.copy_version_number" = "Скопировать номер версии";
 "status.item.controller.quit_balancebar" = "Выйти из BalanceBar";
 "status.item.controller.view_status" = "Просмотреть статус";
 "status.item.controller.view_status.2" = "Просмотреть статус";

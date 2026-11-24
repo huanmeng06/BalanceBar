@@ -5,9 +5,45 @@ enum DashboardAboutPage {
     static let githubRepositoryURL = URL(string: "https://github.com/huanmeng06/BalanceBar")!
     static let githubAccessibilityLabel = tr(.keyDashboardAboutPageGithubRepository)
 
-    static func displayedVersion(shortVersion: String?, isDevBuild: Bool) -> String {
-        let value = shortVersion ?? fallbackShortVersion
-        return value + (isDevBuild ? " · Dev" : "")
+    struct BuildVersion {
+        let shortVersion: String?
+        let isDevBuild: Bool
+        let pullRequestNumber: Int?
+        let sha: String?
+
+        init(shortVersion: String?, isDevBuild: Bool, buildPR: String? = nil, buildSHA: String? = nil) {
+            self.shortVersion = shortVersion
+            self.isDevBuild = isDevBuild
+            if isDevBuild, let buildPR, buildPR.range(of: #"\A[0-9]+\z"#, options: .regularExpression) != nil,
+               let number = Int(buildPR), number > 0 {
+                pullRequestNumber = number
+            } else {
+                pullRequestNumber = nil
+            }
+            sha = isDevBuild ? buildSHA.flatMap {
+                $0.range(of: #"\A[0-9a-fA-F]{7,}\z"#, options: .regularExpression) == nil ? nil : $0
+            } : nil
+        }
+
+        init(bundle: Bundle, devBundleIdentifier: String) {
+            let isDevBuild = bundle.bundleIdentifier == devBundleIdentifier
+            self.init(
+                shortVersion: bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
+                isDevBuild: isDevBuild,
+                buildPR: isDevBuild ? bundle.object(forInfoDictionaryKey: "BalanceBarBuildPR") as? String : nil,
+                buildSHA: isDevBuild ? bundle.object(forInfoDictionaryKey: "BalanceBarBuildSHA") as? String : nil
+            )
+        }
+
+        var value: String {
+            let base = shortVersion ?? DashboardAboutPage.fallbackShortVersion
+            guard isDevBuild else { return base }
+            if let pullRequestNumber { return "\(base) (Dev #\(pullRequestNumber))" }
+            if let sha { return "\(base) (Dev \(sha.prefix(7)))" }
+            return "\(base) (Dev)"
+        }
+
+        var title: String { tr(.keyDashboardAboutPageVersionValue, arguments: [value]) }
     }
 
     static func make(
@@ -26,8 +62,9 @@ enum DashboardAboutPage {
         icon.heightAnchor.constraint(equalToConstant: 72).isActive = true
         let name = NSTextField(labelWithString: "BalanceBar")
         name.font = .systemFont(ofSize: 22, weight: .semibold)
-        let appVersion = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
-        let version = NSTextField(labelWithString: tr(.keyDashboardAboutPageVersionValue, arguments: [String(describing: displayedVersion(shortVersion: appVersion, isDevBuild: bundle.bundleIdentifier == devBundleIdentifier))]))
+        let buildVersion = BuildVersion(bundle: bundle, devBundleIdentifier: devBundleIdentifier)
+        let version = NSTextField(labelWithString: buildVersion.title)
+        version.identifier = NSUserInterfaceItemIdentifier("about.version")
         version.textColor = .secondaryLabelColor
         let detail = NSTextField(labelWithString: tr(.keyDashboardAboutPageACcSwitchBasedMenuBarBalanceViewer))
         detail.textColor = .secondaryLabelColor

@@ -460,6 +460,8 @@
 "status.item.controller.open_grok" = "打开 Grok";
 "status.item.controller.open_claude" = "打开 Claude";
 "status.item.controller.open_cc_switch" = "打开 CC Switch";
+"status.item.controller.copy_link" = "拷贝链接";
+"status.item.controller.copy_version_number" = "拷贝版本号";
 "status.item.controller.quit_balancebar" = "退出 BalanceBar";
 "status.item.controller.view_status" = "查看状态";
 "status.item.controller.view_status.2" = "查看状态";
