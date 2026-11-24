@@ -717,6 +717,7 @@
 "claude.token_refresh.mod_unknown" = "BalanceBar Mod がインストール済みか確認できません";
 "claude.token_refresh.status.running" = "更新中…";
 "claude.token_refresh.status.on" = "オン";
+"claude.token_refresh.status.armed" = "ログインの期限が切れると自動で更新します";
 "claude.token_refresh.status.off" = "オフ";
 "claude.token_refresh.status.succeeded" = "前回の更新：%1$@";
 "claude.token_refresh.status.paused" = "一時停止中";

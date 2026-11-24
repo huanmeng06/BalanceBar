@@ -913,6 +913,7 @@ final class DashboardGeneralPage {
 
     static func claudeTokenRefreshPresentation(enabled: Bool, guardEnabled: Bool, allowedIPs: [String],
                                                 mod: ClaudeTokenRefreshModAvailability, state: ClaudeTokenRefreshState,
+                                                settingsConflict: @autoclosure () -> String? = nil,
                                                 now: Date = Date(), timeZone: TimeZone = .autoupdatingCurrent) -> ClaudeTokenRefreshPresentation {
         guard guardEnabled else {
             return .init(isOn: enabled, dependencyEnabled: false, detail: tr(.keyClaudeTokenRefreshOffDetail),
@@ -938,20 +939,31 @@ final class DashboardGeneralPage {
         }
         let status: ClaudeLoginLine
         let on = tr(.keyClaudeTokenRefreshStatusOn)
+        let armed = line(.good, [on, tr(.keyClaudeTokenRefreshStatusArmed)])
         if !enabled {
             status = line(.neutral, [tr(.keyClaudeTokenRefreshStatusOff)])
         } else if EgressIPAddress.sanitizedList(allowedIPs).isEmpty {
             status = line(.warning, [tr(.keyClaudeTokenRefreshStatusInactive), tr(.keyClaudeTokenRefreshReasonNoTargets)])
         } else {
             switch state {
-            case .idle: status = line(.good, [on])
-            case .running: status = line(.neutral, [on, tr(.keyClaudeTokenRefreshStatusRunning)])
-            case let .succeeded(at): status = line(.good, [on, dateText(.keyClaudeTokenRefreshStatusSucceeded, at)])
-            case .paused: status = line(.warning, [tr(.keyClaudeTokenRefreshStatusPaused), tr(.keyClaudeTokenRefreshReasonLoginInvalid)])
-            case let .failed(failure, nextTryAt):
-                var parts = [tr(.keyClaudeTokenRefreshStatusFailed), tokenRefreshFailureText(failure)]
-                if let nextTryAt { parts.append(dateText(.keyClaudeTokenRefreshStatusNextTry, nextTryAt)) }
-                status = line(.warning, parts)
+            case .paused:
+                status = line(.warning, [tr(.keyClaudeTokenRefreshStatusPaused), tr(.keyClaudeTokenRefreshReasonLoginInvalid)])
+            case .running:
+                status = line(.neutral, [on, tr(.keyClaudeTokenRefreshStatusRunning)])
+            case .idle, .succeeded, .failed:
+                if let variable = settingsConflict() {
+                    status = line(.warning, [on, tr(.keyClaudeTokenRefreshReasonSettingsEnv, arguments: [variable])])
+                } else if case let .succeeded(at) = state {
+                    status = line(.good, [on, dateText(.keyClaudeTokenRefreshStatusSucceeded, at)])
+                } else if case .failed(.settingsEnv, _) = state {
+                    status = armed
+                } else if case let .failed(failure, nextTryAt) = state {
+                    var parts = [tr(.keyClaudeTokenRefreshStatusFailed), tokenRefreshFailureText(failure)]
+                    if let nextTryAt { parts.append(dateText(.keyClaudeTokenRefreshStatusNextTry, nextTryAt)) }
+                    status = line(.warning, parts)
+                } else {
+                    status = armed
+                }
             }
         }
         return .init(isOn: enabled, dependencyEnabled: true, detail: detail, linkPhrase: nil, statusLine: status)

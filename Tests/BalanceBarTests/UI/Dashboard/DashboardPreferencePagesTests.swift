@@ -2292,7 +2292,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             (true, .unknown, true, true, .paused, [tr(.keyClaudeTokenRefreshModUnknown)], .tertiaryLabelColor),
             (true, .available, false, true, .idle, [tr(.keyClaudeTokenRefreshStatusOff)], .tertiaryLabelColor),
             (true, .available, true, false, .idle, [tr(.keyClaudeTokenRefreshStatusInactive), tr(.keyClaudeTokenRefreshReasonNoTargets)], .systemOrange),
-            (true, .available, true, true, .idle, [on], .systemGreen),
+            (true, .available, true, true, .idle, [on, tr(.keyClaudeTokenRefreshStatusArmed)], .systemGreen),
             (true, .available, true, true, .running, [on, tr(.keyClaudeTokenRefreshStatusRunning)], .tertiaryLabelColor),
             (true, .available, true, true, .succeeded(at: now), [on, tr(.keyClaudeTokenRefreshStatusSucceeded, arguments: [time(now)])], .systemGreen),
             (true, .available, true, true, .failed(.egress(.mismatch), nextTryAt: next),
@@ -2321,6 +2321,40 @@ final class DashboardPreferencePagesTests: XCTestCase {
             }
         }
         XCTAssertEqual(opened, 1)
+    }
+
+    func testClaudeTokenRefreshShowsCurrentConflictWithoutStaleErrorsOrDisabledReads() {
+        let variable = "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"
+        let on = tr(.keyClaudeTokenRefreshStatusOn)
+        let armed = "\(on) · \(tr(.keyClaudeTokenRefreshStatusArmed))"
+        let conflict = "\(on) · \(tr(.keyClaudeTokenRefreshReasonSettingsEnv, arguments: [variable]))"
+        let now = Date()
+        let ips = ["203.0.113.20"]
+        let paused = [tr(.keyClaudeTokenRefreshStatusPaused), tr(.keyClaudeTokenRefreshReasonLoginInvalid)].joined(separator: " · ")
+        let running = "\(on) · \(tr(.keyClaudeTokenRefreshStatusRunning))"
+        let cases: [(ClaudeTokenRefreshState, String?, DashboardGeneralPage.ClaudeLoginLine.Tone, String)] = [
+            (.idle, variable, .warning, conflict),
+            (.succeeded(at: now), variable, .warning, conflict),
+            (.failed(.egress(.mismatch), nextTryAt: nil), variable, .warning, conflict),
+            (.failed(.settingsEnv(variable: variable), nextTryAt: nil), nil, .good, armed),
+            (.paused, variable, .warning, paused),
+            (.running, variable, .neutral, running),
+        ]
+        for (state, settingsConflict, tone, text) in cases {
+            let row = DashboardGeneralPage.claudeTokenRefreshPresentation(enabled: true, guardEnabled: true,
+                allowedIPs: ips, mod: .available, state: state, settingsConflict: settingsConflict)
+            XCTAssertEqual(row.statusLine, .init(tone: tone, text: text))
+        }
+        func unexpectedRead() -> String? {
+            XCTFail("Do not read settings without all dependencies")
+            return variable
+        }
+        for (enabled, guardEnabled, allowedIPs, mod) in [(false, true, ips, ClaudeTokenRefreshModAvailability.available),
+            (true, false, ips, .available), (true, true, [], .available), (true, true, ips, .unavailable)] {
+            let row = DashboardGeneralPage.claudeTokenRefreshPresentation(enabled: enabled, guardEnabled: guardEnabled,
+                allowedIPs: allowedIPs, mod: mod, state: .idle, settingsConflict: unexpectedRead())
+            if !enabled { XCTAssertEqual(row.statusLine, .init(tone: .neutral, text: tr(.keyClaudeTokenRefreshStatusOff))) }
+        }
     }
 
     func testClaudeTokenRefreshToggleRequiresAllowlistAndExplicitConfirmation() throws {

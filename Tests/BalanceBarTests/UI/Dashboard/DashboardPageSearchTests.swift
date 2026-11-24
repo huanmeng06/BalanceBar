@@ -18,6 +18,7 @@ final class DashboardPageSearchTests: XCTestCase {
         let keys = DashboardSettingsSearchCatalog.keys(for: .general)
         XCTAssertTrue(keys.contains(.keyClaudeTokenRefreshStatusOff))
         XCTAssertTrue(keys.contains(.keyClaudeTokenRefreshStatusOn))
+        XCTAssertTrue(keys.contains(.keyClaudeTokenRefreshStatusArmed))
         XCTAssertFalse(keys.contains { $0.rawValue == "claude.token_refresh.status.waiting" })
     }
 

@@ -717,6 +717,7 @@
 "claude.token_refresh.mod_unknown" = "Não foi possível confirmar que o BalanceBar Mod está instalado";
 "claude.token_refresh.status.running" = "Renovando…";
 "claude.token_refresh.status.on" = "Ativado";
+"claude.token_refresh.status.armed" = "Renova automaticamente quando o login expira";
 "claude.token_refresh.status.off" = "Desativado";
 "claude.token_refresh.status.succeeded" = "Última renovação: %1$@";
 "claude.token_refresh.status.paused" = "Em pausa";

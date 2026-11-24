@@ -717,6 +717,7 @@
 "claude.token_refresh.mod_unknown" = "无法确认 BalanceBar Mod 是否已安装";
 "claude.token_refresh.status.running" = "正在续期…";
 "claude.token_refresh.status.on" = "已开启";
+"claude.token_refresh.status.armed" = "登录过期后会自动续期";
 "claude.token_refresh.status.off" = "未开启";
 "claude.token_refresh.status.succeeded" = "上次续期：%1$@";
 "claude.token_refresh.status.paused" = "已暂停";

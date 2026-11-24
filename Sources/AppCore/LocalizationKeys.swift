@@ -342,6 +342,7 @@
     case keyClaudeTokenRefreshModUnknown = "claude.token_refresh.mod_unknown"
     case keyClaudeTokenRefreshStatusOff = "claude.token_refresh.status.off"
     case keyClaudeTokenRefreshStatusOn = "claude.token_refresh.status.on"
+    case keyClaudeTokenRefreshStatusArmed = "claude.token_refresh.status.armed"
     case keyClaudeTokenRefreshStatusRunning = "claude.token_refresh.status.running"
     case keyClaudeTokenRefreshStatusSucceeded = "claude.token_refresh.status.succeeded"
     case keyClaudeTokenRefreshStatusPaused = "claude.token_refresh.status.paused"

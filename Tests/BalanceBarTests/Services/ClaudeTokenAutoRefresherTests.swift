@@ -73,6 +73,25 @@ final class ClaudeTokenAutoRefresherTests: XCTestCase {
         return ran
     }
 
+    func testCurrentSettingsConflictIsReadOnlyAndReflectsRemoval() {
+        let fixture = Fixture()
+        fixture.pause = "signed_out"
+        let refresher = fixture.refresher
+        let originalState = refresher.state
+        XCTAssertEqual(originalState, .paused)
+        XCTAssertNil(refresher.currentSettingsConflict())
+        fixture.settings = ["env": ["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"]]
+        XCTAssertEqual(refresher.currentSettingsConflict(), "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC")
+        fixture.settings = nil
+        XCTAssertNil(refresher.currentSettingsConflict())
+        XCTAssertEqual(refresher.state, originalState)
+        XCTAssertEqual(fixture.pause, "signed_out")
+        XCTAssertTrue(fixture.commands.isEmpty)
+        XCTAssertTrue(fixture.probes.isEmpty)
+        XCTAssertTrue(fixture.logs.isEmpty)
+        XCTAssertEqual(fixture.reads, 0)
+    }
+
     func testFreshCredentialDoesNotProbeOrRun() {
         let fixture = Fixture()
         fixture.expiry = fixture.now.addingTimeInterval(10)

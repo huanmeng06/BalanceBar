@@ -717,6 +717,7 @@
 "claude.token_refresh.mod_unknown" = "Не удалось подтвердить, что BalanceBar Mod установлен";
 "claude.token_refresh.status.running" = "Продление…";
 "claude.token_refresh.status.on" = "Включено";
+"claude.token_refresh.status.armed" = "Продлится автоматически, когда вход истечёт";
 "claude.token_refresh.status.off" = "Выключено";
 "claude.token_refresh.status.succeeded" = "Последнее продление: %1$@";
 "claude.token_refresh.status.paused" = "Приостановлено";

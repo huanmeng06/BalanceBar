@@ -302,6 +302,11 @@ final class ClaudeTokenAutoRefresher {
     private static let conflictingEnvKeys = ["ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY", "CLAUDE_CONFIG_DIR",
                                               "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX"]
 
+    /// Display-only: reuses the launch preflight check without changing refresh state.
+    func currentSettingsConflict() -> String? {
+        Self.conflictingSetting(settings())
+    }
+
     static func conflictingSetting(_ settings: [String: Any]?) -> String? {
         let env = settings?["env"] as? [String: Any] ?? [:]
         for key in conflictingEnvKeys where nonempty(env[key]) { return key }

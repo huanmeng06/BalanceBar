@@ -717,6 +717,7 @@
 "claude.token_refresh.mod_unknown" = "BalanceBar Mod 설치 여부를 확인할 수 없음";
 "claude.token_refresh.status.running" = "갱신 중…";
 "claude.token_refresh.status.on" = "켜짐";
+"claude.token_refresh.status.armed" = "로그인이 만료되면 자동으로 갱신합니다";
 "claude.token_refresh.status.off" = "꺼짐";
 "claude.token_refresh.status.succeeded" = "마지막 갱신: %1$@";
 "claude.token_refresh.status.paused" = "일시 중지됨";

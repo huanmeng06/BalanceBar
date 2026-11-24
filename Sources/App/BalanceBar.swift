@@ -586,6 +586,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 guard let self else { return }
                 self.updateDashboard(for: self.snapshot, refreshDate: self.refreshDate(for: self.snapshot))
                 self.updateService.checkForUpdatesIfNeeded()
+                self.refreshClaudeTokenAutoRefresh()
             },
             onDidClose: { [weak self] in
                 guard let self else { return }
@@ -1375,6 +1376,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         configureApplicationMenu()
         NSApp.appearance = nil
         dashboardComposition.start()
+        NotificationCenter.default.addObserver(self, selector: #selector(dashboardWindowDidBecomeKey(_:)),
+                                               name: NSWindow.didBecomeKeyNotification, object: nil)
         // Read-only detection for the Claude Code Mod sync entry; the probes run on a
         // background queue and only the settings row consumes the result.
         modSyncCoordinator.startDetectionIfNeeded()
@@ -1484,6 +1487,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         activityCoordinator.stop()
         menuBarWidthAdjustmentCoalescer.cancel()
         menuBarStatusItemWidthAdjustmentSession.cancel()
+        NotificationCenter.default.removeObserver(self, name: NSWindow.didBecomeKeyNotification, object: nil)
         dashboardAccessoryHarness.teardown()
         dashboardComposition.teardown()
         statusItemController.teardown()
@@ -1497,6 +1501,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         dashboardComposition.refreshLaunchAtLogin()
         dashboardComposition.refreshLaunchWithChatGPT()
         notificationCoordinator.refreshPermission()
+        refreshClaudeTokenAutoRefresh()
+    }
+
+    @objc private func dashboardWindowDidBecomeKey(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow, window === dashboardComposition.window else { return }
+        refreshClaudeTokenAutoRefresh()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -2254,7 +2264,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         DashboardGeneralPage.claudeTokenRefreshPresentation(
             enabled: preferences.claudeTokenAutoRefreshEnabled, guardEnabled: preferences.claudeEgressGuardEnabled,
             allowedIPs: preferences.claudeEgressGuardAllowedIPs, mod: modSyncCoordinator.tokenRefreshMarketplaceAvailability,
-            state: claudeTokenAutoRefresher.state, timeZone: preferences.effectiveDisplayTimeZone)
+            state: claudeTokenAutoRefresher.state, settingsConflict: claudeTokenAutoRefresher.currentSettingsConflict(),
+            timeZone: preferences.effectiveDisplayTimeZone)
     }
 
     private func refreshClaudeTokenAutoRefresh() {

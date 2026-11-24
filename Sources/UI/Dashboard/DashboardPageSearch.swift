@@ -525,6 +525,7 @@ enum DashboardSettingsSearchCatalog {
                 .keyClaudeTokenRefreshModUnknown,
                 .keyClaudeTokenRefreshStatusOff,
                 .keyClaudeTokenRefreshStatusOn,
+                .keyClaudeTokenRefreshStatusArmed,
                 .keyClaudeTokenRefreshStatusRunning,
                 .keyClaudeTokenRefreshStatusPaused,
                 .keyClaudeTokenRefreshStatusFailed,
