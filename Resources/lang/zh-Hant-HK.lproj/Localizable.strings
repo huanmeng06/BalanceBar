@@ -460,6 +460,10 @@
 "status.item.controller.open_grok" = "開啟 Grok";
 "status.item.controller.open_claude" = "開啟 Claude";
 "status.item.controller.open_cc_switch" = "開啟 CC Switch";
+"status.item.controller.copy_release_link" = "複製版本連結";
+"status.item.controller.copy_pr_link" = "複製 PR 連結";
+"status.item.controller.copy_commit_link" = "複製提交連結";
+"status.item.controller.copy_version" = "複製版本號碼";
 "status.item.controller.quit_balancebar" = "結束 BalanceBar";
 "status.item.controller.view_status" = "檢視狀態";
 "status.item.controller.view_status.2" = "檢視狀態";

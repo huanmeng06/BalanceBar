@@ -1079,14 +1079,19 @@ final class StatusItemControllerTests: XCTestCase {
                 )
 
                 let items = controller.menuItemsForTesting
-                let footer = Array(items.suffix(3))
-                XCTAssertEqual(footer.count, 3)
+                let footer = Array(items.suffix(4))
+                XCTAssertEqual(footer.count, 4)
                 XCTAssertTrue(footer.first?.isSeparatorItem == true)
                 let version = try XCTUnwrap(footer.dropFirst().first)
                 XCTAssertEqual(version.title, title)
                 XCTAssertTrue(version.isEnabled)
                 XCTAssertEqual(version.keyEquivalent, "")
                 XCTAssertNil(version.badge)
+                XCTAssertFalse(version.isAlternate)
+                let alternate = try XCTUnwrap(footer.dropFirst(2).first)
+                XCTAssertTrue(alternate.isAlternate)
+                XCTAssertEqual(alternate.keyEquivalent, version.keyEquivalent)
+                XCTAssertEqual(alternate.keyEquivalentModifierMask, [.option])
                 XCTAssertEqual(footer.last?.title, tr(.keyStatusItemControllerQuitBalancebar))
                 XCTAssertFalse(zip(items, items.dropFirst()).contains { $0.0.isSeparatorItem && $0.1.isSeparatorItem })
             }
@@ -1125,6 +1130,55 @@ final class StatusItemControllerTests: XCTestCase {
     }
 
     @MainActor
+    func testVersionMenuCopyTitlesAndPayloadsFollowBuildMetadata() {
+        let previous = AppLanguage.selected
+        defer { AppLanguage.selected = previous }
+        AppLanguage.selected = .simplifiedChinese
+        let sha = "416559d347888094343958934b27f227aeb7c05b"
+        let repo = "https://github.com/huanmeng06/BalanceBar"
+
+        func check(_ isDev: Bool, _ pr: String?, _ revision: String?, _ title: String, _ text: String) {
+            let menu = StatusItemController.VersionMenu(
+                shortVersion: "1.2.3", isDevBuild: isDev, buildPR: pr, buildSHA: revision
+            )
+            XCTAssertEqual(menu.copyItem?.title, title)
+            XCTAssertEqual(menu.copyItem?.text, text)
+        }
+
+        check(false, "721", sha, "复制版本链接", "\(repo)/releases/tag/v1.2.3")
+        check(true, "721", sha, "复制 PR 链接", "\(repo)/pull/721")
+        check(true, "0", sha, "复制提交链接", "\(repo)/commit/\(sha)")
+        check(true, nil, nil, "复制版本号", "BalanceBar 1.2.3 · Dev")
+        check(true, nil, String(sha.prefix(7)), "复制版本号", "BalanceBar 1.2.3 · Dev")
+        check(true, nil, String(sha.dropLast()) + "g", "复制版本号", "BalanceBar 1.2.3 · Dev")
+        XCTAssertNil(StatusItemController.VersionMenu(shortVersion: nil, isDevBuild: false).copyItem)
+        XCTAssertNil(StatusItemController.VersionMenu(shortVersion: "", isDevBuild: false).copyItem)
+
+        AppLanguage.selected = .english
+        check(false, nil, nil, "Copy Release Link", "\(repo)/releases/tag/v1.2.3")
+        check(true, "721", nil, "Copy PR Link", "\(repo)/pull/721")
+        check(true, nil, sha, "Copy Commit Link", "\(repo)/commit/\(sha)")
+        check(true, nil, nil, "Copy Version", "BalanceBar 1.2.3 · Dev")
+    }
+
+    @MainActor
+    func testVersionMenuAlternateCopiesWithoutOpeningAnything() throws {
+        var copied: [String] = []
+        let controller = makeController(
+            openStatusLink: { _ in XCTFail("Copy should not open a browser") },
+            shortVersion: "1.2.3", isDevBuild: true, buildPR: "721",
+            openAbout: { XCTFail("Copy should not open About") },
+            copyText: { copied.append($0) }
+        )
+        defer { controller.teardown() }
+        controller.start(snapshot: .placeholder, refreshDate: nil, menuInput: makeMenuInput(), settings: makeSettings())
+        let item = try XCTUnwrap(controller.menuItemsForTesting.dropLast().last)
+        XCTAssertTrue(item.isAlternate)
+        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(item.action), to: item.target, from: item))
+        XCTAssertEqual(copied, ["https://github.com/huanmeng06/BalanceBar/pull/721"])
+    }
+
+    @MainActor
     func testVersionMenuItemOpensPullRequestAsynchronouslyInsteadOfAbout() throws {
         var openedURLs: [URL] = []
         var aboutOpens = 0
@@ -1135,7 +1189,7 @@ final class StatusItemControllerTests: XCTestCase {
         )
         defer { controller.teardown() }
         controller.start(snapshot: .placeholder, refreshDate: nil, menuInput: makeMenuInput(), settings: makeSettings())
-        let item = try XCTUnwrap(controller.menuItemsForTesting.dropLast().last)
+        let item = try XCTUnwrap(controller.menuItemsForTesting.dropLast(2).last)
         XCTAssertTrue(item.title.hasSuffix(" · Dev · #721"))
         XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(item.action), to: item.target, from: item))
         XCTAssertTrue(openedURLs.isEmpty)
@@ -1159,6 +1213,7 @@ final class StatusItemControllerTests: XCTestCase {
             settings: makeSettings()
         )
         let item = try XCTUnwrap(controller.menuItemsForTesting.dropLast().last)
+        XCTAssertFalse(item.isAlternate, "A release without a bundle version has no copy alternate")
         let action = try XCTUnwrap(item.action)
         XCTAssertTrue(NSApp.sendAction(action, to: item.target, from: item))
         XCTAssertEqual(aboutOpens, 0)
@@ -3292,7 +3347,8 @@ final class StatusItemControllerTests: XCTestCase {
         shortVersion: String? = nil,
         isDevBuild: Bool = false,
         buildPR: String? = nil,
-        openAbout: @escaping () -> Void = {}
+        openAbout: @escaping () -> Void = {},
+        copyText: @escaping (String) -> Void = { _ in }
     ) -> StatusItemController {
         StatusItemController(
             actions: StatusItemController.Actions(
@@ -3305,7 +3361,8 @@ final class StatusItemControllerTests: XCTestCase {
                 openProviderWebsite: {},
                 openStatusLink: openStatusLink,
                 iconChanged: { _ in },
-                openAbout: openAbout
+                openAbout: openAbout,
+                copyText: copyText
             ),
             versionMenu: .init(shortVersion: shortVersion, isDevBuild: isDevBuild, buildPR: buildPR),
             codexAnimationBackend: codexAnimationBackend,

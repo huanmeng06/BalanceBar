@@ -460,6 +460,10 @@
 "status.item.controller.open_grok" = "Grok を開く";
 "status.item.controller.open_claude" = "Claude を開く";
 "status.item.controller.open_cc_switch" = "CC Switch を開く";
+"status.item.controller.copy_release_link" = "リリースリンクをコピー";
+"status.item.controller.copy_pr_link" = "PR リンクをコピー";
+"status.item.controller.copy_commit_link" = "コミットリンクをコピー";
+"status.item.controller.copy_version" = "バージョン番号をコピー";
 "status.item.controller.quit_balancebar" = "BalanceBar を終了";
 "status.item.controller.view_status" = "ステータスを表示";
 "status.item.controller.view_status.2" = "ステータスを表示";

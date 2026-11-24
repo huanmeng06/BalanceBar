@@ -2206,23 +2206,47 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private static let subscriptionFont = NSFont.systemFont(ofSize: 13, weight: .regular)
 
     struct VersionMenu {
+        struct CopyItem {
+            let titleKey: LocalizationKey
+            let text: String
+
+            var title: String { tr(titleKey) }
+        }
+
         let version: String
         let pullRequestURL: URL?
+        let copyItem: CopyItem?
 
         init(shortVersion: String?, isDevBuild: Bool, buildPR: String? = nil, buildSHA: String? = nil) {
             let base = DashboardAboutPage.displayedVersion(shortVersion: shortVersion, isDevBuild: isDevBuild)
-            if isDevBuild, let buildPR, buildPR.range(of: #"\A[0-9]+\z"#, options: .regularExpression) != nil,
-               let number = Int(buildPR), number > 0 {
-                version = "\(base) · #\(number)"
-                pullRequestURL = DashboardAboutPage.githubRepositoryURL
-                    .appendingPathComponent("pull").appendingPathComponent(String(number))
-            } else {
-                if isDevBuild, let buildSHA, buildSHA.range(of: #"\A[0-9a-fA-F]{7,}\z"#, options: .regularExpression) != nil {
-                    version = "\(base) · \(buildSHA.prefix(7))"
-                } else {
-                    version = base
-                }
+            let repository = DashboardAboutPage.githubRepositoryURL
+            if !isDevBuild {
+                version = base
                 pullRequestURL = nil
+                copyItem = shortVersion.flatMap { value in
+                    guard !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+                    let url = repository.appendingPathComponent("releases").appendingPathComponent("tag")
+                        .appendingPathComponent("v\(value)")
+                    return CopyItem(titleKey: .keyStatusItemControllerCopyReleaseLink, text: url.absoluteString)
+                }
+            } else if let buildPR, buildPR.range(of: #"\A[0-9]+\z"#, options: .regularExpression) != nil,
+                      let number = Int(buildPR), number > 0 {
+                let url = repository.appendingPathComponent("pull").appendingPathComponent(String(number))
+                version = "\(base) · #\(number)"
+                pullRequestURL = url
+                copyItem = CopyItem(titleKey: .keyStatusItemControllerCopyPRLink, text: url.absoluteString)
+            } else {
+                pullRequestURL = nil
+                let sha = buildSHA.flatMap {
+                    $0.range(of: #"\A[0-9a-fA-F]{7,}\z"#, options: .regularExpression) == nil ? nil : $0
+                }
+                version = sha.map { "\(base) · \($0.prefix(7))" } ?? base
+                if let sha, sha.count == 40 {
+                    let url = repository.appendingPathComponent("commit").appendingPathComponent(sha)
+                    copyItem = CopyItem(titleKey: .keyStatusItemControllerCopyCommitLink, text: url.absoluteString)
+                } else {
+                    copyItem = CopyItem(titleKey: .keyStatusItemControllerCopyVersion, text: "BalanceBar \(base)")
+                }
             }
         }
 
@@ -2233,6 +2257,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let manualRefresh: () -> Void
         let openDashboard: () -> Void
         let openAbout: () -> Void
+        let copyText: (String) -> Void
         let openChatGPT: () -> Void
         let openCCSwitch: () -> Void
         let quit: () -> Void
@@ -2276,13 +2301,18 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             showModOnboarding: @escaping () -> Void = {},
             startModUpdate: @escaping () -> Void = {},
             openEgressGuardSettings: @escaping () -> Void = {},
-            openAbout: @escaping () -> Void = {}
+            openAbout: @escaping () -> Void = {},
+            copyText: @escaping (String) -> Void = { text in
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(text, forType: .string)
+            }
         ) {
             self.openEgressGuardSettings = openEgressGuardSettings
             self.manualRefreshBlockedUntil = manualRefreshBlockedUntil
                 self.manualRefresh = manualRefresh
             self.openDashboard = openDashboard
             self.openAbout = openAbout
+            self.copyText = copyText
             self.openChatGPT = openChatGPT
             self.openCCSwitch = openCCSwitch
             self.quit = quit
@@ -6338,6 +6368,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
     }
 
+    @objc private func copyVersionMenuText() {
+        guard let copyItem = versionMenu.copyItem else { return }
+        actions.copyText(copyItem.text)
+    }
+
     private func makeOpenDashboardMenuItem() -> NSMenuItem {
         let item = NSMenuItem(
             title: tr(.keyStatusItemControllerOpenMainWindow),
@@ -6445,6 +6480,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             action: #selector(openVersionMenuDestination),
             keyEquivalent: ""
         ).target = self
+        if let copyItem = versionMenu.copyItem {
+            let alternate = NSMenuItem(title: copyItem.title, action: #selector(copyVersionMenuText), keyEquivalent: "")
+            alternate.target = self
+            alternate.keyEquivalentModifierMask = [.option]
+            alternate.isAlternate = true
+            menu.addItem(alternate)
+        }
         menu.addItem(
             withTitle: tr(.keyStatusItemControllerQuitBalancebar),
             action: #selector(quit),
@@ -6881,7 +6923,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         total = max(0, total - gap)
         let screen = statusItem?.button?.window?.screen ?? NSScreen.main
-        let footer = CGFloat(max(10, statusMenu.numberOfItems)) * 24 + 60
+        // An alternate replaces its primary item rather than occupying a second row.
+        let menuRowCount = statusMenu.items.count { !$0.isAlternate }
+        let footer = CGFloat(max(10, menuRowCount)) * 24 + 60
         let maximum = max(80, (screen?.visibleFrame.height ?? 800) - footer)
         let viewportSize = NSSize(width: OpenCodexCardLayout.cardWidth, height: min(total, maximum))
         if scroll.frame.size != viewportSize { needsPlacement = true }

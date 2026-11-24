@@ -460,6 +460,10 @@
 "status.item.controller.open_grok" = "Apri Grok";
 "status.item.controller.open_claude" = "Apri Claude";
 "status.item.controller.open_cc_switch" = "Apri CC Switch";
+"status.item.controller.copy_release_link" = "Copia link della versione";
+"status.item.controller.copy_pr_link" = "Copia link della PR";
+"status.item.controller.copy_commit_link" = "Copia link del commit";
+"status.item.controller.copy_version" = "Copia numero di versione";
 "status.item.controller.quit_balancebar" = "Esci da BalanceBar";
 "status.item.controller.view_status" = "Visualizza stato";
 "status.item.controller.view_status.2" = "Visualizza stato";
