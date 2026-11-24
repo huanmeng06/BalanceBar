@@ -6367,16 +6367,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             aggregationBoundsObserver = nil
         }
         if !replacingMenu { menu.removeAllItems() }
+        let aggregationItem: NSMenuItem?
         if menuInput.aggregatedProviders.isEmpty {
+            aggregationItem = nil
             clearAggregationOverview()
             menu.addItem(makeOverviewMenuItem(for: snapshot))
         } else {
             let item = NSMenuItem()
-            let viewport = makeAggregationOverview()
-            if let previousDistanceFromTop {
-                (viewport as? AggregationOverviewScrollView)?.restoreViewportAfterMount(distanceFromTop: previousDistanceFromTop)
-            }
-            item.view = viewport
+            aggregationItem = item
             menu.addItem(item)
         }
         // The re-login and realtime-boost prompts sit right under the quota card, above Quick Switch.
@@ -6422,6 +6420,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             action: #selector(quit),
             keyEquivalent: "q"
         ).target = self
+        if let aggregationItem {
+            // Size the viewport against the complete menu, including the native footer.
+            let viewport = makeAggregationOverview()
+            if let previousDistanceFromTop {
+                (viewport as? AggregationOverviewScrollView)?.restoreViewportAfterMount(distanceFromTop: previousDistanceFromTop)
+            }
+            aggregationItem.view = viewport
+        }
         (menu.items.first?.view as? MenuHoverLinkHostView)?.setDismissalTrace(menuDismissalTrace)
         menuDismissalTrace?.record("menu.rebuild.complete", view: menu.items.first?.view,
             details: "reason=\(reason)")
