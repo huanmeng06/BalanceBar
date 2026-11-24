@@ -2208,6 +2208,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     struct Actions {
         let manualRefresh: () -> Void
         let openDashboard: () -> Void
+        let openAbout: () -> Void
         let openChatGPT: () -> Void
         let openCCSwitch: () -> Void
         let quit: () -> Void
@@ -2250,12 +2251,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             manualRefreshBlockedUntil: @escaping () -> Date? = { nil },
             showModOnboarding: @escaping () -> Void = {},
             startModUpdate: @escaping () -> Void = {},
-            openEgressGuardSettings: @escaping () -> Void = {}
+            openEgressGuardSettings: @escaping () -> Void = {},
+            openAbout: @escaping () -> Void = {}
         ) {
             self.openEgressGuardSettings = openEgressGuardSettings
             self.manualRefreshBlockedUntil = manualRefreshBlockedUntil
                 self.manualRefresh = manualRefresh
             self.openDashboard = openDashboard
+            self.openAbout = openAbout
             self.openChatGPT = openChatGPT
             self.openCCSwitch = openCCSwitch
             self.quit = quit
@@ -2653,6 +2656,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var lastMenuBarOfficialTextYOffset: CGFloat = 0
     private var lastMenuBarEffectiveSnapshot = Snapshot.placeholder
     private let actions: Actions
+    private let displayedVersion: String
     private var lifecycleGeneration = 0
     private(set) var statusItemInstallCount = 0
     private(set) var statusItemVisibility: StatusItemVisibility = .unknown
@@ -2977,11 +2981,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     init(
         actions: Actions,
+        shortVersion: String? = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
+        isDevBuild: Bool = false,
         codexAnimationBackend: MenuBarCodexAnimationBackend = .stableBitmap,
         animationFrameRate: Int = MenuBarAnimationTiming.defaultFrameRate,
         forceNativeCodexAnimationFailureForTesting: Bool = false
     ) {
         self.actions = actions
+        self.displayedVersion = DashboardAboutPage.displayedVersion(shortVersion: shortVersion, isDevBuild: isDevBuild)
         self.preferredCodexAnimationBackend = codexAnimationBackend
         self.codexAnimationBackend = codexAnimationBackend
         self.animationFrameRate = MenuBarAnimationTiming.clampedFrameRate(animationFrameRate)
@@ -6296,11 +6303,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         DispatchQueue.main.async { [weak self] in self?.actions.showModOnboarding() }
     }
 
+    @objc private func openAbout() {
+        // Let the menu close before presenting the Dashboard.
+        DispatchQueue.main.async { [weak self] in self?.actions.openAbout() }
+    }
+
     private func makeOpenDashboardMenuItem() -> NSMenuItem {
         let item = NSMenuItem(
             title: tr(.keyStatusItemControllerOpenMainWindow),
             action: #selector(openDashboard),
-            keyEquivalent: ""
+            keyEquivalent: ","
         )
         item.target = self
         if menuInput.showsAvailableUpdateBadge {
@@ -6400,6 +6412,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             menu.addItem(makeStatusLinksMenuItem())
         }
         menu.addItem(.separator())
+        menu.addItem(
+            withTitle: tr(.keyDashboardAboutPageVersionValue, arguments: [displayedVersion]),
+            action: #selector(openAbout),
+            keyEquivalent: ""
+        ).target = self
         menu.addItem(
             withTitle: tr(.keyStatusItemControllerQuitBalancebar),
             action: #selector(quit),

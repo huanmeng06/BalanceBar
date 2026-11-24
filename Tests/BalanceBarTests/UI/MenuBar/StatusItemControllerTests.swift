@@ -1038,6 +1038,84 @@ final class StatusItemControllerTests: XCTestCase {
     }
 
     @MainActor
+    func testOpenMainWindowMenuItemHasCommandCommaAndKeepsUpdateBadge() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.start(
+            snapshot: .placeholder,
+            refreshDate: nil,
+            menuInput: makeMenuInput(showsAvailableUpdateBadge: true),
+            settings: makeSettings()
+        )
+
+        let item = try XCTUnwrap(controller.menuItemsForTesting.first {
+            $0.title == tr(.keyStatusItemControllerOpenMainWindow)
+        })
+        XCTAssertEqual(item.keyEquivalent, ",")
+        XCTAssertEqual(item.keyEquivalentModifierMask, [.command])
+        XCTAssertNotNil(item.badge)
+    }
+
+    @MainActor
+    func testVersionMenuItemStaysAboveQuitWithAndWithoutOptionalItems() throws {
+        let previous = AppLanguage.selected
+        defer { AppLanguage.selected = previous }
+        AppLanguage.selected = .simplifiedChinese
+
+        for (isDevBuild, title) in [(false, "版本 1.2.3"), (true, "版本 1.2.3 · Dev")] {
+            let controller = makeController(shortVersion: "1.2.3", isDevBuild: isDevBuild)
+            defer { controller.teardown() }
+            for showOptionalItems in [true, false] {
+                controller.start(
+                    snapshot: .placeholder,
+                    refreshDate: nil,
+                    menuInput: makeMenuInput(
+                        showQuickSwitchMenu: showOptionalItems,
+                        showOpenChatGPTMenu: showOptionalItems,
+                        showOpenCCSwitchMenu: showOptionalItems,
+                        showStatusMenu: showOptionalItems
+                    ),
+                    settings: makeSettings()
+                )
+
+                let items = controller.menuItemsForTesting
+                let footer = Array(items.suffix(3))
+                XCTAssertEqual(footer.count, 3)
+                XCTAssertTrue(footer.first?.isSeparatorItem == true)
+                let version = try XCTUnwrap(footer.dropFirst().first)
+                XCTAssertEqual(version.title, title)
+                XCTAssertTrue(version.isEnabled)
+                XCTAssertEqual(version.keyEquivalent, "")
+                XCTAssertNil(version.badge)
+                XCTAssertEqual(footer.last?.title, tr(.keyStatusItemControllerQuitBalancebar))
+                XCTAssertFalse(zip(items, items.dropFirst()).contains { $0.0.isSeparatorItem && $0.1.isSeparatorItem })
+            }
+        }
+    }
+
+    @MainActor
+    func testVersionMenuItemOpensAboutAsynchronously() throws {
+        var aboutOpens = 0
+        let controller = makeController(openAbout: { aboutOpens += 1 })
+        defer { controller.teardown() }
+        controller.start(
+            snapshot: .placeholder,
+            refreshDate: nil,
+            menuInput: makeMenuInput(),
+            settings: makeSettings()
+        )
+        let item = try XCTUnwrap(controller.menuItemsForTesting.dropLast().last)
+        let action = try XCTUnwrap(item.action)
+        XCTAssertTrue(NSApp.sendAction(action, to: item.target, from: item))
+        XCTAssertEqual(aboutOpens, 0)
+
+        let drained = expectation(description: "queued About action")
+        DispatchQueue.main.async { drained.fulfill() }
+        wait(for: [drained], timeout: 1)
+        XCTAssertEqual(aboutOpens, 1)
+    }
+
+    @MainActor
     func testOpenCurrentAgentMenuTitleFollowsActiveClient() {
         let controller = makeController()
         defer { controller.teardown() }
@@ -3156,7 +3234,10 @@ final class StatusItemControllerTests: XCTestCase {
         openDashboard: @escaping () -> Void = {},
         openChatGPT: @escaping () -> Void = {},
         openCCSwitch: @escaping () -> Void = {},
-        openStatusLink: @escaping (URL) -> Void = { _ in }
+        openStatusLink: @escaping (URL) -> Void = { _ in },
+        shortVersion: String? = nil,
+        isDevBuild: Bool = false,
+        openAbout: @escaping () -> Void = {}
     ) -> StatusItemController {
         StatusItemController(
             actions: StatusItemController.Actions(
@@ -3168,8 +3249,11 @@ final class StatusItemControllerTests: XCTestCase {
                 switchProvider: { _ in },
                 openProviderWebsite: {},
                 openStatusLink: openStatusLink,
-                iconChanged: { _ in }
+                iconChanged: { _ in },
+                openAbout: openAbout
             ),
+            shortVersion: shortVersion,
+            isDevBuild: isDevBuild,
             codexAnimationBackend: codexAnimationBackend,
             forceNativeCodexAnimationFailureForTesting: forceNativeCodexAnimationFailureForTesting
         )
@@ -3179,7 +3263,10 @@ final class StatusItemControllerTests: XCTestCase {
         activeClient: AssistantClient = .codex,
         showQuickSwitchMenu: Bool = false,
         showOpenChatGPTMenu: Bool = false,
-        quickSwitchSummaries: [String: String]? = nil
+        quickSwitchSummaries: [String: String]? = nil,
+        showOpenCCSwitchMenu: Bool = false,
+        showStatusMenu: Bool = false,
+        showsAvailableUpdateBadge: Bool = false
     ) -> StatusItemController.MenuInput {
         StatusItemController.MenuInput(
             choices: showQuickSwitchMenu
@@ -3191,8 +3278,9 @@ final class StatusItemControllerTests: XCTestCase {
             statusLinks: [],
             showQuickSwitchMenu: showQuickSwitchMenu,
             showOpenChatGPTMenu: showOpenChatGPTMenu,
-            showOpenCCSwitchMenu: false,
-            showStatusMenu: false
+            showOpenCCSwitchMenu: showOpenCCSwitchMenu,
+            showStatusMenu: showStatusMenu,
+            showsAvailableUpdateBadge: showsAvailableUpdateBadge
         )
     }
 
