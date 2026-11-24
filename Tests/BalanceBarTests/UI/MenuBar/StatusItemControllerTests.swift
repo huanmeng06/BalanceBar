@@ -1062,7 +1062,7 @@ final class StatusItemControllerTests: XCTestCase {
         defer { AppLanguage.selected = previous }
         AppLanguage.selected = .simplifiedChinese
 
-        for (isDevBuild, title) in [(false, "版本 1.2.3"), (true, "版本 1.2.3 · Dev")] {
+        for (isDevBuild, title) in [(false, "版本 1.2.3"), (true, "版本 1.2.3 (Dev)")] {
             let controller = makeController(shortVersion: "1.2.3", isDevBuild: isDevBuild)
             defer { controller.teardown() }
             for showOptionalItems in [true, false] {
@@ -1108,7 +1108,7 @@ final class StatusItemControllerTests: XCTestCase {
 
         func check(_ isDev: Bool, _ pr: String?, _ revision: String?, _ title: String, url: String? = nil) {
             let menu = StatusItemController.VersionMenu(
-                shortVersion: "1.2.3", isDevBuild: isDev, buildPR: pr, buildSHA: revision
+                buildVersion: .init(shortVersion: "1.2.3", isDevBuild: isDev, buildPR: pr, buildSHA: revision)
             )
             XCTAssertEqual(menu.title, title)
             XCTAssertEqual(menu.pullRequestURL?.absoluteString, url)
@@ -1116,17 +1116,17 @@ final class StatusItemControllerTests: XCTestCase {
 
         check(false, "721", sha, "版本 1.2.3")
         check(false, nil, nil, "版本 1.2.3")
-        check(true, "721", sha, "版本 1.2.3 · Dev · #721", url: prURL)
-        check(true, nil, sha, "版本 1.2.3 · Dev · 416559d")
-        check(true, nil, nil, "版本 1.2.3 · Dev")
+        check(true, "721", sha, "版本 1.2.3 (Dev #721)", url: prURL)
+        check(true, nil, sha, "版本 1.2.3 (Dev 416559d)")
+        check(true, nil, nil, "版本 1.2.3 (Dev)")
         for invalid in ["", "0", "abc", "-1", "+721", "721\n", String(repeating: "9", count: 30)] {
-            check(true, invalid, sha, "版本 1.2.3 · Dev · 416559d")
+            check(true, invalid, sha, "版本 1.2.3 (Dev 416559d)")
         }
         for invalid in ["416559", "416559dg", "416559d\n"] {
-            check(true, nil, invalid, "版本 1.2.3 · Dev")
+            check(true, nil, invalid, "版本 1.2.3 (Dev)")
         }
         AppLanguage.selected = .english
-        check(true, "721", sha, "Version 1.2.3 · Dev · #721", url: prURL)
+        check(true, "721", sha, "Version 1.2.3 (Dev #721)", url: prURL)
     }
 
     @MainActor
@@ -1139,26 +1139,26 @@ final class StatusItemControllerTests: XCTestCase {
 
         func check(_ isDev: Bool, _ pr: String?, _ revision: String?, _ title: String, _ text: String) {
             let menu = StatusItemController.VersionMenu(
-                shortVersion: "1.2.3", isDevBuild: isDev, buildPR: pr, buildSHA: revision
+                buildVersion: .init(shortVersion: "1.2.3", isDevBuild: isDev, buildPR: pr, buildSHA: revision)
             )
             XCTAssertEqual(menu.copyItem?.title, title)
             XCTAssertEqual(menu.copyItem?.text, text)
         }
 
-        check(false, "721", sha, "复制版本链接", "\(repo)/releases/tag/v1.2.3")
-        check(true, "721", sha, "复制 PR 链接", "\(repo)/pull/721")
-        check(true, "0", sha, "复制提交链接", "\(repo)/commit/\(sha)")
-        check(true, nil, nil, "复制版本号", "BalanceBar 1.2.3 · Dev")
-        check(true, nil, String(sha.prefix(7)), "复制版本号", "BalanceBar 1.2.3 · Dev")
-        check(true, nil, String(sha.dropLast()) + "g", "复制版本号", "BalanceBar 1.2.3 · Dev")
-        XCTAssertNil(StatusItemController.VersionMenu(shortVersion: nil, isDevBuild: false).copyItem)
-        XCTAssertNil(StatusItemController.VersionMenu(shortVersion: "", isDevBuild: false).copyItem)
+        check(false, "721", sha, "拷贝链接", "\(repo)/releases/tag/v1.2.3")
+        check(true, "721", sha, "拷贝链接", "\(repo)/pull/721")
+        check(true, "0", sha, "拷贝链接", "\(repo)/commit/\(sha)")
+        check(true, nil, nil, "拷贝版本号", "BalanceBar 1.2.3 (Dev)")
+        check(true, nil, String(sha.prefix(7)), "拷贝版本号", "BalanceBar 1.2.3 (Dev)")
+        check(true, nil, String(sha.dropLast()) + "g", "拷贝版本号", "BalanceBar 1.2.3 (Dev)")
+        XCTAssertNil(StatusItemController.VersionMenu(buildVersion: .init(shortVersion: nil, isDevBuild: false)).copyItem)
+        XCTAssertNil(StatusItemController.VersionMenu(buildVersion: .init(shortVersion: "", isDevBuild: false)).copyItem)
 
         AppLanguage.selected = .english
-        check(false, nil, nil, "Copy Release Link", "\(repo)/releases/tag/v1.2.3")
-        check(true, "721", nil, "Copy PR Link", "\(repo)/pull/721")
-        check(true, nil, sha, "Copy Commit Link", "\(repo)/commit/\(sha)")
-        check(true, nil, nil, "Copy Version", "BalanceBar 1.2.3 · Dev")
+        check(false, nil, nil, "Copy Link", "\(repo)/releases/tag/v1.2.3")
+        check(true, "721", nil, "Copy Link", "\(repo)/pull/721")
+        check(true, nil, sha, "Copy Link", "\(repo)/commit/\(sha)")
+        check(true, nil, nil, "Copy Version Number", "BalanceBar 1.2.3 (Dev)")
     }
 
     @MainActor
@@ -1190,7 +1190,7 @@ final class StatusItemControllerTests: XCTestCase {
         defer { controller.teardown() }
         controller.start(snapshot: .placeholder, refreshDate: nil, menuInput: makeMenuInput(), settings: makeSettings())
         let item = try XCTUnwrap(controller.menuItemsForTesting.dropLast(2).last)
-        XCTAssertTrue(item.title.hasSuffix(" · Dev · #721"))
+        XCTAssertTrue(item.title.hasSuffix(" (Dev #721)"))
         XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(item.action), to: item.target, from: item))
         XCTAssertTrue(openedURLs.isEmpty)
 
@@ -3364,7 +3364,7 @@ final class StatusItemControllerTests: XCTestCase {
                 openAbout: openAbout,
                 copyText: copyText
             ),
-            versionMenu: .init(shortVersion: shortVersion, isDevBuild: isDevBuild, buildPR: buildPR),
+            versionMenu: .init(buildVersion: .init(shortVersion: shortVersion, isDevBuild: isDevBuild, buildPR: buildPR)),
             codexAnimationBackend: codexAnimationBackend,
             forceNativeCodexAnimationFailureForTesting: forceNativeCodexAnimationFailureForTesting
         )

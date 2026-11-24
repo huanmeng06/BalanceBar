@@ -460,10 +460,8 @@
 "status.item.controller.open_grok" = "Abrir o Grok";
 "status.item.controller.open_claude" = "Abrir o Claude";
 "status.item.controller.open_cc_switch" = "Abrir o CC Switch";
-"status.item.controller.copy_release_link" = "Copiar link da versão";
-"status.item.controller.copy_pr_link" = "Copiar link do PR";
-"status.item.controller.copy_commit_link" = "Copiar link do commit";
-"status.item.controller.copy_version" = "Copiar número da versão";
+"status.item.controller.copy_link" = "Copiar link";
+"status.item.controller.copy_version_number" = "Copiar número da versão";
 "status.item.controller.quit_balancebar" = "Sair do BalanceBar";
 "status.item.controller.view_status" = "Ver status";
 "status.item.controller.view_status.2" = "Ver status";

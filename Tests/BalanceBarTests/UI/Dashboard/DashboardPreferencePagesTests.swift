@@ -9909,15 +9909,43 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertNotNil(styled.attribute(.font, at: nsText.range(of: "42").location, effectiveRange: nil))
     }
 
-    func testAboutVersionPreservesBundleFallbackAndDevelopmentSuffix() {
-        XCTAssertEqual(
-            DashboardAboutPage.displayedVersion(shortVersion: nil, isDevBuild: false),
-            "0.11.14"
-        )
-        XCTAssertEqual(
-            DashboardAboutPage.displayedVersion(shortVersion: "0.11.20", isDevBuild: true),
-            "0.11.20 · Dev"
-        )
+    func testAboutVersionPreservesBundleFallback() {
+        XCTAssertEqual(DashboardAboutPage.BuildVersion(shortVersion: nil, isDevBuild: false).value, "0.11.14")
+        XCTAssertEqual(DashboardAboutPage.BuildVersion(shortVersion: nil, isDevBuild: true).value, "0.11.14 (Dev)")
+    }
+
+    func testAboutPageAndMenuShowTheSameLocalizedBuildVersion() throws {
+        let previous = AppLanguage.selected
+        defer { AppLanguage.selected = previous }
+        AppLanguage.selected = .english
+        let devID = "com.huanmeng06.BalanceBar.dev"
+        let sha = "416559d347888094343958934b27f227aeb7c05b"
+        let cases: [(Bool, String?, String?, String)] = [
+            (false, "721", sha, "Version 1.2.3"),
+            (true, "721", sha, "Version 1.2.3 (Dev #721)"),
+            (true, nil, sha, "Version 1.2.3 (Dev 416559d)"),
+            (true, nil, nil, "Version 1.2.3 (Dev)")
+        ]
+        let fixtures = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: fixtures) }
+        for (index, entry) in cases.enumerated() {
+            let (isDev, pr, buildSHA, expected) = entry
+            let bundleURL = fixtures.appendingPathComponent("Build-\(index).bundle")
+            let contents = bundleURL.appendingPathComponent("Contents")
+            try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
+            var info = ["CFBundleIdentifier": isDev ? devID : "com.huanmeng06.BalanceBar.app",
+                        "CFBundleShortVersionString": "1.2.3"]
+            info["BalanceBarBuildPR"] = pr
+            info["BalanceBarBuildSHA"] = buildSHA
+            let data = try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0)
+            try data.write(to: contents.appendingPathComponent("Info.plist"))
+            let bundle = try XCTUnwrap(Bundle(url: bundleURL))
+            let page = DashboardAboutPage.make(bundle: bundle, devBundleIdentifier: devID)
+            let version = try XCTUnwrap(descendant(withIdentifier: "about.version", in: page) as? NSTextField)
+            let menu = StatusItemController.VersionMenu(buildVersion: .init(bundle: bundle, devBundleIdentifier: devID))
+            XCTAssertEqual(version.stringValue, expected)
+            XCTAssertEqual(menu.title, version.stringValue)
+        }
     }
 
     func testAdvancedPageContainsOnlyActiveSettingsSections() throws {

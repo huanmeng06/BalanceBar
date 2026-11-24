@@ -2213,44 +2213,38 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             var title: String { tr(titleKey) }
         }
 
-        let version: String
+        let buildVersion: DashboardAboutPage.BuildVersion
         let pullRequestURL: URL?
         let copyItem: CopyItem?
 
-        init(shortVersion: String?, isDevBuild: Bool, buildPR: String? = nil, buildSHA: String? = nil) {
-            let base = DashboardAboutPage.displayedVersion(shortVersion: shortVersion, isDevBuild: isDevBuild)
+        init(buildVersion: DashboardAboutPage.BuildVersion) {
+            self.buildVersion = buildVersion
             let repository = DashboardAboutPage.githubRepositoryURL
-            if !isDevBuild {
-                version = base
+            if !buildVersion.isDevBuild {
                 pullRequestURL = nil
-                copyItem = shortVersion.flatMap { value in
+                copyItem = buildVersion.shortVersion.flatMap { value in
                     guard !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
                     let url = repository.appendingPathComponent("releases").appendingPathComponent("tag")
                         .appendingPathComponent("v\(value)")
-                    return CopyItem(titleKey: .keyStatusItemControllerCopyReleaseLink, text: url.absoluteString)
+                    return CopyItem(titleKey: .keyStatusItemControllerCopyLink, text: url.absoluteString)
                 }
-            } else if let buildPR, buildPR.range(of: #"\A[0-9]+\z"#, options: .regularExpression) != nil,
-                      let number = Int(buildPR), number > 0 {
+            } else if let number = buildVersion.pullRequestNumber {
                 let url = repository.appendingPathComponent("pull").appendingPathComponent(String(number))
-                version = "\(base) · #\(number)"
                 pullRequestURL = url
-                copyItem = CopyItem(titleKey: .keyStatusItemControllerCopyPRLink, text: url.absoluteString)
+                copyItem = CopyItem(titleKey: .keyStatusItemControllerCopyLink, text: url.absoluteString)
             } else {
                 pullRequestURL = nil
-                let sha = buildSHA.flatMap {
-                    $0.range(of: #"\A[0-9a-fA-F]{7,}\z"#, options: .regularExpression) == nil ? nil : $0
-                }
-                version = sha.map { "\(base) · \($0.prefix(7))" } ?? base
-                if let sha, sha.count == 40 {
+                if let sha = buildVersion.sha, sha.count == 40 {
                     let url = repository.appendingPathComponent("commit").appendingPathComponent(sha)
-                    copyItem = CopyItem(titleKey: .keyStatusItemControllerCopyCommitLink, text: url.absoluteString)
+                    copyItem = CopyItem(titleKey: .keyStatusItemControllerCopyLink, text: url.absoluteString)
                 } else {
-                    copyItem = CopyItem(titleKey: .keyStatusItemControllerCopyVersion, text: "BalanceBar \(base)")
+                    let versionNumber = DashboardAboutPage.BuildVersion(shortVersion: buildVersion.shortVersion, isDevBuild: true)
+                    copyItem = CopyItem(titleKey: .keyStatusItemControllerCopyVersionNumber, text: "BalanceBar \(versionNumber.value)")
                 }
             }
         }
 
-        var title: String { tr(.keyDashboardAboutPageVersionValue, arguments: [version]) }
+        var title: String { buildVersion.title }
     }
 
     struct Actions {
@@ -3035,7 +3029,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     init(
         actions: Actions,
-        versionMenu: VersionMenu = .init(shortVersion: nil, isDevBuild: false),
+        versionMenu: VersionMenu = .init(buildVersion: .init(shortVersion: nil, isDevBuild: false)),
         codexAnimationBackend: MenuBarCodexAnimationBackend = .stableBitmap,
         animationFrameRate: Int = MenuBarAnimationTiming.defaultFrameRate,
         forceNativeCodexAnimationFailureForTesting: Bool = false

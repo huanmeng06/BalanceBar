@@ -460,10 +460,8 @@
 "status.item.controller.open_grok" = "Grok 열기";
 "status.item.controller.open_claude" = "Claude 열기";
 "status.item.controller.open_cc_switch" = "CC Switch 열기";
-"status.item.controller.copy_release_link" = "릴리스 링크 복사";
-"status.item.controller.copy_pr_link" = "PR 링크 복사";
-"status.item.controller.copy_commit_link" = "커밋 링크 복사";
-"status.item.controller.copy_version" = "버전 번호 복사";
+"status.item.controller.copy_link" = "링크 복사";
+"status.item.controller.copy_version_number" = "버전 번호 복사";
 "status.item.controller.quit_balancebar" = "BalanceBar 종료";
 "status.item.controller.view_status" = "상태 보기";
 "status.item.controller.view_status.2" = "상태 보기";
