@@ -8252,17 +8252,27 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     view.invalidatePresentation()
                     branch = identityMatches ? "invalidate; reason=window_not_found" : "invalidate; reason=identity_mismatch"
                 }
-                guard paceEnabled, view.isPaceMarkerMissing else { continue }
+                guard paceEnabled else { continue }
                 // With no matching window, only the view's previous window can explain a missing marker.
                 let diagnosticWindow = window ?? (host.quotaPaceClient == .claude
                     ? view.quotaWindow.projectingIdleReset(now: now) : view.quotaWindow)
                 guard OfficialQuotaUsagePace.make(for: diagnosticWindow, now: now) != nil else { continue }
-                logQuotaPaceDiagnostic("quota pace marker missing; \(view.paceDiagnostics); branch=\(branch); "
-                    + "owner_account_eq=\(ownerAccountMatches); owner_client_eq=\(ownerClientMatches); "
-                    + "snapshot_account_eq=\(snapshotAccountMatches); snapshot_client_eq=\(snapshotClientMatches); "
-                    + "aggregated=\(aggregated); pace_client=\(context.paceClient.rawValue); menu_tracking=\(isStatusMenuTracking); "
-                    + "host_visible=\(host.isMenuContentVisible); host_dismissing=\(host.isMenuDismissing)",
-                    throttleKey: "pace.missing|\(diagnosticWindow.kind)")
+                if view.pace == nil || view.isPaceMarkerHidden {
+                    writeMissingQuotaPaceDiagnostic(view, window: diagnosticWindow, branch: branch,
+                        ownerAccountMatches: ownerAccountMatches, ownerClientMatches: ownerClientMatches,
+                        snapshotAccountMatches: snapshotAccountMatches, snapshotClientMatches: snapshotClientMatches,
+                        aggregated: aggregated, paceClient: context.paceClient, host: host)
+                } else if view.hasEmptyPaceMarkerFrame {
+                    // A new section can be refreshed before its first layout. Only
+                    // report an empty frame after that view's next completed layout.
+                    view.onNextLayoutForPaceDiagnostics = { [weak self, weak view, weak host] in
+                        guard let self, let view, let host, view.hasEmptyPaceMarkerFrame else { return }
+                        self.writeMissingQuotaPaceDiagnostic(view, window: diagnosticWindow, branch: branch,
+                            ownerAccountMatches: ownerAccountMatches, ownerClientMatches: ownerClientMatches,
+                            snapshotAccountMatches: snapshotAccountMatches, snapshotClientMatches: snapshotClientMatches,
+                            aggregated: aggregated, paceClient: context.paceClient, host: host)
+                    }
+                }
             }
         }
         // One menu-level timer serves every card.
@@ -8277,6 +8287,26 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             quotaPaceTimer?.invalidate()
             quotaPaceTimer = nil
         }
+    }
+
+    private func writeMissingQuotaPaceDiagnostic(
+        _ view: QuotaProgressPaceView,
+        window: OfficialQuotaWindow,
+        branch: String,
+        ownerAccountMatches: Bool,
+        ownerClientMatches: Bool,
+        snapshotAccountMatches: Bool,
+        snapshotClientMatches: Bool,
+        aggregated: Bool,
+        paceClient: AssistantClient,
+        host: MenuHoverLinkHostView
+    ) {
+        logQuotaPaceDiagnostic("quota pace marker missing; \(view.paceDiagnostics); branch=\(branch); "
+            + "owner_account_eq=\(ownerAccountMatches); owner_client_eq=\(ownerClientMatches); "
+            + "snapshot_account_eq=\(snapshotAccountMatches); snapshot_client_eq=\(snapshotClientMatches); "
+            + "aggregated=\(aggregated); pace_client=\(paceClient.rawValue); menu_tracking=\(isStatusMenuTracking); "
+            + "host_visible=\(host.isMenuContentVisible); host_dismissing=\(host.isMenuDismissing)",
+            throttleKey: "pace.missing|\(window.kind)")
     }
 
     private func logQuotaPaceDiagnostic(_ message: String, throttleKey: String) {

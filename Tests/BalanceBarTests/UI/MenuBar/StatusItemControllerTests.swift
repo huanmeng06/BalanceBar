@@ -83,21 +83,26 @@ final class StatusItemControllerTests: XCTestCase {
         controller.quotaPaceDiagnosticSinkForTesting = { diagnostics.append($0) }
         let now = Date(timeIntervalSince1970: 1_700_000_000)
         controller.quotaPaceNowForTesting = now
-        let windows = [
-            OfficialQuotaWindow(kind: .fiveHour, remaining: 62, label: "5h", daysText: "5h",
-                reset: nil, durationSeconds: 5 * 3600, resetAt: now.addingTimeInterval(37 * 60)),
-            OfficialQuotaWindow(kind: .sevenDay, remaining: 45, label: "7d", daysText: "7d",
-                reset: nil, durationSeconds: 7 * 24 * 3600, resetAt: now.addingTimeInterval(92 * 3600))
-        ]
+        let fiveHour = OfficialQuotaWindow(kind: .fiveHour, remaining: 62, label: "5h", daysText: "5h",
+            reset: nil, durationSeconds: 5 * 3600, resetAt: now.addingTimeInterval(37 * 60))
+        let sevenDay = OfficialQuotaWindow(kind: .sevenDay, remaining: 45, label: "7d", daysText: "7d",
+            reset: nil, durationSeconds: 7 * 24 * 3600, resetAt: now.addingTimeInterval(92 * 3600))
         let input = StatusItemController.MenuInput(choices: [], quickSwitchSummaries: [:], activeClient: .claude,
             openAIAccount: nil, statusLinks: [], showQuickSwitchMenu: false, showOpenChatGPTMenu: false,
             showOpenCCSwitchMenu: false, showStatusMenu: false, directProviderID: "claude-official")
-        controller.start(snapshot: .official("Claude Official", 62, "5h", nil, now, windows: windows),
+        controller.start(snapshot: .official("Claude Official", 62, "5h", nil, now, windows: [fiveHour]),
             refreshDate: now, menuInput: input, settings: makeSettings())
         controller.menuWillOpen(controller.statusMenuForTesting)
         let host = try XCTUnwrap(controller.menuItemsForTesting.first?.view as? MenuHoverLinkHostView)
+        XCTAssertEqual(host.paceViews.count, 1)
+        controller.update(snapshot: .official("Claude Official", 62, "5h", nil, now, windows: [fiveHour, sevenDay]),
+            refreshDate: now, menuInput: input, settings: makeSettings())
         XCTAssertEqual(host.paceViews.count, 2)
-        for window in windows {
+        let newlyAdded = try XCTUnwrap(host.paceViews.first { $0.quotaWindow.kind == .sevenDay })
+        XCTAssertTrue(newlyAdded.hasEmptyPaceMarkerFrame, "Regression setup requires verification before first layout")
+        XCTAssertTrue(diagnostics.isEmpty, "Zero frame before first layout must not emit a diagnostic")
+        host.layoutSubtreeIfNeeded()
+        for window in [fiveHour, sevenDay] {
             let view = try XCTUnwrap(host.paceViews.first { $0.quotaWindow.kind == window.kind })
             let expected = try XCTUnwrap(OfficialQuotaUsagePace.make(for: window, now: now))
             XCTAssertEqual(view.pace, expected)

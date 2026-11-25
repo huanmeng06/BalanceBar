@@ -624,7 +624,10 @@ final class QuotaProgressPaceView: NSView, NSPopoverDelegate {
     private(set) var prediction: OfficialQuotaUsagePrediction?
     private let marker = QuotaPaceMarkerOverlay(frame: .zero)
     private let createdAt = Date()
+    var onNextLayoutForPaceDiagnostics: (() -> Void)?
     var isPaceMarkerMissing: Bool { pace == nil || marker.isHidden || marker.frame.isEmpty }
+    var hasEmptyPaceMarkerFrame: Bool { marker.frame.isEmpty }
+    var isPaceMarkerHidden: Bool { marker.isHidden }
     var paceDiagnostics: String {
         "kind=\(quotaWindow.kind); has_reset_at=\(quotaWindow.resetAt != nil); "
             + "has_duration=\(quotaWindow.durationSeconds != nil); pace=\(pace != nil); "
@@ -775,6 +778,9 @@ final class QuotaProgressPaceView: NSView, NSPopoverDelegate {
         updateTrackingAreas()
         reconcileHoverAfterGeometryChange()
         if isTooltipVisible { showTooltip() }
+        let diagnostic = onNextLayoutForPaceDiagnostics
+        onNextLayoutForPaceDiagnostics = nil
+        diagnostic?()
     }
 
     private func reconcileHoverAfterGeometryChange() {
