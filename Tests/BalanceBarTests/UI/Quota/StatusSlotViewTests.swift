@@ -405,19 +405,19 @@ final class StatusSlotViewTests: XCTestCase {
             onOpenUsagePage: { opened += 1 },
             copyToPasteboard: { copied.append($0) }
         )
-        XCTAssertEqual(view.actionButton.title, "复制 claude 命令")
-        XCTAssertEqual(view.actionButton.accessibilityLabel(), "复制 claude 命令")
+        XCTAssertEqual(view.actionButton.title, "拷贝 claude 命令")
+        XCTAssertEqual(view.actionButton.accessibilityLabel(), "拷贝 claude 命令")
         view.actionButton.performClick(nil)
         XCTAssertEqual(copied, ["claude"])
         XCTAssertEqual(opened, 0)
-        XCTAssertEqual(view.actionButton.title, "已复制")
+        XCTAssertEqual(view.actionButton.title, "已拷贝")
     }
 
     func testFailureStateUsesCodexCommandAndUsagePageForCodex() {
         var copied: [String] = []
         let copy = FailureStateView(reason: "Codex 登录已过期，在终端运行 codex login 即可恢复",
             action: .copySignInCommand, client: .codex, copyToPasteboard: { copied.append($0) })
-        XCTAssertEqual(copy.actionButton.title, "复制 codex login 命令")
+        XCTAssertEqual(copy.actionButton.title, "拷贝 codex login 命令")
         copy.actionButton.performClick(nil)
         XCTAssertEqual(copied, ["codex login"])
         XCTAssertEqual(FailureStateView.signInCommand(for: .claude), "claude")
@@ -444,18 +444,18 @@ final class StatusSlotViewTests: XCTestCase {
     }
 
     func testPromptRowCanConfirmInPlaceWithoutClosingTheMenu() {
-        let row = ModPromptRowView(mainText: "Claude 登录已失效，下面是旧数据", detailText: "点此复制 claude 命令",
+        let row = ModPromptRowView(mainText: "Claude 登录已过期，下面是旧数据", detailText: "点此复制 claude 命令",
                                    symbolName: "exclamationmark.triangle.fill", tint: .systemOrange)
         row.closesMenuOnClick = false
         var clicks = 0
         row.onClick = { [weak row] in
             clicks += 1
-            row?.showConfirmation(mainText: "已复制 claude 命令", detailText: "在终端粘贴并运行即可恢复登录",
+            row?.showConfirmation(mainText: "已拷贝 claude 命令", detailText: "在终端粘贴并运行即可恢复登录",
                                   symbolName: "checkmark.circle.fill", tint: .systemGreen)
         }
         XCTAssertTrue(row.accessibilityPerformPress())
         XCTAssertEqual(clicks, 1)
-        XCTAssertEqual(row.mainText, "已复制 claude 命令")
+        XCTAssertEqual(row.mainText, "已拷贝 claude 命令")
         XCTAssertEqual(row.whyText, "在终端粘贴并运行即可恢复登录")
         XCTAssertEqual(row.iconView.contentTintColor, .systemGreen)
     }

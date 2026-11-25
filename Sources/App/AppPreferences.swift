@@ -580,6 +580,23 @@ final class AppPreferences {
         get { bool(Self.claudeEgressGuardEnabledKey, default: Self.claudeEgressGuardEnabledDefault) }
         set { defaults.set(newValue, forKey: Self.claudeEgressGuardEnabledKey) }
     }
+    static let claudeTokenAutoRefreshEnabledKey = "claudeTokenAutoRefreshEnabled"
+    static let claudeTokenAutoRefreshPausedCredentialKey = "claudeTokenAutoRefreshPausedCredential"
+
+    var claudeTokenAutoRefreshEnabled: Bool {
+        get { bool(Self.claudeTokenAutoRefreshEnabledKey, default: false) }
+        set {
+            guard claudeTokenAutoRefreshEnabled != newValue else { return }
+            defaults.set(newValue, forKey: Self.claudeTokenAutoRefreshEnabledKey)
+            SwitchLog.write("preference changed; key=\(Self.claudeTokenAutoRefreshEnabledKey); value=\(newValue)", category: "configuration")
+        }
+    }
+
+    var claudeTokenAutoRefreshPausedCredential: String? {
+        get { defaults.string(forKey: Self.claudeTokenAutoRefreshPausedCredentialKey) }
+        set { defaults.set(newValue, forKey: Self.claudeTokenAutoRefreshPausedCredentialKey) }
+    }
+
     /// Valid, de-duplicated IP literals in the order they were added.
     var claudeEgressGuardAllowedIPs: [String] {
         get { EgressIPAddress.sanitizedList(defaults.stringArray(forKey: Self.claudeEgressGuardAllowedIPsKey) ?? []) }

@@ -293,6 +293,7 @@ final class CredentialReaderTests: XCTestCase {
         let fromFile = credentials(status: 51, file: #"{"claudeAiOauth":{"accessToken":"file-value"}}"#)
         XCTAssertEqual(fromFile.accessToken, "file-value")
         XCTAssertFalse(fromFile.keychainUnreadable)
+        XCTAssertTrue(fromFile.keychainReadFailed)
     }
 
     private final class FixtureFileReader: CredentialFileReading {

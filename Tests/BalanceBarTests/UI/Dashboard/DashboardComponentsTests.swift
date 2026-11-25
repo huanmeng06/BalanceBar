@@ -1393,7 +1393,7 @@ final class DashboardComponentsTests: XCTestCase {
         XCTAssertEqual(exhausted.status, .normal)
         XCTAssertEqual(QuotaPaceTooltipContent(pace: exhausted, prediction: nil, resetAt: reset,
             language: .simplifiedChinese, now: now, timeZone: utc),
-            QuotaPaceTooltipContent(title: "额度已用完", body: "将在明天 00:43重置。"))
+            QuotaPaceTooltipContent(title: "额度已用完", body: "将在 明天 00:43 重置。"))
         for invalid: Date? in [nil, now, now.addingTimeInterval(-1), Date(timeIntervalSince1970: .infinity)] {
             XCTAssertEqual(QuotaPaceTooltipContent(pace: exhausted, prediction: nil, resetAt: invalid,
                 language: .simplifiedChinese, now: now, timeZone: utc).body, "重置时间暂不可用。")
@@ -2982,7 +2982,7 @@ final class DashboardComponentsTests: XCTestCase {
         field.setContent(text, linkPhrase: phrase, onActivate: { activations += 1 })
         field.layout()
 
-        XCTAssertEqual(phrase, "重启 BalanceBar")
+        XCTAssertEqual(phrase, "重新启动 BalanceBar")
         XCTAssertTrue(text.contains("时候"))
         XCTAssertTrue(field.hasLink)
         XCTAssertFalse(field.linkHitRects.isEmpty)

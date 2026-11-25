@@ -9,12 +9,14 @@ private final class PipelineStubProtocol: URLProtocol {
         var data = Data()
         var headers: [String: String] = [:]
         var error: URLError?
+        var beforeDelivery: (() -> Void)?
     }
 
     private static let lock = NSLock()
     private static var reply = Reply()
     private static var resetCardReply: Reply?
     private static var requests = 0
+    private static var authorization: [String] = []
     private static var resetCardRequests = 0
 
     static func reset(_ reply: Reply = Reply()) {
@@ -22,6 +24,7 @@ private final class PipelineStubProtocol: URLProtocol {
             self.reply = reply
             resetCardReply = nil
             requests = 0
+            authorization = []
             resetCardRequests = 0
         }
     }
@@ -35,6 +38,7 @@ private final class PipelineStubProtocol: URLProtocol {
     }
 
     static var resetCardRequestCount: Int { lock.withLock { resetCardRequests } }
+    static var authorizationHeaders: [String] { lock.withLock { authorization } }
     static var requestCount: Int { lock.lock(); defer { lock.unlock() }; return requests }
 
     override class func canInit(with request: URLRequest) -> Bool { true }
@@ -43,10 +47,12 @@ private final class PipelineStubProtocol: URLProtocol {
     override func startLoading() {
         Self.lock.lock()
         Self.requests += 1
+        Self.authorization.append(request.value(forHTTPHeaderField: "Authorization") ?? "")
         let isResetCard = request.url?.query?.contains("cedar_ember=1") == true
         if isResetCard { Self.resetCardRequests += 1 }
         let reply = (isResetCard ? Self.resetCardReply : nil) ?? Self.reply
         Self.lock.unlock()
+        reply.beforeDelivery?()
         if let error = reply.error {
             client?.urlProtocol(self, didFailWithError: error)
             return
@@ -63,8 +69,10 @@ private final class PipelineStubProtocol: URLProtocol {
 private final class MutableCredentialReader: OfficialQuotaCredentialReading {
     private let lock = NSLock()
     private var token: String?
+    private var expiry: Date?
     init(token: String?) { self.token = token }
-    func set(_ value: String?) { lock.lock(); token = value; lock.unlock() }
+    func set(_ value: String?, expiresAt: Date? = nil) { lock.withLock { token = value; expiry = expiresAt } }
+    func claudeCredentials() -> ClaudeStoredCredentials { lock.withLock { .init(accessToken: token, planType: nil, expiresAt: expiry) } }
     func codexAccessToken() -> String? { nil }
     func codexAccountProfile() -> CodexAccountProfile? { nil }
     func claudeAccessToken() -> String? { lock.lock(); defer { lock.unlock() }; return token }
@@ -185,7 +193,8 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         withTracker: Bool = false,
         withInbox: Bool = false,
         sourceValidity: @escaping () -> ClaudeSourceValidity = { .defaults },
-        egressGuard: ClaudeEgressGuard? = nil
+        egressGuard: ClaudeEgressGuard? = nil,
+        tokenRefresher: ClaudeTokenAutoRefresher? = nil
     ) -> ClaudeQuotaPipeline {
         let identityQueue = DispatchQueue(label: "test.pipeline.identity")
         let identity = ClaudeAccountIdentityProvider(
@@ -212,7 +221,7 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
             realtimeTracker: tracker,
             snapshotInbox: inbox,
             sourceValidity: sourceValidity,
-            egressGuard: egressGuard,
+            egressGuard: egressGuard, tokenRefresher: tokenRefresher,
             now: { [clock] in clock!.now },
             diagnostics: { [diagnosticLines] message, _ in diagnosticLines.append(message) })
         pipelines.append(pipeline)
@@ -659,6 +668,84 @@ final class ClaudeQuotaPipelineTests: XCTestCase {
         quiet(pipeline)
         XCTAssertEqual(PipelineStubProtocol.requestCount, 1,
             "a pending merge-engine reset confirmation must stay local while the relay is selected")
+    }
+
+    private struct RefreshStub: ClaudeExecutableLocating, ClaudeRefreshCommandRunning {
+        let action: () -> Void
+        func locate() -> String? { "/fixture/claude" }
+        func run(executablePath: String, arguments: [String], environment: [String: String], timeout: TimeInterval) -> ModCommandResult? {
+            action()
+            return .init(exitCode: 0, stdout: "", stderr: "")
+        }
+    }
+
+    private func makeTokenRefresher(enabled: @escaping () -> Bool = { true }, logs: LockedLines = LockedLines(),
+                                    run: @escaping () -> Void) -> ClaudeTokenAutoRefresher {
+        let trace = EgressTrace(ip: "203.0.113.7", country: "US", route: .init())
+        let guardrail = EgressGuardFixture(.init(enabled: true, allowedIPs: [trace.ip]), reply: .success(trace)).makeGuard()
+        var pause: String?
+        let cli = RefreshStub(action: run)
+        return ClaudeTokenAutoRefresher(isEnabled: enabled, egressGuard: guardrail, route: { .init() },
+            probe: { _, _, completion in completion(.success(trace)) }, settings: { nil },
+            credentials: { [official] in
+                official!.claudeTokenRefreshCredentials()
+            }, modAvailability: { .available }, modOperationInProgress: { false }, locator: cli, runner: cli,
+            loadPause: { pause }, savePause: { pause = $0 }, now: { [clock] in clock!.now }, log: logs.append)
+    }
+
+    func testExpiredTokenRefreshesBeforeFirstQuotaRequest() throws {
+        reader.set("token-1", expiresAt: Self.start)
+        let refresher = makeTokenRefresher { [reader] in
+            reader!.set("token-2", expiresAt: Self.start.addingTimeInterval(3600))
+        }
+        let pipeline = makePipeline(tokenRefresher: refresher)
+        pipeline.requestFetch(reason: .initial)
+        _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+        XCTAssertEqual(PipelineStubProtocol.authorizationHeaders.first, "Bearer token-2")
+        XCTAssertEqual(refresher.state, .succeeded(at: Self.start))
+    }
+
+    func testInvalidRefreshStillDelivers401AndOnlyRunsOnce() throws {
+        reader.set("token-1", expiresAt: Self.start)
+        PipelineStubProtocol.set(.init(status: 401))
+        let logs = LockedLines()
+        let refresher = makeTokenRefresher(logs: logs) {}
+        let pipeline = makePipeline(tokenRefresher: refresher)
+        pipeline.requestFetch(reason: .initial)
+        _ = try XCTUnwrap(waitForState(pipeline) { $0.failure == .unauthorized })
+        quiet(pipeline)
+        XCTAssertTrue(pipeline.tokenAutoRefreshNeedsRelogin)
+        XCTAssertEqual(PipelineStubProtocol.authorizationHeaders, ["Bearer token-1"])
+        XCTAssertEqual(logs.all.filter { $0.hasPrefix("token refresh started") }.count, 1)
+    }
+
+    func test401RefreshesWhenTokenExpiresDuringRequest() throws {
+        // Initially fresh; advance the clock after the stub receives the request, before delivery.
+        let expiry = Self.start.addingTimeInterval(1)
+        reader.set("token-1", expiresAt: expiry)
+        let logs = LockedLines()
+        PipelineStubProtocol.set(.init(status: 401, beforeDelivery: { [clock] in clock!.advance(by: 1) }))
+        let refresher = makeTokenRefresher(logs: logs) { [reader] in
+            reader!.set("token-2", expiresAt: Self.start.addingTimeInterval(3600))
+            PipelineStubProtocol.set(.init(data: Self.usage))
+        }
+        let pipeline = makePipeline(tokenRefresher: refresher)
+        pipeline.requestFetch(reason: .initial)
+        _ = try XCTUnwrap(waitForState(pipeline) { !$0.windows.isEmpty })
+        XCTAssertEqual(Array(PipelineStubProtocol.authorizationHeaders.prefix(2)), ["Bearer token-1", "Bearer token-2"])
+        XCTAssertTrue(logs.all.contains { $0.hasPrefix("token refresh started; trigger=unauthorized") })
+    }
+
+    func test401BeforeExpiryDoesNotTriggerTokenRefresh() throws {
+        reader.set("token-1", expiresAt: Self.start.addingTimeInterval(3600))
+        PipelineStubProtocol.set(.init(status: 401))
+        let refresher = makeTokenRefresher { XCTFail("An unexpired credential must not trigger the CLI") }
+        let pipeline = makePipeline(tokenRefresher: refresher)
+        pipeline.requestFetch(reason: .initial)
+        _ = try XCTUnwrap(waitForState(pipeline) { $0.failure == .unauthorized })
+        quiet(pipeline)
+        XCTAssertEqual(refresher.state, .idle)
+        XCTAssertFalse(pipeline.tokenAutoRefreshNeedsRelogin)
     }
 
     // MARK: Egress guard (Issue #686)

@@ -490,7 +490,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                     timeline: DevelopmentClaudeFailuresDemo.decorate(self.claudeQuota.sourceTimeline.snapshot()),
                     status: self.claudeQuota.latestState?.status)
             },
-            claudeLoginStatus: { [weak self] in self?.claudeQuota.loginStatus() ?? .unknown }
+            claudeLoginStatus: { [weak self] in self?.claudeQuota.loginStatus() ?? .unknown },
+            claudeTokenAutoRefresh: { [weak self] in self?.claudeTokenAutoRefreshPresentation() }
         ),
         actions: DashboardCompositionActions(
             onManualRefresh: { [weak self] in self?.performManualRefresh(source: "dashboard") },
@@ -585,6 +586,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 guard let self else { return }
                 self.updateDashboard(for: self.snapshot, refreshDate: self.refreshDate(for: self.snapshot))
                 self.updateService.checkForUpdatesIfNeeded()
+                self.refreshClaudeTokenAutoRefresh()
             },
             onDidClose: { [weak self] in
                 guard let self else { return }
@@ -622,7 +624,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                     guard let self else { return completion(nil) }
                     self.claudeEgressIPCountries.code(for: ip, completion: completion)
                 },
-                openSettings: { [weak self] in self?.openEgressGuardSettings() })
+                openSettings: { [weak self] in self?.openEgressGuardSettings() }),
+            onClaudeTokenAutoRefresh: { [weak self] enabled in self?.setClaudeTokenAutoRefresh(enabled) }
         ),
         launchAtLoginController: launchAtLoginController
     )
@@ -681,6 +684,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private let claudeQuota: ClaudeQuotaPipeline
     /// Also used by the Advanced page's "detect current egress" button.
     private let claudeEgressGuard: ClaudeEgressGuard
+    private let claudeTokenAutoRefresher: ClaudeTokenAutoRefresher
     /// Country per allowlisted IP for the settings table (ipinfo.io, once per address).
     private let claudeEgressIPCountries: EgressIPCountryCache
     /// Owns the Claude Code Mod realtime sync settings entry: detection, panel, status.
@@ -805,6 +809,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             settings: { AppPreferences().claudeEgressGuardSettings },
             probe: { [officialQuotaClient] completion in officialQuotaClient.probeClaudeEgressIP(completion: completion) })
         self.claudeEgressGuard = egressGuard
+        // The refresher exists before the pipeline. The Mod coordinator is main-thread confined
+        // and is wired below, after the AppDelegate and its lazy properties can be used.
+        var modAvailability: () -> ClaudeTokenRefreshModAvailability = { .detecting }
+        var modBusy: () -> Bool = { false }
+        let refresher = ClaudeTokenAutoRefresher(
+            isEnabled: { AppPreferences().claudeTokenAutoRefreshEnabled },
+            egressGuard: egressGuard,
+            route: { repository.claudeProxyConfiguration() },
+            probe: { url, route, completion in
+                officialQuotaClient.probeEgressTraceForChildProcess(url: url, route: route, completion: completion)
+            },
+            settings: {
+                let url = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/settings.json")
+                guard let data = try? Data(contentsOf: url) else { return nil }
+                return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+            },
+            credentials: officialQuotaClient.claudeTokenRefreshCredentials,
+            modAvailability: { DispatchQueue.main.sync { modAvailability() } },
+            modOperationInProgress: { DispatchQueue.main.sync { modBusy() } },
+            locator: DefaultClaudeExecutableLocator(), runner: ProcessClaudeRefreshCommandRunner(),
+            loadPause: { AppPreferences().claudeTokenAutoRefreshPausedCredential },
+            savePause: { AppPreferences().claudeTokenAutoRefreshPausedCredential = $0 })
+        self.claudeTokenAutoRefresher = refresher
         self.claudeEgressIPCountries = EgressIPCountryCache(
             load: { AppPreferences().claudeEgressGuardIPCountries },
             store: { AppPreferences().claudeEgressGuardIPCountries = $0 },
@@ -820,7 +847,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             calibrationIntervalCap: { nil },
             automaticInterval: { AppPreferences().claudeCalibrationInterval },
             sourceValidity: { AppPreferences().claudeSourceValidity },
-            egressGuard: egressGuard)
+            egressGuard: egressGuard, tokenRefresher: refresher)
         self.launchAtLoginController = LaunchAtLoginController(service: launchAtLoginService)
         self.launchWithChatGPTController = LaunchWithChatGPTController(service: launchWithChatGPTService)
         self.updateService = updateService ?? UpdateService(
@@ -845,10 +872,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             }
         }
         modSyncCoordinator.bind(to: self.claudeQuota)
+        modAvailability = { [weak self] in self?.modSyncCoordinator.tokenRefreshMarketplaceAvailability ?? .unknown }
+        modBusy = { [weak self] in self?.modSyncCoordinator.isOperationInProgress ?? true }
+        refresher.onStateChange = { [weak self] _ in self?.refreshClaudeTokenAutoRefresh() }
         modSyncCoordinator.onStatusChange = { [weak self] _ in
             DispatchQueue.main.async { [weak self] in
                 self?.dashboardComposition.refreshModSync()
-                self?.refreshStatusItemMenuInput()
+                self?.refreshClaudeTokenAutoRefresh()
             }
         }
         modSyncCoordinator.onPresentationChange = { [weak self] in
@@ -1102,8 +1132,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 },
                 openEgressGuardSettings: { [weak self] in
                     self?.openEgressGuardSettings()
+                },
+                openAbout: { [weak self] in
+                    guard let self else { return }
+                    self.openDashboard()
+                    self.showDashboardSection(.about)
                 }
             ),
+            versionMenu: .init(buildVersion: .init(bundle: .main, devBundleIdentifier: devBundleIdentifier)),
             codexAnimationBackend: MenuBarCodexAnimationBackend(
                 mode: preferences.menuBarAnimationMode
             ),
@@ -1158,6 +1194,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             showsAvailableUpdateBadge: showsAvailableUpdateBadge,
             modRow: modSyncCoordinator.menuRow(isOfficialDirect: isOfficialClaude),
             claudeLoginPrompt: isOfficialClaude ? Self.claudeLoginPrompt(claudeQuota.latestState) : nil,
+            claudeLoginPromptNeedsRelogin: isOfficialClaude && claudeQuota.tokenAutoRefreshNeedsRelogin,
             aggregatedProviders: activeClient == .codex ? aggregationDisplays : [],
             aggregationQuickSwitchBlocked: activeClient == .codex && aggregationQuickSwitchBlocked,
             quickSwitchSafety: quickSwitchSafety
@@ -1338,6 +1375,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         configureApplicationMenu()
         NSApp.appearance = nil
         dashboardComposition.start()
+        NotificationCenter.default.addObserver(self, selector: #selector(dashboardWindowDidBecomeKey(_:)),
+                                               name: NSWindow.didBecomeKeyNotification, object: nil)
         // Read-only detection for the Claude Code Mod sync entry; the probes run on a
         // background queue and only the settings row consumes the result.
         modSyncCoordinator.startDetectionIfNeeded()
@@ -1447,6 +1486,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         activityCoordinator.stop()
         menuBarWidthAdjustmentCoalescer.cancel()
         menuBarStatusItemWidthAdjustmentSession.cancel()
+        NotificationCenter.default.removeObserver(self, name: NSWindow.didBecomeKeyNotification, object: nil)
         dashboardAccessoryHarness.teardown()
         dashboardComposition.teardown()
         statusItemController.teardown()
@@ -1460,6 +1500,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         dashboardComposition.refreshLaunchAtLogin()
         dashboardComposition.refreshLaunchWithChatGPT()
         notificationCoordinator.refreshPermission()
+        refreshClaudeTokenAutoRefresh()
+    }
+
+    @objc private func dashboardWindowDidBecomeKey(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow, window === dashboardComposition.window else { return }
+        refreshClaudeTokenAutoRefresh()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -2209,7 +2255,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     /// Both Advanced page copies follow the new settings and Claude re-evaluates at once.
     private func claudeEgressGuardSettingsChanged() {
         dashboardComposition.refreshClaudeEgressGuard()
+        refreshClaudeTokenAutoRefresh()
         claudeQuota.egressGuardSettingsChanged()
+    }
+
+    private func claudeTokenAutoRefreshPresentation() -> ClaudeTokenRefreshPresentation {
+        DashboardGeneralPage.claudeTokenRefreshPresentation(
+            enabled: preferences.claudeTokenAutoRefreshEnabled, guardEnabled: preferences.claudeEgressGuardEnabled,
+            allowedIPs: preferences.claudeEgressGuardAllowedIPs, mod: modSyncCoordinator.tokenRefreshMarketplaceAvailability,
+            state: claudeTokenAutoRefresher.state, settingsConflict: claudeTokenAutoRefresher.currentSettingsConflict(),
+            routeUnsupported: claudeTokenAutoRefresher.currentRouteUnsupported(),
+            timeZone: preferences.effectiveDisplayTimeZone)
+    }
+
+    private func refreshClaudeTokenAutoRefresh() {
+        dashboardComposition.refreshClaudeTokenAutoRefresh(claudeTokenAutoRefreshPresentation())
+        refreshStatusItemMenuInput()
+    }
+
+    private func setClaudeTokenAutoRefresh(_ enabled: Bool) {
+        guard !enabled || (preferences.claudeEgressGuardEnabled && !preferences.claudeEgressGuardAllowedIPs.isEmpty
+                           && modSyncCoordinator.tokenRefreshMarketplaceAvailability == .available) else { return }
+        preferences.claudeTokenAutoRefreshEnabled = enabled
+        claudeTokenAutoRefresher.enabledChanged(enabled)
+        refreshClaudeTokenAutoRefresh()
     }
 
     /// The Claude egress guard lives on the Advanced page (Issue #686).

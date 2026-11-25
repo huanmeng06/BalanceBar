@@ -353,6 +353,18 @@ final class DashboardAdaptiveControlsStackView: NSStackView, SettingsRowAccessor
     }
 }
 
+struct ClaudeTokenRefreshPresentation: Equatable {
+    let isOn: Bool
+    let dependencyEnabled: Bool
+    let detail: String
+    let linkPhrase: String?
+    let statusLine: DashboardGeneralPage.ClaudeLoginLine?
+}
+
+final class ClaudeTokenRefreshSwitch: NSSwitch {
+    var onToggle: ((Bool) -> Void)?
+}
+
 final class DashboardGeneralPage {
     struct Input {
         let preferences: AppPreferences
@@ -364,6 +376,9 @@ final class DashboardGeneralPage {
         let modSyncStatus: ModSyncStatus
         let modPanelState: ModPanelState
         let claudeLoginStatus: ClaudeLoginStatus
+        let claudeTokenAutoRefresh: ClaudeTokenRefreshPresentation?
+        let onClaudeTokenAutoRefresh: (Bool) -> Void
+        let cachedAllowlistCountry: (String) -> String?
 
         init(
             preferences: AppPreferences,
@@ -374,7 +389,10 @@ final class DashboardGeneralPage {
             launchWithChatGPTState: LaunchWithChatGPTState = LaunchWithChatGPTState(status: .notRegistered),
             modSyncStatus: ModSyncStatus = .detecting,
             modPanelState: ModPanelState = .intro(dismissChecked: false),
-            claudeLoginStatus: ClaudeLoginStatus = .unknown
+            claudeLoginStatus: ClaudeLoginStatus = .unknown,
+            claudeTokenAutoRefresh: ClaudeTokenRefreshPresentation? = nil,
+            onClaudeTokenAutoRefresh: @escaping (Bool) -> Void = { _ in },
+            cachedAllowlistCountry: @escaping (String) -> String? = { _ in nil }
         ) {
             self.preferences = preferences
             self.connectionSummaries = connectionSummaries
@@ -385,6 +403,9 @@ final class DashboardGeneralPage {
             self.modSyncStatus = modSyncStatus
             self.modPanelState = modPanelState
             self.claudeLoginStatus = claudeLoginStatus
+            self.claudeTokenAutoRefresh = claudeTokenAutoRefresh
+            self.onClaudeTokenAutoRefresh = onClaudeTokenAutoRefresh
+            self.cachedAllowlistCountry = cachedAllowlistCountry
         }
     }
 
@@ -397,6 +418,24 @@ final class DashboardGeneralPage {
     /// "Claude official calibration": dimmed while the IP allowlist keeps official requests off.
     private(set) var claudeCalibrationRow: SettingsRowView?
     private(set) var claudeCalibrationPopup: NSPopUpButton?
+    private(set) var claudeTokenRefreshRow: SettingsRowView?
+    private(set) var claudeTokenRefreshSwitch: ClaudeTokenRefreshSwitch?
+    private var tokenRefreshPresentation: ClaudeTokenRefreshPresentation?
+    private var tokenRefreshConfirmationGeneration = 0
+    private var tokenRefreshConfirmationPending = false
+    var scheduleTokenRefreshConfirmation: (TimeInterval, @escaping () -> Void) -> Void = { delay, action in
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: action)
+    }
+    var presentTokenRefreshAlert: (NSAlert, NSWindow, @escaping (NSApplication.ModalResponse) -> Void) -> Void = { alert, window, completion in
+        alert.beginSheetModal(for: window, completionHandler: completion)
+        // AppKit builds the native title and explanation during presentation. Leave them
+        // readable, but only the command block’s copy button should offer copying.
+        func disableSelection(in view: NSView) {
+            if let label = view as? NSTextField, !label.isEditable { label.isSelectable = false }
+            view.subviews.forEach(disableSelection(in:))
+        }
+        if let content = alert.window.contentView { disableSelection(in: content) }
+    }
     /// The Claude card's section; its footnote summary toggles the comparison detail.
     private(set) var claudeSourcesSection: SettingsSectionView?
     private weak var claudeSourcesFootnoteLink: InlineRangeLinkTextField?
@@ -600,11 +639,36 @@ final class DashboardGeneralPage {
         claudeLoginStatus = input.claudeLoginStatus
         claudeLoginTimeZone = input.preferences.effectiveDisplayTimeZone
         refreshClaudeOfficialEnabled(input.preferences.claudeEgressGuardEnabled)
+        let tokenSwitch = ClaudeTokenRefreshSwitch()
+        tokenSwitch.identifier = .init(AppPreferences.claudeTokenAutoRefreshEnabledKey)
+        tokenSwitch.target = input.relay
+        tokenSwitch.action = #selector(DashboardPreferencePageRelay.claudeTokenAutoRefresh(_:))
+        let tokenRefreshRow = SettingsRowView(title: tr(.keyClaudeTokenRefreshTitle), detail: "",
+                                              detailLabel: InlineRangeLinkTextField(),
+                                              titleAccessory: DashboardRefreshPage.agentIconStrip(["Claude"]),
+                                              accessoryView: tokenSwitch)
+        let preferences = input.preferences
+        let onTokenToggle = input.onClaudeTokenAutoRefresh
+        let cachedAllowlistCountry = input.cachedAllowlistCountry
+        tokenRefreshConfirmationGeneration += 1
+        tokenRefreshConfirmationPending = false
+        tokenSwitch.onToggle = { [weak self, weak tokenSwitch] enabled in
+            guard let self, let tokenSwitch else { return }
+            self.handleTokenRefreshToggle(enabled, sender: tokenSwitch, preferences: preferences,
+                                          cachedCountry: cachedAllowlistCountry, save: onTokenToggle)
+        }
+        claudeTokenRefreshRow = tokenRefreshRow
+        claudeTokenRefreshSwitch = tokenSwitch
+        tokenRefreshPresentation = nil
+        refreshClaudeTokenAutoRefresh(input.claudeTokenAutoRefresh ?? Self.claudeTokenRefreshPresentation(
+            enabled: preferences.claudeTokenAutoRefreshEnabled, guardEnabled: preferences.claudeEgressGuardEnabled,
+            allowedIPs: preferences.claudeEgressGuardAllowedIPs, mod: .detecting, state: .idle))
         let sourceFootnote = InlineRangeLinkTextField()
         let refreshingClaude = SettingsSectionView(
             title: "",
             contentViews: [
                 calibrationRow,
+                tokenRefreshRow,
                 modRows.statusRow
             ],
             footnoteDetail: "",
@@ -813,6 +877,206 @@ final class DashboardGeneralPage {
         let text: String
     }
 
+    private func handleTokenRefreshToggle(_ enabled: Bool, sender: NSSwitch, preferences: AppPreferences,
+                                          cachedCountry: @escaping (String) -> String?, save: @escaping (Bool) -> Void) {
+        guard let presentation = tokenRefreshPresentation, presentation.dependencyEnabled else { return }
+        tokenRefreshConfirmationGeneration += 1
+        tokenRefreshConfirmationPending = enabled && !presentation.isOn
+        guard enabled else {
+            if presentation.isOn { save(false) }
+            return
+        }
+        guard !presentation.isOn else { return }
+        let generation = tokenRefreshConfirmationGeneration
+        scheduleTokenRefreshConfirmation(DashboardSettingsComponents.switchAnimationDuration) { [weak self, weak sender] in
+            guard let self, let sender, self.tokenRefreshConfirmationGeneration == generation else { return }
+            guard self.tokenRefreshPresentation?.dependencyEnabled == true, sender.state == .on,
+                  let window = sender.window, window.attachedSheet == nil else {
+                self.tokenRefreshConfirmationPending = false
+                if sender.state != .off { sender.animator().state = .off }
+                return
+            }
+            let ips = EgressIPAddress.sanitizedList(preferences.claudeEgressGuardAllowedIPs)
+            if ips.isEmpty {
+                sender.animator().state = .off
+            }
+            let alert = Self.claudeTokenRefreshAlert(ips: ips, cachedCountry: cachedCountry)
+            self.presentTokenRefreshAlert(alert, window) { [weak self, weak sender] response in
+                guard let self, let sender, self.tokenRefreshConfirmationGeneration == generation else { return }
+                self.tokenRefreshConfirmationPending = false
+                let accepted = response == .alertFirstButtonReturn
+                if !ips.isEmpty, accepted, self.tokenRefreshPresentation?.dependencyEnabled == true,
+                   sender.state == .on, EgressIPAddress.sanitizedList(preferences.claudeEgressGuardAllowedIPs) == ips {
+                    save(true)
+                    // A dependency can change just before the app handles the save. Do not
+                    // leave the provisional ON state visible if the app declined it.
+                    if self.tokenRefreshPresentation?.isOn == true { return }
+                }
+                if sender.state != .off { sender.animator().state = .off }
+                if ips.isEmpty, accepted { self.relay?.openEgressGuardSettings(nil) }
+            }
+        }
+    }
+
+    static func claudeTokenRefreshPresentation(enabled: Bool, guardEnabled: Bool, allowedIPs: [String],
+                                                mod: ClaudeTokenRefreshModAvailability, state: ClaudeTokenRefreshState,
+                                                settingsConflict: @autoclosure () -> String? = nil,
+                                                routeUnsupported: @autoclosure () -> Bool = false,
+                                                now: Date = Date(), timeZone: TimeZone = .autoupdatingCurrent) -> ClaudeTokenRefreshPresentation {
+        guard guardEnabled else {
+            return .init(isOn: enabled, dependencyEnabled: false, detail: tr(.keyClaudeTokenRefreshOffDetail),
+                         linkPhrase: tr(.keyClaudeQuotaCalibrationOffLink), statusLine: nil)
+        }
+        let detail = tr(.keyClaudeTokenRefreshDetail)
+        let modStatus: LocalizationKey? = switch mod {
+        case .detecting: .keyClaudeTokenRefreshModDetecting
+        case .unavailable: .keyClaudeTokenRefreshModRequired
+        case .unknown: .keyClaudeTokenRefreshModUnknown
+        case .available: nil
+        }
+        if let modStatus {
+            return .init(isOn: enabled, dependencyEnabled: false, detail: detail, linkPhrase: nil,
+                         statusLine: .init(tone: .neutral, text: tr(modStatus)))
+        }
+        func dateText(_ key: LocalizationKey, _ date: Date) -> String {
+            tr(key, arguments: [OfficialQuotaResetFormatter.bankedResetString(
+                for: date, relativeTo: now, timeZone: timeZone, includeExpired: true) ?? ""])
+        }
+        func line(_ tone: ClaudeLoginLine.Tone, _ parts: [String]) -> ClaudeLoginLine {
+            .init(tone: tone, text: parts.joined(separator: " · "))
+        }
+        let status: ClaudeLoginLine
+        let on = tr(.keyClaudeTokenRefreshStatusOn)
+        let armed = line(.good, [on, tr(.keyClaudeTokenRefreshStatusArmed)])
+        if !enabled {
+            status = line(.neutral, [tr(.keyClaudeTokenRefreshStatusOff)])
+        } else if EgressIPAddress.sanitizedList(allowedIPs).isEmpty {
+            status = line(.warning, [tr(.keyClaudeTokenRefreshStatusInactive), tr(.keyClaudeTokenRefreshReasonNoTargets)])
+        } else {
+            switch state {
+            case .paused:
+                status = line(.warning, [tr(.keyClaudeTokenRefreshStatusPaused), tr(.keyClaudeTokenRefreshReasonLoginInvalid)])
+            case .running:
+                status = line(.neutral, [on, tr(.keyClaudeTokenRefreshStatusRunning)])
+            case .idle, .succeeded, .failed:
+                if let variable = settingsConflict() {
+                    status = line(.warning, [on, tr(.keyClaudeTokenRefreshReasonSettingsEnv, arguments: [variable])])
+                } else if routeUnsupported() {
+                    status = line(.warning, [on, tr(.keyClaudeTokenRefreshReasonRouteUnsupported)])
+                } else if case let .succeeded(at) = state {
+                    status = line(.good, [on, dateText(.keyClaudeTokenRefreshStatusSucceeded, at)])
+                } else if case let .failed(failure, nextTryAt) = state {
+                    switch failure {
+                    case .settingsEnv, .routeUnsupported:
+                        status = armed
+                    default:
+                        var parts = [tr(.keyClaudeTokenRefreshStatusFailed), tokenRefreshFailureText(failure)]
+                        if let nextTryAt { parts.append(dateText(.keyClaudeTokenRefreshStatusNextTry, nextTryAt)) }
+                        status = line(.warning, parts)
+                    }
+                } else {
+                    status = armed
+                }
+            }
+        }
+        return .init(isOn: enabled, dependencyEnabled: true, detail: detail, linkPhrase: nil, statusLine: status)
+    }
+
+    private static func tokenRefreshFailureText(_ failure: ClaudeTokenRefreshFailure) -> String {
+        switch failure {
+        case .egress(.mismatch): return tr(.keyClaudeTokenRefreshReasonMismatch)
+        case .egress(.unsupportedRegion): return tr(.keyClaudeTokenRefreshReasonUnsupportedRegion)
+        case .egress(.noTargets): return tr(.keyClaudeTokenRefreshReasonNoTargets)
+        case .egress: return tr(.keyClaudeTokenRefreshReasonCheckFailed)
+        case .routeUnsupported: return tr(.keyClaudeTokenRefreshReasonRouteUnsupported)
+        case let .settingsEnv(variable): return tr(.keyClaudeTokenRefreshReasonSettingsEnv, arguments: [variable])
+        case .claudeNotFound: return tr(.keyClaudeTokenRefreshReasonClaudeNotFound)
+        case .launchFailed: return tr(.keyClaudeTokenRefreshReasonCommandFailed, arguments: ["-"])
+        case let .commandFailed(exitCode): return tr(.keyClaudeTokenRefreshReasonCommandFailed, arguments: [String(exitCode)])
+        case .timedOut: return tr(.keyClaudeTokenRefreshReasonTimedOut)
+        }
+    }
+
+    static func claudeTokenRefreshAlert(ips: [String], cachedCountry: (String) -> String? = { _ in nil }) -> NSAlert {
+        let alert = NSAlert()
+        // Set the icon explicitly: the default app icon can be omitted in a sheet.
+        // NSAlert puts an explicit icon above the title, outside the accessory.
+        let iconURL = Bundle.main.url(forResource: "BalanceBar", withExtension: "icns")
+        alert.icon = iconURL.flatMap(NSImage.init(contentsOf:)) ?? NSApp.applicationIconImage
+        alert.messageText = tr(ips.isEmpty ? .keyClaudeTokenRefreshEmptyTitle : .keyClaudeTokenRefreshConfirmTitle)
+        alert.informativeText = tr(ips.isEmpty ? .keyClaudeTokenRefreshEmptyMessage : .keyClaudeTokenRefreshConfirmMessage)
+        if !ips.isEmpty {
+            let command = "claude plugin marketplace update balancebar-mods"
+            let width = max(300, CopyableCommandBlockView.singleLineWidth(for: command))
+            let block = CopyableCommandBlockView(command: command, width: width)
+            let entries = ips.map { ip in
+                let country = cachedCountry(ip).map { " " + IPCountryCode.displayTitle($0) } ?? ""
+                return "• \(ip)\(country)"
+            }.joined(separator: "\n")
+            let allowlist = NSTextField(wrappingLabelWithString: tr(.keyClaudeTokenRefreshConfirmAllowlist,
+                                                                    arguments: [entries]))
+            allowlist.font = .systemFont(ofSize: NSFont.systemFontSize)
+            allowlist.textColor = .labelColor
+            // The accessory is wider than the native alert text. Inset only the
+            // allowlist so its text aligns with the body; leave the command box full width.
+            let textInset: CGFloat = 6
+            let allowlistContainer = NSView()
+            allowlist.preferredMaxLayoutWidth = width - 2 * textInset
+            allowlist.translatesAutoresizingMaskIntoConstraints = false
+            allowlistContainer.addSubview(allowlist)
+            let accessory = NSStackView(views: [block, allowlistContainer])
+            accessory.orientation = .vertical
+            accessory.alignment = .leading
+            accessory.spacing = 8
+            NSLayoutConstraint.activate([
+                block.widthAnchor.constraint(equalToConstant: width),
+                allowlistContainer.widthAnchor.constraint(equalToConstant: width),
+                allowlist.leadingAnchor.constraint(equalTo: allowlistContainer.leadingAnchor, constant: textInset),
+                allowlist.trailingAnchor.constraint(equalTo: allowlistContainer.trailingAnchor, constant: -textInset),
+                allowlist.topAnchor.constraint(equalTo: allowlistContainer.topAnchor),
+                allowlist.bottomAnchor.constraint(equalTo: allowlistContainer.bottomAnchor),
+            ])
+            accessory.setFrameSize(NSSize(width: width, height: ceil(accessory.fittingSize.height)))
+            alert.accessoryView = accessory
+        }
+        alert.addButton(withTitle: tr(ips.isEmpty ? .keyClaudeTokenRefreshEmptyOpenSettings : .keyClaudeTokenRefreshConfirmTurnOn))
+            .keyEquivalent = "\r"
+        let cancel = alert.addButton(withTitle: tr(.keyClaudeTokenRefreshConfirmCancel))
+        cancel.keyEquivalent = "\u{1b}"
+        cancel.keyEquivalentModifierMask = []
+        return alert
+    }
+
+    @discardableResult
+    func refreshClaudeTokenAutoRefresh(_ presentation: ClaudeTokenRefreshPresentation) -> Bool {
+        guard let row = claudeTokenRefreshRow, presentation != tokenRefreshPresentation else { return false }
+        tokenRefreshPresentation = presentation
+        row.setDependencyEnabled(presentation.dependencyEnabled)
+        if tokenRefreshConfirmationPending, !presentation.dependencyEnabled || presentation.isOn {
+            tokenRefreshConfirmationGeneration += 1
+            tokenRefreshConfirmationPending = false
+        }
+        // An unrelated status redraw must not reverse the native slide while confirmation is pending.
+        if !tokenRefreshConfirmationPending, let toggle = claudeTokenRefreshSwitch {
+            let savedState: NSControl.StateValue = presentation.isOn ? .on : .off
+            if toggle.state != savedState { toggle.animator().state = savedState }
+        }
+        let label = row.detailLabel as? InlineRangeLinkTextField
+        if let link = presentation.linkPhrase {
+            let detail = presentation.detail + "\n" + link
+            row.updateDetail(detail)
+            label?.setContent(detail, linkPhrase: link) { [weak self] in self?.relay?.openEgressGuardSettings(nil) }
+        } else {
+            label?.setContent("", linkPhrase: nil, onActivate: nil)
+            if let status = presentation.statusLine {
+                Self.applyStatusDetail(to: row, description: presentation.detail, line: status)
+            } else {
+                row.updateDetail(presentation.detail)
+            }
+        }
+        return true
+    }
+
     static func claudeLoginLine(_ status: ClaudeLoginStatus, now: Date = Date(),
                                 timeZone: TimeZone = .autoupdatingCurrent) -> ClaudeLoginLine {
         func time(_ date: Date) -> String {
@@ -873,7 +1137,11 @@ final class DashboardGeneralPage {
         guard let row = claudeCalibrationRow else { return }
         let now = Date()
         let line = Self.claudeLoginLine(claudeLoginStatus, now: now, timeZone: claudeLoginTimeZone)
-        let description = tr(.keyClaudeQuotaCalibrationDetail)
+        Self.applyStatusDetail(to: row, description: tr(.keyClaudeQuotaCalibrationDetail), line: line)
+        scheduleClaudeLoginExpiryRedraw(now: now)
+    }
+
+    private static func applyStatusDetail(to row: SettingsRowView, description: String, line: ClaudeLoginLine) {
         row.updateDetail(description + "\n" + RealtimeBoostSettingsRows.dotPrefix + line.text)
         let label = row.detailLabel
         let font = label.font ?? .systemFont(ofSize: NSFont.smallSystemFontSize)
@@ -891,7 +1159,6 @@ final class DashboardGeneralPage {
         ], range: NSRange(location: (description as NSString).length + 1, length: 1))
         label.attributedStringValue = text
         row.invalidateAfterContentChange()
-        scheduleClaudeLoginExpiryRedraw(now: now)
     }
 
     /// A signed-in line turns into the expired one when its time passes, even with no request

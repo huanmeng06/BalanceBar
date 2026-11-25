@@ -141,6 +141,8 @@ final class ClaudeQuotaPipeline {
     private let client: OfficialQuotaClient
     /// Checks the egress IP before each official request; nil (tests) sends without checking.
     fileprivate let egressGuard: ClaudeEgressGuard?
+    private let tokenRefresher: ClaudeTokenAutoRefresher?
+    var tokenAutoRefreshNeedsRelogin: Bool { tokenRefresher?.state == .paused }
     private let identity: ClaudeAccountIdentityProvider
     private let identityQueue: DispatchQueue
     private let stateStore: ObservedFetchSchedulerStateStore
@@ -305,6 +307,7 @@ final class ClaudeQuotaPipeline {
         snapshotInbox: SnapshotInbox? = nil,
         sourceValidity: @escaping () -> ClaudeSourceValidity = { .defaults },
         egressGuard: ClaudeEgressGuard? = nil,
+        tokenRefresher: ClaudeTokenAutoRefresher? = nil,
         now: @escaping () -> Date = Date.init,
         diagnostics: @escaping (String, SwitchLog.Level) -> Void = { message, level in
             SwitchLog.write(message, level: level, category: "refresh.claude")
@@ -312,6 +315,7 @@ final class ClaudeQuotaPipeline {
     ) {
         self.client = client
         self.egressGuard = egressGuard
+        self.tokenRefresher = tokenRefresher
         self.diagnostics = diagnostics
         self.identity = identity
         self.identityQueue = identityQueue
@@ -647,11 +651,12 @@ final class ClaudeQuotaPipeline {
         }
     }
 
-    private func prepareAndRequest(_ reason: FetchRequestReason) {
+    private func prepareAndRequest(_ reason: FetchRequestReason, refreshAttempted: Bool = false) {
         guard lock.withLock({ officialQuotaDemand }) else { return }
         let epoch = identity.accountEpoch
-        if reason == .manual { client.allowClaudeKeychainRetry() }
-        let token = client.claudeRequestCredentials(cacheFor: 2).accessToken
+        if reason == .manual, !refreshAttempted { client.allowClaudeKeychainRetry() }
+        let credential = client.claudeCredentialSnapshot(cacheFor: refreshAttempted ? 0 : 2)
+        let token = credential.credentials.accessToken
         identity.ingestCredential(accessToken: token, expectedEpoch: epoch)
         identityQueue.sync {}
         // A switched-off guard turns official requests off: the local credential read above
@@ -660,6 +665,11 @@ final class ClaudeQuotaPipeline {
             markOfficialDisabled()
             return
         }
+        if !refreshAttempted, let tokenRefresher,
+           tokenRefresher.preflight(expiresAt: credential.expiresAt, hasToken: token != nil,
+                                    reason: reason, completion: { [weak self] _ in
+               self?.queue.async { [weak self] in self?.prepareAndRequest(reason, refreshAttempted: true) }
+           }) { return }
         scheduler.requestFetch(reason: reason)
     }
 
@@ -1086,6 +1096,13 @@ final class ClaudeQuotaPipeline {
         }
         publish()
         if shouldFetchBankedReset { requestBankedResetCardsIfNeeded() }
+        if newFailure == .unauthorized, delivery.epoch == identity.accountEpoch,
+           client.cachedClaudeLogin()?.expiresAt.map({ $0 <= now() }) == true {
+            tokenRefresher?.refresh(trigger: .unauthorized, bypassCooldown: false) { [weak self] refreshed in
+                guard refreshed else { return }
+                self?.queue.async { [weak self] in self?.prepareAndRequest(.scheduled, refreshAttempted: true) }
+            }
+        }
     }
 
     // Pipeline queue only. Read the current demand again after asynchronous preflight.
@@ -1734,7 +1751,8 @@ extension ClaudeQuotaPipeline {
         calibrationIntervalCap: @escaping () -> TimeInterval?,
         automaticInterval: @escaping () -> TimeInterval? = { nil },
         sourceValidity: @escaping () -> ClaudeSourceValidity = { .defaults },
-        egressGuard: ClaudeEgressGuard? = nil
+        egressGuard: ClaudeEgressGuard? = nil,
+        tokenRefresher: ClaudeTokenAutoRefresher? = nil
     ) -> ClaudeQuotaPipeline {
         let identityQueue = DispatchQueue(label: "BalanceBar.AccountIdentity", qos: .utility)
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
@@ -1758,7 +1776,7 @@ extension ClaudeQuotaPipeline {
             realtimeTracker: tracker,
             snapshotInbox: inbox,
             sourceValidity: sourceValidity,
-            egressGuard: egressGuard)
+            egressGuard: egressGuard, tokenRefresher: tokenRefresher)
     }
 }
 

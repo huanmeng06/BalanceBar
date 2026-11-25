@@ -1078,7 +1078,7 @@ final class ResponseParsersTests: XCTestCase {
         )
         XCTAssertEqual(
             missingProbability.menuPrimaryDisplayText(language: .english),
-            "High Prob."
+            "Likely"
         )
         XCTAssertNotEqual(missingProbability.menuPrimaryDisplayText(), "20%")
         XCTAssertNotEqual(missingProbability.menuPrimaryDisplayText(), "83%")

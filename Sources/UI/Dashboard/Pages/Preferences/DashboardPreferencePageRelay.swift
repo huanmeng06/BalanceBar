@@ -55,6 +55,14 @@ enum DashboardLanguageChange {
 /// The page modules own their controls; AppDelegate supplies these callbacks
 /// so preference writes and application actions remain explicit and testable.
 final class DashboardPreferencePageRelay: NSObject {
+    var onClaudeTokenAutoRefresh: ((Bool, NSSwitch) -> Void)? = { enabled, sender in
+        (sender as? ClaudeTokenRefreshSwitch)?.onToggle?(enabled)
+    }
+
+    @objc func claudeTokenAutoRefresh(_ sender: NSSwitch) {
+        onClaudeTokenAutoRefresh?(sender.state == .on, sender)
+    }
+
     var onToggle: ((String, Bool) -> Void)?
     var onLaunchAtLogin: ((Bool) -> Void)?
     var onLaunchWithChatGPT: ((Bool) -> Void)?

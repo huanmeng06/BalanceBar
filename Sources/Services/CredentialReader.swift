@@ -161,18 +161,20 @@ struct CredentialReader {
         // Read succeeded (empty token = signed out) or the item does not exist: not a keychain problem.
         // Anything else (timeout, denied prompt, locked keychain, `security` not runnable) means the
         // token may exist but could not be read; running `claude` would not help.
-        let keychainUnreadable = result.map {
+        let keychainReadFailed = result.map {
             $0.terminationStatus != 0 && $0.terminationStatus != Self.keychainItemNotFoundStatus
         } ?? true
-        if keychainUnreadable, result != nil { keychainCooldown.start() }
+        if keychainReadFailed, result != nil { keychainCooldown.start() }
 
         let credentialsURL = homeDirectoryURL.appendingPathComponent(".claude/.credentials.json")
         guard let data = try? fileReader.readData(from: credentialsURL) else {
-            return ClaudeStoredCredentials(accessToken: nil, planType: nil, keychainUnreadable: keychainUnreadable)
+            return ClaudeStoredCredentials(accessToken: nil, planType: nil, keychainUnreadable: keychainReadFailed,
+                                           keychainReadFailed: keychainReadFailed)
         }
         let token = Self.claudeAccessToken(from: data)
         return ClaudeStoredCredentials(accessToken: token, planType: Self.claudePlanType(from: data),
-                                       keychainUnreadable: token == nil && keychainUnreadable,
+                                       keychainUnreadable: token == nil && keychainReadFailed,
+                                       keychainReadFailed: keychainReadFailed,
                                        expiresAt: token == nil ? nil : Self.claudeExpiresAt(from: data))
     }
 
