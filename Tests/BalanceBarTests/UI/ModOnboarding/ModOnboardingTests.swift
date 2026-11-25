@@ -236,21 +236,21 @@ final class ModOnboardingPanelTests: XCTestCase {
     func testSnapshotIntro() {
         XCTAssertEqual(lines(.intro(dismissChecked: false)), [
             "# 实时增强",
-            "• 只读取额度数据（5 小时 / 7 天用量），不读取对话内容。",
+            "• 只读取额度数据（5 小时 / 7 日用量），不读取对话内容。",
             "• 插件以你的用户权限在 Claude Code 内运行，可随时用 /plugin 卸载。",
             "• 数据只写入本机，不联网上传。",
             "• 新会话自动生效；已有会话可运行 /reload-plugins。",
-            "( ) 不再在菜单中提示", "<一键安装>", "<关闭>",
+            "( ) 不再在菜单中提示", "<安装>", "<关闭>",
         ])
         XCTAssertTrue(lines(.intro(dismissChecked: true)).contains("(x) 不再在菜单中提示"))
     }
 
     func testSnapshotInstallingSucceededFailedDismissed() {
         XCTAssertEqual(lines(.installing(current: .installPlugin)), ["# 实时增强", "[x] 添加来源", "[~] 安装 Mod", "[ ] 完成"])
-        XCTAssertEqual(lines(.succeeded), ["# 已开启 ✓", "[x] 添加来源", "[x] 安装 Mod", "[x] 完成",
+        XCTAssertEqual(lines(.succeeded), ["# 已开启", "[x] 添加来源", "[x] 安装 Mod", "[x] 完成",
                                            "新开的 Claude Code 会话会自动生效。", "已有会话可选运行下面的命令。", "</reload-plugins>", "<关闭>"])
         let commands = ModInstallPlan.standard.copyableCommands.replacingOccurrences(of: "\n", with: "\n$ ")
-        XCTAssertEqual(lines(.failed(.claudeNotFound)), ["# 无法自动安装", "没有找到 claude 命令。请在终端中运行下面的命令：", "$ " + commands, "<复制命令>", "<关闭>"])
+        XCTAssertEqual(lines(.failed(.claudeNotFound)), ["# 无法自动安装", "没有找到 claude 命令。请在终端中运行下面的命令：", "$ " + commands, "<拷贝命令>", "<关闭>"])
         XCTAssertEqual(lines(.failed(.commandFailed(step: .installPlugin, exitCode: 1, detail: "x")))[1], "命令未成功完成。请在终端中运行下面的命令：")
         XCTAssertEqual(lines(.dismissConfirmed), ["# 已隐藏提示", "之后可以在“设置”>“通用”>“刷新”中安装 BalanceBar Mod。", "<撤销>", "<关闭>"])
     }
@@ -281,7 +281,7 @@ final class ModOnboardingPanelTests: XCTestCase {
         missing.onChange = { reload?(); if missing.state == .failed(.claudeNotFound) { failed.fulfill() } }
         view.perform(.install)
         wait(for: [failed], timeout: 5)
-        XCTAssertTrue(view.snapshotLines.contains("<复制命令>"))
+        XCTAssertTrue(view.snapshotLines.contains("<拷贝命令>"))
         view.perform(.copyCommands)
         XCTAssertEqual(copied, ModInstallPlan.standard.copyableCommands)
     }
@@ -664,7 +664,7 @@ final class ModSyncStatusTests: XCTestCase {
             .active(lastAcceptedAt: now.addingTimeInterval(-60)))
         let text = RealtimeBoostPresentation.make(status: .updateRequired(installedVersion: "1.0.0"), timeZone: TimeZone(identifier: "UTC")!).statusText
         XCTAssertTrue(text.contains("第三方插件市场默认不自动更新"))
-        XCTAssertTrue(text.contains("重启 Claude Code 会话"))
+        XCTAssertTrue(text.contains("重新启动 Claude Code 会话"))
     }
 
     /// #669: a plugin that writes the current snapshot format but is older than this build expects
@@ -800,11 +800,11 @@ final class ModPanelSyncContextTests: XCTestCase {
         XCTAssertTrue(lines.contains { $0.contains("已安装，等待新会话的数据") })
         XCTAssertFalse(lines.contains { $0.contains("不再在菜单中提示") })
         XCTAssertTrue(lines.contains("<卸载 BalanceBar Mod>"))
-        XCTAssertFalse(lines.contains("<一键安装>"))
+        XCTAssertFalse(lines.contains("<安装>"))
 
         // A not-installed status offers the install action.
         let notInstalled = self.lines(.intro(dismissChecked: false), sync: context(.notInstalled(hasOtherScopeInstall: false)))
-        XCTAssertTrue(notInstalled.contains("<一键安装>"))
+        XCTAssertTrue(notInstalled.contains("<安装>"))
         XCTAssertFalse(notInstalled.contains("<卸载 BalanceBar Mod>"))
     }
 
@@ -812,20 +812,20 @@ final class ModPanelSyncContextTests: XCTestCase {
         for status in [ModSyncStatus.waitingForData, .active(lastAcceptedAt: Date()), .silent] {
             let lines = self.lines(.intro(dismissChecked: false), sync: context(status))
             XCTAssertTrue(lines.contains("<卸载 BalanceBar Mod>"), "\(status)")
-            XCTAssertFalse(lines.contains("<一键安装>"), "\(status)")
+            XCTAssertFalse(lines.contains("<安装>"), "\(status)")
         }
     }
 
     func testDisabledOffersTheEnableCommandFallback() {
         let lines = lines(.intro(dismissChecked: false), sync: context(.disabled))
-        XCTAssertTrue(lines.contains("<复制启用命令>"))
+        XCTAssertTrue(lines.contains("<拷贝启用命令>"))
         XCTAssertTrue(lines.contains("<卸载 BalanceBar Mod>"))
     }
 
     func testLegacyPanelWithoutSyncKeepsTheCheckbox() {
         let lines = lines(.intro(dismissChecked: false), sync: nil)
         XCTAssertTrue(lines.contains("( ) 不再在菜单中提示"))
-        XCTAssertTrue(lines.contains("<一键安装>"))
+        XCTAssertTrue(lines.contains("<安装>"))
         XCTAssertFalse(lines.contains("<卸载 BalanceBar Mod>"))
     }
 
@@ -834,7 +834,7 @@ final class ModPanelSyncContextTests: XCTestCase {
             "# 实时增强", "[x] 卸载 Mod", "[~] 移除安装来源", "[ ] 完成",
         ])
         XCTAssertEqual(lines(.uninstallSucceeded, sync: nil), [
-            "# 已卸载 ✓",
+            "# 已卸载",
             "额度已改为定时向官方查询。其他插件不受影响。",
             "<关闭>",
         ])
@@ -843,7 +843,7 @@ final class ModPanelSyncContextTests: XCTestCase {
             "# 无法自动安装",
             "卸载未完成。请在终端中运行下面的命令：",
             "$ " + commands,
-            "<复制命令>", "<关闭>",
+            "<拷贝命令>", "<关闭>",
         ])
         XCTAssertEqual(lines(.uninstallFailed(.claudeNotFound), sync: nil)[1], "没有找到 claude 命令。请在终端中运行下面的命令：")
     }
@@ -909,7 +909,7 @@ final class ModSyncPresentationTests: XCTestCase {
             RealtimeBoostPresentation.make(status: .active(lastAcceptedAt: Date(timeIntervalSince1970: 1_767_274_800)), timeZone: utc).statusText,
             "已开启，最近可信数据 13:40:00")
         XCTAssertTrue(RealtimeBoostPresentation.make(status: .silent, timeZone: utc).statusText.contains("/reload-plugins"))
-        XCTAssertTrue(RealtimeBoostPresentation.make(status: .snapshotRejected(.init(rejection: .accountMismatch, at: Date())), timeZone: utc).statusText.contains("账号"))
+        XCTAssertTrue(RealtimeBoostPresentation.make(status: .snapshotRejected(.init(rejection: .accountMismatch, at: Date())), timeZone: utc).statusText.contains("账户"))
         XCTAssertTrue(RealtimeBoostPresentation.make(status: .snapshotRejected(.init(rejection: .unverifiedCycle, at: Date())), timeZone: utc).statusText.contains("官方"))
         let unknown = RealtimeBoostPresentation.make(status: .installationUnknown, timeZone: utc)
         XCTAssertTrue(unknown.statusText.contains("无法确认"))
@@ -2095,7 +2095,7 @@ final class RealtimeBoostAdvancedCardTests: XCTestCase {
         assertCopy(.notInstalled(hasOtherScopeInstall: false), title: "未安装",
                    reason: "安装后可实时同步额度", action: nil)
         assertCopy(.notInstalled(hasOtherScopeInstall: true), title: "仅项目级安装",
-                   reason: "只在该项目内生效", action: "点“一键安装”装到用户级")
+                   reason: "只在该项目内生效", action: "点“安装”装到用户级")
         assertCopy(.waitingForData, title: "等待数据",
                    reason: "已安装，还没收到会话数据", action: "新开一个 Claude 会话即可")
         assertCopy(.silent, title: "暂无数据",
@@ -2107,7 +2107,7 @@ final class RealtimeBoostAdvancedCardTests: XCTestCase {
         assertCopy(.claudeVersionTooOld(.init(major: 2, minor: 1, patch: 100)), title: "版本过旧",
                    reason: "当前 Claude Code 2.1.100", action: "请升级到 v2.1.287 或更高")
         assertCopy(.inboxNotReady, title: "收件箱不可用",
-                   reason: "权限不足或所有者不符", action: "点“一键安装”重建")
+                   reason: "权限不足或所有者不符", action: "点“安装”重建")
         assertCopy(.snapshotRejected(.init(rejection: .accountMismatch, at: Date())), title: "数据被拒绝",
                    reason: "Claude 与 BalanceBar 登录的账户不同", action: "请切换到同一账户")
         assertCopy(.snapshotRejected(.init(rejection: .unverifiedCycle, at: Date())), title: "数据被拒绝",
