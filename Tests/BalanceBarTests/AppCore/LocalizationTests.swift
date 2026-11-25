@@ -1291,7 +1291,7 @@ final class LocalizationTests: XCTestCase {
     func testAllTypedKeysExistInEveryBundledLanguage() throws {
         let expectedKeys = Set(LocalizationKey.allCases.map(\.rawKey))
         XCTAssertEqual(expectedKeys.count, LocalizationKey.allCases.count)
-        XCTAssertEqual(expectedKeys.count, 908)
+        XCTAssertEqual(expectedKeys.count, 916)
         let copyPrefix = "status.item.controller."
         for key in ["copy_link", "copy_version_number"] {
             XCTAssertTrue(expectedKeys.contains(copyPrefix + key))
