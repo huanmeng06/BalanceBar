@@ -18,6 +18,12 @@ struct CodexResetCardCacheStore {
 
     private let fileURL: URL
 
+    private static func fractionalDateFormatter() -> ISO8601DateFormatter {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions.insert(.withFractionalSeconds)
+        return formatter
+    }
+
     init(fileURL: URL? = nil) {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
@@ -35,7 +41,11 @@ struct CodexResetCardCacheStore {
         do {
             try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             let encoder = JSONEncoder()
-            encoder.dateEncodingStrategy = .iso8601
+            let formatter = Self.fractionalDateFormatter()
+            encoder.dateEncodingStrategy = .custom { date, encoder in
+                var container = encoder.singleValueContainer()
+                try container.encode(formatter.string(from: date))
+            }
             try encoder.encode(stored).write(to: fileURL, options: .atomic)
         } catch {
             Logger(subsystem: Bundle.main.bundleIdentifier ?? "BalanceBar", category: "Quota")
@@ -45,7 +55,16 @@ struct CodexResetCardCacheStore {
 
     func load(now: Date) -> (reset: CodexBankedReset, fetchedAt: Date)? {
         let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
+        let fractional = Self.fractionalDateFormatter()
+        let wholeSeconds = ISO8601DateFormatter()
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let value = try container.decode(String.self)
+            guard let date = fractional.date(from: value) ?? wholeSeconds.date(from: value) else {
+                throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid reset-card cache date")
+            }
+            return date
+        }
         guard let data = try? Data(contentsOf: fileURL),
               let stored = try? decoder.decode(StoredCache.self, from: data),
               stored.version == 1 else { return nil }

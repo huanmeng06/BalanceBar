@@ -37,6 +37,33 @@ final class CodexResetCardCacheStoreTests: XCTestCase {
         XCTAssertEqual(expired.fetchedAt, now)
     }
 
+    func testFractionalExpiryMatchesOnlineBeforeAndAtDeadline() throws {
+        let data = Data(#"{"credits":[{"id":"fractional","reset_type":"codex_rate_limits","expires_at":1700000000900}]}"#.utf8)
+        let reset = try XCTUnwrap(OfficialQuotaResponseParser.parseBankedResetCredits(data: data, now: now))
+        let expiry = try XCTUnwrap(reset.cards.first?.expiresAt)
+        let fetchedAt = now.addingTimeInterval(0.125)
+        store.save(reset, accountKey: owner, fetchedAt: fetchedAt)
+
+        let before = now.addingTimeInterval(0.5)
+        let restored = try XCTUnwrap(store.load(now: before))
+        XCTAssertEqual(restored.reset.cards.first?.expiresAt, expiry)
+        XCTAssertEqual(restored.fetchedAt, fetchedAt)
+        for (date, expectedCount) in [(before, 1), (expiry, 0), (expiry.addingTimeInterval(0.001), 0)] {
+            let online = try XCTUnwrap(OfficialQuotaResponseParser.parseBankedResetCredits(data: data, now: date))
+            XCTAssertEqual(online.availableCount, expectedCount)
+            XCTAssertEqual(store.load(now: date)?.reset.availableCount, online.availableCount)
+        }
+    }
+
+    func testReadsLegacyWholeSecondDates() throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data(#"{"version":1,"fetchedAt":"2023-11-14T22:13:20Z","credits":[{"id":"legacy","resetType":"codex_rate_limits","expiresAt":"2023-11-14T23:13:20Z"}]}"#.utf8)
+            .write(to: fileURL)
+        let restored = try XCTUnwrap(store.load(now: now))
+        XCTAssertEqual(restored.fetchedAt, now)
+        XCTAssertEqual(restored.reset.cards.first?.expiresAt, now.addingTimeInterval(3_600))
+    }
+
     func testReadRebuildsLocalizedTitleButKeepsAPITitle() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
