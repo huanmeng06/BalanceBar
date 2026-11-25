@@ -410,6 +410,7 @@ final class ProviderRefreshCoordinator {
     }
 
     private let repository: CCSwitchRepository
+    private let resolver: CurrentProviderResolver
     private let officialQuotaClient: OfficialQuotaClient
     private let balanceAPIClient: BalanceAPIClient
     private let balanceProgressStore: ProviderBalanceProgressStore
@@ -509,6 +510,7 @@ final class ProviderRefreshCoordinator {
 
     init(
         repository: CCSwitchRepository,
+        resolver: CurrentProviderResolver? = nil,
         officialQuotaClient: OfficialQuotaClient,
         balanceAPIClient: BalanceAPIClient = BalanceAPIClient(),
         balanceProgressStore: ProviderBalanceProgressStore = ProviderBalanceProgressStore(),
@@ -521,6 +523,7 @@ final class ProviderRefreshCoordinator {
     ) {
         self.claudeQuota = claudeQuota
         self.repository = repository
+        self.resolver = resolver ?? CurrentProviderResolver(repository: repository)
         self.officialQuotaClient = officialQuotaClient
         self.balanceAPIClient = balanceAPIClient
         self.balanceProgressStore = balanceProgressStore
@@ -709,7 +712,7 @@ final class ProviderRefreshCoordinator {
         return queue.sync(execute: prepare)
     }
 
-    func stopAggregation() {
+    func stopAggregation(publish: Bool = false) {
         performOnQueue { [weak self] in
             guard let self else { return }
             let displays = Array(self.aggregationDisplays.values)
@@ -722,6 +725,13 @@ final class ProviderRefreshCoordinator {
             self.aggregationReader = nil
             self.aggregationRetry?.cancel()
             self.aggregationRetry = nil
+            if publish {
+                self.aggregationBlocked = false
+                self.quickSwitchSafety = .blockedUntrusted
+                self.aggregationReadFailures.recordSuccess()
+                self.aggregationShowsDatabaseFailure = false
+                self.publishAggregation()
+            }
         }
     }
 
@@ -876,7 +886,7 @@ final class ProviderRefreshCoordinator {
     func resetCardsPreferenceChanged() {
         performOnQueue { [weak self] in
             guard let self, self.lifetime.isCurrent() else { return }
-            let claudeProvider: CCSwitchProvider? = try? self.repository.loadCurrentChecked(appType: AssistantClient.claude.appType)
+            let claudeProvider = self.resolver.currentProvider(.claude)
             if let claudeProvider, !claudeProvider.isOfficial {
                 self.claudeQuota?.setDemand(false)
                 self.claudeQuota?.setResetCardDemand(self.refreshPreferences?.showBankedReset == true)
@@ -896,7 +906,7 @@ final class ProviderRefreshCoordinator {
             }
             let current: CCSwitchProvider?
             do {
-                current = try self.repository.loadCurrentChecked(appType: AssistantClient.codex.appType)
+                current = try self.resolver.resolveChecked(.codex).provider
             } catch {
                 return
             }
@@ -1052,7 +1062,7 @@ final class ProviderRefreshCoordinator {
 
     func prefetchCurrentBalance(for client: AssistantClient) {
         queue.async { [weak self] in
-            guard let self, self.lifetime.isCurrent(), let current = self.repository.loadCurrent(appType: client.appType) else { return }
+            guard let self, self.lifetime.isCurrent(), let current = self.resolver.currentProvider(client) else { return }
             if client == .claude, !current.isOfficial {
                 self.claudeStandardTarget = nil
                 self.lastClaudePublication = nil
@@ -1318,12 +1328,12 @@ final class ProviderRefreshCoordinator {
     }
 
     private func standardRequestIsCurrent(client: AssistantClient, providerID: String, revision: String) -> Bool {
-        guard let current = repository.loadCurrent(appType: client.appType) else { return false }
+        guard let current = resolver.currentProvider(client) else { return false }
         return current.id == providerID && current.configurationRevision == revision
     }
 
     private func configurationIsCurrent(client: AssistantClient, providerID: String, revision: String) -> Bool {
-        repository.configurationRevision(appType: client.appType, providerID: providerID) == revision
+        resolver.configurationRevision(client, providerID: providerID) == revision
     }
 
     /// Re-reads only this provider's row: many summary responses can complete
@@ -1427,7 +1437,7 @@ final class ProviderRefreshCoordinator {
                 let selectedMovedAway: Bool
                 if !configurationRevision.isEmpty,
                    configurationIsCurrent,
-                   let selected = self.repository.loadCurrent(appType: client.appType) {
+                   let selected = self.resolver.currentProvider(client) {
                     selectedMovedAway = selected.id != providerID
                 } else {
                     selectedMovedAway = false
@@ -1714,7 +1724,7 @@ final class ProviderRefreshCoordinator {
         if state.failure != nil { actions.notificationSamplesInvalidated?(.claude, claudeOfficialProviderIDs) }
         applyClaudeSummaries(state)
         guard let target = claudeStandardTarget else {
-            guard let current = repository.loadCurrent(appType: AssistantClient.claude.appType),
+            guard let current = resolver.currentProvider(.claude),
                   !current.isOfficial,
                   let balance = providerBalanceSnapshots.snapshot(
                     clientID: AssistantClient.claude.rawValue,

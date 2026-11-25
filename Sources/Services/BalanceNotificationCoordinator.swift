@@ -269,6 +269,19 @@ final class BalanceNotificationCoordinator {
         }
     }
 
+    func adoptLocalOfficialSettings(agent: BalanceNotificationAgent, from sourceID: String, to targetID: String) {
+        onQueue {
+            var settings = store.settings
+            let adopted = settings.adoptLocalOfficialSettings(agent: agent, from: sourceID, to: targetID)
+            guard settings.localOfficialAdoptedAgents != store.settings.localOfficialAdoptedAgents else { return }
+            store.replace(settings)
+            if adopted {
+                let count = settings.resourceRules.filter { $0.key.agent == agent && $0.key.providerID == targetID }.count
+                SwitchLog.write("notification settings adopted; agent=\(agent.rawValue); rules=\(count)")
+            }
+        }
+    }
+
     func setProviderEnabled(
         _ enabled: Bool,
         agent: BalanceNotificationAgent,

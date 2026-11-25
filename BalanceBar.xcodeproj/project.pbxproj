@@ -68,6 +68,9 @@
 		A10000000000000000000055 /* ResponseParsers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000056 /* ResponseParsers.swift */; };
 		A10000000000000000000057 /* ResponseParsersTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000058 /* ResponseParsersTests.swift */; };
 		A1000000000000000000005B /* CCSwitchRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000005E /* CCSwitchRepository.swift */; };
+		C69100000000000000000001 /* CCSwitchApplicationLocator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C69100000000000000000004 /* CCSwitchApplicationLocator.swift */; };
+		C69100000000000000000002 /* CurrentProviderResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = C69100000000000000000005 /* CurrentProviderResolver.swift */; };
+		C69100000000000000000003 /* LocalAgentRouteInspector.swift in Sources */ = {isa = PBXBuildFile; fileRef = C69100000000000000000006 /* LocalAgentRouteInspector.swift */; };
 		A1000000000000000000005C /* CCSwitchRepositoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000005F /* CCSwitchRepositoryTests.swift */; };
 		A1000000000000000000005D /* libsqlite3.tbd in Test Frameworks */ = {isa = PBXBuildFile; fileRef = A1000000000000000000001A /* libsqlite3.tbd */; };
 		A10000000000000000000060 /* CredentialReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000061 /* CredentialReader.swift */; };
@@ -340,6 +343,9 @@
 		A10000000000000000000056 /* ResponseParsers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResponseParsers.swift; sourceTree = "<group>"; };
 		A10000000000000000000058 /* ResponseParsersTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResponseParsersTests.swift; sourceTree = "<group>"; };
 		A1000000000000000000005E /* CCSwitchRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CCSwitchRepository.swift; sourceTree = "<group>"; };
+		C69100000000000000000004 /* CCSwitchApplicationLocator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CCSwitchApplicationLocator.swift; sourceTree = "<group>"; };
+		C69100000000000000000005 /* CurrentProviderResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CurrentProviderResolver.swift; sourceTree = "<group>"; };
+		C69100000000000000000006 /* LocalAgentRouteInspector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalAgentRouteInspector.swift; sourceTree = "<group>"; };
 		A1000000000000000000005F /* CCSwitchRepositoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CCSwitchRepositoryTests.swift; sourceTree = "<group>"; };
 		A10000000000000000000061 /* CredentialReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CredentialReader.swift; sourceTree = "<group>"; };
 		A10000000000000000000063 /* CredentialReaderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CredentialReaderTests.swift; sourceTree = "<group>"; };
@@ -1023,6 +1029,9 @@
 				A100000000000000000000EC /* ProviderBalanceProgressStore.swift */,
 				A100000000000000000000DB /* ProviderSwitchCoordinator.swift */,
 				A1000000000000000000005E /* CCSwitchRepository.swift */,
+				C69100000000000000000004 /* CCSwitchApplicationLocator.swift */,
+				C69100000000000000000005 /* CurrentProviderResolver.swift */,
+				C69100000000000000000006 /* LocalAgentRouteInspector.swift */,
 				A10000000000000000000061 /* CredentialReader.swift */,
 				A10000000000000000000065 /* BalanceAPIClient.swift */,
 				A10000000000000000000071 /* OfficialQuotaClient.swift */,
@@ -1549,6 +1558,9 @@
 				A44600000000000000000002 /* DashboardPlatformCapabilities.swift in Sources */,
 				A10000000000000000000055 /* ResponseParsers.swift in Sources */,
 				A1000000000000000000005B /* CCSwitchRepository.swift in Sources */,
+				C69100000000000000000001 /* CCSwitchApplicationLocator.swift in Sources */,
+				C69100000000000000000002 /* CurrentProviderResolver.swift in Sources */,
+				C69100000000000000000003 /* LocalAgentRouteInspector.swift in Sources */,
 				A10000000000000000000060 /* CredentialReader.swift in Sources */,
 				A10000000000000000000064 /* BalanceAPIClient.swift in Sources */,
 				A10000000000000000000070 /* OfficialQuotaClient.swift in Sources */,

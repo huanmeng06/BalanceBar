@@ -43,6 +43,53 @@ final class CCSwitchRepositoryTests: XCTestCase {
         try super.tearDownWithError()
     }
 
+    func testCurrentProviderResolverFallsBackOnlyForAbsentDatabaseOrMissingProvider() throws {
+        let resolver = CurrentProviderResolver(repository: repository)
+        let backup = temporaryDirectoryURL.appendingPathComponent("fixture-backup.db")
+        try FileManager.default.moveItem(at: databaseURL, to: backup)
+        XCTAssertEqual(try resolver.resolveChecked(.grok), .databaseAbsent)
+        XCTAssertEqual(try resolver.resolveChecked(.codex), .localThirdParty)
+        XCTAssertEqual(try resolver.resolveChecked(.claude), .localOfficial(LocalOfficialProvider.make(for: .claude)))
+
+        let config = temporaryDirectoryURL.appendingPathComponent(".codex/config.toml")
+        try Data(#"profile = "custom""#.utf8).write(to: config)
+        XCTAssertEqual(try resolver.resolveChecked(.codex), .localOfficial(LocalOfficialProvider.make(for: .codex)))
+        let localID = LocalOfficialProvider.id(for: .codex)
+        XCTAssertEqual(resolver.configurationRevision(.codex, providerID: localID), LocalOfficialProvider.configurationRevision)
+
+        try Data("not a database".utf8).write(to: databaseURL)
+        XCTAssertThrowsError(try resolver.resolveChecked(.codex))
+        try FileManager.default.removeItem(at: databaseURL)
+        try FileManager.default.moveItem(at: backup, to: databaseURL)
+        XCTAssertEqual(resolver.currentProvider(.codex)?.id, "codex-custom")
+        XCTAssertNil(resolver.configurationRevision(.codex, providerID: localID))
+
+        try withDatabase { db in
+            try execute(db, sql: "UPDATE providers SET is_current=0 WHERE app_type='codex'")
+        }
+        XCTAssertEqual(try resolver.resolveChecked(.codex), .localOfficial(LocalOfficialProvider.make(for: .codex)))
+        try Data("openai_base_url = 'https://provider.example'".utf8).write(to: config)
+        XCTAssertEqual(try resolver.resolveChecked(.codex), .noCurrentProvider)
+    }
+
+    func testLocalClaudeRouteInspectorDistinguishesThirdPartyAndInvalidConfiguration() throws {
+        let inspector = LocalAgentRouteInspector(homeDirectoryURL: temporaryDirectoryURL)
+        let directory = temporaryDirectoryURL.appendingPathComponent(".claude")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let file = directory.appendingPathComponent("settings.json")
+        for (json, expected): (String, LocalAgentRoute) in [
+            (#"{"env":{"ANTHROPIC_BASE_URL":"https://api.anthropic.com"}}"#, .official),
+            (#"{"env":{"ANTHROPIC_BASE_URL":"https://provider.example"}}"#, .thirdParty),
+            (#"{"apiKeyHelper":"fixture"}"#, .thirdParty),
+            (#"{"env":{"ANTHROPIC_API_KEY":"PROXY_MANAGED"}}"#, .thirdParty),
+            (#"{"env":{"ANTHROPIC_BASE_URL":42}}"#, .undetermined),
+            ("{", .undetermined)
+        ] {
+            try Data(json.utf8).write(to: file)
+            XCTAssertEqual(inspector.route(for: .claude), expected)
+        }
+    }
+
     func testOfficialDefaultWithoutConfigCanSwitchButCustomAndMalformedConfigCannot() throws {
         let configURL = temporaryDirectoryURL.appendingPathComponent(".codex/config.toml")
         try FileManager.default.removeItem(at: configURL)

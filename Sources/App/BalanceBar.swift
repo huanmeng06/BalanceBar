@@ -468,7 +468,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 coordinator: notificationCoordinator,
                 providerChoices: { [weak self] agent in
                     guard let self, let client = agent.assistantClient else { return [] }
-                    return self.ccSwitchRepository.loadChoices(appType: client.appType)
+                    var choices = self.currentProviderResolver.isDatabasePresent
+                        ? self.ccSwitchRepository.loadChoices(appType: client.appType) : []
+                    if case .localOfficial(let provider) = self.currentProviderResolver.resolve(client) {
+                        choices.insert(ProviderChoice(id: provider.id, name: provider.name, isCurrent: true), at: 0)
+                    }
+                    return choices
                 },
                 displayTimeZone: { [weak self] in self?.preferences.effectiveDisplayTimeZone ?? .autoupdatingCurrent }
             ),
@@ -655,7 +660,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     /// and does not open the provider database on each query.
     private var providerChoicesCache: [ProviderChoice] = []
     private var providerNotesCache: [String: [String: String]] = [:]
-    private lazy var providerMetadataReader = ProviderMetadataReader(repository: ccSwitchRepository)
+    private lazy var providerMetadataReader = ProviderMetadataReader(repository: ccSwitchRepository, resolver: currentProviderResolver)
     /// All three apps' CC Switch connection display data, refreshed off the
     /// main thread by `refreshCCSwitchConnectionSummaries()`. Search and the
     /// General page read this cache instead of touching the live-state file.
@@ -680,6 +685,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var postCodexRefreshDeadline: Date?
     private let providerPollInterval: TimeInterval = 3
     private let ccSwitchRepository: CCSwitchRepository
+    private let currentProviderResolver: CurrentProviderResolver
+    // Written on the provider refresh queue; only the projected menu flags go to main.
+    private var providerSources: [AssistantClient: String] = [:]
+    private var lastDatabasePresence: Bool?
+    private var quickSwitchAvailability: [AssistantClient: Bool] = [:]
     private let officialQuotaClient: OfficialQuotaClient
     private let claudeQuota: ClaudeQuotaPipeline
     /// Also used by the Advanced page's "detect current egress" button.
@@ -804,6 +814,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         launchWithChatGPTService: LaunchWithChatGPTService = SystemLaunchWithChatGPTService()
     ) {
         self.ccSwitchRepository = repository
+        self.currentProviderResolver = CurrentProviderResolver(repository: repository)
         self.officialQuotaClient = officialQuotaClient
         let egressGuard = ClaudeEgressGuard(
             settings: { AppPreferences().claudeEgressGuardSettings },
@@ -940,13 +951,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         )
         providerRefreshCoordinator = ProviderRefreshCoordinator(
             repository: repository,
+            resolver: currentProviderResolver,
             officialQuotaClient: officialQuotaClient,
             balanceAPIClient: balanceAPIClient,
             balanceProgressStore: balanceProgressStore,
             queue: DispatchQueue(label: "local.balancebar.provider-refresh"),
             actions: ProviderRefreshActions(
                 currentProvider: { [weak self] client in
-                    self?.ccSwitchRepository.loadCurrent(appType: client.appType)
+                    self?.currentProviderResolver.currentProvider(client)
                 },
                 isActiveClient: { [weak self] client in
                     self?.activeClient == client
@@ -1179,6 +1191,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             showQuickSwitchMenu: showQuickSwitchMenu,
             showOpenChatGPTMenu: showOpenChatGPTMenu,
             showOpenCCSwitchMenu: showOpenCCSwitchMenu,
+            isCCSwitchInstalled: ccSwitchConnectionSummariesCache.isCCSwitchInstalled,
+            quickSwitchAvailable: quickSwitchAvailability[activeClient] ?? false,
             showStatusMenu: showStatusMenu,
             directProviderNotes: directProviderNotes,
             directProviderID: directProviderID,
@@ -1265,12 +1279,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             return
         }
         let repository = ccSwitchRepository
+        let resolver = currentProviderResolver
         connectionModeQueue.async { [weak self] in
-            let summaries = repository.connectionSummaries()
+            let present = resolver.isDatabasePresent
+            let existing = present ? repository.connectionSummaries() : .unknown
+            func summary(_ client: AssistantClient, existing: CCSwitchConnectionSummary) -> CCSwitchConnectionSummary {
+                let mode: CCSwitchConnectionMode
+                switch resolver.resolve(client) {
+                case .localOfficial: mode = .localOfficial
+                case .localThirdParty: mode = .localThirdParty
+                case .databaseAbsent: mode = .requiresCCSwitch
+                default: return existing
+                }
+                return CCSwitchConnectionSummary(mode: mode, providerNames: [], isVisible: existing.isVisible)
+            }
+            let summaries = CCSwitchConnectionSummaries(
+                codex: summary(.codex, existing: existing.codex),
+                claude: summary(.claude, existing: existing.claude),
+                grok: summary(.grok, existing: existing.grok),
+                isCCSwitchInstalled: CCSwitchApplicationLocator.applicationURL != nil
+            )
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.ccSwitchConnectionSummariesCache != summaries else { return }
                 self.ccSwitchConnectionSummariesCache = summaries
                 self.dashboardComposition.refreshCCSwitchConnectionSummaries()
+                self.refreshStatusItemMenuInput()
             }
         }
     }
@@ -1465,6 +1498,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
 
     private func prepareStartupAggregationPresentation() {
         guard activeClient == .codex,
+              currentProviderResolver.isDatabasePresent,
               let startup = providerRefreshCoordinator.prepareAggregationForStartup(
                 reader: aggregationRepository
               ) else { return }
@@ -1495,6 +1529,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
+        refreshCCSwitchConnectionSummaries()
         dashboardComposition.refreshLaunchAtLogin()
         dashboardComposition.refreshLaunchWithChatGPT()
         notificationCoordinator.refreshPermission()
@@ -1542,7 +1577,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     }
 
     private func switchProvider(_ providerID: String) {
-        guard activeClient != .grok else { return }
+        guard activeClient != .grok, !LocalOfficialProvider.isLocalOfficialID(providerID) else { return }
         let appType = activeClient.appType
         let providerName = ccSwitchRepository.loadChoices(appType: appType)
             .first(where: { $0.id == providerID })?.name ?? providerID
@@ -1632,7 +1667,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     static let ccSwitchDownloadURL = URL(string: "https://github.com/farion1231/cc-switch/releases")!
 
     @objc private func openCCSwitch() {
-        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.ccswitch.desktop") else {
+        guard let url = CCSwitchApplicationLocator.applicationURL else {
             // Not installed: send the user to the download page instead of doing nothing.
             NSWorkspace.shared.open(Self.ccSwitchDownloadURL)
             return
@@ -2572,7 +2607,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         // Never flash the generic ellipsis during a focus switch. Reuse the
         // last successful snapshot for this client while the live refresh runs.
         // Startup prefetch normally makes this available before the first switch.
-        let currentProvider = ccSwitchRepository.loadCurrent(appType: client.appType)
+        let currentProvider = currentProviderResolver.currentProvider(client)
         reloadCurrentProviderNameCache()
         let cached = clientSnapshots[client]
         let hasCachedSnapshot = cached.map {
@@ -2596,9 +2631,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         } else {
             render(.placeholder, immediately: true, deferMenuRebuild: true)
         }
-        if client != .grok || currentProvider != nil {
-            refresh(reason: .clientChanged)
-        }
+        refresh(reason: .clientChanged)
         // Identity-driven tab switches already have per-client snapshots and
         // startup/cadence quick-switch summaries. Skip the extra force fetch
         // on the click path; the 60s cadence still refreshes the dropdown.
@@ -2659,10 +2692,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             level: .debug, category: "refresh", throttleKey: "provider-refresh-\(reason)", minimumInterval: 1)
         providerRefreshCoordinator.performAsync { [weak self] in
             guard let self else { return }
-            if client == .codex, self.providerRefreshCoordinator.refreshAggregation(
-                reader: self.aggregationRepository, force: reason.forcesStandardProviderBalance,
-                forceAPIBalance: forceAPIBalance) { return }
-            if client != .codex {
+            let present = self.currentProviderResolver.isDatabasePresent
+            if self.lastDatabasePresence != present {
+                if present, self.lastDatabasePresence == false { self.databaseWatcher.rearmIfNeeded() }
+                self.lastDatabasePresence = present
+                self.refreshCCSwitchConnectionSummaries()
+            }
+            if client == .codex {
+                if !present {
+                    self.providerRefreshCoordinator.stopAggregation(publish: true)
+                } else if self.providerRefreshCoordinator.refreshAggregation(
+                    reader: self.aggregationRepository, force: reason.forcesStandardProviderBalance,
+                    forceAPIBalance: forceAPIBalance) {
+                    self.publishQuickSwitchAvailability(true, client: client)
+                    return
+                }
+            } else if present {
                 let safety = self.ccSwitchRepository.quickSwitchSafety(appType: client.appType)
                 DispatchQueue.main.async { [weak self] in
                     guard let self, self.activeClient == client else { return }
@@ -2670,9 +2715,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                     self.refreshStatusItemMenuInput()
                 }
             }
-            let current: CCSwitchProvider?
-            do { current = try self.ccSwitchRepository.loadCurrentChecked(appType: client.appType) }
+            let resolution: CurrentProviderResolution
+            do { resolution = try self.currentProviderResolver.resolveChecked(client) }
             catch {
+                self.publishQuickSwitchAvailability(present, client: client)
                 let code = (error as? CCSwitchReadError)?.sqliteCode ?? -1
                 let outcome = self.ccSwitchReadFailures(for: client).recordFailure(sqliteCode: code)
                 SwitchLog.write("provider refresh deferred; reason=database_read_failed; sqlite_code=\(code); client=\(client.rawValue); outcome=\(outcome)",
@@ -2682,13 +2728,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             }
             self.ccSwitchReadFailures(for: client).recordSuccess()
             self.reloadCurrentProviderNameCache(appType: client.appType)
-            guard let current else {
-                SwitchLog.write(
-                    "refresh failed; client=\(client.rawValue); current provider not found",
-                    level: .error,
-                    category: "provider"
-                )
-                self.render(Self.ccSwitchNoCurrentProviderSnapshot(clientName: String(describing: client.displayName)))
+            if self.providerSources.updateValue(resolution.source, forKey: client) != resolution.source {
+                SwitchLog.write("provider resolved; client=\(client.rawValue); source=\(resolution.source); database_present=\(present)")
+                self.refreshCCSwitchConnectionSummaries()
+            }
+            let current: CCSwitchProvider
+            switch resolution {
+            case .ccSwitch(let provider):
+                self.publishQuickSwitchAvailability(true, client: client)
+                if provider.isOfficial, client != .grok {
+                    self.notificationCoordinator.adoptLocalOfficialSettings(
+                        agent: Self.notificationAgent(for: client), from: LocalOfficialProvider.id(for: client), to: provider.id)
+                }
+                current = provider
+            case .localOfficial(let provider):
+                self.publishQuickSwitchAvailability(false, client: client)
+                current = provider
+            case .localThirdParty:
+                self.publishQuickSwitchAvailability(false, client: client)
+                self.renderProviderResolutionError(.error(tr(.keyOfficialModeThirdPartyRoute, arguments: [client.displayName])), client: client)
+                return
+            case .databaseAbsent:
+                self.publishQuickSwitchAvailability(false, client: client)
+                if let failure = Self.ccSwitchUnavailableSnapshot(for: .unavailable) {
+                    self.renderProviderResolutionError(failure, client: client)
+                }
+                return
+            case .noCurrentProvider:
+                self.publishQuickSwitchAvailability(true, client: client)
+                self.renderProviderResolutionError(Self.ccSwitchNoCurrentProviderSnapshot(clientName: client.displayName), client: client)
                 return
             }
 
@@ -2707,6 +2775,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 switched: switched,
                 userInitiated: reason == .manual
             )
+        }
+    }
+
+    private func publishQuickSwitchAvailability(_ available: Bool, client: AssistantClient) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.quickSwitchAvailability[client] != available else { return }
+            self.quickSwitchAvailability[client] = available
+            if self.activeClient == client { self.refreshStatusItemMenuInput() }
+        }
+    }
+
+    private func renderProviderResolutionError(_ snapshot: Snapshot, client: AssistantClient) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.activeClient == client else { return }
+            self.render(snapshot, immediately: true)
         }
     }
 

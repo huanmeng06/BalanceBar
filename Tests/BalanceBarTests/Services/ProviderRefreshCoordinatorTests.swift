@@ -925,6 +925,29 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 3)
     }
 
+    func testAbsentDatabasePublishesLocalCodexOfficialQuota() throws {
+        try FileManager.default.removeItem(at: databaseURL)
+        try FileManager.default.removeItem(at: temporaryDirectoryURL.appendingPathComponent(".codex/config.toml"))
+        let resolver = CurrentProviderResolver(repository: repository)
+        let provider = try XCTUnwrap(resolver.currentProvider(.codex))
+        let rendered = expectation(description: "local official quota rendered")
+        DelayedBalanceURLProtocol.setHandler { _ in DelayedBalanceURLProtocol.success(amount: "0.00") }
+        let officialClient = OfficialQuotaClient(session: session,
+            credentialReader: FixtureCredentialReader(codexToken: "fixture-token"),
+            parser: IncrementingOfficialQuotaParser(counter: IncrementingCounter()))
+        let coordinator = makeCoordinator(repository: repository, officialQuotaClient: officialClient,
+            balanceAPIClient: BalanceAPIClient(session: session), queue: DispatchQueue(label: "test.local-official"),
+            actions: ProviderRefreshActions(
+                currentProvider: resolver.currentProvider, isActiveClient: { $0 == .codex },
+                render: { snapshot in
+                    guard snapshot.kind == .official else { return }
+                    XCTAssertFalse(snapshot.officialQuotaWindows.isEmpty)
+                    rendered.fulfill()
+                }, storeClientSnapshot: { _, _, _ in }, quickSwitchSummaryChanged: { _ in }))
+        coordinator.refreshStandardProvider(current: provider, client: .codex, forceBalance: true, switched: true)
+        wait(for: [rendered], timeout: 3)
+    }
+
     func testOfficialProviderCadenceRetainsSixtySecondIntervalAndResetBehavior() throws {
         try setCurrentProvider("codex-replacement")
         let clock = TestClock(date: Date(timeIntervalSince1970: 1_700_000_000))

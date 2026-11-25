@@ -66,7 +66,7 @@
 "snapshot.remaining_balance" = "남은 잔액";
 "snapshot.waiting_to_refresh" = "업데이트 대기 중";
 "snapshot.load_failed" = "불러오기 실패";
-"snapshot.loading_cc_switch" = "CC Switch 불러오는 중…";
+"snapshot.loading_cc_switch" = "현재 서비스 제공자를 불러오는 중…";
 "snapshot.value_remaining_value_value" = "%1$@ 남음: %2$@%% (%3$@)";
 "snapshot.value_remaining_value" = "%1$@ 남음: %2$@";
 "snapshot.failed_to_load_balance.2" = "잔액을 불러오지 못했습니다";
@@ -77,7 +77,7 @@
 "snapshot.reset_value.3" = "· %1$@";
 "snapshot.official_quota_updates_every_minutevalue" = "공식 할당량은 매분 업데이트됩니다%1$@";
 "snapshot.unknown_error" = "알 수 없는 오류";
-"snapshot.waiting_for_cc_switch_status" = "CC Switch 상태를 기다리는 중";
+"snapshot.waiting_for_cc_switch_status" = "서비스 제공자 상태를 기다리는 중";
 "ccswitch.repository.unable_to_open_the_cc_switch_database" = "CC Switch 데이터베이스를 열 수 없습니다";
 "ccswitch.repository.provider_does_not_exist" = "서비스 제공자가 존재하지 않습니다";
 "ccswitch.repository.the_provider_s_claude_configuration_is_incomplete" = "서비스 제공자의 Claude 구성이 완전하지 않습니다";
@@ -141,7 +141,7 @@
 "dashboard.navigation.forward" = "앞으로";
 "dashboard.about.page.github_repository" = "GitHub 저장소";
 "dashboard.about.page.version_value" = "버전 %1$@";
-"dashboard.about.page.a_cc_switch_based_menu_bar_balance_viewer" = "CC Switch를 통해 메뉴 막대에서 잔액과 할당량 보기";
+"dashboard.about.page.a_cc_switch_based_menu_bar_balance_viewer" = "메뉴 막대에서 공식 할당량 보기, CC Switch와 함께 사용하면 타사 잔액도 확인";
 "dashboard.about.page.open_the_balancebar_github_repository" = "BalanceBar GitHub 저장소 열기";
 "dashboard.advanced.page.reload" = "다시 불러오기";
 "dashboard.advanced.page.show_in_finder" = "Finder에서 보기";
@@ -938,3 +938,13 @@
 "dashboard.menu.bar.position_adjustments" = "위치 미세 조정";
 "dashboard.menu.bar.required_display" = "아이콘과 수치 중 하나 이상을 표시해야 합니다.";
 "dashboard.advanced.official_validity_dependency" = "공식 사용량 요청이 켜져 있을 때만 적용됩니다.";
+
+// #691 official mode
+"official_mode.provider_name" = "%1$@ 공식";
+"official_mode.third_party_route" = "%1$@에서 공식 계정을 사용하고 있지 않습니다. 타사 서비스 제공자 잔액을 확인하려면 CC Switch가 필요합니다";
+"dashboard.general.and.refresh.pages.connection_mode_official" = "공식";
+"dashboard.general.and.refresh.pages.connection_mode_local_sign_in" = "이 Mac에서 로그인";
+"dashboard.general.and.refresh.pages.connection_mode_third_party" = "타사";
+"dashboard.general.and.refresh.pages.connection_mode_requires_cc_switch" = "CC Switch 필요";
+"dashboard.general.and.refresh.pages.download_cc_switch" = "CC Switch 다운로드";
+"status.item.controller.download_cc_switch" = "CC Switch 다운로드";

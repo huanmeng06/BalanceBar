@@ -42,6 +42,13 @@ final class CCSwitchDatabaseWatcher {
         }
     }
 
+    func rearmIfNeeded() {
+        queue.async { [weak self] in
+            guard let self, self.isStarted else { return }
+            self.rearmWatchers()
+        }
+    }
+
     /// Directory observation survives atomic replacements and notices creation
     /// of a previously absent WAL/state file. Rearm after coalescing each batch.
     private func rearmWatchers() {

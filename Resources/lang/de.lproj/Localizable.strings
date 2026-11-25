@@ -66,7 +66,7 @@
 "snapshot.remaining_balance" = "Restguthaben";
 "snapshot.waiting_to_refresh" = "Warten auf Aktualisierung";
 "snapshot.load_failed" = "Laden fehlgeschlagen";
-"snapshot.loading_cc_switch" = "CC Switch wird geladen…";
+"snapshot.loading_cc_switch" = "Aktuellen Anbieter laden…";
 "snapshot.value_remaining_value_value" = "%1$@ verbleibend: %2$@%% (%3$@)";
 "snapshot.value_remaining_value" = "%1$@ verbleibend: %2$@";
 "snapshot.failed_to_load_balance.2" = "Guthaben konnte nicht geladen werden";
@@ -77,7 +77,7 @@
 "snapshot.reset_value.3" = "· %1$@";
 "snapshot.official_quota_updates_every_minutevalue" = "Offizielles Kontingent wird jede Minute aktualisiert%1$@";
 "snapshot.unknown_error" = "Unbekannter Fehler";
-"snapshot.waiting_for_cc_switch_status" = "Auf CC-Switch-Status warten";
+"snapshot.waiting_for_cc_switch_status" = "Auf Anbieterstatus warten";
 "ccswitch.repository.unable_to_open_the_cc_switch_database" = "Die CC-Switch-Datenbank kann nicht geöffnet werden";
 "ccswitch.repository.provider_does_not_exist" = "Der Anbieter existiert nicht";
 "ccswitch.repository.the_provider_s_claude_configuration_is_incomplete" = "Die Claude-Konfiguration des Anbieters ist unvollständig";
@@ -141,7 +141,7 @@
 "dashboard.navigation.forward" = "Vorwärts";
 "dashboard.about.page.github_repository" = "GitHub-Repository";
 "dashboard.about.page.version_value" = "Version %1$@";
-"dashboard.about.page.a_cc_switch_based_menu_bar_balance_viewer" = "Guthaben und Kontingente über CC Switch in der Menüleiste anzeigen";
+"dashboard.about.page.a_cc_switch_based_menu_bar_balance_viewer" = "Offizielle Kontingente in der Menüleiste anzeigen – mit CC Switch auch Guthaben von Drittanbietern";
 "dashboard.about.page.open_the_balancebar_github_repository" = "BalanceBar-GitHub-Repository öffnen";
 "dashboard.advanced.page.reload" = "Neu laden";
 "dashboard.advanced.page.show_in_finder" = "Im Finder anzeigen";
@@ -938,3 +938,13 @@
 "dashboard.menu.bar.position_adjustments" = "Position feinjustieren";
 "dashboard.menu.bar.required_display" = "Mindestens das Symbol oder der Wert muss sichtbar sein.";
 "dashboard.advanced.official_validity_dependency" = "Gilt nur, wenn offizielle Kontingentabfragen aktiviert sind.";
+
+// #691 official mode
+"official_mode.provider_name" = "%1$@ (offiziell)";
+"official_mode.third_party_route" = "%1$@ verwendet derzeit kein offizielles Konto. Für das Guthaben von Drittanbietern wird CC Switch benötigt";
+"dashboard.general.and.refresh.pages.connection_mode_official" = "Offiziell";
+"dashboard.general.and.refresh.pages.connection_mode_local_sign_in" = "Auf diesem Mac angemeldet";
+"dashboard.general.and.refresh.pages.connection_mode_third_party" = "Drittanbieter";
+"dashboard.general.and.refresh.pages.connection_mode_requires_cc_switch" = "Erfordert CC Switch";
+"dashboard.general.and.refresh.pages.download_cc_switch" = "CC Switch herunterladen";
+"status.item.controller.download_cc_switch" = "CC Switch herunterladen";

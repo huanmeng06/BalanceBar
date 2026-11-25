@@ -66,7 +66,7 @@
 "snapshot.remaining_balance" = "残りの残高";
 "snapshot.waiting_to_refresh" = "更新待ち";
 "snapshot.load_failed" = "読み込み失敗";
-"snapshot.loading_cc_switch" = "CC Switch を読み込み中…";
+"snapshot.loading_cc_switch" = "現在のプロバイダーを読み込み中…";
 "snapshot.value_remaining_value_value" = "%1$@ の残り：%2$@%%（%3$@）";
 "snapshot.value_remaining_value" = "%1$@ の残り：%2$@";
 "snapshot.failed_to_load_balance.2" = "残高の読み込みに失敗しました";
@@ -77,7 +77,7 @@
 "snapshot.reset_value.3" = "· %1$@";
 "snapshot.official_quota_updates_every_minutevalue" = "公式クォータは毎分更新%1$@";
 "snapshot.unknown_error" = "不明なエラー";
-"snapshot.waiting_for_cc_switch_status" = "CC Switch のステータスを待機中";
+"snapshot.waiting_for_cc_switch_status" = "プロバイダーのステータスを待機中";
 "ccswitch.repository.unable_to_open_the_cc_switch_database" = "CC Switch データベースを開けません";
 "ccswitch.repository.provider_does_not_exist" = "プロバイダーが存在しません";
 "ccswitch.repository.the_provider_s_claude_configuration_is_incomplete" = "プロバイダーの Claude 設定が不完全です";
@@ -141,7 +141,7 @@
 "dashboard.navigation.forward" = "進む";
 "dashboard.about.page.github_repository" = "GitHub リポジトリ";
 "dashboard.about.page.version_value" = "バージョン %1$@";
-"dashboard.about.page.a_cc_switch_based_menu_bar_balance_viewer" = "CC Switch を通じてメニューバーで残高とクォータを確認";
+"dashboard.about.page.a_cc_switch_based_menu_bar_balance_viewer" = "メニューバーで公式クォータを確認。CC Switch を併用するとサードパーティの残高も確認できます";
 "dashboard.about.page.open_the_balancebar_github_repository" = "BalanceBar の GitHub リポジトリを開く";
 "dashboard.advanced.page.reload" = "再読み込み";
 "dashboard.advanced.page.show_in_finder" = "Finder に表示";
@@ -938,3 +938,13 @@
 "dashboard.menu.bar.position_adjustments" = "位置の微調整";
 "dashboard.menu.bar.required_display" = "アイコンと数値のどちらか一方は表示する必要があります。";
 "dashboard.advanced.official_validity_dependency" = "公式使用量の取得が有効な場合にのみ適用されます。";
+
+// #691 official mode
+"official_mode.provider_name" = "%1$@ 公式";
+"official_mode.third_party_route" = "%1$@ は公式アカウントを使用していません。サードパーティのプロバイダー残高を確認するには CC Switch が必要です";
+"dashboard.general.and.refresh.pages.connection_mode_official" = "公式";
+"dashboard.general.and.refresh.pages.connection_mode_local_sign_in" = "この Mac でログイン";
+"dashboard.general.and.refresh.pages.connection_mode_third_party" = "サードパーティ";
+"dashboard.general.and.refresh.pages.connection_mode_requires_cc_switch" = "CC Switch が必要";
+"dashboard.general.and.refresh.pages.download_cc_switch" = "CC Switch をダウンロード";
+"status.item.controller.download_cc_switch" = "CC Switch をダウンロード";

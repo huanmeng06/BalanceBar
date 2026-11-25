@@ -2,6 +2,35 @@ import Foundation
 import XCTest
 @testable import BalanceBar
 
+extension BalanceNotificationCoordinatorTests {
+    func testLocalOfficialSettingsAdoptOnceWithoutProgressOrOverwriting() throws {
+        var settings = try JSONDecoder().decode(BalanceNotificationSettings.self, from: Data("{}".utf8))
+        XCTAssertFalse(settings.adoptLocalOfficialSettings(agent: .gpt, from: "local", to: "official"))
+        XCTAssertTrue(settings.localOfficialAdoptedAgents.isEmpty)
+        settings.setProviderEnabled(true, for: .gpt, providerID: "local")
+        var rule = BalanceNotificationResourceRule(
+            key: .init(agent: .gpt, providerID: "local", resourceID: "five-hour"),
+            kind: .quotaPercent, firstThreshold: 42, lastValue: 17)
+        rule.progressScope = "fixture"
+        settings.resourceRules = [rule]
+        XCTAssertTrue(settings.adoptLocalOfficialSettings(agent: .gpt, from: "local", to: "official"))
+        XCTAssertTrue(settings.isProviderEnabled(.gpt, providerID: "official"))
+        let copied = try XCTUnwrap(settings.rule(for: .init(agent: .gpt, providerID: "official", resourceID: "five-hour")))
+        XCTAssertEqual(copied.firstThreshold, 42)
+        XCTAssertEqual(copied.stage, .normal)
+        XCTAssertNil(copied.lastValue)
+        XCTAssertNil(copied.progressScope)
+        XCTAssertEqual(settings.rule(for: rule.key), rule)
+        XCTAssertFalse(settings.adoptLocalOfficialSettings(agent: .gpt, from: "local", to: "another"))
+        settings.setProviderEnabled(true, for: .claude, providerID: "local")
+        settings.setProviderEnabled(false, for: .claude, providerID: "official")
+        XCTAssertFalse(settings.adoptLocalOfficialSettings(agent: .claude, from: "local", to: "official"))
+        XCTAssertFalse(settings.isProviderEnabled(.claude, providerID: "official"))
+        let decoded = try JSONDecoder().decode(BalanceNotificationSettings.self, from: JSONEncoder().encode(settings))
+        XCTAssertEqual(decoded.localOfficialAdoptedAgents, ["gpt", "claude"])
+    }
+}
+
 final class BalanceNotificationCoordinatorTests: XCTestCase {
     func testThresholdCrossingSecondAlertAndHysteresisRearm() {
         let key = BalanceNotificationResourceKey(agent: .claude, providerID: "p", resourceID: "weekly")

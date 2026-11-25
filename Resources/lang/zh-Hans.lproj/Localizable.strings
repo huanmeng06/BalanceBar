@@ -66,7 +66,7 @@
 "snapshot.remaining_balance" = "剩余余额";
 "snapshot.waiting_to_refresh" = "等待刷新";
 "snapshot.load_failed" = "读取失败";
-"snapshot.loading_cc_switch" = "正在读取 CC Switch…";
+"snapshot.loading_cc_switch" = "正在加载当前服务商…";
 "snapshot.value_remaining_value_value" = "%1$@ 剩余：%2$@%%（%3$@）";
 "snapshot.value_remaining_value" = "%1$@ 剩余：%2$@";
 "snapshot.failed_to_load_balance.2" = "无法读取余额";
@@ -77,7 +77,7 @@
 "snapshot.reset_value.3" = "· %1$@";
 "snapshot.official_quota_updates_every_minutevalue" = "官方额度每分钟更新一次%1$@";
 "snapshot.unknown_error" = "未知错误";
-"snapshot.waiting_for_cc_switch_status" = "正在等待 CC Switch 状态";
+"snapshot.waiting_for_cc_switch_status" = "正在等待服务商状态";
 "ccswitch.repository.unable_to_open_the_cc_switch_database" = "无法打开 CC Switch 数据库";
 "ccswitch.repository.provider_does_not_exist" = "服务商不存在";
 "ccswitch.repository.the_provider_s_claude_configuration_is_incomplete" = "服务商的 Claude 配置不完整";
@@ -141,7 +141,7 @@
 "dashboard.navigation.forward" = "前进";
 "dashboard.about.page.github_repository" = "GitHub 仓库";
 "dashboard.about.page.version_value" = "版本 %1$@";
-"dashboard.about.page.a_cc_switch_based_menu_bar_balance_viewer" = "通过 CC Switch 在菜单栏查看余额与额度";
+"dashboard.about.page.a_cc_switch_based_menu_bar_balance_viewer" = "在菜单栏查看官方额度，配合 CC Switch 还可查看第三方余额";
 "dashboard.about.page.open_the_balancebar_github_repository" = "打开 BalanceBar GitHub 仓库";
 "dashboard.advanced.page.reload" = "重新加载";
 "dashboard.advanced.page.show_in_finder" = "在 Finder 中显示";
@@ -938,3 +938,13 @@
 "dashboard.menu.bar.position_adjustments" = "位置微调";
 "dashboard.menu.bar.required_display" = "图标和数值至少显示一项。";
 "dashboard.advanced.official_validity_dependency" = "仅在启用官方额度请求时生效。";
+
+// #691 official mode
+"official_mode.provider_name" = "%1$@ 官方";
+"official_mode.third_party_route" = "%1$@ 当前未使用官方账号，查询第三方服务商余额需要 CC Switch";
+"dashboard.general.and.refresh.pages.connection_mode_official" = "官方";
+"dashboard.general.and.refresh.pages.connection_mode_local_sign_in" = "本机登录";
+"dashboard.general.and.refresh.pages.connection_mode_third_party" = "第三方";
+"dashboard.general.and.refresh.pages.connection_mode_requires_cc_switch" = "需要 CC Switch";
+"dashboard.general.and.refresh.pages.download_cc_switch" = "下载 CC Switch";
+"status.item.controller.download_cc_switch" = "下载 CC Switch";
