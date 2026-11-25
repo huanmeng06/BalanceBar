@@ -434,6 +434,7 @@ final class ProviderRefreshCoordinator {
     private var lastClaudePublication: (providerID: String, revision: String, snapshot: Snapshot)?
     private let actions: ProviderRefreshActions
     private let codexResetObservationStore: CodexResetObservationStore
+    private let codexResetCardCache: CodexResetCardCacheStore
     // Cadence timestamps are owned by `queue`; public entry points never read
     // or write them until their work reaches that serial boundary.
     private var lastBalanceFetch: Date?
@@ -513,6 +514,7 @@ final class ProviderRefreshCoordinator {
         balanceAPIClient: BalanceAPIClient = BalanceAPIClient(),
         balanceProgressStore: ProviderBalanceProgressStore = ProviderBalanceProgressStore(),
         codexResetObservationStore: CodexResetObservationStore = CodexResetObservationStore(),
+        codexResetCardCache: CodexResetCardCacheStore = CodexResetCardCacheStore(),
         queue: DispatchQueue = DispatchQueue(label: "local.balancebar.provider-refresh"),
         actions: ProviderRefreshActions,
         refreshPreferences: AppPreferences? = nil,
@@ -525,6 +527,7 @@ final class ProviderRefreshCoordinator {
         self.balanceAPIClient = balanceAPIClient
         self.balanceProgressStore = balanceProgressStore
         self.codexResetObservationStore = codexResetObservationStore
+        self.codexResetCardCache = codexResetCardCache
         self.queue = queue
         self.now = now
         self.refreshPreferences = refreshPreferences
@@ -1594,15 +1597,16 @@ final class ProviderRefreshCoordinator {
             }
         }
 
+        if fetchCards && token == nil {
+            let stored = codexResetCardCache.load(now: now)
+            finish(stored?.reset, stored?.fetchedAt)
+            return
+        }
         guard cardFetchDue else {
             finish(cached?.cards, cached?.cardsFetchedAt)
             return
         }
-        guard nonOfficialResetRequests[providerID] == nil else { return }
-        guard let token else {
-            finish(cached?.cards, cached?.cardsFetchedAt)
-            return
-        }
+        guard nonOfficialResetRequests[providerID] == nil, let token else { return }
         let requestID = UUID()
         let requestContext = OfficialQuotaRequestContext(
             client: .codex,
@@ -1618,10 +1622,15 @@ final class ProviderRefreshCoordinator {
                 guard self.nonOfficialResetRequests[providerID] == requestID else { return }
                 self.nonOfficialResetRequests.removeValue(forKey: providerID)
                 self.nonOfficialResetRequestContexts.removeValue(forKey: providerID)
+                guard isCurrent() else { return }
                 switch result {
                 case .success(var cards):
                     cards?.ownerEmail = credentials.accountKey
-                    finish(cards, self.now())
+                    let fetchedAt = self.now()
+                    if let cards {
+                        self.codexResetCardCache.save(cards, accountKey: credentials.accountKey, fetchedAt: fetchedAt)
+                    }
+                    finish(cards, fetchedAt)
                 case .failure:
                     // Keep the five-minute throttle, not stale Codex reset credits.
                     finish(nil, self.now())
@@ -1644,7 +1653,8 @@ final class ProviderRefreshCoordinator {
             return snapshot
         }
         let credentials = officialQuotaClient.codexRequestCredentials()
-        let scopeMatches = state.accountScope == nil || state.accountScope == credentials.requestScope
+        let accountScope = credentials.accessToken?.isEmpty == false ? credentials.requestScope : nil
+        let scopeMatches = state.accountScope == accountScope
         guard !showCards || scopeMatches else { return snapshot }
         var next = snapshot
         next.bankedReset = showCards ? state.cards : nil
@@ -2042,6 +2052,9 @@ final class ProviderRefreshCoordinator {
                         self.performOnQueue {
                             guard credentialsMatch(false),
                                   isCurrentQuota() else { return }
+                            if client == .codex, let bankedReset {
+                                self.codexResetCardCache.save(bankedReset, accountKey: accountKey, fetchedAt: self.now())
+                            }
                             guard client == .codex, bankedReset != nil || self.cachedCodexResetForecast != nil else {
                                 renderOfficial(bankedReset, cachedForecast)
                                 return
