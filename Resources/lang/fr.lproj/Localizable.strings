@@ -164,7 +164,7 @@
 "dashboard.general.and.refresh.pages.checking" = "Recherche…";
 "dashboard.general.and.refresh.pages.you_are_up_to_date" = "Vous utilisez la dernière version";
 "dashboard.general.and.refresh.pages.check_for_updates.2" = "Rechercher des mises à jour";
-"dashboard.general.and.refresh.pages.new_version_available_value_value" = "Nouvelle version disponible : %1$@ -> %2$@";
+"dashboard.general.and.refresh.pages.new_version_available_value_value" = "Nouvelle version disponible : %1$@ → %2$@";
 "dashboard.general.and.refresh.pages.download_and_install" = "Télécharger et installer";
 "dashboard.general.and.refresh.pages.ignore_this_version" = "Ignorer cette version";
 "dashboard.general.and.refresh.pages.view_release_notes" = "Afficher les notes de version";
@@ -197,17 +197,17 @@
 "dashboard.general.and.refresh.pages.update_check_failure_suggestion_http_too_many_requests" = "Attendez un moment avant de réessayer et évitez les vérifications répétées.";
 "dashboard.general.and.refresh.pages.update_check_failure_suggestion_invalid_response" = "Réessayez plus tard ; si le problème persiste, contactez le mainteneur.";
 "dashboard.general.and.refresh.pages.update_check_failure_suggestion_invalid_release_version" = "Contactez le mainteneur pour vérifier la version de la release.";
-"dashboard.general.and.refresh.pages.update_available_revalidating_value_value" = "Nouvelle version disponible : %1$@ -> %2$@; recherche des mises à jour…";
+"dashboard.general.and.refresh.pages.update_available_revalidating_value_value" = "Nouvelle version disponible : %1$@ → %2$@; recherche des mises à jour…";
 "dashboard.general.and.refresh.pages.update_check_failed_update_retained_value_value_value" = "Mise à jour trouvée la dernière fois : %1$@; la récupération a échoué cette fois.\nMotif : %2$@\nSuggestion : %3$@";
 "dashboard.general.and.refresh.pages.update_check_failure_reason_rate_limited" = "Limite de requêtes de l'API GitHub atteinte";
 "dashboard.general.and.refresh.pages.update_check_failure_suggestion_rate_limited_wait_value" = "GitHub limite les requêtes de mise à jour ; réessayez dans environ %1$@ minutes. Vous pouvez aussi activer ou changer de proxy pour réessayer immédiatement.";
 "dashboard.general.and.refresh.pages.retry" = "Réessayer";
 "dashboard.general.and.refresh.pages.open_cc_switch" = "Ouvrir CC Switch";
 "dashboard.general.and.refresh.pages.cc_switch" = "CC Switch";
-"dashboard.general.and.refresh.pages.launch_at_login" = "Lancer à la connexion";
+"dashboard.general.and.refresh.pages.launch_at_login" = "Ouvrir avec la session";
 "dashboard.general.and.refresh.pages.launch_at_login_description" = "Lancer automatiquement BalanceBar après la connexion au Mac";
-"dashboard.general.and.refresh.pages.launch_at_login_requires_approval" = "Lancer automatiquement BalanceBar après la connexion au Mac";
-"dashboard.general.and.refresh.pages.launch_at_login_operation_failed" = "Impossible de mettre à jour « Lancer à la connexion ». Vérifiez Réglages Système → Général → Éléments d’ouverture, puis réessayez.";
+"dashboard.general.and.refresh.pages.launch_at_login_requires_approval" = "Autorisez BalanceBar dans Réglages Système > Général > Éléments d’ouverture";
+"dashboard.general.and.refresh.pages.launch_at_login_operation_failed" = "Impossible de mettre à jour « Ouvrir avec la session ». Vérifiez Réglages Système > Général > Éléments d’ouverture, puis réessayez.";
 "dashboard.general.and.refresh.pages.launch_at_login_unavailable" = "Impossible de lire l’état de l’élément d’ouverture";
 "dashboard.general.and.refresh.pages.launch_at_login_open_settings" = "Ouvrir les réglages";
 "dashboard.general.and.refresh.pages.startup" = "Démarrage";
@@ -215,8 +215,8 @@
 "dashboard.general.and.refresh.pages.silent_launch_description" = "Lancer BalanceBar sans ouvrir la fenêtre principale";
 "dashboard.general.and.refresh.pages.launch_with_chatgpt" = "Lancer avec ChatGPT";
 "dashboard.general.and.refresh.pages.launch_with_chatgpt_description" = "Si BalanceBar n’est pas déjà en cours d’exécution, il sera automatiquement lancé au démarrage de ChatGPT";
-"dashboard.general.and.refresh.pages.launch_with_chatgpt_requires_approval" = "Activez BalanceBar dans Réglages Système → Général → Éléments d’ouverture → Activité en arrière-plan des apps";
-"dashboard.general.and.refresh.pages.launch_with_chatgpt_operation_failed" = "Impossible de mettre à jour « Lancer avec ChatGPT ». Vérifiez Réglages Système → Général → Éléments d’ouverture et réessayez.";
+"dashboard.general.and.refresh.pages.launch_with_chatgpt_requires_approval" = "Activez BalanceBar dans Réglages Système > Général > Éléments d’ouverture > Activité en arrière-plan des apps";
+"dashboard.general.and.refresh.pages.launch_with_chatgpt_operation_failed" = "Impossible de mettre à jour « Lancer avec ChatGPT ». Vérifiez Réglages Système > Général > Éléments d’ouverture et réessayez.";
 "dashboard.general.and.refresh.pages.launch_with_chatgpt_unavailable" = "Impossible de lire l’état du service de lancement avec ChatGPT";
 "dashboard.general.and.refresh.pages.current_provider_value" = "Fournisseur actuel : %1$@";
 "dashboard.general.and.refresh.pages.connection_mode_line" = "%1$@ : %2$@ · %3$@";
@@ -295,11 +295,11 @@
 "dashboard.menu.bar.page.quota_reset_display_remaining" = "Temps restant";
 "dashboard.menu.bar.page.quota_reset_display_target" = "Heure de réinitialisation";
 "dashboard.menu.bar.page.quota_reset_display_both" = "Afficher les deux";
-"dashboard.menu.bar.page.auto_switch_luna_reserve" = "Basculement automatique vers 🌙 %1$@";
-"dashboard.menu.bar.page.auto_switch_luna_reserve_description" = "Après l’entrée dans 🌙 %1$@, le quota affiché dans la barre des menus bascule automatiquement";
-"dashboard.menu.bar.page.luna_reserve_reset_time" = "Heure de réinitialisation de 🌙 %1$@";
-"dashboard.menu.bar.page.luna_reserve_reset_time_description" = "Après l’entrée dans 🌙 %1$@, choisissez d’afficher l’heure de réinitialisation du quota d’origine ou celle de 🌙 %1$@";
-"dashboard.menu.bar.page.luna_reserve_reset_time_luna_reserve" = "🌙 %1$@";
+"dashboard.menu.bar.page.auto_switch_luna_reserve" = "Basculement automatique vers %1$@";
+"dashboard.menu.bar.page.auto_switch_luna_reserve_description" = "Après l’entrée dans %1$@, le quota affiché dans la barre des menus bascule automatiquement";
+"dashboard.menu.bar.page.luna_reserve_reset_time" = "Heure de réinitialisation de %1$@";
+"dashboard.menu.bar.page.luna_reserve_reset_time_description" = "Après l’entrée dans %1$@, choisissez d’afficher l’heure de réinitialisation du quota d’origine ou celle de %1$@";
+"dashboard.menu.bar.page.luna_reserve_reset_time_luna_reserve" = "%1$@";
 "dashboard.menu.bar.page.luna_reserve_reset_time_original_quota" = "Quota d’origine";
 "dashboard.menu.bar.page.animation" = "Mode d’animation";
 "dashboard.menu.bar.page.animation_mode_description_efficient" = "Performances : réduit nettement l’utilisation des ressources système ; avec plusieurs écrans, l’animation est mise en pause et s’allume sur les écrans inactifs\nBeta : en raison des limites du système macOS, l’icône de l’écran secondaire peut parfois disparaître ; redémarre BalanceBar pour y remédier";
@@ -368,13 +368,13 @@
 "dashboard.menu.page.show_quota_progress_bar_description" = "Une fois désactivée, les menus et les cartes de quota n’affichent plus la barre de quota restant";
 "dashboard.menu.page.show_quota_pace_indicator" = "Afficher le repère de rythme";
 "dashboard.menu.page.show_quota_pace_indicator_description" = "Afficher le repère d’utilisation régulière sur les quotas officiels de 5 heures et 7 jours";
-"dashboard.menu.page.luna_reserve_display_mode" = "🌙 Affichage de %1$@";
+"dashboard.menu.page.luna_reserve_display_mode" = "Affichage de %1$@";
 "dashboard.menu.page.luna_reserve_display_mode_description" = "Choisissez quand afficher %1$@ dans le menu";
 "dashboard.menu.page.luna_reserve_display_mode_disabled" = "Ne pas afficher";
 "dashboard.menu.page.luna_reserve_display_mode_when_quota_exhausted" = "Afficher après épuisement du quota";
 "dashboard.menu.page.luna_reserve_display_mode_always" = "Toujours afficher";
 "dashboard.menu.page.hide_exhausted_quota" = "Masquer les quotas épuisés";
-"dashboard.menu.page.hide_exhausted_quota_description" = "Lorsque cette option est activée, les quotas à 0 %% sont masqués du menu quand 🌙 %1$@ est affiché";
+"dashboard.menu.page.hide_exhausted_quota_description" = "Lorsque cette option est activée, les quotas à 0 %% sont masqués du menu quand %1$@ est affiché";
 "dashboard.menu.page.low_balance_display_threshold" = "Seuil d’alerte de solde faible";
 "dashboard.menu.page.after_a_recharge_keep_the_progress_bar_red_while_the_balance_remains_below_this_amount" = "Après une recharge, la barre de progression reste rouge tant que le solde est inférieur à cette valeur.";
 "dashboard.menu.page.show_banked_reset" = "Afficher les cartes de réinitialisation";
@@ -410,7 +410,7 @@
 "dashboard.menu.page.open_project" = "Accès rapides";
 "dashboard.menu.page.status_links" = "Liens d’état";
 "dashboard.menu.page.show_customizable_service_status_links.2" = "Personnaliser les liens « Voir l’état »";
-"dashboard.menu.page.show_status_links_in_the_menu_bar.2" = "Afficher les liens d’état dans la barre des menus";
+"dashboard.menu.page.show_status_links_in_the_menu_bar.2" = "Afficher les liens d’état de service dans le menu";
 "dashboard.provider.pages.select_this_provider_to_display_detailed_reset_information" = "Basculez vers ce fournisseur pour consulter les heures de réinitialisation détaillées du quota";
 "dashboard.provider.pages.usage" = "Utilisation";
 "dashboard.provider.pages.remaining_balance" = "Solde restant";
@@ -452,6 +452,8 @@
 "status.links.editor.open_link" = "Ouvrir le lien";
 "status.links.editor.copy_url" = "Copier l’URL";
 "status.links.editor.copy_item" = "Copier l’élément";
+"status.links.editor.actions_tooltip" = "Ajouter ou supprimer des liens d’état";
+"status.links.editor.move_tooltip" = "Déplacer le lien d’état vers le haut ou le bas";
 "status.links.editor.action_completed" = "Action terminée";
 "status.item.controller.refresh_now" = "Actualiser maintenant";
 "status.item.controller.open_main_window" = "Ouvrir la fenêtre principale";
@@ -526,7 +528,7 @@
 "common.restore_defaults" = "Restaurer les valeurs par défaut";
 
 "codex.banked_reset.official_hint_confirmed" = "Terminé pour ce cycle";
-"codex.banked_reset.official_reset_confirmed" = "✅ Réinitialisé";
+"codex.banked_reset.official_reset_confirmed" = "Réinitialisé";
 "codex.banked_reset.window_deadline_countdown" = "Fenêtre reset";
 
 "codex.reset_signal.tooltip_title" = "Signal officiel de réinitialisation";
@@ -708,7 +710,7 @@
 "claude.login.reason.keychain" = "Le trousseau n’a pas autorisé la lecture de la connexion";
 "claude.login.action.retry" = "Cliquez sur « Actualiser maintenant » pour l’autoriser à nouveau";
 "claude.quota.calibration_off_detail" = "Les requêtes officielles Claude sont désactivées ; cet intervalle est sans effet.";
-"claude.quota.calibration_off_link" = "Configurer les IP autorisées…";
+"claude.quota.calibration_off_link" = "Configurer les IP autorisées";
 "claude.token_refresh.title" = "Renouveler automatiquement le jeton de connexion";
 "claude.token_refresh.detail" = "Renouvelle la connexion Claude Code en arrière-plan quand elle expire";
 "claude.token_refresh.off_detail" = "Les requêtes officielles Claude sont désactivées ; le renouvellement automatique est sans effet.";
@@ -748,7 +750,7 @@
 // BalanceBar Mod realtime sync (Issue #597)
 "claude.mod_sync.title" = "BalanceBar Mod boost temps réel";
 "claude.mod_sync.manage" = "Gérer…";
-"mod.prompt.row" = "Activer le boost temps réel ›";
+"mod.prompt.row" = "Activer le boost temps réel";
 "mod.prompt.menu" = "Installer le Mod Claude pour un quota en temps réel";
 "mod.prompt.why" = "Pourquoi ?";
 "mod.panel.title" = "Boost temps réel";
@@ -756,13 +758,13 @@
 "mod.panel.point2" = "Le plugin s'exécute dans Claude Code avec vos permissions utilisateur et peut être désinstallé à tout moment via /plugin.";
 "mod.panel.point3" = "Les données sont écrites localement uniquement ; rien n'est envoyé en ligne.";
 "mod.panel.point4" = "Les nouvelles sessions l'appliquent automatiquement ; les sessions existantes peuvent exécuter /reload-plugins.";
-"mod.panel.install" = "Installer en un clic";
+"mod.panel.install" = "Installer";
 "mod.panel.dismiss_checkbox" = "Ne plus afficher dans le menu";
 "mod.panel.close" = "Fermer";
 "mod.install.step1" = "Ajouter la source";
 "mod.install.step2" = "Installer le Mod";
 "mod.install.step3" = "Terminé";
-"mod.install.enabled" = "Activé ✓";
+"mod.install.enabled" = "Activé";
 "mod.install.enabled_note" = "Les nouvelles sessions Claude Code l'appliquent automatiquement.";
 "mod.install.reload_hint" = "Les sessions existantes peuvent éventuellement exécuter la commande ci-dessous.";
 "mod.failure.title" = "Échec de l'installation automatique";
@@ -771,12 +773,12 @@
 "mod.failure.copy" = "Copier les commandes";
 "mod.failure.copied" = "Copié";
 "mod.dismissed.title" = "Invite masquée";
-"mod.dismissed.note" = "Vous pourrez installer BalanceBar Mod plus tard dans Réglages › Général › Actualiser.";
+"mod.dismissed.note" = "Vous pourrez installer BalanceBar Mod plus tard dans Réglages > Général > Actualiser.";
 "mod.dismissed.undo" = "Annuler";
 "mod.panel.uninstall" = "Désinstaller BalanceBar Mod";
 "mod.uninstall.step1" = "Désinstaller le Mod";
 "mod.uninstall.step2" = "Supprimer la source";
-"mod.uninstall.done" = "Désinstallé ✓";
+"mod.uninstall.done" = "Désinstallé";
 "mod.uninstall.done_note" = "Le quota est désormais interrogé à intervalles réguliers auprès de la source officielle. Les autres plugins ne sont pas affectés.";
 "mod.failure.uninstall_command" = "La désinstallation n'est pas terminée. Exécutez les commandes suivantes dans le Terminal :";
 "mod.failure.copy_enable" = "Copier la commande d'activation";
@@ -787,7 +789,7 @@
 "mod.settings.status.active" = "Activé, dernières données fiables %1$@";
 "mod.settings.status.silent" = "Installé, mais aucune donnée depuis 10 minutes. Ouvrez une nouvelle session ou exécutez /reload-plugins dans une session existante";
 "mod.settings.status.unsupported" = "Claude Code %1$@ est trop ancien ; v2.1.287 ou ultérieur requis";
-"mod.settings.action.install" = "Installer en un clic";
+"mod.settings.action.install" = "Installer";
 "mod.settings.action.copy" = "Copier les commandes";
 "mod.settings.prompt_toggle" = "Afficher le boost temps réel dans le menu";
 "mod.sync.status.detecting" = "Détection…";
@@ -806,7 +808,7 @@
 "mod.update.progress_title" = "Mise à jour de BalanceBar Mod";
 "mod.update.step1" = "Mettre à jour la source";
 "mod.update.step2" = "Mettre à jour le Mod";
-"mod.update.done" = "Mis à jour ✓";
+"mod.update.done" = "Mis à jour";
 "mod.update.done_note" = "Redémarrez la session Claude Code pour que le nouveau Mod soit pris en compte.";
 "mod.failure.update_command" = "La mise à jour n’a pas abouti. Exécutez ces commandes dans un terminal, l’une après l’autre, puis redémarrez la session :";
 "mod.card.update.button" = "Mettre à jour";
@@ -905,11 +907,11 @@
 "ccswitch.database_unreadable" = "Impossible de lire la base de données de CC Switch. Rouvrez CC Switch puis réessayez";
 "ccswitch.database_busy" = "La base de données de CC Switch est occupée. BalanceBar continue de réessayer";
 "aggregation.not_configured" = "Aucune requête d'utilisation n'est configurée pour ce fournisseur. Configurez un script d'utilisation dans CC Switch";
-"claude.refresh.egress_guard_mismatch" = "L’IP de sortie ne figure pas dans la liste d’IP autorisées ; les requêtes officielles Claude sont suspendues. Vous pouvez modifier la liste d’IP autorisées dans Réglages › Avancé.";
-"claude.refresh.egress_guard_check_failed" = "Impossible de confirmer l’IP de sortie ; les requêtes officielles Claude sont suspendues. Vous pouvez modifier la liste d’IP autorisées dans Réglages › Avancé.";
-"claude.refresh.egress_guard_no_targets" = "La liste d’IP autorisées est vide ; les requêtes officielles Claude sont suspendues. Vous pouvez modifier la liste d’IP autorisées dans Réglages › Avancé.";
-"claude.refresh.egress_guard_unsupported_region" = "La région de sortie n’est pas prise en charge par Anthropic ou n’a pas pu être identifiée ; les requêtes officielles Claude sont en pause. Vous pouvez modifier la liste d’IP autorisées dans Réglages › Avancé.";
-"claude.refresh.egress_guard_disabled" = "Les requêtes officielles Claude sont désactivées. Activez la liste d’IP autorisées dans Réglages › Avancé.";
+"claude.refresh.egress_guard_mismatch" = "L’IP de sortie ne figure pas dans la liste d’IP autorisées ; les requêtes officielles Claude sont suspendues. Vous pouvez modifier la liste d’IP autorisées dans Réglages > Avancé.";
+"claude.refresh.egress_guard_check_failed" = "Impossible de confirmer l’IP de sortie ; les requêtes officielles Claude sont suspendues. Vous pouvez modifier la liste d’IP autorisées dans Réglages > Avancé.";
+"claude.refresh.egress_guard_no_targets" = "La liste d’IP autorisées est vide ; les requêtes officielles Claude sont suspendues. Vous pouvez modifier la liste d’IP autorisées dans Réglages > Avancé.";
+"claude.refresh.egress_guard_unsupported_region" = "La région de sortie n’est pas prise en charge par Anthropic ou n’a pas pu être identifiée ; les requêtes officielles Claude sont en pause. Vous pouvez modifier la liste d’IP autorisées dans Réglages > Avancé.";
+"claude.refresh.egress_guard_disabled" = "Les requêtes officielles Claude sont désactivées. Activez la liste d’IP autorisées dans Réglages > Avancé.";
 "claude.timeline.failure.egress_guard" = "Bloqué par la liste d’IP autorisées";
 "quota.failure.open_egress_guard_settings" = "Configurer les IP autorisées";
 "dashboard.advanced.page.egress_guard" = "IP autorisées pour Claude";
@@ -936,5 +938,5 @@
 "dashboard.advanced.page.egress_guard_available_no" = "Hors des régions où Anthropic propose Claude";
 "dashboard.general.data_sources" = "Sources de données";
 "dashboard.menu.bar.position_adjustments" = "Réglage fin de la position";
-"dashboard.menu.bar.required_display" = "Au moins l’icône ou la valeur doit rester visible.";
-"dashboard.advanced.official_validity_dependency" = "Ne s’applique que si les requêtes de quota officielles sont activées.";
+"dashboard.menu.bar.required_display" = "Au moins l’icône ou la valeur doit rester visible";
+"dashboard.advanced.official_validity_dependency" = "Ne s’applique que si les requêtes de quota officielles sont activées";

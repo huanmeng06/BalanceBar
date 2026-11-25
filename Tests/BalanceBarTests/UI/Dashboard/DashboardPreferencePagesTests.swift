@@ -1792,7 +1792,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(launchSwitch.state, .off)
         XCTAssertTrue(launchSwitch.isEnabled)
         XCTAssertTrue(launchAtLoginButtons().isEmpty)
-        XCTAssertTrue(labels.contains { $0.stringValue == "Launch at Login" })
+        XCTAssertTrue(labels.contains { $0.stringValue == "Open at Login" })
         XCTAssertTrue(labels.contains {
             $0.stringValue == "Automatically start BalanceBar after you log in to your Mac"
         })
@@ -1806,7 +1806,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertTrue(launchSwitch.isEnabled)
         XCTAssertTrue(launchAtLoginButtons().isEmpty)
         XCTAssertTrue(labels.contains {
-            $0.stringValue == "Automatically start BalanceBar after you log in to your Mac"
+            $0.stringValue == "Allow BalanceBar in System Settings > General > Login Items"
         })
 
         controller.refreshLaunchAtLogin(
@@ -1816,7 +1816,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertTrue(launchSwitch.isEnabled)
         XCTAssertTrue(launchAtLoginButtons().isEmpty)
         XCTAssertTrue(labels.contains {
-            $0.stringValue == "Could not update Launch at Login. Check System Settings → General → Login Items and try again."
+            $0.stringValue == "Couldn't update Open at Login. Check System Settings > General > Login Items and try again."
         })
 
         controller.refreshLaunchAtLogin(LaunchAtLoginState(status: .unknown))
@@ -1824,7 +1824,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertTrue(launchSwitch.isEnabled)
         XCTAssertTrue(launchAtLoginButtons().isEmpty)
         XCTAssertTrue(labels.contains {
-            $0.stringValue == "Unable to read the login item status"
+            $0.stringValue == "Can't read the login item status"
         })
 
         controller.refreshLaunchAtLogin(LaunchAtLoginState(status: .notFound))
@@ -5344,7 +5344,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let hideRow = try XCTUnwrap(nativeSettingsRow(enclosing: hideSwitch))
         XCTAssertTrue(
             descendants(of: displayModeRow).compactMap { $0 as? NSTextField }.contains {
-                $0.stringValue == "🌙 Luna 储备额度显示方式"
+                $0.stringValue == "Luna 储备额度 显示方式"
             }
         )
         XCTAssertTrue(
@@ -7284,7 +7284,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
         XCTAssertEqual(tr(.keyDashboardMenuBarPageAnimationModeEfficient), "性能（Beta）")
         let synchronizedSubtitle = "同步：所有显示器上的动画保持同步，但资源占用显著更高"
-        let efficientSubtitle = "性能：显著降低资源占用；多显示器使用时，非当前显示器上的动画将暂停并亮起\nBeta：由于 macOS 系统限制，部分时候副屏图标会消失，重启 BalanceBar 可能解决问题"
+        let efficientSubtitle = "性能：显著降低资源占用；多显示器使用时，非当前显示器上的动画将暂停并亮起\nBeta：由于 macOS 系统限制，部分时候副屏图标会消失，重新启动 BalanceBar 可能解决问题"
         XCTAssertEqual(
             DashboardMenuBarPage.animationModeDescription(
                 mode: .synchronized,
@@ -7584,7 +7584,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         subtitle.layout()
 
         let phrase = DashboardMenuBarPage.animationModeRestartLinkPhrase()
-        XCTAssertEqual(phrase, "重启 BalanceBar")
+        XCTAssertEqual(phrase, "重新启动 BalanceBar")
         XCTAssertTrue(subtitle.stringValue.contains(phrase))
         XCTAssertEqual(
             subtitle.linkRange,
@@ -7658,8 +7658,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(window.attachedSheet, alert.window)
         XCTAssertEqual(alert.alertStyle, .informational)
         XCTAssertNil(alert.accessoryView)
-        XCTAssertEqual(alert.messageText, "是否立即重启 BalanceBar？")
-        XCTAssertEqual(alert.buttons.map(\.title), ["重启", "取消"])
+        XCTAssertEqual(alert.messageText, "是否立即重新启动 BalanceBar？")
+        XCTAssertEqual(alert.buttons.map(\.title), ["重新启动", "取消"])
         XCTAssertEqual(alert.window.defaultButtonCell, alert.buttons[0].cell)
         XCTAssertEqual(alert.buttons[1].keyEquivalent, "\u{1b}")
 
@@ -7689,7 +7689,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         ))
         let restartAlert = try XCTUnwrap(controller.restartConfirmationAlertForTesting)
         XCTAssertEqual(window.attachedSheet, restartAlert.window)
-        XCTAssertEqual(restartAlert.messageText, "是否立即重启 BalanceBar？")
+        XCTAssertEqual(restartAlert.messageText, "是否立即重新启动 BalanceBar？")
         XCTAssertEqual(restartAlert.buttons[1].title, "取消")
         restartAlert.buttons[1].performClick(nil)
         XCTAssertNil(window.attachedSheet)
@@ -7702,7 +7702,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         ))
         let confirmAlert = try XCTUnwrap(controller.restartConfirmationAlertForTesting)
         XCTAssertEqual(window.attachedSheet, confirmAlert.window)
-        XCTAssertEqual(confirmAlert.buttons[0].title, "重启")
+        XCTAssertEqual(confirmAlert.buttons[0].title, "重新启动")
         confirmAlert.buttons[0].performClick(nil)
         XCTAssertEqual(relaunchCount, 1)
         XCTAssertEqual(
@@ -8684,7 +8684,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let snapshot = Snapshot.official("OpenAI", 72, "7-day", "2h", Date(timeIntervalSince1970: 1))
         let subtitleByLanguage: [AppLanguage: String] = [
             .japanese: "サービスプロバイダーのデータをメニューバーにリアルタイム表示",
-            .english: "The menu bar updates with Provider data in real time",
+            .english: "The menu bar updates with provider data in real time",
             .simplifiedChinese: "菜单栏会随服务商数据实时更新"
         ]
         for language in [AppLanguage.japanese, .english, .simplifiedChinese] {
@@ -11099,7 +11099,7 @@ extension DashboardPreferencePagesTests {
         preferences.displayTimeZoneSelection = .region(identifier: "America/New_York")
         let relay = DashboardPreferencePageRelay()
         let combo = DashboardTimeZoneComboBox(preferences: preferences, relay: relay)
-        let row = SettingsRowView(title: "Time zone", accessoryView: combo)
+        let row = SettingsRowView(title: "Time Zone", accessoryView: combo)
         row.translatesAutoresizingMaskIntoConstraints = false
         let host = NSView(frame: NSRect(x: 0, y: 0, width: 230, height: 200))
         host.addSubview(row)
