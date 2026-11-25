@@ -8262,6 +8262,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                         ownerAccountMatches: ownerAccountMatches, ownerClientMatches: ownerClientMatches,
                         snapshotAccountMatches: snapshotAccountMatches, snapshotClientMatches: snapshotClientMatches,
                         aggregated: aggregated, paceClient: context.paceClient, host: host)
+                } else if view.hasEmptyPaceMarkerFrame && view.isPaceMarkerSuspended {
+                    writeMissingQuotaPaceDiagnostic(view, window: diagnosticWindow, branch: branch,
+                        ownerAccountMatches: ownerAccountMatches, ownerClientMatches: ownerClientMatches,
+                        snapshotAccountMatches: snapshotAccountMatches, snapshotClientMatches: snapshotClientMatches,
+                        aggregated: aggregated, paceClient: context.paceClient, host: host)
                 } else if view.hasEmptyPaceMarkerFrame {
                     // A new section can be refreshed before its first layout. Only
                     // report an empty frame after that view's next completed layout.

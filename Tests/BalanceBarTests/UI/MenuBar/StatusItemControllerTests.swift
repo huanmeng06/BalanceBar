@@ -112,6 +112,42 @@ final class StatusItemControllerTests: XCTestCase {
     }
 
     @MainActor
+    func testSuspendedNewPaceViewReportsEmptyFrameOnRefresh() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        var diagnostics: [String] = []
+        controller.quotaPaceDiagnosticSinkForTesting = { diagnostics.append($0) }
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        controller.quotaPaceNowForTesting = now
+        let fiveHour = OfficialQuotaWindow(kind: .fiveHour, remaining: 62, label: "5h", daysText: "5h",
+            reset: nil, durationSeconds: 5 * 3600, resetAt: now.addingTimeInterval(37 * 60))
+        let sevenDay = OfficialQuotaWindow(kind: .sevenDay, remaining: 45, label: "7d", daysText: "7d",
+            reset: nil, durationSeconds: 7 * 24 * 3600, resetAt: now.addingTimeInterval(92 * 3600))
+        let input = StatusItemController.MenuInput(choices: [], quickSwitchSummaries: [:], activeClient: .claude,
+            openAIAccount: nil, statusLinks: [], showQuickSwitchMenu: false, showOpenChatGPTMenu: false,
+            showOpenCCSwitchMenu: false, showStatusMenu: false, directProviderID: "claude-official")
+        controller.start(snapshot: .official("Claude Official", 62, "5h", nil, now, windows: [fiveHour]),
+            refreshDate: now, menuInput: input, settings: makeSettings())
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        let host = try XCTUnwrap(controller.menuItemsForTesting.first?.view as? MenuHoverLinkHostView)
+        controller.update(snapshot: .official("Claude Official", 62, "5h", nil, now, windows: [fiveHour, sevenDay]),
+            refreshDate: now, menuInput: input, settings: makeSettings())
+        let newlyAdded = try XCTUnwrap(host.paceViews.first { $0.quotaWindow.kind == .sevenDay })
+        XCTAssertTrue(newlyAdded.hasEmptyPaceMarkerFrame)
+        newlyAdded.stopMenuInteractionPreservingVisuals()
+        XCTAssertTrue(newlyAdded.isPaceMarkerSuspended)
+        XCTAssertTrue(diagnostics.isEmpty)
+
+        try XCTUnwrap(controller.quotaPaceTimerForTesting).fire()
+
+        XCTAssertEqual(diagnostics.count, 1, "A suspended empty-frame view must report on refresh")
+        let diagnostic = try XCTUnwrap(diagnostics.first)
+        XCTAssertTrue(diagnostic.contains("pace=true; marker_hidden=false"))
+        XCTAssertTrue(diagnostic.contains("suspended=true"))
+        XCTAssertTrue(diagnostic.contains("marker_frame="))
+    }
+
+    @MainActor
     func testPaceAccountSwitchAndTeardownStopTimerAndInvalidateOldMarker() throws {
         let controller = makeController()
         defer { controller.teardown() }
