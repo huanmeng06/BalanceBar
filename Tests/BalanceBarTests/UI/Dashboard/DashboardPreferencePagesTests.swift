@@ -2357,6 +2357,30 @@ final class DashboardPreferencePagesTests: XCTestCase {
         }
     }
 
+    func testClaudeTokenRefreshProxyWarningPriorityAndRecovery() {
+        let on = tr(.keyClaudeTokenRefreshStatusOn)
+        let variable = "CLAUDE_CONFIG_DIR"
+        let cases: [(ClaudeTokenRefreshState, String?, Bool, DashboardGeneralPage.ClaudeLoginLine.Tone, [String])] = [
+            (.idle, nil, true, .warning, [on, tr(.keyClaudeTokenRefreshReasonRouteUnsupported)]),
+            (.failed(.routeUnsupported, nextTryAt: nil), nil, false, .good, [on, tr(.keyClaudeTokenRefreshStatusArmed)]),
+            (.paused, nil, true, .warning, [tr(.keyClaudeTokenRefreshStatusPaused), tr(.keyClaudeTokenRefreshReasonLoginInvalid)]),
+            (.running, nil, true, .neutral, [on, tr(.keyClaudeTokenRefreshStatusRunning)]),
+            (.idle, variable, true, .warning, [on, tr(.keyClaudeTokenRefreshReasonSettingsEnv, arguments: [variable])]),
+        ]
+        for (state, conflict, proxyWarning, tone, parts) in cases {
+            let row = DashboardGeneralPage.claudeTokenRefreshPresentation(enabled: true, guardEnabled: true,
+                allowedIPs: ["203.0.113.21"], mod: .available, state: state, settingsConflict: conflict,
+                routeUnsupported: proxyWarning)
+            XCTAssertEqual(row.statusLine, .init(tone: tone, text: parts.joined(separator: " · ")))
+        }
+        func unexpectedRead() -> Bool { XCTFail("Proxy settings should not be read"); return true }
+        for (enabled, allowlist, ips, mod) in [(false, true, ["203.0.113.21"], ClaudeTokenRefreshModAvailability.available),
+            (true, false, ["203.0.113.21"], .available), (true, true, [], .available), (true, true, ["203.0.113.21"], .unavailable)] {
+            _ = DashboardGeneralPage.claudeTokenRefreshPresentation(enabled: enabled, guardEnabled: allowlist,
+                allowedIPs: ips, mod: mod, state: .idle, routeUnsupported: unexpectedRead())
+        }
+    }
+
     func testClaudeTokenRefreshToggleRequiresAllowlistAndExplicitConfirmation() throws {
         let suite = "TokenRefreshConfirm.\(UUID())"
         let defaults = UserDefaults(suiteName: suite)!

@@ -921,6 +921,7 @@ final class DashboardGeneralPage {
     static func claudeTokenRefreshPresentation(enabled: Bool, guardEnabled: Bool, allowedIPs: [String],
                                                 mod: ClaudeTokenRefreshModAvailability, state: ClaudeTokenRefreshState,
                                                 settingsConflict: @autoclosure () -> String? = nil,
+                                                routeUnsupported: @autoclosure () -> Bool = false,
                                                 now: Date = Date(), timeZone: TimeZone = .autoupdatingCurrent) -> ClaudeTokenRefreshPresentation {
         guard guardEnabled else {
             return .init(isOn: enabled, dependencyEnabled: false, detail: tr(.keyClaudeTokenRefreshOffDetail),
@@ -960,14 +961,19 @@ final class DashboardGeneralPage {
             case .idle, .succeeded, .failed:
                 if let variable = settingsConflict() {
                     status = line(.warning, [on, tr(.keyClaudeTokenRefreshReasonSettingsEnv, arguments: [variable])])
+                } else if routeUnsupported() {
+                    status = line(.warning, [on, tr(.keyClaudeTokenRefreshReasonRouteUnsupported)])
                 } else if case let .succeeded(at) = state {
                     status = line(.good, [on, dateText(.keyClaudeTokenRefreshStatusSucceeded, at)])
-                } else if case .failed(.settingsEnv, _) = state {
-                    status = armed
                 } else if case let .failed(failure, nextTryAt) = state {
-                    var parts = [tr(.keyClaudeTokenRefreshStatusFailed), tokenRefreshFailureText(failure)]
-                    if let nextTryAt { parts.append(dateText(.keyClaudeTokenRefreshStatusNextTry, nextTryAt)) }
-                    status = line(.warning, parts)
+                    switch failure {
+                    case .settingsEnv, .routeUnsupported:
+                        status = armed
+                    default:
+                        var parts = [tr(.keyClaudeTokenRefreshStatusFailed), tokenRefreshFailureText(failure)]
+                        if let nextTryAt { parts.append(dateText(.keyClaudeTokenRefreshStatusNextTry, nextTryAt)) }
+                        status = line(.warning, parts)
+                    }
                 } else {
                     status = armed
                 }

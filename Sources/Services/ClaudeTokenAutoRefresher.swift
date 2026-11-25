@@ -336,17 +336,33 @@ final class ClaudeTokenAutoRefresher {
             && (proxy.path.isEmpty || proxy.path == "/") && proxy.query == nil && proxy.fragment == nil
     }
 
+    /// Display-only, using the same route check as launch preflight.
+    func currentRouteUnsupported() -> Bool {
+        !Self.routeMatchesSettings(route(), settings: settings())
+    }
+
+    private static let claudeCodeProxyKeys = ["https_proxy", "HTTPS_PROXY", "http_proxy", "HTTP_PROXY"]
+
+    private static func claudeCodeProxyEntry(_ settings: [String: Any]?) -> Any? {
+        let env = settings?["env"] as? [String: Any] ?? [:]
+        return claudeCodeProxyKeys.compactMap { env[$0] }.first(where: nonempty)
+    }
+
+    static func claudeCodeEffectiveProxy(_ settings: [String: Any]?) -> URL? {
+        guard let text = claudeCodeProxyEntry(settings) as? String else { return nil }
+        return URL(string: text.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    // Compare only the four variables Claude Code actually reads, in its documented order.
+    // https://code.claude.com/docs/en/network-config#environment-variables
     private static func routeMatchesSettings(_ route: CCSwitchProxyConfiguration, settings: [String: Any]?) -> Bool {
         guard supportedRoute(route) else { return false }
         let proxy = route.httpsProxy ?? route.allProxy
-        let env = settings?["env"] as? [String: Any] ?? [:]
-        // Claude can reapply its user settings after launch. An alias that would override our
-        // pinned proxy (or add one to a direct route) cannot be assumed to follow the probe.
-        return managedProxyKeys.allSatisfy { key in
-            guard nonempty(env[key]) else { return true }
-            guard let proxy, let text = env[key] as? String else { return false }
-            return URL(string: text) == proxy
+        guard let effective = claudeCodeEffectiveProxy(settings) else {
+            // A malformed configured proxy is not proof of a direct connection.
+            return proxy == nil && claudeCodeProxyEntry(settings) == nil
         }
+        return effective == proxy
     }
 
     static func childEnvironment(_ inherited: [String: String], route: CCSwitchProxyConfiguration) -> [String: String] {

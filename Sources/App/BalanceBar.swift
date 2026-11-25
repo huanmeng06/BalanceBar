@@ -2262,6 +2262,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             enabled: preferences.claudeTokenAutoRefreshEnabled, guardEnabled: preferences.claudeEgressGuardEnabled,
             allowedIPs: preferences.claudeEgressGuardAllowedIPs, mod: modSyncCoordinator.tokenRefreshMarketplaceAvailability,
             state: claudeTokenAutoRefresher.state, settingsConflict: claudeTokenAutoRefresher.currentSettingsConflict(),
+            routeUnsupported: claudeTokenAutoRefresher.currentRouteUnsupported(),
             timeZone: preferences.effectiveDisplayTimeZone)
     }
 

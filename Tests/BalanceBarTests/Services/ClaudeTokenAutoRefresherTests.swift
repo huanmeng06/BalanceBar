@@ -12,7 +12,7 @@ final class ClaudeTokenAutoRefresherTests: XCTestCase {
         var route = CCSwitchProxyConfiguration(httpsProxy: proxy)
         var availability = ClaudeTokenRefreshModAvailability.available
         var busy = false
-        var settings: [String: Any]?
+        var settings: [String: Any]? = ["env": ["HTTPS_PROXY": proxy.absoluteString]]
         var token: String? = "test-access-secret"
         lazy var expiry: Date? = now.addingTimeInterval(-120)
         var unreadable = false
@@ -183,6 +183,7 @@ final class ClaudeTokenAutoRefresherTests: XCTestCase {
         for route in [CCSwitchProxyConfiguration(httpsProxy: Fixture.proxy), .init()] {
             let fixture = Fixture()
             fixture.route = route
+            if route.httpsProxy == nil { fixture.settings = nil }
             fixture.didRun = { [unowned fixture] in fixture.expiry = fixture.now.addingTimeInterval(480 * 60) }
             XCTAssertTrue(attempt(fixture))
             XCTAssertEqual(fixture.refresher.state, .succeeded(at: fixture.now))
@@ -203,6 +204,37 @@ final class ClaudeTokenAutoRefresherTests: XCTestCase {
                 XCTAssertFalse(fixture.logs.joined().contains(secret))
             }
             XCTAssertFalse(attempt(fixture))
+        }
+    }
+
+    func testDocumentedProxyPrecedenceMatchesTheCheckedRoute() {
+        let a = Fixture.proxy
+        let b = URL(string: "http://other.invalid:8080")!
+        let socks = URL(string: "socks5://proxy.invalid:1080")!
+        let cases: [([String: String], CCSwitchProxyConfiguration, URL?, Bool)] = [
+            (["HTTPS_PROXY": a.absoluteString, "HTTP_PROXY": a.absoluteString, "ALL_PROXY": socks.absoluteString], .init(httpsProxy: a), a, true),
+            (["https_proxy": b.absoluteString, "HTTPS_PROXY": a.absoluteString], .init(httpsProxy: a), b, false),
+            (["HTTP_PROXY": a.absoluteString], .init(), a, false),
+            (["ALL_PROXY": socks.absoluteString], .init(allProxy: socks), nil, false),
+            ([:], .init(), nil, true),
+            (["https_proxy": "  ", "http_proxy": " \(a.absoluteString) ", "HTTP_PROXY": b.absoluteString,
+              "all_proxy": socks.absoluteString], .init(httpsProxy: a), a, true),
+        ]
+        for (env, route, effective, allowed) in cases {
+            let fixture = Fixture()
+            fixture.settings = ["env": env]
+            fixture.route = route
+            XCTAssertEqual(ClaudeTokenAutoRefresher.claudeCodeEffectiveProxy(fixture.settings), effective)
+            XCTAssertEqual(fixture.refresher.currentRouteUnsupported(), !allowed)
+            XCTAssertEqual(fixture.refresher.state, .idle)
+            XCTAssertTrue(fixture.logs.isEmpty)
+            XCTAssertEqual(fixture.reads, 0)
+            XCTAssertTrue(fixture.commands.isEmpty)
+            XCTAssertTrue(fixture.probes.isEmpty)
+            XCTAssertEqual(attempt(fixture), allowed)
+            XCTAssertEqual(fixture.probes.count, allowed ? 2 : 0)
+            XCTAssertEqual(fixture.commands.count, allowed ? 1 : 0)
+            if !allowed { XCTAssertEqual(fixture.refresher.state, .failed(.routeUnsupported, nextTryAt: nil)) }
         }
     }
 
