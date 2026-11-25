@@ -611,6 +611,8 @@
     case keyStatusLinksEditorOpenLink = "status.links.editor.open_link"
     case keyStatusLinksEditorCopyURL = "status.links.editor.copy_url"
     case keyStatusLinksEditorCopyItem = "status.links.editor.copy_item"
+    case keyStatusLinksEditorActionsTooltip = "status.links.editor.actions_tooltip"
+    case keyStatusLinksEditorMoveTooltip = "status.links.editor.move_tooltip"
     case keyStatusLinksEditorActionCompleted = "status.links.editor.action_completed"
     case keyStatusItemControllerRefreshNow = "status.item.controller.refresh_now"
     case keyStatusItemControllerOpenMainWindow = "status.item.controller.open_main_window"
