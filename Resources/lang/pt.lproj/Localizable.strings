@@ -99,6 +99,8 @@
 "response.parsers.quota" = "Cota";
 "response.parsers.7_days.4" = "7d";
 "response.parsers.quota.2" = "Cota";
+"response.parsers.30_day_quota" = "Cota de 30 dias";
+"response.parsers.30_days" = "30d";
 "provider.balance.progress.store.the_balance_data_is_invalid" = "Os dados de saldo são inválidos";
 "provider.balance.progress.store.the_balance_unit_is_invalid" = "A unidade de saldo é inválida";
 "provider.balance.progress.store.the_balance_unit_changed" = "A unidade do saldo foi alterada";

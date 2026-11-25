@@ -138,6 +138,8 @@
     case keyResponseParsersQuota = "response.parsers.quota"
     case keyResponseParsers7Days4 = "response.parsers.7_days.4"
     case keyResponseParsersQuota2 = "response.parsers.quota.2"
+    case keyResponseParsers30DayQuota = "response.parsers.30_day_quota"
+    case keyResponseParsers30Days = "response.parsers.30_days"
     case keyProviderBalanceProgressStoreTheBalanceDataIsInvalid = "provider.balance.progress.store.the_balance_data_is_invalid"
     case keyProviderBalanceProgressStoreTheBalanceUnitIsInvalid = "provider.balance.progress.store.the_balance_unit_is_invalid"
     case keyProviderBalanceProgressStoreTheBalanceUnitChanged = "provider.balance.progress.store.the_balance_unit_changed"

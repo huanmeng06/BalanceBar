@@ -99,6 +99,8 @@
 "response.parsers.quota" = "Quota";
 "response.parsers.7_days.4" = "7d";
 "response.parsers.quota.2" = "Quota";
+"response.parsers.30_day_quota" = "Quota sur 30 jours";
+"response.parsers.30_days" = "30d";
 "provider.balance.progress.store.the_balance_data_is_invalid" = "Les données de solde sont invalides";
 "provider.balance.progress.store.the_balance_unit_is_invalid" = "L’unité du solde est invalide";
 "provider.balance.progress.store.the_balance_unit_changed" = "L’unité du solde a changé";

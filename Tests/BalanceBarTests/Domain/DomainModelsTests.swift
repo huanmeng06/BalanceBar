@@ -497,6 +497,7 @@ final class DomainModelsTests: XCTestCase {
     }
 
     func testOpenAISubscriptionTierMapsOfficialPlanClaimsToTheRequestedBadgeText() {
+        XCTAssertEqual(OpenAISubscriptionTier(planType: "free"), .free)
         XCTAssertEqual(OpenAISubscriptionTier(planType: "plus"), .plus)
         XCTAssertEqual(OpenAISubscriptionTier(planType: "prolite"), .proFiveX)
         XCTAssertEqual(OpenAISubscriptionTier(planType: "PRO"), .proTwentyX)
@@ -504,6 +505,7 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertNil(OpenAISubscriptionTier(planType: "team"))
         XCTAssertNil(OpenAISubscriptionTier(planType: nil))
 
+        XCTAssertEqual(OpenAISubscriptionTier.free.text, "FREE")
         XCTAssertEqual(OpenAISubscriptionTier.plus.text, "PLUS")
         XCTAssertEqual(OpenAISubscriptionTier.proFiveX.text, "Pro · 5x")
         XCTAssertEqual(OpenAISubscriptionTier.proTwentyX.text, "Pro · 20x")

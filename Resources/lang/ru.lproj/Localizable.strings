@@ -99,6 +99,8 @@
 "response.parsers.quota" = "Квота";
 "response.parsers.7_days.4" = "7д";
 "response.parsers.quota.2" = "Квота";
+"response.parsers.30_day_quota" = "Квота на 30 дней";
+"response.parsers.30_days" = "30д";
 "provider.balance.progress.store.the_balance_data_is_invalid" = "Данные баланса недействительны";
 "provider.balance.progress.store.the_balance_unit_is_invalid" = "Единица баланса недействительна";
 "provider.balance.progress.store.the_balance_unit_changed" = "Единица баланса изменилась";

@@ -823,6 +823,12 @@ final class ProviderRefreshCoordinator {
                         else { current.snapshot.officialRetryAt = snapshot.officialRetryAt }
                     } else {
                         current.snapshot = snapshot
+                        if let planType = snapshot.codexPlanType, let account = current.account,
+                           case .available(let email) = account.state {
+                            current.account = OpenAIAccountPresentation(email: email,
+                                subscription: OpenAISubscriptionTier(planType: planType),
+                                unavailableReason: account.unavailableReason)
+                        }
                         current.status = .fresh
                         current.reason = nil
                         current.fetchedAt = snapshot.date ?? self.now()
@@ -2019,7 +2025,8 @@ final class ProviderRefreshCoordinator {
                             bankedReset: client == .codex ? ownedReset : nil,
                             resetForecast: resolvedForecast,
                             quotaPredictionContexts: predictionContexts,
-                            quotaPredictionAccountKey: client == .codex ? accountKey : nil
+                            quotaPredictionAccountKey: client == .codex ? accountKey : nil,
+                            codexPlanType: client == .codex ? response.output.planType : nil
                         )
                         publish(
                             snapshot,

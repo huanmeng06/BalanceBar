@@ -99,6 +99,8 @@
 "response.parsers.7_day_quota.2" = "7일 할당량";
 "response.parsers.7_days.4" = "7일";
 "response.parsers.quota.2" = "할당량";
+"response.parsers.30_day_quota" = "30일 할당량";
+"response.parsers.30_days" = "30일";
 "provider.balance.progress.store.the_balance_data_is_invalid" = "잔액 데이터가 올바르지 않습니다";
 "provider.balance.progress.store.the_balance_unit_is_invalid" = "잔액 단위가 올바르지 않습니다";
 "provider.balance.progress.store.the_balance_unit_changed" = "잔액 단위가 변경되었습니다";

@@ -258,17 +258,22 @@ enum OfficialQuotaResponseParser {
         /// positive available count but no usable `credits[]`. Callers may
         /// then issue one read-only list GET.
         let bankedResetNeedsCreditList: Bool
+        /// Codex usage's own `plan_type`. It follows the live subscription,
+        /// while the local sign-in token can still claim a lapsed paid plan.
+        let planType: String?
 
         init(
             windows: [OfficialQuotaWindow],
             lunaReserve: LunaReserveQuota? = nil,
             bankedReset: CodexBankedReset? = nil,
-            bankedResetNeedsCreditList: Bool = false
+            bankedResetNeedsCreditList: Bool = false,
+            planType: String? = nil
         ) {
             self.windows = windows
             self.lunaReserve = lunaReserve
             self.bankedReset = bankedReset
             self.bankedResetNeedsCreditList = bankedResetNeedsCreditList
+            self.planType = planType
         }
 
         private var representative: OfficialQuotaWindow? {
@@ -427,7 +432,10 @@ enum OfficialQuotaResponseParser {
             windows: windows.sorted(by: Self.windowSort),
             lunaReserve: Self.parseCodexLunaReserve(from: object, now: now),
             bankedReset: bankedResetParse.reset,
-            bankedResetNeedsCreditList: bankedResetParse.needsCreditList
+            bankedResetNeedsCreditList: bankedResetParse.needsCreditList,
+            planType: ResponseParsingSupport.stringValue(object["plan_type"])
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .flatMap { $0.isEmpty ? nil : $0 }
         )
     }
 
@@ -557,9 +565,19 @@ enum OfficialQuotaResponseParser {
             label = tr(.keyResponseParsers7DayQuota2)
             daysText = tr(.keyResponseParsers7Days4)
         case .other:
-            let isWeekly = duration.map { $0 >= 6 * 86_400 } ?? false
-            label = isWeekly ? tr(.keyResponseParsers7DayQuota2) : tr(.keyResponseParsersQuota)
-            daysText = isWeekly ? tr(.keyResponseParsers7Days4) : tr(.keyResponseParsersQuota2)
+            // Free (or lapsed) accounts get a single 30-day window instead of
+            // the paid 5-hour + 7-day pair; only near-7-day windows count as weekly.
+            let days = duration.map { $0 / 86_400 }
+            if let days, (6...8).contains(days) {
+                label = tr(.keyResponseParsers7DayQuota2)
+                daysText = tr(.keyResponseParsers7Days4)
+            } else if let days, (28...31).contains(days) {
+                label = tr(.keyResponseParsers30DayQuota)
+                daysText = tr(.keyResponseParsers30Days)
+            } else {
+                label = tr(.keyResponseParsersQuota)
+                daysText = tr(.keyResponseParsersQuota2)
+            }
         }
 
         let rawResetAt = window["reset_at"] ?? window["resets_at"]

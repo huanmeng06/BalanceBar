@@ -99,6 +99,8 @@
 "response.parsers.quota" = "クォータ";
 "response.parsers.7_days.4" = "7日";
 "response.parsers.quota.2" = "クォータ";
+"response.parsers.30_day_quota" = "30日間クォータ";
+"response.parsers.30_days" = "30日";
 "provider.balance.progress.store.the_balance_data_is_invalid" = "残高データが無効です";
 "provider.balance.progress.store.the_balance_unit_is_invalid" = "残高の単位が無効です";
 "provider.balance.progress.store.the_balance_unit_changed" = "残高の単位が変わりました";
