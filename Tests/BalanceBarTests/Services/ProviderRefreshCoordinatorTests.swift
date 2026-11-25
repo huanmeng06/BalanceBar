@@ -428,6 +428,8 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         preferences.showNonOfficialBankedReset = true
 
         let rendered = expectation(description: "balance and attached reset-card snapshots")
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let cache = makeResetCardCache()
         rendered.expectedFulfillmentCount = 2
         let lock = NSLock()
         var snapshots: [Snapshot] = []
@@ -438,6 +440,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
                 credentialReader: FixtureCredentialReader(codexToken: "fixture-codex-token", codexEmail: "owner@example.com")
             ),
             balanceAPIClient: BalanceAPIClient(session: session),
+            codexResetCardCache: cache,
             actions: ProviderRefreshActions(
                 currentProvider: { [repository] client in repository?.loadCurrent(appType: client.appType) },
                 isActiveClient: { _ in true },
@@ -448,7 +451,8 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
                 storeClientSnapshot: { _, _, _ in },
                 quickSwitchSummaryChanged: { _ in }
             ),
-            refreshPreferences: preferences
+            refreshPreferences: preferences,
+            now: { now }
         )
 
         let current = try XCTUnwrap(repository.loadCurrent(appType: "codex"))
@@ -465,6 +469,41 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         XCTAssertEqual(balance.bankedReset?.ownerEmail, "owner@example.com")
         XCTAssertEqual(balance.bankedReset?.cards.first?.id, "relay-card")
         XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 2)
+        let stored = try XCTUnwrap(cache.load(now: now))
+        XCTAssertEqual(stored.reset, balance.bankedReset)
+
+        for (showCards, showNonOfficialCards) in [(true, true), (false, true), (true, false)] {
+            preferences.showBankedReset = showCards
+            preferences.showNonOfficialBankedReset = showNonOfficialCards
+            let directRendered = expectation(description: "balance after restart without Codex login")
+            var directSnapshot: Snapshot?
+            let direct = makeCoordinator(
+                repository: repository,
+                officialQuotaClient: OfficialQuotaClient(session: session,
+                    credentialReader: FixtureCredentialReader(codexToken: nil)),
+                codexResetCardCache: cache,
+                actions: ProviderRefreshActions(
+                    currentProvider: { [repository] client in repository?.loadCurrent(appType: client.appType) },
+                    isActiveClient: { _ in true },
+                    render: { snapshot in
+                        guard snapshot.kind == .balance, directSnapshot == nil else { return }
+                        directSnapshot = snapshot
+                        directRendered.fulfill()
+                    },
+                    storeClientSnapshot: { _, _, _ in },
+                    quickSwitchSummaryChanged: { _ in }),
+                refreshPreferences: preferences,
+                now: { now })
+            let before = DelayedBalanceURLProtocol.requestCount
+            direct.refreshStandardProvider(current: current, client: .codex, forceBalance: true, switched: false)
+            wait(for: [directRendered], timeout: 3)
+            waitForCoordinator(direct)
+            XCTAssertEqual(try XCTUnwrap(directSnapshot).bankedReset,
+                showCards && showNonOfficialCards ? stored.reset : nil)
+            XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, before + 1)
+            XCTAssertEqual(cache.load(now: now)?.reset, stored.reset)
+            direct.stop()
+        }
     }
 
     func testNonOfficialCodexResetCardFailureKeepsSuccessfulBalance() throws {
@@ -482,6 +521,9 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         preferences.showNonOfficialBankedReset = true
 
         let rendered = expectation(description: "balance and isolated reset-card fallback")
+        let cache = makeResetCardCache()
+        let prior = CodexBankedReset(cards: [], ownerEmail: "previous@example.com")
+        cache.save(prior, accountKey: prior.ownerEmail, fetchedAt: .now)
         rendered.expectedFulfillmentCount = 2
         let lock = NSLock()
         var snapshots: [Snapshot] = []
@@ -492,6 +534,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
                 credentialReader: FixtureCredentialReader(codexToken: "fixture-codex-token")
             ),
             balanceAPIClient: BalanceAPIClient(session: session),
+            codexResetCardCache: cache,
             actions: ProviderRefreshActions(
                 currentProvider: { [repository] client in repository?.loadCurrent(appType: client.appType) },
                 isActiveClient: { _ in true },
@@ -516,6 +559,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(balance.amount), 9.87, accuracy: 0.000001)
         XCTAssertNil(balance.bankedReset)
         XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 2)
+        XCTAssertEqual(cache.load(now: .now)?.reset, prior)
     }
 
     func testNonOfficialCodexResetFailureClearsPriorCardsButKeepsAttemptThrottle() throws {
@@ -665,7 +709,12 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
             actions: ProviderRefreshActions(
                 currentProvider: { [repository] client in repository?.loadCurrent(appType: client.appType) },
                 isActiveClient: { _ in true },
-                render: { snapshot in if snapshot.kind == .balance { rendered.fulfill() } },
+                render: { snapshot in
+                    if snapshot.kind == .balance {
+                        XCTAssertNil(snapshot.bankedReset)
+                        rendered.fulfill()
+                    }
+                },
                 storeClientSnapshot: { _, _, _ in },
                 quickSwitchSummaryChanged: { _ in }),
             refreshPreferences: preferences)
@@ -1084,6 +1133,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
             )
         }
         let rendered = expectation(description: "official snapshot with usage credits")
+        let cache = makeResetCardCache()
         rendered.expectedFulfillmentCount = 2
         var captured: Snapshot?
         let coordinator = makeCoordinator(
@@ -1097,6 +1147,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
                 )
             ),
             balanceAPIClient: BalanceAPIClient(session: session),
+            codexResetCardCache: cache,
             queue: DispatchQueue(label: "test.provider-refresh-banked-reset-usage"),
             actions: ProviderRefreshActions(
                 currentProvider: { [repository] client in
@@ -1121,6 +1172,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         wait(for: [rendered], timeout: 2)
         XCTAssertEqual(try XCTUnwrap(captured).officialQuotaWindows.map(\.kind), [.fiveHour, .sevenDay])
         XCTAssertEqual(try XCTUnwrap(captured).bankedReset?.availableCount, 1)
+        XCTAssertEqual(cache.load(now: Date(timeIntervalSince1970: 1_700_000_000))?.reset.cards.first?.id, "usage-card")
         XCTAssertEqual(try XCTUnwrap(captured).resetForecast.probability24h, .percent(24))
         XCTAssertEqual(try XCTUnwrap(captured).resetForecast.probability48h, .percent(42))
         XCTAssertEqual(try XCTUnwrap(captured).resetForecast.confidence, .low)
@@ -1134,6 +1186,9 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
 
     func testOfficialRefreshHidesBankedResetWhenCreditListFailsAndKeepsQuotaWindows() throws {
         try setCurrentProvider("codex-replacement")
+        let cache = makeResetCardCache()
+        let prior = CodexBankedReset(cards: [], ownerEmail: "previous@example.com")
+        cache.save(prior, accountKey: prior.ownerEmail, fetchedAt: .now)
         let fiveHour = OfficialQuotaWindow(
             kind: .fiveHour,
             remaining: 80,
@@ -1188,6 +1243,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
                 )
             ),
             balanceAPIClient: BalanceAPIClient(session: session),
+            codexResetCardCache: cache,
             queue: DispatchQueue(label: "test.provider-refresh-banked-reset-list-failure"),
             actions: ProviderRefreshActions(
                 currentProvider: { [repository] client in
@@ -1215,6 +1271,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         XCTAssertEqual(snapshot.officialQuotaWindows.map(\.remaining), [80, 45])
         XCTAssertNil(snapshot.bankedReset)
         XCTAssertEqual(snapshot.resetForecast, .unavailable)
+        XCTAssertEqual(cache.load(now: .now)?.reset, prior)
         requestLock.lock()
         let paths = requestPaths
         requestLock.unlock()
@@ -1266,6 +1323,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
             )
         }
         let rendered = expectation(description: "official snapshot after list success")
+        let cache = makeResetCardCache()
         rendered.expectedFulfillmentCount = 2
         var captured: Snapshot?
         let coordinator = makeCoordinator(
@@ -1279,6 +1337,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
                 )
             ),
             balanceAPIClient: BalanceAPIClient(session: session),
+            codexResetCardCache: cache,
             queue: DispatchQueue(label: "test.provider-refresh-banked-reset-list-success"),
             actions: ProviderRefreshActions(
                 currentProvider: { [repository] client in
@@ -1306,6 +1365,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         XCTAssertEqual(snapshot.officialQuotaWindows.map(\.kind), [.fiveHour, .sevenDay])
         XCTAssertEqual(snapshot.bankedReset?.availableCount, 1)
         XCTAssertEqual(snapshot.bankedReset?.cards.first?.resetType, "codex_rate_limits")
+        XCTAssertEqual(cache.load(now: fixedNow)?.reset, snapshot.bankedReset)
         XCTAssertEqual(snapshot.resetForecast.probability24h, .percent(24))
         XCTAssertEqual(snapshot.resetForecast.probability48h, .percent(42))
         XCTAssertEqual(snapshot.resetForecast.confidence, .low)
@@ -3053,6 +3113,10 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         return try XCTUnwrap(snapshots.last)
     }
 
+    private func makeResetCardCache() -> CodexResetCardCacheStore {
+        CodexResetCardCacheStore(fileURL: temporaryDirectoryURL.appendingPathComponent("\(UUID().uuidString).json"))
+    }
+
     private func makeCoordinator(
         repository: CCSwitchRepository,
         officialQuotaClient: OfficialQuotaClient,
@@ -3061,6 +3125,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         balanceAPIClient: BalanceAPIClient? = nil,
         balanceProgressStore: ProviderBalanceProgressStore = ProviderBalanceProgressStore(),
         codexResetObservationStore: CodexResetObservationStore = CodexResetObservationStore(),
+        codexResetCardCache: CodexResetCardCacheStore? = nil,
         queue: DispatchQueue = DispatchQueue(label: "test.provider-refresh.owner"),
         actions: ProviderRefreshActions,
         refreshPreferences: AppPreferences? = nil,
@@ -3070,7 +3135,8 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         let coordinator = ProviderRefreshCoordinator(repository: repository, officialQuotaClient: officialQuotaClient,
             balanceAPIClient: balanceAPIClient ?? BalanceAPIClient(session: session),
             balanceProgressStore: balanceProgressStore,
-            codexResetObservationStore: codexResetObservationStore, queue: queue, actions: actions,
+            codexResetObservationStore: codexResetObservationStore,
+            codexResetCardCache: codexResetCardCache ?? makeResetCardCache(), queue: queue, actions: actions,
             refreshPreferences: refreshPreferences, claudeQuota: claudeQuota, now: now)
         coordinators.append(coordinator)
         return coordinator

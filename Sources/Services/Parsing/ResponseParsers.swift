@@ -732,15 +732,26 @@ enum OfficialQuotaResponseParser {
             guard status.lowercased() == "available" else { return nil }
         }
 
-        let expiresAt = ResponseParsingSupport.timestampDate(object["expires_at"])
-        if let expiresAt, expiresAt <= now {
-            return nil
-        }
-
         let resetType = ResponseParsingSupport.stringValue(object["reset_type"])?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let apiTitle = ResponseParsingSupport.stringValue(object["title"])?
             .trimmingCharacters(in: .whitespacesAndNewlines)
+        let rawID = ResponseParsingSupport.stringValue(object["id"])?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return codexBankedResetCard(
+            id: rawID?.isEmpty == true ? nil : rawID,
+            resetType: resetType,
+            apiTitle: apiTitle,
+            expiresAt: ResponseParsingSupport.timestampDate(object["expires_at"]),
+            now: now
+        )
+    }
+
+    static func codexBankedResetCard(
+        id: String?, resetType: String, apiTitle: String?, expiresAt: Date?, now: Date
+    ) -> CodexBankedResetCard? {
+        if let expiresAt, expiresAt <= now { return nil }
+
         let titleText: String
         let titleKey: LocalizationKey?
         let windowKeys: [String]?
@@ -758,12 +769,10 @@ enum OfficialQuotaResponseParser {
             windowKeys = nil
         }
 
-        let rawID = ResponseParsingSupport.stringValue(object["id"])?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
         let remaining = CodexBankedResetFormatting.remaining(until: expiresAt, now: now)
 
         return CodexBankedResetCard(
-            id: rawID?.isEmpty == true ? nil : rawID,
+            id: id,
             resetType: resetType,
             titleText: titleText,
             windowText: resetCardWindowText(windowKeys),
@@ -776,7 +785,7 @@ enum OfficialQuotaResponseParser {
         )
     }
 
-    private static func bankedResetCardSort(
+    static func bankedResetCardSort(
         _ lhs: CodexBankedResetCard,
         _ rhs: CodexBankedResetCard
     ) -> Bool {
