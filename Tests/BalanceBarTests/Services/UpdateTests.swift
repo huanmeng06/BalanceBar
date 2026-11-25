@@ -4231,8 +4231,8 @@ final class UpdateTests: XCTestCase {
                 XCTAssertEqual(downloading.buttonTitle, "正在下载 25%…")
                 XCTAssertEqual(installing.buttonTitle, "正在安装 25%…")
             case .traditionalChineseTaiwan, .traditionalChineseHongKong:
-                XCTAssertEqual(downloading.buttonTitle, "下載中 25% …")
-                XCTAssertEqual(installing.buttonTitle, "安裝中 25% …")
+                XCTAssertEqual(downloading.buttonTitle, "正在下載 25%…")
+                XCTAssertEqual(installing.buttonTitle, "正在安裝 25%…")
             case .japanese:
                 XCTAssertEqual(downloading.buttonTitle, "ダウンロード中 25% …")
                 XCTAssertEqual(installing.buttonTitle, "インストール中 25% …")

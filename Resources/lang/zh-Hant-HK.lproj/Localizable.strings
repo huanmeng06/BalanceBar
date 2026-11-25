@@ -2,7 +2,7 @@
 "app.preferences.openai_status" = "OpenAI 狀態";
 "app.not_found" = "找不到";
 "app.not_found.2" = "找不到";
-"app.the_current_cc_switch_value_provider_was_not_found" = "找不到 CC Switch 目前的 %1$@ 供應商，請在 CC Switch 中選擇一個供應商";
+"app.the_current_cc_switch_value_provider_was_not_found" = "找不到 CC Switch 目前的 %1$@ 服務商，請在 CC Switch 中選擇一個服務商";
 "app.about_balancebar" = "關於 BalanceBar";
 "app.hide_balancebar" = "隱藏 BalanceBar";
 "app.hide_others" = "隱藏其他應用程式";
@@ -57,7 +57,7 @@
 "snapshot.value_reset_value" = "%1$@ · %2$@";
 "snapshot.reset_value" = "%1$@";
 "snapshot.last_refreshed_value" = "最後刷新：%1$@";
-"snapshot.loading_the_current_provider" = "正在讀取目前供應商…";
+"snapshot.loading_the_current_provider" = "正在讀取目前服務商…";
 "snapshot.failed_to_load_balance" = "餘額讀取失敗";
 "snapshot.available_quota" = "可用配額";
 "snapshot.available_balance" = "可用餘額";
@@ -79,12 +79,12 @@
 "snapshot.unknown_error" = "未知錯誤";
 "snapshot.waiting_for_cc_switch_status" = "等待 CC Switch 狀態";
 "ccswitch.repository.unable_to_open_the_cc_switch_database" = "無法開啟 CC Switch 資料庫";
-"ccswitch.repository.provider_does_not_exist" = "供應商不存在";
-"ccswitch.repository.the_provider_s_claude_configuration_is_incomplete" = "供應商的 Claude 設定不完整";
-"ccswitch.repository.the_provider_s_codex_configuration_is_incomplete" = "供應商的 Codex 設定不完整";
+"ccswitch.repository.provider_does_not_exist" = "服務商不存在";
+"ccswitch.repository.the_provider_s_claude_configuration_is_incomplete" = "服務商的 Claude 設定不完整";
+"ccswitch.repository.the_provider_s_codex_configuration_is_incomplete" = "服務商的 Codex 設定不完整";
 "ccswitch.repository.the_cc_switch_database_is_busy" = "CC Switch 資料庫忙碌中";
-"ccswitch.repository.unable_to_select_the_provider" = "無法選擇供應商";
-"ccswitch.repository.unable_to_save_the_provider_switch" = "無法儲存供應商切換";
+"ccswitch.repository.unable_to_select_the_provider" = "無法選擇服務商";
+"ccswitch.repository.unable_to_save_the_provider_switch" = "無法儲存服務商切換";
 "ccswitch.repository.failed_to_prepare_the_database_write" = "資料庫寫入準備失敗";
 "ccswitch.repository.database_write_failed" = "資料庫寫入失敗";
 "response.parsers.7_day_quota" = "7 日配額";
@@ -161,7 +161,7 @@
 "dashboard.general.and.refresh.pages.click_to_check_github_releases" = "按一下後檢查 GitHub 上的新版本";
 "dashboard.general.and.refresh.pages.check_for_updates" = "檢查更新";
 "dashboard.general.and.refresh.pages.checking_for_updates" = "正在檢查更新…";
-"dashboard.general.and.refresh.pages.checking" = "檢查中…";
+"dashboard.general.and.refresh.pages.checking" = "正在檢查…";
 "dashboard.general.and.refresh.pages.you_are_up_to_date" = "目前為最新版本";
 "dashboard.general.and.refresh.pages.check_for_updates.2" = "檢查更新";
 "dashboard.general.and.refresh.pages.new_version_available_value_value" = "新版本可用：%1$@ → %2$@";
@@ -173,11 +173,11 @@
 "dashboard.general.and.refresh.pages.release_notes.view_github" = "在 GitHub 上查看";
 "dashboard.general.and.refresh.pages.release_notes.unavailable" = "暫無可用的更新說明。";
 "dashboard.general.and.refresh.pages.downloading_the_new_version" = "正在下載新版本…";
-"dashboard.general.and.refresh.pages.downloading_value" = "下載中 %1$@%% …";
+"dashboard.general.and.refresh.pages.downloading_value" = "正在下載 %1$@%%…";
 "dashboard.general.and.refresh.pages.installing_the_new_version" = "正在安裝新版本…";
-"dashboard.general.and.refresh.pages.installing_value" = "安裝中 %1$@%% …";
+"dashboard.general.and.refresh.pages.installing_value" = "正在安裝 %1$@%%…";
 "dashboard.general.and.refresh.pages.installed_restarting" = "安裝完成，正在重新啟動…";
-"dashboard.general.and.refresh.pages.restarting" = "重新啟動中…";
+"dashboard.general.and.refresh.pages.restarting" = "正在重新啟動…";
 "dashboard.general.and.refresh.pages.no_verifiable_installer_is_available_try_again" = "沒有可驗證的安裝包，請再試";
 "dashboard.general.and.refresh.pages.download_verification_failed_the_current_version_was_not_changed" = "下載驗證失敗，目前版本未變更";
 "dashboard.general.and.refresh.pages.installation_failed_the_current_version_was_not_changed" = "安裝失敗，目前版本未變更，請再試";
@@ -234,7 +234,7 @@
 "dashboard.general.and.refresh.pages.every_10_sec" = "每 10 秒";
 "dashboard.general.and.refresh.pages.refresh_now" = "立即刷新";
 "dashboard.general.and.refresh.pages.refresh" = "刷新";
-"dashboard.general.and.refresh.pages.balance_updates_during_tasks" = "API 供應商餘額刷新頻率";
+"dashboard.general.and.refresh.pages.balance_updates_during_tasks" = "API 服務商餘額刷新頻率";
 "dashboard.general.and.refresh.pages.requests_the_current_provider_s_balance_while_an_agent_is_running" = "任務執行時，按所選頻率刷新目前服務商的餘額";
 "dashboard.general.and.refresh.pages.balance_data" = "餘額資訊";
 "dashboard.general.and.refresh.pages.reload_the_current_provider_now" = "立即刷新目前服務商資料";
@@ -470,10 +470,10 @@
 "status.item.controller.no_status_links_configured" = "尚未新增狀態連結";
 "status.item.controller.quick_switch" = "快速切換";
 "status.item.controller.quick_switch.2" = "快速切換";
-"status.item.controller.no_codex_provider_found" = "找不到 Codex 供應商";
+"status.item.controller.no_codex_provider_found" = "找不到 Codex 服務商";
 "status.item.controller.official_link" = "官方連結：";
 "luna.reserve.title" = "Luna 儲備額度";
-"luna.reserve.status.loading" = "載入中…";
+"luna.reserve.status.loading" = "正在載入…";
 "luna.reserve.status.available" = "可用";
 "luna.reserve.status.unavailable" = "無法使用";
 "luna.reserve.remaining_value" = "剩餘：%1$@%%";
@@ -580,7 +580,7 @@
 "aggregation.loading" = "正在更新…";
 "aggregation.stale" = "上次可信資料 · 正在重試";
 "aggregation.unavailable" = "餘額暫時無法取得";
-"aggregation.manage_in_cc_switch" = "聚合模式請在 CC Switch 中管理預設供應商";
+"aggregation.manage_in_cc_switch" = "聚合模式請在 CC Switch 中管理預設服務商";
 
 "balance.recharge.label" = "增值";
 "balance.recharge.observed" = "軟件偵測到的餘額淨增量；時間為本軟件首次觀察到上升的時刻，並非付款帳單紀錄。";
@@ -610,7 +610,7 @@
 "dashboard.refresh.official_scope" = "Codex、Grok 官方帳戶";
 "dashboard.refresh.api_scope" = "第三方中轉 / API Key";
 
-"quota.status.refreshing" = "更新中…";
+"quota.status.refreshing" = "正在更新…";
 "quota.status.realtime" = "即時";
 "quota.status.ago.minutes" = "%1$@ 分鐘前";
 "quota.status.ago.hours" = "%1$@ 小時前";
@@ -701,7 +701,7 @@
 "claude.login.status.expired" = "已過期";
 "claude.login.status.signed_out" = "未登入";
 "claude.login.status.unreadable" = "無法讀取";
-"claude.login.status.detecting" = "偵測中…";
+"claude.login.status.detecting" = "正在偵測…";
 "claude.login.expires_at" = "失效時間：%1$@";
 "claude.login.action.renew" = "使用一次 Claude Code 即可自動續期";
 "claude.login.reason.rejected" = "官方拒絕了目前的登入";
@@ -906,7 +906,7 @@
 "ccswitch.database_unavailable" = "找不到或無法開啟 CC Switch 資料庫，請確認已安裝並執行過 CC Switch";
 "ccswitch.database_unreadable" = "無法讀取 CC Switch 資料庫，請重新開啟 CC Switch 後再試";
 "ccswitch.database_busy" = "CC Switch 資料庫持續被佔用，BalanceBar 會繼續重試";
-"aggregation.not_configured" = "此供應商未設定用量查詢，請在 CC Switch 中設定用量腳本";
+"aggregation.not_configured" = "此服務商未設定用量查詢，請在 CC Switch 中設定用量腳本";
 "claude.refresh.egress_guard_mismatch" = "出口 IP 不在白名單中，已暫停 Claude 官方請求。可在「設定」>「進階」中調整 IP 白名單。";
 "claude.refresh.egress_guard_check_failed" = "無法確認出口 IP，已暫停 Claude 官方請求。可在「設定」>「進階」中調整 IP 白名單。";
 "claude.refresh.egress_guard_no_targets" = "IP 白名單為空，已暫停 Claude 官方請求。可在「設定」>「進階」中調整 IP 白名單。";
@@ -932,7 +932,7 @@
 "dashboard.advanced.page.egress_guard_footnote" = "偵測連到的是 claude.ai，額度請求連到的是 api.anthropic.com。請讓兩者走同一條代理規則，否則偵測結果可能與實際出口不一致。國家/地區由 ipinfo.io 查詢，每個 IP 只查一次。可用性依據 Anthropic 支援地區政策（截至 2026-11-12）；Cloudflare 判定的出口地區不在其中時，同樣會暫停官方請求。";
 "dashboard.advanced.page.egress_guard_column_ip" = "IP 位址";
 "dashboard.advanced.page.egress_guard_column_region" = "國家/地區";
-"dashboard.advanced.page.egress_guard_country_loading" = "查詢中…";
+"dashboard.advanced.page.egress_guard_country_loading" = "正在查詢…";
 "dashboard.advanced.page.egress_guard_column_available" = "Claude 可用";
 "dashboard.advanced.page.egress_guard_available_yes" = "在 Anthropic 可用地區內";
 "dashboard.advanced.page.egress_guard_available_no" = "不在 Anthropic 可用地區內";

@@ -16,6 +16,27 @@ final class LocalizationTests: XCTestCase {
         }
     }
 
+    func testTraditionalChineseCopyUsesConsistentProviderAndProgressTerms() throws {
+        for directory in ["zh-Hant-TW", "zh-Hant-HK"] {
+            let url = try XCTUnwrap(testBundle.url(forResource: directory, withExtension: "lproj"))
+                .appendingPathComponent("Localizable.strings")
+            let data = try Data(contentsOf: url)
+            let values = try XCTUnwrap(
+                PropertyListSerialization.propertyList(from: data, format: nil) as? [String: String]
+            )
+            for (key, value) in values {
+                XCTAssertFalse(value.contains("供應商"), "\(key) in \(directory): \(value)")
+                XCTAssertFalse(value.contains("中…"), "\(key) in \(directory): \(value)")
+            }
+        }
+    }
+
+    func testPortugueseStatusLinkOptionsReferToTheMenu() {
+        let expected = "Mostrar links de status dos serviços no menu"
+        XCTAssertEqual(tr(.keyDashboardMenuPageShowStatusLinksInTheMenuBar, language: .portuguese), expected)
+        XCTAssertEqual(tr(.keyDashboardMenuPageShowStatusLinksInTheMenuBar2, language: .portuguese), expected)
+    }
+
     func testResetForecastSubtitleUsesOneLocalizedPlaceholderAcrossAllLanguages() {
         for language in allLanguages {
             for value in ["0%", "34%", "100%", "--%"] {
