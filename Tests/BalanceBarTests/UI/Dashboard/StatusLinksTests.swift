@@ -96,6 +96,23 @@ private final class TrackingStatusLinksWindow: NSPanel {
 
 @MainActor
 final class StatusLinksTests: XCTestCase {
+    func testEditorTooltipsFollowTheSelectedLanguage() {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+
+        for (language, actions, move) in [
+            (AppLanguage.simplifiedChinese, "添加或移除服务状态链接", "上移或下移服务状态链接"),
+            (.japanese, "ステータスリンクを追加または削除", "ステータスリンクを上下に移動"),
+            (.english, "Add or remove status links", "Move status link up or down")
+        ] {
+            AppLanguage.selected = language
+            let editor = makeEditor(links: [])
+            let controls = descendants(of: editor).compactMap { $0 as? NSSegmentedControl }
+            XCTAssertEqual(controls.first { $0.identifier?.rawValue == "statusLinks.actions" }?.toolTip, actions)
+            XCTAssertEqual(controls.first { $0.identifier?.rawValue == "statusLinks.move" }?.toolTip, move)
+        }
+    }
+
     private func makeWindow(
         for editor: StatusLinksEditorHostingView,
         width: CGFloat = 640,

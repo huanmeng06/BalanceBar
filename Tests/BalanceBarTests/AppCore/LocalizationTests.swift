@@ -3,6 +3,40 @@ import XCTest
 @testable import BalanceBar
 
 final class LocalizationTests: XCTestCase {
+    func testAppleCopyRulesForChineseAndEnglish() {
+        for language: AppLanguage in [.simplifiedChinese, .english] {
+            let forbidden = [" -> ", "✓", "✅", "🌙"] + (language == .simplifiedChinese
+                ? ["复制", "供应商", "账号", "一键", "点此", "中…"] : [])
+            for key in LocalizationKey.allCases {
+                let value = tr(key, language: language)
+                for token in forbidden where value.contains(token) {
+                    XCTFail("\(key.rawKey) in \(language) contains \(token): \(value)")
+                }
+            }
+        }
+    }
+
+    func testTraditionalChineseCopyUsesConsistentProviderAndProgressTerms() throws {
+        for directory in ["zh-Hant-TW", "zh-Hant-HK"] {
+            let url = try XCTUnwrap(testBundle.url(forResource: directory, withExtension: "lproj"))
+                .appendingPathComponent("Localizable.strings")
+            let data = try Data(contentsOf: url)
+            let values = try XCTUnwrap(
+                PropertyListSerialization.propertyList(from: data, format: nil) as? [String: String]
+            )
+            for (key, value) in values {
+                XCTAssertFalse(value.contains("供應商"), "\(key) in \(directory): \(value)")
+                XCTAssertFalse(value.contains("中…"), "\(key) in \(directory): \(value)")
+            }
+        }
+    }
+
+    func testPortugueseStatusLinkOptionsReferToTheMenu() {
+        let expected = "Mostrar links de status dos serviços no menu"
+        XCTAssertEqual(tr(.keyDashboardMenuPageShowStatusLinksInTheMenuBar, language: .portuguese), expected)
+        XCTAssertEqual(tr(.keyDashboardMenuPageShowStatusLinksInTheMenuBar2, language: .portuguese), expected)
+    }
+
     func testResetForecastSubtitleUsesOneLocalizedPlaceholderAcrossAllLanguages() {
         for language in allLanguages {
             for value in ["0%", "34%", "100%", "--%"] {
@@ -360,7 +394,7 @@ final class LocalizationTests: XCTestCase {
         )
         XCTAssertEqual(
             tr(.keyCodexBankedResetHighProbability, language: .english),
-            "High Prob."
+            "Likely"
         )
         XCTAssertEqual(
             tr(.keyCodexBankedResetOfficialHintNoTime, language: .simplifiedChinese),
@@ -573,7 +607,7 @@ final class LocalizationTests: XCTestCase {
             .traditionalChineseTaiwan: "0 秒",
             .traditionalChineseHongKong: "0 秒",
             .japanese: "0 秒",
-            .english: "0 seconds",
+            .english: "0 sec",
             .korean: "0초",
             .spanish: "0 segundos",
             .german: "0 Sekunden",
@@ -670,52 +704,52 @@ final class LocalizationTests: XCTestCase {
     func testLunaReserveMenuDisplaySettingsCopyExistsAcrossAllLanguages() {
         let expected: [AppLanguage: [String]] = [
             .simplifiedChinese: [
-                "🌙 %1$@显示方式", "选择 %1$@ 在菜单中的显示时机", "不显示", "额度用完后显示", "始终显示",
-                "隐藏已用完额度", "打开后，🌙 %1$@ 显示时会隐藏菜单中已归零的额度"
+                "%1$@ 显示方式", "选择 %1$@ 在菜单中的显示时机", "不显示", "额度用完后显示", "始终显示",
+                "隐藏已用完额度", "打开后，%1$@ 显示时会隐藏菜单中已归零的额度"
             ],
             .traditionalChineseTaiwan: [
-                "🌙 %1$@ 顯示方式", "選擇 %1$@ 在選單中的顯示時機", "不顯示", "額度用完後顯示", "始終顯示",
-                "隱藏已用完額度", "開啟後，顯示 🌙 %1$@ 時會隱藏選單中已歸零的額度"
+                "%1$@ 顯示方式", "選擇 %1$@ 在選單中的顯示時機", "不顯示", "額度用完後顯示", "始終顯示",
+                "隱藏已用完額度", "開啟後，顯示 %1$@ 時會隱藏選單中已歸零的額度"
             ],
             .traditionalChineseHongKong: [
-                "🌙 %1$@ 顯示方式", "選擇 %1$@ 在選單中的顯示時機", "不顯示", "配額用完後顯示", "始終顯示",
-                "隱藏已用完配額", "開啟後，顯示 🌙 %1$@ 時會隱藏選單中已歸零的配額"
+                "%1$@ 顯示方式", "選擇 %1$@ 在選單中的顯示時機", "不顯示", "配額用完後顯示", "始終顯示",
+                "隱藏已用完配額", "開啟後，顯示 %1$@ 時會隱藏選單中已歸零的配額"
             ],
             .japanese: [
-                "🌙 %1$@ の表示方法", "メニューで %1$@ を表示するタイミングを選択", "表示しない", "クォータ消費後に表示", "常に表示",
-                "使い切ったクォータを隠す", "オンにすると、🌙 %1$@ の表示時に残り 0% のクォータをメニューから隠します"
+                "%1$@ の表示方法", "メニューで %1$@ を表示するタイミングを選択", "表示しない", "クォータ消費後に表示", "常に表示",
+                "使い切ったクォータを隠す", "オンにすると、%1$@ の表示時に残り 0% のクォータをメニューから隠します"
             ],
             .english: [
-                "🌙 %1$@ Display", "Choose when %1$@ is shown in the menu", "Do not show", "Show after quota is used up", "Always show",
-                "Hide used-up quotas", "When enabled, zeroed quotas are hidden from the menu when 🌙 %1$@ is shown"
+                "%1$@ Display", "Choose when %1$@ is shown in the menu", "Do not show", "Show after quota is used up", "Always show",
+                "Hide used-up quotas", "When enabled, zeroed quotas are hidden from the menu when %1$@ is shown"
             ],
             .korean: [
-                "🌙 %1$@ 표시 방식", "메뉴에서 %1$@를 표시할 시점을 선택", "표시 안 함", "할당량 소진 후 표시", "항상 표시",
-                "소진된 할당량 숨기기", "켜면 🌙 %1$@가 표시될 때 잔여량이 0%인 할당량을 메뉴에서 숨깁니다"
+                "%1$@ 표시 방식", "메뉴에서 %1$@를 표시할 시점을 선택", "표시 안 함", "할당량 소진 후 표시", "항상 표시",
+                "소진된 할당량 숨기기", "켜면 %1$@가 표시될 때 잔여량이 0%인 할당량을 메뉴에서 숨깁니다"
             ],
             .spanish: [
-                "🌙 Mostrar %1$@", "Elige cuándo mostrar %1$@ en el menú", "No mostrar", "Mostrar al agotar la cuota", "Mostrar siempre",
-                "Ocultar cuotas agotadas", "Al activarlo, las cuotas al 0 % se ocultan del menú cuando se muestra 🌙 %1$@"
+                "Mostrar %1$@", "Elige cuándo mostrar %1$@ en el menú", "No mostrar", "Mostrar al agotar la cuota", "Mostrar siempre",
+                "Ocultar cuotas agotadas", "Al activarlo, las cuotas al 0 % se ocultan del menú cuando se muestra %1$@"
             ],
             .german: [
-                "🌙 %1$@-Anzeige", "Zeitpunkt für die Anzeige von %1$@ im Menü auswählen", "Nicht anzeigen", "Nach Verbrauch des Kontingents anzeigen", "Immer anzeigen",
-                "Verbrauchte Kontingente ausblenden", "Wenn aktiviert, werden Kontingente mit 0 % im Menü ausgeblendet, sobald 🌙 %1$@ angezeigt wird"
+                "%1$@-Anzeige", "Zeitpunkt für die Anzeige von %1$@ im Menü auswählen", "Nicht anzeigen", "Nach Verbrauch des Kontingents anzeigen", "Immer anzeigen",
+                "Verbrauchte Kontingente ausblenden", "Wenn aktiviert, werden Kontingente mit 0 % im Menü ausgeblendet, sobald %1$@ angezeigt wird"
             ],
             .french: [
-                "🌙 Affichage de %1$@", "Choisissez quand afficher %1$@ dans le menu", "Ne pas afficher", "Afficher après épuisement du quota", "Toujours afficher",
-                "Masquer les quotas épuisés", "Lorsque cette option est activée, les quotas à 0 % sont masqués du menu quand 🌙 %1$@ est affiché"
+                "Affichage de %1$@", "Choisissez quand afficher %1$@ dans le menu", "Ne pas afficher", "Afficher après épuisement du quota", "Toujours afficher",
+                "Masquer les quotas épuisés", "Lorsque cette option est activée, les quotas à 0 % sont masqués du menu quand %1$@ est affiché"
             ],
             .portuguese: [
-                "Exibição da 🌙 %1$@", "Escolha quando a 🌙 %1$@ será exibida no menu", "Não mostrar", "Mostrar após esgotar a cota", "Sempre mostrar",
-                "Ocultar cotas esgotadas", "Quando ativado, as cotas zeradas ficam ocultas no menu quando a 🌙 %1$@ é exibida"
+                "Exibição da %1$@", "Escolha quando a %1$@ será exibida no menu", "Não mostrar", "Mostrar após esgotar a cota", "Sempre mostrar",
+                "Ocultar cotas esgotadas", "Quando ativado, as cotas zeradas ficam ocultas no menu quando a %1$@ é exibida"
             ],
             .russian: [
-                "Отображение 🌙 %1$@", "Выберите, когда показывать 🌙 %1$@ в меню", "Не показывать", "Показывать после исчерпания квоты", "Всегда показывать",
-                "Скрывать исчерпанные квоты", "Если включено, исчерпанные квоты скрываются в меню при отображении 🌙 %1$@"
+                "Отображение %1$@", "Выберите, когда показывать %1$@ в меню", "Не показывать", "Показывать после исчерпания квоты", "Всегда показывать",
+                "Скрывать исчерпанные квоты", "Если включено, исчерпанные квоты скрываются в меню при отображении %1$@"
             ],
             .italian: [
-                "Visualizzazione di 🌙 %1$@", "Scegli quando mostrare 🌙 %1$@ nel menu", "Non mostrare", "Mostra dopo l'esaurimento della quota", "Mostra sempre",
-                "Nascondi le quote esaurite", "Quando è abilitata, le quote esaurite vengono nascoste dal menu quando viene mostrata 🌙 %1$@"
+                "Visualizzazione di %1$@", "Scegli quando mostrare %1$@ nel menu", "Non mostrare", "Mostra dopo l'esaurimento della quota", "Mostra sempre",
+                "Nascondi le quote esaurite", "Quando è abilitata, le quote esaurite vengono nascoste dal menu quando viene mostrata %1$@"
             ]
         ]
         let keys: [LocalizationKey] = [
@@ -777,86 +811,86 @@ final class LocalizationTests: XCTestCase {
             .simplifiedChinese: [
                 "优先显示额度", "选择菜单栏和“快速切换”菜单中优先显示 5 小时额度还是 7 日额度", "5 小时额度", "7 日额度",
                 "重置时间样式", "选择显示剩余时长、具体时间，或同时显示两者", "剩余时长", "重置时间", "同时显示",
-                "🌙 %1$@ 自动切换", "进入 🌙 %1$@ 后，自动切换菜单栏显示的额度",
-                "🌙 %1$@ 时间", "进入 🌙 %1$@ 后，选择继续显示原额度或 🌙 %1$@ 的重置时间",
-                "🌙 %1$@", "原额度"
+                "%1$@ 自动切换", "进入 %1$@ 后，自动切换菜单栏显示的额度",
+                "%1$@ 时间", "进入 %1$@ 后，选择继续显示原额度或 %1$@ 的重置时间",
+                "%1$@", "原额度"
             ],
             .traditionalChineseTaiwan: [
                 "優先顯示額度", "選擇選單列和「快速切換」選單中優先顯示 5 小時額度還是 7 日額度", "5 小時額度", "7 日額度",
                 "重設時間樣式", "選擇顯示剩餘時間、具體時間，或同時顯示兩者", "剩餘時間", "重設時間", "同時顯示",
-                "🌙 %1$@ 自動切換", "進入 🌙 %1$@ 後，自動切換選單列顯示的額度",
-                "🌙 %1$@ 時間", "進入 🌙 %1$@ 後，選擇繼續顯示原額度或 🌙 %1$@ 的重設時間",
-                "🌙 %1$@", "原額度"
+                "%1$@ 自動切換", "進入 %1$@ 後，自動切換選單列顯示的額度",
+                "%1$@ 時間", "進入 %1$@ 後，選擇繼續顯示原額度或 %1$@ 的重設時間",
+                "%1$@", "原額度"
             ],
             .traditionalChineseHongKong: [
                 "優先顯示配額", "選擇選單列和「快速切換」選單中優先顯示 5 小時配額還是 7 日配額", "5 小時配額", "7 日配額",
                 "重設時間樣式", "選擇顯示剩餘時間、具體時間，或同時顯示兩者", "剩餘時間", "重設時間", "同時顯示",
-                "🌙 %1$@ 自動切換", "進入 🌙 %1$@ 後，自動切換選單列顯示的配額",
-                "🌙 %1$@ 時間", "進入 🌙 %1$@ 後，選擇繼續顯示原配額或 🌙 %1$@ 的重設時間",
-                "🌙 %1$@", "原配額"
+                "%1$@ 自動切換", "進入 %1$@ 後，自動切換選單列顯示的配額",
+                "%1$@ 時間", "進入 %1$@ 後，選擇繼續顯示原配額或 %1$@ 的重設時間",
+                "%1$@", "原配額"
             ],
             .japanese: [
                 "優先表示するクォータ", "メニューバーと「クイック切り替え」メニューで、5時間クォータと7日間クォータのどちらを優先表示するか選択", "5時間クォータ", "7日間クォータ",
                 "リセット時刻の表示形式", "残り時間、具体的なリセット時刻、または両方を表示するか選択", "残り時間", "リセット時刻", "両方を表示",
-                "🌙 %1$@ への自動切り替え", "🌙 %1$@ に入った後、メニューバーに表示するクォータを自動的に切り替えます",
-                "🌙 %1$@ のリセット時刻", "🌙 %1$@ に入った後、元のクォータのリセット時刻と 🌙 %1$@ のリセット時刻のどちらを表示するか選択",
-                "🌙 %1$@", "元のクォータ"
+                "%1$@ への自動切り替え", "%1$@ に入った後、メニューバーに表示するクォータを自動的に切り替えます",
+                "%1$@ のリセット時刻", "%1$@ に入った後、元のクォータのリセット時刻と %1$@ のリセット時刻のどちらを表示するか選択",
+                "%1$@", "元のクォータ"
             ],
             .english: [
                 "Prioritize Quota", "Choose whether the 5-hour or 7-day quota is prioritized in the menu bar and the Quick Switch menu", "5-Hour Quota", "7-Day Quota",
                 "Reset Time Display", "Choose whether to show the time remaining, the specific reset time, or both", "Time Remaining", "Reset Time", "Show Both",
-                "🌙 %1$@ Auto-Switch", "After entering 🌙 %1$@, automatically switch the quota shown in the menu bar.",
-                "🌙 %1$@ Reset Time", "After entering 🌙 %1$@, choose whether to keep showing the original quota's reset time or 🌙 %1$@'s.",
-                "🌙 %1$@", "Original Quota"
+                "%1$@ Auto-Switch", "After entering %1$@, automatically switch the quota shown in the menu bar",
+                "%1$@ Reset Time", "After entering %1$@, choose whether to keep showing the original quota's reset time or %1$@'s",
+                "%1$@", "Original Quota"
             ],
             .korean: [
                 "우선 표시할 할당량", "메뉴 막대와 ‘빠른 전환’ 메뉴에서 5시간 할당량과 7일 할당량 중 어느 것을 우선 표시할지 선택하세요", "5시간 할당량", "7일 할당량",
                 "재설정 시간 표시 방식", "남은 시간, 정확한 재설정 시간 또는 둘 다 표시할지 선택하세요", "남은 시간", "재설정 시간", "둘 다 표시",
-                "🌙 %1$@ 자동 전환", "🌙 %1$@에 진입한 후 메뉴 막대에 표시할 할당량을 자동으로 전환합니다",
-                "🌙 %1$@ 재설정 시간", "🌙 %1$@에 진입한 후 원래 할당량의 재설정 시간과 🌙 %1$@의 재설정 시간 중 어느 것을 표시할지 선택합니다",
-                "🌙 %1$@", "원래 할당량"
+                "%1$@ 자동 전환", "%1$@에 진입한 후 메뉴 막대에 표시할 할당량을 자동으로 전환합니다",
+                "%1$@ 재설정 시간", "%1$@에 진입한 후 원래 할당량의 재설정 시간과 %1$@의 재설정 시간 중 어느 것을 표시할지 선택합니다",
+                "%1$@", "원래 할당량"
             ],
             .spanish: [
                 "Priorizar cuota", "Elige si la barra de menús y el menú «Cambio rápido» deben priorizar la cuota de 5 horas o la de 7 días", "Cuota de 5 horas", "Cuota de 7 días",
                 "Formato de la hora de reinicio", "Elige si mostrar el tiempo restante, la hora exacta de reinicio o ambos", "Tiempo restante", "Hora de reinicio", "Mostrar ambos",
-                "Cambio automático a 🌙 %1$@", "Después de entrar en 🌙 %1$@, cambia automáticamente la cuota que se muestra en la barra de menús",
-                "Hora de reinicio de 🌙 %1$@", "Después de entrar en 🌙 %1$@, elige si mantener la hora de reinicio de la cuota original o mostrar la de 🌙 %1$@",
-                "🌙 %1$@", "Cuota original"
+                "Cambio automático a %1$@", "Después de entrar en %1$@, cambia automáticamente la cuota que se muestra en la barra de menús",
+                "Hora de reinicio de %1$@", "Después de entrar en %1$@, elige si mantener la hora de reinicio de la cuota original o mostrar la de %1$@",
+                "%1$@", "Cuota original"
             ],
             .german: [
                 "Bevorzugtes Kontingent", "Auswählen, ob in der Menüleiste und im Menü „Schnellwechsel“ das 5-Stunden- oder das 7-Tage-Kontingent bevorzugt angezeigt wird", "5-Stunden-Kontingent", "7-Tage-Kontingent",
                 "Format der Rücksetzzeit", "Auswählen, ob die verbleibende Zeit, die genaue Rücksetzzeit oder beides angezeigt wird", "Verbleibende Zeit", "Rücksetzzeit", "Beides",
-                "Automatisch zu 🌙 %1$@ wechseln", "Nach dem Wechsel zu 🌙 %1$@ wird das in der Menüleiste angezeigte Kontingent automatisch umgeschaltet",
-                "Rücksetzzeit für 🌙 %1$@", "Nach dem Wechsel zu 🌙 %1$@ auswählen, ob die Rücksetzzeit des ursprünglichen Kontingents oder von 🌙 %1$@ angezeigt wird",
-                "🌙 %1$@", "Ursprüngliches Kontingent"
+                "Automatisch zu %1$@ wechseln", "Nach dem Wechsel zu %1$@ wird das in der Menüleiste angezeigte Kontingent automatisch umgeschaltet",
+                "Rücksetzzeit für %1$@", "Nach dem Wechsel zu %1$@ auswählen, ob die Rücksetzzeit des ursprünglichen Kontingents oder von %1$@ angezeigt wird",
+                "%1$@", "Ursprüngliches Kontingent"
             ],
             .french: [
                 "Quota à privilégier", "Choisissez si la barre des menus et le menu « Changement rapide » doivent privilégier le quota de 5 heures ou celui de 7 jours", "Quota sur 5 heures", "Quota sur 7 jours",
                 "Format de l’heure de réinitialisation", "Choisissez d’afficher le temps restant, l’heure exacte de réinitialisation ou les deux", "Temps restant", "Heure de réinitialisation", "Afficher les deux",
-                "Basculement automatique vers 🌙 %1$@", "Après l’entrée dans 🌙 %1$@, le quota affiché dans la barre des menus bascule automatiquement",
-                "Heure de réinitialisation de 🌙 %1$@", "Après l’entrée dans 🌙 %1$@, choisissez d’afficher l’heure de réinitialisation du quota d’origine ou celle de 🌙 %1$@",
-                "🌙 %1$@", "Quota d’origine"
+                "Basculement automatique vers %1$@", "Après l’entrée dans %1$@, le quota affiché dans la barre des menus bascule automatiquement",
+                "Heure de réinitialisation de %1$@", "Après l’entrée dans %1$@, choisissez d’afficher l’heure de réinitialisation du quota d’origine ou celle de %1$@",
+                "%1$@", "Quota d’origine"
             ],
             .portuguese: [
                 "Priorizar cota", "Escolha se a barra de menus e o menu “Troca rápida” devem priorizar a cota de 5 horas ou de 7 dias", "Cota de 5 horas", "Cota de 7 dias",
                 "Exibição do horário de redefinição", "Escolha se deseja mostrar o tempo restante, um horário específico de redefinição ou ambos", "Tempo restante", "Horário de redefinição", "Mostrar ambos",
-                "🌙 Troca automática para %1$@", "Após entrar na 🌙 %1$@, troca automaticamente a cota exibida na barra de menus.",
-                "Horário de redefinição da 🌙 %1$@", "Após entrar na 🌙 %1$@, escolha se deseja continuar mostrando o horário de redefinição da cota original ou o da 🌙 %1$@.",
-                "🌙 %1$@", "Cota original"
+                "Troca automática para %1$@", "Após entrar na %1$@, troca automaticamente a cota exibida na barra de menus",
+                "Horário de redefinição da %1$@", "Após entrar na %1$@, escolha se deseja continuar mostrando o horário de redefinição da cota original ou o da %1$@",
+                "%1$@", "Cota original"
             ],
             .russian: [
                 "Приоритет квоты", "Выберите, какой квоте отдавать приоритет в строке меню и в меню «Быстрое переключение»: 5-часовой или 7-дневной", "Квота на 5 часов", "Квота на 7 дней",
                 "Отображение времени сброса", "Выберите, показывать ли оставшееся время, конкретное время сброса или оба значения", "Оставшееся время", "Время сброса", "Показывать оба",
-                "🌙 Автопереключение на %1$@", "После входа в 🌙 %1$@ автоматически переключает квоту, отображаемую в строке меню.",
-                "Время сброса 🌙 %1$@", "После входа в 🌙 %1$@ выберите, продолжать ли показывать время сброса исходной квоты или квоты 🌙 %1$@.",
-                "🌙 %1$@", "Исходная квота"
+                "Автопереключение на %1$@", "После входа в %1$@ автоматически переключает квоту, отображаемую в строке меню",
+                "Время сброса %1$@", "После входа в %1$@ выберите, продолжать ли показывать время сброса исходной квоты или квоты %1$@",
+                "%1$@", "Исходная квота"
             ],
             .italian: [
                 "Dai priorità alla quota", "Scegli se la barra dei menu e il menu “Cambio rapido” devono dare priorità alla quota di 5 ore o di 7 giorni", "Quota di 5 ore", "Quota di 7 giorni",
                 "Visualizzazione dell'orario di ripristino", "Scegli se mostrare il tempo rimanente, un orario di ripristino specifico o entrambi", "Tempo rimanente", "Orario di ripristino", "Mostra entrambi",
-                "🌙 Passaggio automatico a %1$@", "Dopo aver attivato 🌙 %1$@, cambia automaticamente la quota mostrata nella barra dei menu.",
-                "Orario di ripristino di 🌙 %1$@", "Dopo aver attivato 🌙 %1$@, scegli se continuare a mostrare l'orario di ripristino della quota originale o quello di 🌙 %1$@.",
-                "🌙 %1$@", "Quota originale"
+                "Passaggio automatico a %1$@", "Dopo aver attivato %1$@, cambia automaticamente la quota mostrata nella barra dei menu",
+                "Orario di ripristino di %1$@", "Dopo aver attivato %1$@, scegli se continuare a mostrare l'orario di ripristino della quota originale o quello di %1$@",
+                "%1$@", "Quota originale"
             ]
         ]
         let keys: [LocalizationKey] = [
@@ -1022,7 +1056,7 @@ final class LocalizationTests: XCTestCase {
 
     func testAnimationModeRestartLinkPhraseIsExactSubstringOfEfficientDescription() {
         let expectedPhrases: [AppLanguage: String] = [
-            .simplifiedChinese: "重启 BalanceBar",
+            .simplifiedChinese: "重新启动 BalanceBar",
             .traditionalChineseTaiwan: "重新啟動 BalanceBar",
             .traditionalChineseHongKong: "重新啟動 BalanceBar",
             .japanese: "BalanceBar を再起動",
@@ -1035,9 +1069,9 @@ final class LocalizationTests: XCTestCase {
             .russian: "перезапустите BalanceBar",
             .italian: "riavvia BalanceBar"
         ]
-        XCTAssertEqual(tr(.keyDashboardMenuBarPageAnimationModeRestartConfirmation, language: .simplifiedChinese), "是否立即重启 BalanceBar？")
+        XCTAssertEqual(tr(.keyDashboardMenuBarPageAnimationModeRestartConfirmation, language: .simplifiedChinese), "是否立即重新启动 BalanceBar？")
         XCTAssertEqual(tr(.keyDashboardMenuBarPageAnimationModeRestartConfirmation, language: .english), "Restart BalanceBar now?")
-        XCTAssertEqual(tr(.keyDashboardMenuBarPageAnimationModeRestartConfirm, language: .simplifiedChinese), "重启")
+        XCTAssertEqual(tr(.keyDashboardMenuBarPageAnimationModeRestartConfirm, language: .simplifiedChinese), "重新启动")
         XCTAssertEqual(tr(.keyDashboardMenuBarPageAnimationModeRestartConfirm, language: .english), "Restart")
         XCTAssertEqual(tr(.keyDashboardMenuBarPageAnimationModeRestartCancel, language: .simplifiedChinese), "取消")
         XCTAssertEqual(tr(.keyDashboardMenuBarPageAnimationModeRestartCancel, language: .english), "Cancel")
@@ -1074,7 +1108,7 @@ final class LocalizationTests: XCTestCase {
             .simplifiedChinese: "运行时动画帧率",
             .traditionalChineseTaiwan: "執行時動畫幀率",
             .traditionalChineseHongKong: "執行時動畫幀率",
-            .english: "Animation frame rate",
+            .english: "Animation Frame Rate",
             .japanese: "アニメーションのフレームレート",
             .korean: "애니메이션 프레임 속도",
             .german: "Animationsrate",
@@ -1291,7 +1325,7 @@ final class LocalizationTests: XCTestCase {
     func testAllTypedKeysExistInEveryBundledLanguage() throws {
         let expectedKeys = Set(LocalizationKey.allCases.map(\.rawKey))
         XCTAssertEqual(expectedKeys.count, LocalizationKey.allCases.count)
-        XCTAssertEqual(expectedKeys.count, 908)
+        XCTAssertEqual(expectedKeys.count, 910)
         let copyPrefix = "status.item.controller."
         for key in ["copy_link", "copy_version_number"] {
             XCTAssertTrue(expectedKeys.contains(copyPrefix + key))
@@ -1367,18 +1401,18 @@ final class LocalizationTests: XCTestCase {
 
     func testLaunchAtLoginCopyIsLocalizedAcrossAllTwelveLanguages() {
         let expected: [AppLanguage: (String, String, String)] = [
-            .simplifiedChinese: ("登录时自动启动", "登录 Mac 后自动启动 BalanceBar", "登录 Mac 后自动启动 BalanceBar"),
-            .traditionalChineseTaiwan: ("登入時自動啟動", "登入 Mac 後自動啟動 BalanceBar", "登入 Mac 後自動啟動 BalanceBar"),
-            .traditionalChineseHongKong: ("登入時自動啟動", "登入 Mac 後自動啟動 BalanceBar", "登入 Mac 後自動啟動 BalanceBar"),
-            .japanese: ("ログイン時に起動", "Macへのログイン後にBalanceBarを自動的に起動します", "Macへのログイン後にBalanceBarを自動的に起動します"),
-            .english: ("Launch at Login", "Automatically start BalanceBar after you log in to your Mac", "Automatically start BalanceBar after you log in to your Mac"),
-            .korean: ("로그인 시 실행", "Mac에 로그인한 후 BalanceBar를 자동으로 실행합니다", "Mac에 로그인한 후 BalanceBar를 자동으로 실행합니다"),
-            .spanish: ("Abrir al iniciar sesión", "Abre BalanceBar automáticamente después de iniciar sesión en el Mac", "Abre BalanceBar automáticamente después de iniciar sesión en el Mac"),
-            .german: ("Beim Anmelden starten", "BalanceBar nach der Anmeldung am Mac automatisch starten", "BalanceBar nach der Anmeldung am Mac automatisch starten"),
-            .french: ("Lancer à la connexion", "Lancer automatiquement BalanceBar après la connexion au Mac", "Lancer automatiquement BalanceBar après la connexion au Mac"),
-            .portuguese: ("Iniciar ao iniciar sessão", "Inicia o BalanceBar automaticamente depois de iniciar sessão no Mac", "Inicia o BalanceBar automaticamente depois de iniciar sessão no Mac"),
-            .russian: ("Запуск при входе", "Автоматически запускать BalanceBar после входа на Mac", "Автоматически запускать BalanceBar после входа на Mac"),
-            .italian: ("Avvia all'accesso", "Avvia automaticamente BalanceBar dopo l’accesso al Mac", "Avvia automaticamente BalanceBar dopo l’accesso al Mac")
+            .simplifiedChinese: ("登录时打开", "登录 Mac 后自动启动 BalanceBar", "请在“系统设置”>“通用”>“登录项”中允许 BalanceBar"),
+            .traditionalChineseTaiwan: ("登入時打開", "登入 Mac 後自動啟動 BalanceBar", "請在「系統設定」>「一般」>「登入項目」中允許 BalanceBar"),
+            .traditionalChineseHongKong: ("登入時打開", "登入 Mac 後自動啟動 BalanceBar", "請在「系統設定」>「一般」>「登入項目」中允許 BalanceBar"),
+            .japanese: ("ログイン時に開く", "Macへのログイン後にBalanceBarを自動的に起動します", "「システム設定」>「一般」>「ログイン項目」で BalanceBar を許可してください"),
+            .english: ("Open at Login", "Automatically start BalanceBar after you log in to your Mac", "Allow BalanceBar in System Settings > General > Login Items"),
+            .korean: ("로그인 시 열기", "Mac에 로그인한 후 BalanceBar를 자동으로 실행합니다", "시스템 설정 > 일반 > 로그인 항목에서 BalanceBar를 허용하세요"),
+            .spanish: ("Abrir al iniciar sesión", "Abre BalanceBar automáticamente después de iniciar sesión en el Mac", "Permite BalanceBar en Ajustes del Sistema > General > Ítems de inicio"),
+            .german: ("Bei der Anmeldung öffnen", "BalanceBar nach der Anmeldung am Mac automatisch starten", "Erlaube BalanceBar unter Systemeinstellungen > Allgemein > Anmeldeobjekte"),
+            .french: ("Ouvrir avec la session", "Lancer automatiquement BalanceBar après la connexion au Mac", "Autorisez BalanceBar dans Réglages Système > Général > Éléments d’ouverture"),
+            .portuguese: ("Abrir ao iniciar sessão", "Inicia o BalanceBar automaticamente depois de iniciar sessão no Mac", "Permita o BalanceBar em Definições do Sistema > Geral > Elementos de início de sessão"),
+            .russian: ("Открывать при входе", "Автоматически запускать BalanceBar после входа на Mac", "Разрешите BalanceBar в разделе Системные настройки > Основные > Объекты входа"),
+            .italian: ("Apri al login", "Avvia automaticamente BalanceBar dopo l’accesso al Mac", "Consenti BalanceBar in Impostazioni di Sistema > Generali > Elementi login")
         ]
 
         for language in resourceDirectories.values {
@@ -1410,18 +1444,18 @@ final class LocalizationTests: XCTestCase {
 
     func testStartupCopyMatchesTheProductCopyAcrossAllTwelveLanguages() {
         let expected: [AppLanguage: (String, String, String, String, String, String)] = [
-            .simplifiedChinese: ("启动", "静默启动", "启动 BalanceBar 时不打开主窗口", "随 ChatGPT 启动", "若 BalanceBar 尚未运行，会随着 ChatGPT 启动时自动启动", "请在“系统设置 → 通用 → 登录项 → App 后台活动”中打开 BalanceBar"),
-            .traditionalChineseTaiwan: ("啟動", "靜默啟動", "啟動 BalanceBar 時不開啟主視窗", "隨 ChatGPT 啟動", "若 BalanceBar 尚未執行，會隨著 ChatGPT 啟動時自動啟動", "請在「系統設定 → 一般 → 登入項目 → App 背景活動」中開啟 BalanceBar"),
-            .traditionalChineseHongKong: ("啟動", "靜默啟動", "啟動 BalanceBar 時不開啟主視窗", "隨 ChatGPT 啟動", "若 BalanceBar 尚未執行，會隨著 ChatGPT 啟動時自動啟動", "請在「系統設定 → 一般 → 登入項目 → App 背景活動」中開啟 BalanceBar"),
-            .japanese: ("起動", "サイレント起動", "BalanceBarの起動時にメインウインドウを開きません", "ChatGPTと一緒に起動", "BalanceBarが実行中でなければ、ChatGPTの起動時に自動的に起動します", "システム設定 → 一般 → ログイン項目 → AppのバックグラウンドアクティビティでBalanceBarをオンにしてください"),
-            .english: ("Startup", "Launch Silently", "Start BalanceBar without opening the main window", "Launch with ChatGPT", "If BalanceBar is not already running, it will launch automatically when ChatGPT starts", "Turn on BalanceBar under System Settings → General → Login Items → App Background Activity"),
-            .korean: ("시작", "조용히 실행", "BalanceBar를 실행할 때 메인 창을 열지 않습니다", "ChatGPT와 함께 실행", "BalanceBar가 실행 중이 아니면 ChatGPT가 시작될 때 자동으로 실행됩니다", "시스템 설정 → 일반 → 로그인 항목 → 앱 백그라운드 활동에서 BalanceBar를 켜세요"),
-            .spanish: ("Inicio", "Inicio silencioso", "Inicia BalanceBar sin abrir la ventana principal", "Iniciar con ChatGPT", "Si BalanceBar aún no está en ejecución, se iniciará automáticamente cuando se abra ChatGPT", "Activa BalanceBar en Ajustes del Sistema → General → Ítems de inicio → Actividad en segundo plano de las apps"),
-            .german: ("Start", "Im Hintergrund starten", "BalanceBar starten, ohne das Hauptfenster zu öffnen", "Mit ChatGPT starten", "Wenn BalanceBar noch nicht läuft, wird es beim Start von ChatGPT automatisch gestartet", "Aktiviere BalanceBar unter Systemeinstellungen → Allgemein → Anmeldeobjekte → App-Hintergrundaktivität"),
-            .french: ("Démarrage", "Lancement silencieux", "Lancer BalanceBar sans ouvrir la fenêtre principale", "Lancer avec ChatGPT", "Si BalanceBar n’est pas déjà en cours d’exécution, il sera automatiquement lancé au démarrage de ChatGPT", "Activez BalanceBar dans Réglages Système → Général → Éléments d’ouverture → Activité en arrière-plan des apps"),
-            .portuguese: ("Arranque", "Início silencioso", "Inicia o BalanceBar sem abrir a janela principal", "Iniciar com o ChatGPT", "Se o BalanceBar ainda não estiver em execução, será iniciado automaticamente quando o ChatGPT for iniciado", "Ative o BalanceBar em Definições do Sistema → Geral → Elementos de início de sessão → Atividade em segundo plano das aplicações"),
-            .russian: ("Запуск", "Тихий запуск", "Запускать BalanceBar без открытия главного окна", "Запускать вместе с ChatGPT", "Если BalanceBar ещё не запущен, он автоматически запустится при запуске ChatGPT", "Включите BalanceBar в Системных настройках → Основные → Объекты входа → Фоновая активность приложений"),
-            .italian: ("Avvio", "Avvio silenzioso", "Avvia BalanceBar senza aprire la finestra principale", "Avvia con ChatGPT", "Se BalanceBar non è già in esecuzione, verrà avviato automaticamente all’avvio di ChatGPT", "Attiva BalanceBar in Impostazioni di Sistema → Generali → Elementi login → Attività in background delle app")
+            .simplifiedChinese: ("启动", "静默启动", "启动 BalanceBar 时不打开主窗口", "随 ChatGPT 启动", "若 BalanceBar 尚未运行，会随着 ChatGPT 启动时自动启动", "请在“系统设置”>“通用”>“登录项”>“App 后台活动”中打开 BalanceBar"),
+            .traditionalChineseTaiwan: ("啟動", "靜默啟動", "啟動 BalanceBar 時不開啟主視窗", "隨 ChatGPT 啟動", "若 BalanceBar 尚未執行，會隨著 ChatGPT 啟動時自動啟動", "請在「系統設定」>「一般」>「登入項目」>「App 背景活動」中開啟 BalanceBar"),
+            .traditionalChineseHongKong: ("啟動", "靜默啟動", "啟動 BalanceBar 時不開啟主視窗", "隨 ChatGPT 啟動", "若 BalanceBar 尚未執行，會隨著 ChatGPT 啟動時自動啟動", "請在「系統設定」>「一般」>「登入項目」>「App 背景活動」中開啟 BalanceBar"),
+            .japanese: ("起動", "サイレント起動", "BalanceBarの起動時にメインウインドウを開きません", "ChatGPTと一緒に起動", "BalanceBarが実行中でなければ、ChatGPTの起動時に自動的に起動します", "システム設定 > 一般 > ログイン項目 > AppのバックグラウンドアクティビティでBalanceBarをオンにしてください"),
+            .english: ("Startup", "Launch Silently", "Start BalanceBar without opening the main window", "Launch with ChatGPT", "If BalanceBar is not already running, it will launch automatically when ChatGPT starts", "Turn on BalanceBar under System Settings > General > Login Items > App Background Activity"),
+            .korean: ("시작", "조용히 실행", "BalanceBar를 실행할 때 메인 창을 열지 않습니다", "ChatGPT와 함께 실행", "BalanceBar가 실행 중이 아니면 ChatGPT가 시작될 때 자동으로 실행됩니다", "시스템 설정 > 일반 > 로그인 항목 > 앱 백그라운드 활동에서 BalanceBar를 켜세요"),
+            .spanish: ("Inicio", "Inicio silencioso", "Inicia BalanceBar sin abrir la ventana principal", "Iniciar con ChatGPT", "Si BalanceBar aún no está en ejecución, se iniciará automáticamente cuando se abra ChatGPT", "Activa BalanceBar en Ajustes del Sistema > General > Ítems de inicio > Actividad en segundo plano de las apps"),
+            .german: ("Start", "Im Hintergrund starten", "BalanceBar starten, ohne das Hauptfenster zu öffnen", "Mit ChatGPT starten", "Wenn BalanceBar noch nicht läuft, wird es beim Start von ChatGPT automatisch gestartet", "Aktiviere BalanceBar unter Systemeinstellungen > Allgemein > Anmeldeobjekte > App-Hintergrundaktivität"),
+            .french: ("Démarrage", "Lancement silencieux", "Lancer BalanceBar sans ouvrir la fenêtre principale", "Lancer avec ChatGPT", "Si BalanceBar n’est pas déjà en cours d’exécution, il sera automatiquement lancé au démarrage de ChatGPT", "Activez BalanceBar dans Réglages Système > Général > Éléments d’ouverture > Activité en arrière-plan des apps"),
+            .portuguese: ("Arranque", "Início silencioso", "Inicia o BalanceBar sem abrir a janela principal", "Iniciar com o ChatGPT", "Se o BalanceBar ainda não estiver em execução, será iniciado automaticamente quando o ChatGPT for iniciado", "Ative o BalanceBar em Definições do Sistema > Geral > Elementos de início de sessão > Atividade em segundo plano das aplicações"),
+            .russian: ("Запуск", "Тихий запуск", "Запускать BalanceBar без открытия главного окна", "Запускать вместе с ChatGPT", "Если BalanceBar ещё не запущен, он автоматически запустится при запуске ChatGPT", "Включите BalanceBar в Системных настройках > Основные > Объекты входа > Фоновая активность приложений"),
+            .italian: ("Avvio", "Avvio silenzioso", "Avvia BalanceBar senza aprire la finestra principale", "Avvia con ChatGPT", "Se BalanceBar non è già in esecuzione, verrà avviato automaticamente all’avvio di ChatGPT", "Attiva BalanceBar in Impostazioni di Sistema > Generali > Elementi login > Attività in background delle app")
         ]
 
         for language in resourceDirectories.values {
@@ -1491,7 +1525,7 @@ final class LocalizationTests: XCTestCase {
             "Follows CC Switch automatically",
             "Too many requests",
             "Restore Defaults",
-            "Quick links",
+            "Quick Links",
             "Changes apply",
             "No live data",
             "received yet",
@@ -1745,7 +1779,7 @@ final class LocalizationTests: XCTestCase {
                 .italian,
                 .keyDashboardMenuBarPageLunaReserveResetTime,
                 ["Riserva Luna"],
-                "Orario di ripristino di 🌙 Riserva Luna"
+                "Orario di ripristino di Riserva Luna"
             ),
             (
                 .italian,
@@ -2430,7 +2464,7 @@ final class LocalizationTests: XCTestCase {
             .traditionalChineseTaiwan: ("配額與重設", "圖示與動畫", "版面", "行為", "選單行為", "狀態連結", "選單列顯示"),
             .traditionalChineseHongKong: ("配額與重設", "圖示與動畫", "版面", "行為", "選單行為", "狀態連結", "選單列顯示"),
             .japanese: ("クォータとリセット", "アイコンとアニメーション", "レイアウト", "動作", "メニューの動作", "ステータスリンク", "メニューバーの表示"),
-            .english: ("Quota & Reset", "Icon & Animation", "Layout", "Behavior", "Menu behavior", "Status Links", "Menu Bar Display"),
+            .english: ("Quota & Reset", "Icon & Animation", "Layout", "Behavior", "Menu Behavior", "Status Links", "Menu Bar Display"),
             .korean: ("할당량 및 재설정", "아이콘 및 애니메이션", "레이아웃", "동작", "메뉴 동작", "상태 링크", "메뉴 막대 표시"),
             .spanish: ("Cuota y reinicio", "Icono y animación", "Diseño", "Comportamiento", "Comportamiento del menú", "Enlaces de estado", "Visualización de la barra de menús"),
             .german: ("Kontingent und Zurücksetzung", "Symbol und Animation", "Layout", "Verhalten", "Menüverhalten", "Statuslinks", "Anzeige der Menüleiste"),

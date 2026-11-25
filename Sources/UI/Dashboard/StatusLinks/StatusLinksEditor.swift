@@ -934,7 +934,7 @@ final class StatusLinksEditorHostingView: NSView,
         control.target = self
         control.action = #selector(performAction(_:))
         control.identifier = NSUserInterfaceItemIdentifier("statusLinks.actions")
-        control.toolTip = "Add or remove status links"
+        control.toolTip = tr(.keyStatusLinksEditorActionsTooltip)
         control.setAccessibilityLabel("Status Links actions")
     }
 
@@ -965,7 +965,7 @@ final class StatusLinksEditorHostingView: NSView,
         control.target = self
         control.action = #selector(performMoveAction(_:))
         control.identifier = NSUserInterfaceItemIdentifier("statusLinks.move")
-        control.toolTip = "Move status link up or down"
+        control.toolTip = tr(.keyStatusLinksEditorMoveTooltip)
         control.setAccessibilityLabel("Move status link")
     }
 

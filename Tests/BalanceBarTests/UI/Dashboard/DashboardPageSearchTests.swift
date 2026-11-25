@@ -895,7 +895,7 @@ final class DashboardPageSearchTests: XCTestCase {
         )
         XCTAssertFalse(isCollapsedForSearch(launchRow))
         XCTAssertFalse(
-            DashboardSettingsSearchCatalog.matchingSections(query: "Launch at Login")
+            DashboardSettingsSearchCatalog.matchingSections(query: "Open at Login")
                 .contains(.general)
         )
         XCTAssertEqual(
@@ -955,7 +955,7 @@ final class DashboardPageSearchTests: XCTestCase {
         XCTAssertFalse(DashboardPageSearch.matches("Menu Bar Font Size", query: "font menu"))
         XCTAssertFalse(DashboardPageSearch.matches("Menu Bar Font Size", query: "menubarfont"))
         XCTAssertFalse(DashboardPageSearch.matches("Language", query: "langauge"))
-        XCTAssertFalse(DashboardPageSearch.matches("Launch at Login", query: "开机启动"))
+        XCTAssertFalse(DashboardPageSearch.matches("Open at Login", query: "开机启动"))
         XCTAssertNil(DashboardSettingsSearchCatalog.firstMatchingSection(query: "langauge"))
         XCTAssertFalse(DashboardPageSearch.matches("Language", query: "zzznomatch"))
     }
@@ -4191,7 +4191,7 @@ extension DashboardPageSearchTests {
         value.operation = .uninstallSucceeded
         composition.refreshModSync()
         window.layoutIfNeeded()
-        XCTAssertEqual(row.titleLabel.stringValue, "BalanceBar Mod realtime boost")
+        XCTAssertEqual(row.titleLabel.stringValue, "BalanceBar Mod Real-Time Boost")
         XCTAssertEqual(modStatusLine(row), "● Not installed · Install to sync quota in real time",
                        "an uninstalled card should show its next action instead of stale accepted data")
         value.operation = .installing(current: .installPlugin)
