@@ -76,9 +76,42 @@ final class StatusItemControllerTests: XCTestCase {
     }
 
     @MainActor
+    func testHealthyClaudePaceMarkersDoNotEmitDiagnostics() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        var diagnostics: [String] = []
+        controller.quotaPaceDiagnosticSinkForTesting = { diagnostics.append($0) }
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        controller.quotaPaceNowForTesting = now
+        let windows = [
+            OfficialQuotaWindow(kind: .fiveHour, remaining: 62, label: "5h", daysText: "5h",
+                reset: nil, durationSeconds: 5 * 3600, resetAt: now.addingTimeInterval(37 * 60)),
+            OfficialQuotaWindow(kind: .sevenDay, remaining: 45, label: "7d", daysText: "7d",
+                reset: nil, durationSeconds: 7 * 24 * 3600, resetAt: now.addingTimeInterval(92 * 3600))
+        ]
+        let input = StatusItemController.MenuInput(choices: [], quickSwitchSummaries: [:], activeClient: .claude,
+            openAIAccount: nil, statusLinks: [], showQuickSwitchMenu: false, showOpenChatGPTMenu: false,
+            showOpenCCSwitchMenu: false, showStatusMenu: false, directProviderID: "claude-official")
+        controller.start(snapshot: .official("Claude Official", 62, "5h", nil, now, windows: windows),
+            refreshDate: now, menuInput: input, settings: makeSettings())
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        let host = try XCTUnwrap(controller.menuItemsForTesting.first?.view as? MenuHoverLinkHostView)
+        XCTAssertEqual(host.paceViews.count, 2)
+        for window in windows {
+            let view = try XCTUnwrap(host.paceViews.first { $0.quotaWindow.kind == window.kind })
+            let expected = try XCTUnwrap(OfficialQuotaUsagePace.make(for: window, now: now))
+            XCTAssertEqual(view.pace, expected)
+            XCTAssertFalse(view.isPaceMarkerMissing)
+        }
+        XCTAssertTrue(diagnostics.isEmpty, "\(diagnostics)")
+    }
+
+    @MainActor
     func testPaceAccountSwitchAndTeardownStopTimerAndInvalidateOldMarker() throws {
         let controller = makeController()
         defer { controller.teardown() }
+        var diagnostics: [String] = []
+        controller.quotaPaceDiagnosticSinkForTesting = { diagnostics.append($0) }
         let now = Date(timeIntervalSince1970: 1_700_000_000)
         controller.quotaPaceNowForTesting = now
         let quota = OfficialQuotaWindow(kind: .fiveHour, remaining: 50, label: "5h", daysText: "5h",
@@ -95,11 +128,19 @@ final class StatusItemControllerTests: XCTestCase {
         let host = try XCTUnwrap(controller.menuItemsForTesting.first?.view as? MenuHoverLinkHostView)
         let pace = try XCTUnwrap(host.paceViews.first)
         let timer = try XCTUnwrap(controller.quotaPaceTimerForTesting)
+        XCTAssertTrue(diagnostics.isEmpty, "\(diagnostics)")
         controller.updateMenu(input: input("second@example.invalid"))
         XCTAssertNil(pace.pace)
         XCTAssertFalse(pace.isTooltipVisible)
         XCTAssertNil(controller.quotaPaceTimerForTesting)
         XCTAssertFalse(timer.isValid)
+        XCTAssertEqual(diagnostics.count, 1)
+        let diagnostic = try XCTUnwrap(diagnostics.first)
+        XCTAssertTrue(diagnostic.hasPrefix("quota pace marker missing;"))
+        XCTAssertTrue(diagnostic.contains("branch=invalidate; reason=identity_mismatch"))
+        XCTAssertTrue(diagnostic.contains("snapshot_account_eq=false"))
+        XCTAssertTrue(diagnostic.contains("pace=false; marker_hidden=true"))
+        XCTAssertFalse(diagnostic.contains("example.invalid"))
         controller.teardown()
         XCTAssertFalse(pace.isMenuTracking)
     }

@@ -623,6 +623,15 @@ final class QuotaProgressPaceView: NSView, NSPopoverDelegate {
     private(set) var pace: OfficialQuotaUsagePace?
     private(set) var prediction: OfficialQuotaUsagePrediction?
     private let marker = QuotaPaceMarkerOverlay(frame: .zero)
+    private let createdAt = Date()
+    var isPaceMarkerMissing: Bool { pace == nil || marker.isHidden || marker.frame.isEmpty }
+    var paceDiagnostics: String {
+        "kind=\(quotaWindow.kind); has_reset_at=\(quotaWindow.resetAt != nil); "
+            + "has_duration=\(quotaWindow.durationSeconds != nil); pace=\(pace != nil); "
+            + "marker_hidden=\(marker.isHidden); marker_frame=\(marker.frame); center_x=\(marker.centerX); "
+            + "suspended=\(isMenuDismissalSuspended); tracking=\(isMenuTracking); "
+            + "view_age_s=\(Date().timeIntervalSince(createdAt))"
+    }
     var markerLayerForTesting: PaceTickLayer { marker.tick }
     var markerReduceMotionForTesting: Bool?
     private var reduceMarkerMotion: Bool { markerReduceMotionForTesting ?? NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
