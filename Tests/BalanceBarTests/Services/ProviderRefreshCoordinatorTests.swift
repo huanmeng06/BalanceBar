@@ -3638,11 +3638,13 @@ extension ProviderRefreshCoordinatorTests {
 
     func testCodexNetworkFailureKeepsEarlierWindowsAsStaleData() throws {
         let fixture = ObservationFixture()
+        fixture.update { $0.localPlanType = "plus"; $0.quotaPlanType = "free" }
         let clock = TestClock(date: Date(timeIntervalSince1970: 1_800_000_000))
         let coordinator = try observationCoordinator(fixture, store: try observationStore(), clock: clock)
         let fresh = try observationRefresh(coordinator, fixture: fixture, renders: 2)
         XCTAssertEqual(fresh.kind, .official)
         XCTAssertNil(fresh.staleReason)
+        XCTAssertEqual(fresh.codexPlanType, "free")
 
         fixture.update { $0.quotaTransportFailure = true }
         clock.advance(by: 120)
@@ -3650,6 +3652,7 @@ extension ProviderRefreshCoordinatorTests {
         XCTAssertEqual(stale.kind, .official, "one network failure keeps the card's data")
         XCTAssertEqual(stale.officialQuotaWindows.map(\.remaining), fresh.officialQuotaWindows.map(\.remaining))
         XCTAssertEqual(stale.date, fresh.date, "the card keeps the last successful refresh time")
+        XCTAssertEqual(stale.codexPlanType, "free")
         XCTAssertNotNil(stale.staleReason)
         XCTAssertEqual(stale.failureClient, .codex)
         XCTAssertEqual(stale.failureRecovery, .openUsagePage)
@@ -3679,6 +3682,8 @@ extension ProviderRefreshCoordinatorTests {
 private final class ObservationFixture: OfficialQuotaCredentialReading, OfficialQuotaParsing {
     struct State {
         var email = "a@example.com"
+        var localPlanType: String?
+        var quotaPlanType: String?
         var windows = ObservationFixture.windows(70, 80, cycle: 1)
         var forecast = ObservationFixture.forecast(episode: "first")
         var quotaStatus = 200
@@ -3706,7 +3711,10 @@ private final class ObservationFixture: OfficialQuotaCredentialReading, Official
     var forecastRequestCount: Int { read().forecastRequests }
     var quotaRequestCount: Int { read().quotaRequests }
     func codexAccessToken() -> String? { codexRequestCredentials().accessToken }
-    func codexAccountProfile() -> CodexAccountProfile? { CodexAccountProfile(email: read().email, planType: nil) }
+    func codexAccountProfile() -> CodexAccountProfile? {
+        let state = read()
+        return CodexAccountProfile(email: state.email, planType: state.localPlanType)
+    }
     func claudeAccessToken() -> String? { nil }
     func codexRequestCredentials() -> CodexRequestCredentials {
         let state = read()
@@ -3719,7 +3727,9 @@ private final class ObservationFixture: OfficialQuotaCredentialReading, Official
         let windows = values.map {
             OfficialQuotaWindow(kind: OfficialQuotaWindow.Kind(rawValue: $0["kind"] as! Int)!, remaining: $0["remaining"] as! Double, label: $0["label"] as! String, daysText: $0["label"] as! String, reset: nil, durationSeconds: $0["duration"] as? Double, resetAt: ($0["resetAt"] as? Double).map(Date.init(timeIntervalSince1970:)))
         }
-        return OfficialQuotaResponseParser.Output(windows: windows, bankedReset: (object["hasBankedReset"] as! Bool) ? CodexBankedReset(cards: []) : nil, bankedResetNeedsCreditList: object["needsCreditList"] as! Bool)
+        return OfficialQuotaResponseParser.Output(windows: windows,
+            bankedReset: (object["hasBankedReset"] as! Bool) ? CodexBankedReset(cards: []) : nil,
+            bankedResetNeedsCreditList: object["needsCreditList"] as! Bool, planType: object["plan_type"] as? String)
     }
     func reply(_ request: URLRequest) -> DelayedBalanceURLProtocol.Reply {
         let state = read()
@@ -3740,7 +3750,9 @@ private final class ObservationFixture: OfficialQuotaCredentialReading, Official
             value["resetAt"] = $0.resetAt?.timeIntervalSince1970
             return value
         }
-        let data = try! JSONSerialization.data(withJSONObject: ["windows": windows, "needsCreditList": state.needsCreditList, "hasBankedReset": state.hasBankedReset])
+        var payload: [String: Any] = ["windows": windows, "needsCreditList": state.needsCreditList, "hasBankedReset": state.hasBankedReset]
+        payload["plan_type"] = state.quotaPlanType
+        let data = try! JSONSerialization.data(withJSONObject: payload)
         return .init(data: data, statusCode: state.quotaStatus, delayUntil: state.quotaGate?.1,
                      headers: state.quotaRetryAfter.map { ["Retry-After": $0] } ?? [:])
     }
@@ -4110,6 +4122,37 @@ extension ProviderRefreshCoordinatorTests {
         fixture.update { $0.email = "b@example.com"; $0.windows = ObservationFixture.windows(10, 20, cycle: 1); $0.quotaGate = nil }
         coordinator.performAsync { _ = coordinator.refreshAggregation(reader: reader, force: false) }
         wait(for: [ready], timeout: 3)
+        XCTAssertEqual(fixture.quotaRequestCount, 2)
+    }
+
+    func testAggregationMissingPlanTypeFallsBackToLocalAccountAfterFreeResponse() throws {
+        let reader = try aggregationFixture(route: "codex-replacement")
+        let fixture = ObservationFixture()
+        fixture.update {
+            $0.localPlanType = "plus"
+            $0.quotaPlanType = "free"
+            $0.hasBankedReset = false
+        }
+        DelayedBalanceURLProtocol.setHandler { fixture.reply($0) }
+        let free = expectation(description: "first quota response uses the API plan")
+        let fallback = expectation(description: "second quota response uses the local plan")
+        let official = OfficialQuotaClient(session: session, credentialReader: fixture, parser: fixture)
+        let coordinator = aggregationCoordinator(official: official) { displays, _ in
+            guard let display = displays.first, display.status == .fresh else { return }
+            XCTAssertEqual(display.account?.state, .available("a@example.com"))
+            if display.snapshot.codexPlanType == "free" {
+                XCTAssertEqual(display.account?.subscription, .free)
+                free.fulfill()
+            } else {
+                XCTAssertEqual(display.account?.subscription, .plus)
+                fallback.fulfill()
+            }
+        }
+        coordinator.performAsync { _ = coordinator.refreshAggregation(reader: reader, force: true) }
+        wait(for: [free], timeout: 3)
+        fixture.update { $0.quotaPlanType = nil }
+        coordinator.performAsync { _ = coordinator.refreshAggregation(reader: reader, force: true) }
+        wait(for: [fallback], timeout: 3)
         XCTAssertEqual(fixture.quotaRequestCount, 2)
     }
 }

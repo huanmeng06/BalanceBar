@@ -662,13 +662,9 @@ final class ProviderRefreshCoordinator {
                     account: display.account, status: display.status, reason: display.reason, fetchedAt: display.fetchedAt)
                 aggregationDisplays[identity] = display
             } else {
-                let profile = entry.source.officialAccessToken != nil
-                    ? entry.source.officialAccount : officialQuotaClient.codexAccountProfile()
                 aggregationDisplays[identity] = AggregatedProviderDisplay(entry: entry, identity: identity,
                     snapshot: .loadingProvider(entry.source.name),
-                    account: entry.source.isOfficial ? OpenAIAccountPresentation.current(
-                        activeClient: .codex, providerIsOfficial: true, email: profile?.email,
-                        subscription: OpenAISubscriptionTier(planType: profile?.planType)) : nil,
+                    account: aggregationAccount(for: entry.source),
                     status: .loading, reason: nil, fetchedAt: nil)
             }
             let interval = entry.source.isOfficial ? officialInterval(for: .codex)
@@ -734,6 +730,13 @@ final class ProviderRefreshCoordinator {
         } else { scope = entry.source.configurationRevision }
         return AggregationDisplayIdentity(providerID: entry.providerID, accountScope: scope,
             configurationRevision: entry.source.configurationRevision)
+    }
+
+    private func aggregationAccount(for source: ProviderSummarySource, quotaPlanType: String? = nil) -> OpenAIAccountPresentation? {
+        guard source.isOfficial else { return nil }
+        let profile = source.officialAccessToken != nil ? source.officialAccount : officialQuotaClient.codexAccountProfile()
+        return OpenAIAccountPresentation(email: profile?.email,
+            subscription: OpenAISubscriptionTier(planType: quotaPlanType ?? profile?.planType))
     }
 
     private func cancelAggregationTransport(_ display: AggregatedProviderDisplay) {
@@ -823,12 +826,7 @@ final class ProviderRefreshCoordinator {
                         else { current.snapshot.officialRetryAt = snapshot.officialRetryAt }
                     } else {
                         current.snapshot = snapshot
-                        if let planType = snapshot.codexPlanType, let account = current.account,
-                           case .available(let email) = account.state {
-                            current.account = OpenAIAccountPresentation(email: email,
-                                subscription: OpenAISubscriptionTier(planType: planType),
-                                unavailableReason: account.unavailableReason)
-                        }
+                        current.account = self.aggregationAccount(for: current.entry.source, quotaPlanType: snapshot.codexPlanType)
                         current.status = .fresh
                         current.reason = nil
                         current.fetchedAt = snapshot.date ?? self.now()
@@ -2185,7 +2183,7 @@ final class ProviderRefreshCoordinator {
             snapshot.unit ?? representative?.label ?? "", representative?.reset, snapshot.date ?? now,
             windows: windows, lunaReserve: snapshot.lunaReserve, bankedReset: snapshot.bankedReset,
             resetForecast: snapshot.resetForecast, quotaPredictionContexts: snapshot.quotaPredictionContexts,
-            quotaPredictionAccountKey: snapshot.quotaPredictionAccountKey)
+            quotaPredictionAccountKey: snapshot.quotaPredictionAccountKey, codexPlanType: snapshot.codexPlanType)
         stale.staleReason = reason
         stale.notificationAccountScope = snapshot.notificationAccountScope
         return stale
