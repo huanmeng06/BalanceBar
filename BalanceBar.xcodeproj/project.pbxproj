@@ -81,8 +81,10 @@
 		A44600000000000000000004 /* DashboardPlatformCapabilitiesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A44600000000000000000003 /* DashboardPlatformCapabilitiesTests.swift */; };
 		A10000000000000000000070 /* OfficialQuotaClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000071 /* OfficialQuotaClient.swift */; };
 		D5211E1DA26287DFE63263F9 /* ClaudeQuotaPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = D521845FA0C39C8B1422E093 /* ClaudeQuotaPipeline.swift */; };
+		BB7130000000000000000001 /* ClaudeTokenAutoRefresher.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB7130000000000000000002 /* ClaudeTokenAutoRefresher.swift */; };
 		A10000000000000000000072 /* OfficialQuotaClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000073 /* OfficialQuotaClientTests.swift */; };
 		D52175E0AB54F466131DA8B1 /* ClaudeQuotaPipelineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5210ACBA17F4AB1AE3AE7AD /* ClaudeQuotaPipelineTests.swift */; };
+		BB7130000000000000000003 /* ClaudeTokenAutoRefresherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB7130000000000000000004 /* ClaudeTokenAutoRefresherTests.swift */; };
 		A10000000000000000000074 /* CodexActivityMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000076 /* CodexActivityMonitor.swift */; };
 		A10000000000000000000075 /* CodexActivityMonitorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000077 /* CodexActivityMonitorTests.swift */; };
 		A10000000000000000000079 /* DashboardWindowDragRegionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000007A /* DashboardWindowDragRegionTests.swift */; };
@@ -350,8 +352,10 @@
 		A44600000000000000000003 /* DashboardPlatformCapabilitiesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardPlatformCapabilitiesTests.swift; sourceTree = "<group>"; };
 		A10000000000000000000071 /* OfficialQuotaClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfficialQuotaClient.swift; sourceTree = "<group>"; };
 		D521845FA0C39C8B1422E093 /* ClaudeQuotaPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeQuotaPipeline.swift; sourceTree = "<group>"; };
+		BB7130000000000000000002 /* ClaudeTokenAutoRefresher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeTokenAutoRefresher.swift; sourceTree = "<group>"; };
 		A10000000000000000000073 /* OfficialQuotaClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfficialQuotaClientTests.swift; sourceTree = "<group>"; };
 		D5210ACBA17F4AB1AE3AE7AD /* ClaudeQuotaPipelineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeQuotaPipelineTests.swift; sourceTree = "<group>"; };
+		BB7130000000000000000004 /* ClaudeTokenAutoRefresherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeTokenAutoRefresherTests.swift; sourceTree = "<group>"; };
 		A10000000000000000000076 /* CodexActivityMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexActivityMonitor.swift; sourceTree = "<group>"; };
 		A10000000000000000000077 /* CodexActivityMonitorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexActivityMonitorTests.swift; sourceTree = "<group>"; };
 		A1000000000000000000007A /* DashboardWindowDragRegionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardWindowDragRegionTests.swift; sourceTree = "<group>"; };
@@ -794,6 +798,7 @@
 				A10000000000000000000067 /* BalanceAPIClientTests.swift */,
 				A10000000000000000000073 /* OfficialQuotaClientTests.swift */,
 				D5210ACBA17F4AB1AE3AE7AD /* ClaudeQuotaPipelineTests.swift */,
+				BB7130000000000000000004 /* ClaudeTokenAutoRefresherTests.swift */,
 				E68600000000000000000003 /* ClaudeEgressGuardTests.swift */,
 				A100000000000000000000E3 /* ProviderRefreshCoordinatorTests.swift */,
 				A4700000000000000000000B /* BalanceNotificationCoordinatorTests.swift */,
@@ -1022,6 +1027,7 @@
 				A10000000000000000000065 /* BalanceAPIClient.swift */,
 				A10000000000000000000071 /* OfficialQuotaClient.swift */,
 				D521845FA0C39C8B1422E093 /* ClaudeQuotaPipeline.swift */,
+				BB7130000000000000000002 /* ClaudeTokenAutoRefresher.swift */,
 				D53000000000000000000001 /* ClaudeRealtimeTracker.swift */,
 				E61900000000000000000001 /* ClaudeSourceTimeline.swift */,
 				E68600000000000000000001 /* ClaudeEgressGuard.swift */,
@@ -1547,6 +1553,7 @@
 				A10000000000000000000064 /* BalanceAPIClient.swift in Sources */,
 				A10000000000000000000070 /* OfficialQuotaClient.swift in Sources */,
 				D5211E1DA26287DFE63263F9 /* ClaudeQuotaPipeline.swift in Sources */,
+				BB7130000000000000000001 /* ClaudeTokenAutoRefresher.swift in Sources */,
 				D53000000000000000000011 /* ClaudeRealtimeTracker.swift in Sources */,
 				E61900000000000000000011 /* ClaudeSourceTimeline.swift in Sources */,
 				E68600000000000000000011 /* ClaudeEgressGuard.swift in Sources */,
@@ -1691,6 +1698,7 @@
 				A1000000000000000000006B /* OpenCodexCardLayoutTests.swift in Sources */,
 				A10000000000000000000072 /* OfficialQuotaClientTests.swift in Sources */,
 				D52175E0AB54F466131DA8B1 /* ClaudeQuotaPipelineTests.swift in Sources */,
+				BB7130000000000000000003 /* ClaudeTokenAutoRefresherTests.swift in Sources */,
 				E68600000000000000000013 /* ClaudeEgressGuardTests.swift in Sources */,
 				A10000000000000000000075 /* CodexActivityMonitorTests.swift in Sources */,
 				A1000000000000000000007C /* ClaudeCodeActivityMonitorTests.swift in Sources */,

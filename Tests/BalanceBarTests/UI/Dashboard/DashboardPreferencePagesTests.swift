@@ -2262,6 +2262,340 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertFalse(link.accessibilityPerformPress())
     }
 
+    func testClaudeTokenRefreshRowDimmingAndStatusCopy() throws {
+        let suite = "TokenRefreshRow.\(UUID())"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        let relay = DashboardPreferencePageRelay()
+        var opened = 0
+        relay.onOpenEgressGuardSettings = { opened += 1 }
+        let page = DashboardGeneralPage()
+        _ = page.make(.init(preferences: preferences, relay: relay,
+                            updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6")))))
+        let row = try XCTUnwrap(page.claudeTokenRefreshRow)
+        let toggle = try XCTUnwrap(page.claudeTokenRefreshSwitch)
+        let label = try XCTUnwrap(row.detailLabel as? InlineRangeLinkTextField)
+        XCTAssertTrue(row.titleAccessory is AgentIconStripView, "the icon has no audience tag")
+        XCTAssertEqual(row.titleAccessory?.intrinsicContentSize.height, 14)
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let next = now.addingTimeInterval(1800)
+        func time(_ date: Date) -> String {
+            OfficialQuotaResetFormatter.bankedResetString(for: date, relativeTo: now,
+                timeZone: .autoupdatingCurrent, includeExpired: true) ?? ""
+        }
+        let on = tr(.keyClaudeTokenRefreshStatusOn)
+        let matrix: [(Bool, ClaudeTokenRefreshModAvailability, Bool, Bool, ClaudeTokenRefreshState, [String], NSColor?)] = [
+            (false, .available, true, true, .paused, [], nil),
+            (true, .detecting, true, true, .paused, [tr(.keyClaudeTokenRefreshModDetecting)], .tertiaryLabelColor),
+            (true, .unavailable, true, true, .paused, [tr(.keyClaudeTokenRefreshModRequired)], .tertiaryLabelColor),
+            (true, .unknown, true, true, .paused, [tr(.keyClaudeTokenRefreshModUnknown)], .tertiaryLabelColor),
+            (true, .available, false, true, .idle, [tr(.keyClaudeTokenRefreshStatusOff)], .tertiaryLabelColor),
+            (true, .available, true, false, .idle, [tr(.keyClaudeTokenRefreshStatusInactive), tr(.keyClaudeTokenRefreshReasonNoTargets)], .systemOrange),
+            (true, .available, true, true, .idle, [on, tr(.keyClaudeTokenRefreshStatusArmed)], .systemGreen),
+            (true, .available, true, true, .running, [on, tr(.keyClaudeTokenRefreshStatusRunning)], .tertiaryLabelColor),
+            (true, .available, true, true, .succeeded(at: now), [on, tr(.keyClaudeTokenRefreshStatusSucceeded, arguments: [time(now)])], .systemGreen),
+            (true, .available, true, true, .failed(.egress(.mismatch), nextTryAt: next),
+             [tr(.keyClaudeTokenRefreshStatusFailed), tr(.keyClaudeTokenRefreshReasonMismatch),
+              tr(.keyClaudeTokenRefreshStatusNextTry, arguments: [time(next)])], .systemOrange),
+            (true, .available, true, true, .paused, [tr(.keyClaudeTokenRefreshStatusPaused), tr(.keyClaudeTokenRefreshReasonLoginInvalid)], .systemOrange),
+        ]
+        for (guardOn, mod, enabled, hasIPs, state, parts, color) in matrix {
+            page.refreshClaudeTokenAutoRefresh(DashboardGeneralPage.claudeTokenRefreshPresentation(
+                enabled: enabled, guardEnabled: guardOn, allowedIPs: hasIPs ? ["203.0.113.20"] : [], mod: mod, state: state, now: now))
+            XCTAssertEqual(toggle.isEnabled, guardOn && mod == .available)
+            XCTAssertEqual(toggle.state, enabled ? .on : .off)
+            XCTAssertEqual(label.hasLink, !guardOn)
+            let dot = (label.stringValue as NSString).range(of: "●")
+            if let color {
+                XCTAssertEqual(label.stringValue, tr(.keyClaudeTokenRefreshDetail) + "\n"
+                    + RealtimeBoostSettingsRows.dotPrefix + parts.joined(separator: " · "))
+                XCTAssertNotEqual(dot.location, NSNotFound)
+                if dot.location != NSNotFound {
+                    XCTAssertEqual(label.attributedStringValue.attribute(.foregroundColor, at: dot.location, effectiveRange: nil) as? NSColor, color)
+                }
+            } else {
+                XCTAssertTrue(label.stringValue.hasPrefix(tr(.keyClaudeTokenRefreshOffDetail)))
+                XCTAssertEqual(dot.location, NSNotFound)
+                XCTAssertTrue(label.accessibilityPerformPress())
+            }
+        }
+        XCTAssertEqual(opened, 1)
+    }
+
+    func testClaudeTokenRefreshShowsCurrentConflictWithoutStaleErrorsOrDisabledReads() {
+        let variable = "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"
+        let on = tr(.keyClaudeTokenRefreshStatusOn)
+        let armed = "\(on) · \(tr(.keyClaudeTokenRefreshStatusArmed))"
+        let conflict = "\(on) · \(tr(.keyClaudeTokenRefreshReasonSettingsEnv, arguments: [variable]))"
+        let now = Date()
+        let ips = ["203.0.113.20"]
+        let paused = [tr(.keyClaudeTokenRefreshStatusPaused), tr(.keyClaudeTokenRefreshReasonLoginInvalid)].joined(separator: " · ")
+        let running = "\(on) · \(tr(.keyClaudeTokenRefreshStatusRunning))"
+        let cases: [(ClaudeTokenRefreshState, String?, DashboardGeneralPage.ClaudeLoginLine.Tone, String)] = [
+            (.idle, variable, .warning, conflict),
+            (.succeeded(at: now), variable, .warning, conflict),
+            (.failed(.egress(.mismatch), nextTryAt: nil), variable, .warning, conflict),
+            (.failed(.settingsEnv(variable: variable), nextTryAt: nil), nil, .good, armed),
+            (.paused, variable, .warning, paused),
+            (.running, variable, .neutral, running),
+        ]
+        for (state, settingsConflict, tone, text) in cases {
+            let row = DashboardGeneralPage.claudeTokenRefreshPresentation(enabled: true, guardEnabled: true,
+                allowedIPs: ips, mod: .available, state: state, settingsConflict: settingsConflict)
+            XCTAssertEqual(row.statusLine, .init(tone: tone, text: text))
+        }
+        func unexpectedRead() -> String? {
+            XCTFail("Do not read settings without all dependencies")
+            return variable
+        }
+        for (enabled, guardEnabled, allowedIPs, mod) in [(false, true, ips, ClaudeTokenRefreshModAvailability.available),
+            (true, false, ips, .available), (true, true, [], .available), (true, true, ips, .unavailable)] {
+            let row = DashboardGeneralPage.claudeTokenRefreshPresentation(enabled: enabled, guardEnabled: guardEnabled,
+                allowedIPs: allowedIPs, mod: mod, state: .idle, settingsConflict: unexpectedRead())
+            if !enabled { XCTAssertEqual(row.statusLine, .init(tone: .neutral, text: tr(.keyClaudeTokenRefreshStatusOff))) }
+        }
+    }
+
+    func testClaudeTokenRefreshProxyWarningPriorityAndRecovery() {
+        let on = tr(.keyClaudeTokenRefreshStatusOn)
+        let variable = "CLAUDE_CONFIG_DIR"
+        let cases: [(ClaudeTokenRefreshState, String?, Bool, DashboardGeneralPage.ClaudeLoginLine.Tone, [String])] = [
+            (.idle, nil, true, .warning, [on, tr(.keyClaudeTokenRefreshReasonRouteUnsupported)]),
+            (.failed(.routeUnsupported, nextTryAt: nil), nil, false, .good, [on, tr(.keyClaudeTokenRefreshStatusArmed)]),
+            (.paused, nil, true, .warning, [tr(.keyClaudeTokenRefreshStatusPaused), tr(.keyClaudeTokenRefreshReasonLoginInvalid)]),
+            (.running, nil, true, .neutral, [on, tr(.keyClaudeTokenRefreshStatusRunning)]),
+            (.idle, variable, true, .warning, [on, tr(.keyClaudeTokenRefreshReasonSettingsEnv, arguments: [variable])]),
+        ]
+        for (state, conflict, proxyWarning, tone, parts) in cases {
+            let row = DashboardGeneralPage.claudeTokenRefreshPresentation(enabled: true, guardEnabled: true,
+                allowedIPs: ["203.0.113.21"], mod: .available, state: state, settingsConflict: conflict,
+                routeUnsupported: proxyWarning)
+            XCTAssertEqual(row.statusLine, .init(tone: tone, text: parts.joined(separator: " · ")))
+        }
+        func unexpectedRead() -> Bool { XCTFail("Proxy settings should not be read"); return true }
+        for (enabled, allowlist, ips, mod) in [(false, true, ["203.0.113.21"], ClaudeTokenRefreshModAvailability.available),
+            (true, false, ["203.0.113.21"], .available), (true, true, [], .available), (true, true, ["203.0.113.21"], .unavailable)] {
+            _ = DashboardGeneralPage.claudeTokenRefreshPresentation(enabled: enabled, guardEnabled: allowlist,
+                allowedIPs: ips, mod: mod, state: .idle, routeUnsupported: unexpectedRead())
+        }
+    }
+
+    func testClaudeTokenRefreshToggleRequiresAllowlistAndExplicitConfirmation() throws {
+        let suite = "TokenRefreshConfirm.\(UUID())"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.claudeEgressGuardEnabled = true
+        let page = DashboardGeneralPage()
+        let relay = DashboardPreferencePageRelay()
+        var opens = 0
+        relay.onOpenEgressGuardSettings = { opens += 1 }
+        var saved: [Bool] = []
+        var canSave = true
+        var shown: [NSAlert] = []
+        var pending: [() -> Void] = []
+        var respond: ((NSApplication.ModalResponse) -> Void)?
+        page.scheduleTokenRefreshConfirmation = { delay, work in
+            XCTAssertEqual(delay, DashboardSettingsComponents.switchAnimationDuration)
+            pending.append(work)
+        }
+        page.presentTokenRefreshAlert = { alert, _, completion in shown.append(alert); respond = completion }
+        func display(_ enabled: Bool, mod: ClaudeTokenRefreshModAvailability = .available) -> ClaudeTokenRefreshPresentation {
+            DashboardGeneralPage.claudeTokenRefreshPresentation(enabled: enabled, guardEnabled: true,
+                allowedIPs: preferences.claudeEgressGuardAllowedIPs, mod: mod, state: .idle)
+        }
+        let root = page.make(.init(preferences: preferences, relay: relay,
+            updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6"))),
+            claudeTokenAutoRefresh: display(false), onClaudeTokenAutoRefresh: { [weak page] enabled in
+                guard canSave else { return }
+                saved.append(enabled)
+                page?.refreshClaudeTokenAutoRefresh(display(enabled))
+            }, cachedAllowlistCountry: { $0 == "203.0.113.21" ? "US" : nil }))
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
+                              styleMask: .titled, backing: .buffered, defer: false)
+        window.contentView = root
+        let toggle = try XCTUnwrap(page.claudeTokenRefreshSwitch)
+        func toggleOn() {
+            let count = shown.count
+            toggle.state = .on
+            relay.claudeTokenAutoRefresh(toggle)
+            XCTAssertEqual(toggle.state, .on, "leave the native slide alone")
+            XCTAssertEqual(shown.count, count, "no sheet before the native slide finishes")
+        }
+        toggleOn()
+        pending.removeFirst()()
+        XCTAssertEqual(toggle.state, .off)
+        XCTAssertEqual(shown.last?.messageText, tr(.keyClaudeTokenRefreshEmptyTitle))
+        XCTAssertEqual(shown.last?.buttons.first?.title, tr(.keyClaudeTokenRefreshEmptyOpenSettings))
+        XCTAssertNil(shown.last?.accessoryView)
+        respond?(.alertFirstButtonReturn)
+        XCTAssertEqual(opens, 1)
+        XCTAssertTrue(saved.isEmpty)
+
+        preferences.claudeEgressGuardAllowedIPs = ["203.0.113.21", "2001:db8::2"]
+        toggleOn()
+        pending.removeFirst()()
+        let alert = try XCTUnwrap(shown.last)
+        let command = "claude plugin marketplace update balancebar-mods"
+        XCTAssertFalse(alert.informativeText.contains(command))
+        let stack = try XCTUnwrap(alert.accessoryView as? NSStackView)
+        XCTAssertEqual(stack.arrangedSubviews.count, 2, "the logo is not part of the accessory")
+        let code = try XCTUnwrap(stack.arrangedSubviews.first as? CopyableCommandBlockView)
+        XCTAssertEqual(code.codeLabel.stringValue, command)
+        XCTAssertGreaterThanOrEqual(stack.frame.width, CopyableCommandBlockView.singleLineWidth(for: command))
+        let listed = try XCTUnwrap(tokenRefreshAllowlistLabel(in: stack)).stringValue
+        XCTAssertTrue(listed.contains("• 203.0.113.21 \(IPCountryCode.displayTitle("US"))\n• 2001:db8::2"))
+        XCTAssertEqual(alert.buttons.map(\.keyEquivalent), ["\r", "\u{1b}"])
+        respond?(.alertSecondButtonReturn)
+        XCTAssertEqual(toggle.state, .off)
+        XCTAssertTrue(saved.isEmpty)
+
+        toggleOn()
+        page.refreshClaudeTokenAutoRefresh(display(false, mod: .unavailable))
+        pending.removeFirst()()
+        XCTAssertEqual(shown.count, 2, "a dependency change invalidates the pending confirmation")
+        XCTAssertEqual(toggle.state, .off)
+        XCTAssertTrue(saved.isEmpty)
+        page.refreshClaudeTokenAutoRefresh(display(false))
+
+        toggleOn()
+        pending.removeFirst()()
+        preferences.claudeEgressGuardAllowedIPs = ["203.0.113.22"]
+        respond?(.alertFirstButtonReturn)
+        XCTAssertEqual(toggle.state, .off, "an outdated allowlist cannot be confirmed")
+        XCTAssertTrue(saved.isEmpty)
+
+        canSave = false
+        toggleOn()
+        pending.removeFirst()()
+        respond?(.alertFirstButtonReturn)
+        XCTAssertEqual(toggle.state, .off, "a refused save restores the displayed state")
+        XCTAssertTrue(saved.isEmpty)
+        canSave = true
+
+        toggleOn()
+        pending.removeFirst()()
+        respond?(.alertFirstButtonReturn)
+        XCTAssertEqual(saved, [true])
+        XCTAssertEqual(toggle.state, .on)
+        toggle.state = .off
+        relay.claudeTokenAutoRefresh(toggle)
+        XCTAssertEqual(saved, [true, false])
+        XCTAssertTrue(pending.isEmpty)
+        XCTAssertEqual(shown.count, 5)
+        withExtendedLifetime(window) {}
+    }
+
+    func testBothClaudeTokenRefreshSheetsPlaceTheirLogoAboveTheTitle() throws {
+        for ips: [String] in [["203.0.113.21"], []] {
+            let host = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
+                                styleMask: .titled, backing: .buffered, defer: false)
+            let alert = DashboardGeneralPage.claudeTokenRefreshAlert(ips: ips)
+            let icon = try XCTUnwrap(alert.icon)
+            alert.beginSheetModal(for: host)
+            let sheet = try XCTUnwrap(host.attachedSheet)
+            defer { host.endSheet(sheet, returnCode: .cancel) }
+            let content = try XCTUnwrap(sheet.contentView)
+            content.layoutSubtreeIfNeeded()
+
+            func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(descendants) }
+            let visible = descendants(content).filter { !$0.isHiddenOrHasHiddenAncestor }
+            let logo = try XCTUnwrap(visible.compactMap { $0 as? NSImageView }.first { $0.image === icon })
+            let title = try XCTUnwrap(visible.compactMap { $0 as? NSTextField }.first { $0.stringValue == alert.messageText })
+            let logoFrame = logo.convert(logo.bounds, to: content)
+            let titleFrame = title.convert(title.bounds, to: content)
+            if content.isFlipped {
+                XCTAssertLessThanOrEqual(logoFrame.maxY, titleFrame.minY)
+            } else {
+                XCTAssertGreaterThanOrEqual(logoFrame.minY, titleFrame.maxY)
+            }
+        }
+    }
+
+    func testClaudeTokenRefreshSheetsKeepOnlyTheCommandCopyButton() throws {
+        let page = DashboardGeneralPage()
+        for ips: [String] in [["203.0.113.21"], []] {
+            let host = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
+                                styleMask: .titled, backing: .buffered, defer: false)
+            let alert = DashboardGeneralPage.claudeTokenRefreshAlert(ips: ips)
+            page.presentTokenRefreshAlert(alert, host) { _ in }
+            let sheet = try XCTUnwrap(host.attachedSheet)
+            defer { host.endSheet(sheet, returnCode: .cancel) }
+            let content = try XCTUnwrap(sheet.contentView)
+            content.layoutSubtreeIfNeeded()
+            func labels(in view: NSView) -> [NSTextField] {
+                ([view as? NSTextField].compactMap { $0 }) + view.subviews.flatMap(labels(in:))
+            }
+            for text in [alert.messageText, alert.informativeText] {
+                let label = try XCTUnwrap(labels(in: content).first { $0.stringValue == text })
+                XCTAssertFalse(label.isSelectable, "The sheet’s title and explanation are static labels")
+            }
+            if !ips.isEmpty {
+                let accessory = try XCTUnwrap(alert.accessoryView as? NSStackView)
+                let command = try XCTUnwrap(accessory.arrangedSubviews.first as? CopyableCommandBlockView)
+                let allowlist = try XCTUnwrap(tokenRefreshAllowlistLabel(in: accessory))
+                XCTAssertFalse(command.codeLabel.isSelectable)
+                XCTAssertFalse(allowlist.isSelectable)
+                XCTAssertTrue(command.copyButton.isEnabled)
+                XCTAssertNotNil(command.copyButton.action)
+            }
+        }
+    }
+
+    private func tokenRefreshAllowlistLabel(in accessory: NSStackView) -> NSTextField? {
+        guard let list = accessory.arrangedSubviews.last else { return nil }
+        return descendants(of: list).compactMap { $0 as? NSTextField }.first
+    }
+
+    func testClaudeTokenRefreshAllowlistAlignsWithTheBodyAndUsesItsTextColor() throws {
+        for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+            let host = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
+                                styleMask: .titled, backing: .buffered, defer: false)
+            host.appearance = NSAppearance(named: appearance)
+            let page = DashboardGeneralPage()
+            let alert = DashboardGeneralPage.claudeTokenRefreshAlert(ips: ["203.0.113.21"])
+            page.presentTokenRefreshAlert(alert, host) { _ in }
+            let sheet = try XCTUnwrap(host.attachedSheet)
+            defer { host.endSheet(sheet, returnCode: .cancel) }
+            sheet.appearance = host.appearance
+            let content = try XCTUnwrap(sheet.contentView)
+            content.layoutSubtreeIfNeeded()
+            let body = try XCTUnwrap(descendants(of: content).compactMap { $0 as? NSTextField }.first { $0.stringValue == alert.informativeText })
+            let accessory = try XCTUnwrap(alert.accessoryView as? NSStackView)
+            let allowlist = try XCTUnwrap(tokenRefreshAllowlistLabel(in: accessory))
+            func textStart(_ label: NSTextField) -> CGFloat {
+                let rect = label.cell?.drawingRect(forBounds: label.bounds) ?? label.bounds
+                return label.convert(rect, to: content).minX
+            }
+            XCTAssertEqual(textStart(allowlist), textStart(body), accuracy: 0.5)
+            content.effectiveAppearance.performAsCurrentDrawingAppearance {
+                let bodyColor = body.attributedStringValue.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
+                    ?? body.textColor
+                XCTAssertEqual(allowlist.textColor?.usingColorSpace(.deviceRGB), bodyColor?.usingColorSpace(.deviceRGB))
+            }
+        }
+    }
+
+    func testClaudeTokenRefreshConfirmShowsLocalizedCountryForCachedIPsOnly() throws {
+        let previous = AppLanguage.selected
+        defer { AppLanguage.selected = previous }
+        let languages = AppLanguage.allCases.filter { $0 != .system }
+        XCTAssertEqual(languages.count, 12)
+        for language in languages {
+            AppLanguage.selected = language
+            let alert = DashboardGeneralPage.claudeTokenRefreshAlert(ips: ["203.0.113.21", "2001:db8::2"],
+                cachedCountry: { $0 == "203.0.113.21" ? "US" : nil })
+            let stack = try XCTUnwrap(alert.accessoryView as? NSStackView)
+            let label = try XCTUnwrap(tokenRefreshAllowlistLabel(in: stack))
+            let name = try XCTUnwrap(TimeZoneCityCatalog.locale.localizedString(forRegionCode: "US"))
+            XCTAssertEqual(label.stringValue, tr(.keyClaudeTokenRefreshConfirmAllowlist,
+                arguments: ["• 203.0.113.21 🇺🇸 \(name)\n• 2001:db8::2"]))
+            if language == .simplifiedChinese { XCTAssertEqual(name, "美国") }
+            if language == .english { XCTAssertEqual(name, "United States") }
+        }
+    }
+
     func testClaudeLoginLineWordsEachStateLikeTheModStatusLine() {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let utc = TimeZone(identifier: "UTC")!
@@ -2359,7 +2693,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 .first { $0.titleLabel.stringValue == tr(.keyClaudeQuotaCalibration) })))
         XCTAssertFalse(claudeSection === section)
         XCTAssertTrue(claudeSection.headingLabel.isHidden, "the second card has no heading of its own")
-        XCTAssertEqual(claudeSection.contentViews.count, 2)
+        XCTAssertEqual(claudeSection.contentViews.count, 3)
         let calibrationRow = try XCTUnwrap(claudeSection.contentViews[0] as? SettingsRowView)
         XCTAssertEqual(calibrationRow.titleLabel.stringValue, tr(.keyClaudeQuotaCalibration))
         // The IP allowlist is off by default, so official requests are off: the row is dimmed and
@@ -2371,7 +2705,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertFalse(calibrationPopup.isEnabled)
         XCTAssertEqual(calibrationPopup.itemTitles.count, AppPreferences.claudeCalibrationIntervals.count)
         XCTAssertEqual(calibrationPopup.titleOfSelectedItem, tr(.keyClaudeRefreshEveryMinutes, arguments: ["5"]))
-        let modRow = try XCTUnwrap(claudeSection.contentViews[1] as? SettingsRowView)
+        XCTAssertEqual((claudeSection.contentViews[1] as? SettingsRowView)?.titleLabel.stringValue, tr(.keyClaudeTokenRefreshTitle))
+        let modRow = try XCTUnwrap(claudeSection.contentViews[2] as? SettingsRowView)
         XCTAssertEqual(modRow.titleLabel.stringValue, tr(.modCardRowTitle))
         let tags = [calibrationRow, modRow].map { ($0.titleAccessory as? AgentIconTagAccessoryView)?.tagView.text }
         XCTAssertEqual(tags, [tr(.keyClaudeSourceTagAllClients), tr(.keyClaudeSourceTagDesktop)],

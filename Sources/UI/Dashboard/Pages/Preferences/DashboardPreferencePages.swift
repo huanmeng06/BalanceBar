@@ -45,6 +45,8 @@ struct DashboardPreferencePageActions {
     /// time, or the footnote link flipped between "How they differ" and "Hide".
     var onSearchableCopyChanged: () -> Void = {}
     var claudeEgressGuard = ClaudeEgressGuardPageActions()
+    var claudeTokenAutoRefreshProvider: () -> ClaudeTokenRefreshPresentation? = { nil }
+    var onClaudeTokenAutoRefresh: (Bool) -> Void = { _ in }
 }
 
 final class DashboardPreferencePages {
@@ -158,7 +160,10 @@ final class DashboardPreferencePages {
                 launchWithChatGPTState: launchWithChatGPTController.currentState(),
                 modSyncStatus: actions.modSyncStatusProvider() ?? .detecting,
                 modPanelState: actions.modPanelStateProvider() ?? .intro(dismissChecked: false),
-                claudeLoginStatus: actions.claudeLoginStatusProvider()
+                claudeLoginStatus: actions.claudeLoginStatusProvider(),
+                claudeTokenAutoRefresh: actions.claudeTokenAutoRefreshProvider(),
+                onClaudeTokenAutoRefresh: actions.onClaudeTokenAutoRefresh,
+                cachedAllowlistCountry: actions.claudeEgressGuard.cachedCountry
             ))
         case .menuBar:
             return menuBarPage.make(.init(
@@ -258,6 +263,13 @@ final class DashboardPreferencePages {
         advancedPage.revealEgressGuard()
     }
 
+    @discardableResult
+    func refreshClaudeTokenAutoRefresh(_ presentation: ClaudeTokenRefreshPresentation) -> Bool {
+        let changed = generalPage.refreshClaudeTokenAutoRefresh(presentation)
+        let searchChanged = searchGeneralPage.refreshClaudeTokenAutoRefresh(presentation)
+        return changed || searchChanged
+    }
+
     func refreshClaudeEgressGuard() {
         advancedPage.refreshEgressGuard(preferences: preferences)
         searchAdvancedPage.refreshEgressGuard(preferences: preferences)
@@ -288,6 +300,9 @@ final class DashboardPreferencePages {
         let selection = preferences.displayTimeZoneSelection
         generalPage.refreshDisplayTimeZone(selection)
         searchGeneralPage.refreshDisplayTimeZone(selection)
+        if let presentation = actions.claudeTokenAutoRefreshProvider(), refreshClaudeTokenAutoRefresh(presentation) {
+            actions.onSearchableCopyChanged()
+        }
         notificationsPage?.refreshDisplayTimeZone()
         advancedPage.refreshDisplayTimeZone(preferences.effectiveDisplayTimeZone)
         searchAdvancedPage.refreshDisplayTimeZone(preferences.effectiveDisplayTimeZone)

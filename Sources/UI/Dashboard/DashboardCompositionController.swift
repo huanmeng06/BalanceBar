@@ -27,6 +27,7 @@ struct DashboardCompositionState {
     let modPanelState: () -> ModPanelState?
     let claudeSourceTimeline: () -> ClaudeSourceTimelineView.Content
     let claudeLoginStatus: () -> ClaudeLoginStatus
+    let claudeTokenAutoRefresh: () -> ClaudeTokenRefreshPresentation?
 
     init(
         preferences: AppPreferences,
@@ -52,7 +53,8 @@ struct DashboardCompositionState {
         modSyncStatus: @escaping () -> ModSyncStatus? = { nil },
         modPanelState: @escaping () -> ModPanelState? = { nil },
         claudeSourceTimeline: @escaping () -> ClaudeSourceTimelineView.Content = { .empty },
-        claudeLoginStatus: @escaping () -> ClaudeLoginStatus = { .unknown }
+        claudeLoginStatus: @escaping () -> ClaudeLoginStatus = { .unknown },
+        claudeTokenAutoRefresh: @escaping () -> ClaudeTokenRefreshPresentation? = { nil }
     ) {
         self.preferences = preferences
         self.devBundleIdentifier = devBundleIdentifier
@@ -78,6 +80,7 @@ struct DashboardCompositionState {
         self.modPanelState = modPanelState
         self.claudeSourceTimeline = claudeSourceTimeline
         self.claudeLoginStatus = claudeLoginStatus
+        self.claudeTokenAutoRefresh = claudeTokenAutoRefresh
     }
 }
 
@@ -225,6 +228,7 @@ struct DashboardCompositionActions {
     var onInstallModSync: ((NSView) -> Void)? = nil
     var onModSyncVisibilityChanged: ((Bool) -> Void)? = nil
     var claudeEgressGuard = ClaudeEgressGuardPageActions()
+    var onClaudeTokenAutoRefresh: (Bool) -> Void = { _ in }
 }
 
 /// Owns Dashboard shell, page composition, page lifecycle, and Status Links
@@ -307,7 +311,9 @@ final class DashboardCompositionController {
             claudeSourceTimelineProvider: state.claudeSourceTimeline,
             claudeLoginStatusProvider: state.claudeLoginStatus,
             onSearchableCopyChanged: { [weak self] in self?.invalidateSearchData() },
-            claudeEgressGuard: actions.claudeEgressGuard
+            claudeEgressGuard: actions.claudeEgressGuard,
+            claudeTokenAutoRefreshProvider: state.claudeTokenAutoRefresh,
+            onClaudeTokenAutoRefresh: actions.onClaudeTokenAutoRefresh
         ),
         launchAtLoginController: launchAtLoginController,
         launchWithChatGPTController: launchWithChatGPTController,
@@ -746,6 +752,10 @@ final class DashboardCompositionController {
     /// Both Advanced page copies re-read the egress guard settings, and the General page's
     /// calibration row swaps between the login line and the "official requests are off" note;
     /// both are searchable, so search data is refreshed.
+    func refreshClaudeTokenAutoRefresh(_ presentation: ClaudeTokenRefreshPresentation) {
+        if dashboardPreferencePages.refreshClaudeTokenAutoRefresh(presentation) { invalidateSearchData() }
+    }
+
     func refreshClaudeEgressGuard() {
         dashboardPreferencePages.refreshClaudeEgressGuard()
         invalidateSearchData()

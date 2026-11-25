@@ -906,24 +906,11 @@ final class ModOnboardingPanelView: NSView {
     }
 
     private func makeCodeBlock(_ text: String, action: ModPanelItem.ButtonAction) -> NSView {
-        let code = label(text, size: 11, width: contentWidth - 44)
-        code.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
-        code.isSelectable = true; code.lineBreakMode = .byCharWrapping
-        let copy = ModCopyButton(toolTip: localize(.copyCommands))
-        copy.target = self; copy.action = #selector(buttonPressed(_:))
-        copy.identifier = NSUserInterfaceItemIdentifier(String(describing: action))
-        let box = ModSurfaceView(color: .quaternarySystemFill, radius: 6)
-        code.translatesAutoresizingMaskIntoConstraints = false
-        box.addSubview(code); box.addSubview(copy)
-        NSLayoutConstraint.activate([
-            code.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: 10),
-            code.topAnchor.constraint(equalTo: box.topAnchor, constant: 8),
-            code.bottomAnchor.constraint(equalTo: box.bottomAnchor, constant: -8),
-            code.trailingAnchor.constraint(equalTo: copy.leadingAnchor, constant: -6),
-            copy.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -6),
-            copy.topAnchor.constraint(equalTo: box.topAnchor, constant: 4),
-        ])
-        return box
+        let block = CopyableCommandBlockView(command: text, width: contentWidth, toolTip: localize(.copyCommands))
+        block.copyButton.target = self
+        block.copyButton.action = #selector(buttonPressed(_:))
+        block.copyButton.identifier = NSUserInterfaceItemIdentifier(String(describing: action))
+        return block
     }
 
     private func surface(_ content: NSView, color: NSColor, padding: NSSize) -> NSView {
@@ -978,6 +965,60 @@ final class ModOnboardingPanelView: NSView {
             NSAccessibility.post(element: sender, notification: .valueChanged)
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak sender] in sender?.title = title }
         }
+    }
+}
+
+/// Shared styling for the Mod panel and the token-renewal confirmation.
+final class CopyableCommandBlockView: ModSurfaceView {
+    private static let font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
+    private static let horizontalInsets: CGFloat = 10 + 6 + ModCopyButton.side + 6
+    let codeLabel: NSTextField
+    let copyButton: ModCopyButton
+    private let copy: (String) -> Void
+
+    static func singleLineWidth(for command: String) -> CGFloat {
+        let label = NSTextField(labelWithString: command)
+        label.font = font
+        return ceil(label.fittingSize.width) + horizontalInsets
+    }
+
+    init(command: String, width: CGFloat, toolTip: String = ModOnboardingText.defaultLocalize(.copyCommands),
+         copy: @escaping (String) -> Void = { command in
+             NSPasteboard.general.clearContents()
+             NSPasteboard.general.setString(command, forType: .string)
+         }) {
+        self.copy = copy
+        codeLabel = NSTextField(wrappingLabelWithString: command)
+        copyButton = ModCopyButton(toolTip: toolTip)
+        super.init(color: .quaternarySystemFill, radius: 6)
+        codeLabel.font = Self.font
+        codeLabel.textColor = .labelColor
+        codeLabel.drawsBackground = false
+        codeLabel.backgroundColor = .clear
+        codeLabel.preferredMaxLayoutWidth = max(1, width - Self.horizontalInsets)
+        codeLabel.setContentCompressionResistancePriority(.required, for: .vertical)
+        codeLabel.isSelectable = true
+        codeLabel.lineBreakMode = .byCharWrapping
+        codeLabel.translatesAutoresizingMaskIntoConstraints = false
+        copyButton.target = self
+        copyButton.action = #selector(copyCommand)
+        addSubview(codeLabel)
+        addSubview(copyButton)
+        NSLayoutConstraint.activate([
+            codeLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
+            codeLabel.topAnchor.constraint(equalTo: topAnchor, constant: 8),
+            codeLabel.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -8),
+            codeLabel.trailingAnchor.constraint(equalTo: copyButton.leadingAnchor, constant: -6),
+            copyButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
+            copyButton.topAnchor.constraint(equalTo: topAnchor, constant: 4),
+        ])
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    @objc private func copyCommand() {
+        copy(codeLabel.stringValue)
+        copyButton.flashCopied()
     }
 }
 
@@ -1064,7 +1105,7 @@ final class ModCopyButton: NSButton {
     }
 }
 
-private final class ModSurfaceView: NSView {
+class ModSurfaceView: NSView {
     private let color: NSColor
     private let radius: CGFloat
     init(color: NSColor, radius: CGFloat = 12) { self.color = color; self.radius = radius; super.init(frame: .zero) }

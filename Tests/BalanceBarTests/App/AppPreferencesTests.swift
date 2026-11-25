@@ -9,6 +9,20 @@ final class AppPreferencesTests: XCTestCase {
         return (AppPreferences(defaults: defaults, defaultStatusLinks: [StatusLink(title: "Default", url: "https://")]), defaults, suite)
     }
 
+    func testClaudeTokenAutoRefreshDefaultsToOffAndPauseRoundTrips() {
+        let (preferences, defaults, suite) = makePreferences()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        XCTAssertFalse(preferences.claudeTokenAutoRefreshEnabled)
+        XCTAssertNil(preferences.claudeTokenAutoRefreshPausedCredential)
+        preferences.claudeTokenAutoRefreshEnabled = true
+        preferences.claudeTokenAutoRefreshPausedCredential = "signed_out"
+        let reloaded = AppPreferences(defaults: defaults)
+        XCTAssertTrue(reloaded.claudeTokenAutoRefreshEnabled)
+        XCTAssertEqual(reloaded.claudeTokenAutoRefreshPausedCredential, "signed_out")
+        preferences.claudeTokenAutoRefreshPausedCredential = nil
+        XCTAssertNil(reloaded.claudeTokenAutoRefreshPausedCredential)
+    }
+
     func testLunaReserveUserFacingStaysDisabledForShippingBuilds() {
         XCTAssertFalse(LunaReserveUserFacing.isEnabled)
         XCTAssertEqual(LunaReserveUserFacing.isCurrentlyEnabled, LunaReserveUserFacing.isEnabled)
