@@ -95,7 +95,7 @@ enum StatusSlotText: String, CaseIterable {
 
     var defaultText: String {
         switch self {
-        case .refreshing: return "刷新中…"
+        case .refreshing: return "正在刷新…"
         case .realtime: return "实时"
         case .hoverRefreshing: return "正在读取最新额度"
         case .hoverError: return "更新失败，显示的是 %@ 的数据"
@@ -112,10 +112,10 @@ enum StatusSlotText: String, CaseIterable {
         case .resetPending: return "预计已重置，等待确认"
         case .resetPendingShort: return "待确认"
         case .openUsagePage: return "打开官方用量页"
-        case .copySignInCommand: return "复制 claude 命令"
-        case .copyCodexLoginCommand: return "复制 codex login 命令"
+        case .copySignInCommand: return "拷贝 claude 命令"
+        case .copyCodexLoginCommand: return "拷贝 codex login 命令"
         case .openEgressGuardSettings: return "打开护栏设置"
-        case .copied: return "已复制"
+        case .copied: return "已拷贝"
         case .accessibilityStatus: return "额度状态：%@"
         }
     }

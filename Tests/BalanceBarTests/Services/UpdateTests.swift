@@ -2639,7 +2639,7 @@ final class UpdateTests: XCTestCase {
 
         relay.update(updateButton)
         XCTAssertEqual(fetcher.requestCount, 1)
-        XCTAssertEqual(updateButton.title, "检查中…")
+        XCTAssertEqual(updateButton.title, "正在检查…")
         XCTAssertFalse(updateButton.isEnabled)
 
         relay.update(updateButton)
@@ -2647,10 +2647,10 @@ final class UpdateTests: XCTestCase {
 
         fetcher.resolve(.success([makeRelease(tag: "v1.0.0")]))
         wait(for: [firstMinimumDurationScheduled], timeout: 2)
-        XCTAssertEqual(updateButton.title, "检查中…")
+        XCTAssertEqual(updateButton.title, "正在检查…")
         XCTAssertFalse(updateButton.isEnabled)
         scheduler.advance(by: 0.999)
-        XCTAssertEqual(updateButton.title, "检查中…")
+        XCTAssertEqual(updateButton.title, "正在检查…")
         XCTAssertFalse(updateButton.isEnabled)
         relay.update(updateButton)
         XCTAssertEqual(fetcher.requestCount, 1, "duplicate action during the minimum checking duration must stay guarded")
@@ -2661,7 +2661,7 @@ final class UpdateTests: XCTestCase {
 
         relay.update(updateButton)
         XCTAssertEqual(fetcher.requestCount, 2)
-        XCTAssertEqual(updateButton.title, "检查中…")
+        XCTAssertEqual(updateButton.title, "正在检查…")
         XCTAssertFalse(updateButton.isEnabled)
 
         relay.update(updateButton)
@@ -2669,7 +2669,7 @@ final class UpdateTests: XCTestCase {
 
         fetcher.resolve(.success([makeRelease(tag: "v1.0.0")]))
         wait(for: [secondMinimumDurationScheduled], timeout: 2)
-        XCTAssertEqual(updateButton.title, "检查中…")
+        XCTAssertEqual(updateButton.title, "正在检查…")
         XCTAssertFalse(updateButton.isEnabled)
         scheduler.advance(by: 1.0)
         wait(for: [secondLatest], timeout: 2)
@@ -3362,7 +3362,7 @@ final class UpdateTests: XCTestCase {
         XCTAssertTrue(revalidating.showsReleaseNotesButton)
         XCTAssertFalse(revalidating.buttonEnabled)
         XCTAssertFalse(revalidating.performsInstall)
-        XCTAssertEqual(revalidating.subtitle, "新版本可用：1.0.0 -> 1.5.0（正在检查更新…）")
+        XCTAssertEqual(revalidating.subtitle, "有新版本可用：1.0.0 → 1.5.0（正在检查更新…）")
 
         let recheckFailed = DashboardUpdatePresentation.make(
             for: .recheckFailed(current: current, latest: latest, failure: .rateLimited(retryAfter: 90)),
@@ -3526,7 +3526,7 @@ final class UpdateTests: XCTestCase {
         XCTAssertEqual(
             updateTestDescendants(of: page).compactMap { $0 as? NSTextField }
                 .first { $0.identifier?.rawValue == "checkForUpdatesSubtitle" }?.stringValue,
-            "新版本可用：1.0.6 -> 1.0.7"
+            "有新版本可用：1.0.6 → 1.0.7"
         )
 
         pageController.refresh(updateState: .failed(.network))
@@ -4157,28 +4157,28 @@ final class UpdateTests: XCTestCase {
             )
             switch language {
             case .simplifiedChinese:
-                XCTAssertEqual(presentation.subtitle, "新版本可用：1.0.6 -> 1.0.7")
+                XCTAssertEqual(presentation.subtitle, "有新版本可用：1.0.6 → 1.0.7")
                 XCTAssertEqual(presentation.buttonTitle, "下载并安装")
             case .traditionalChineseTaiwan, .traditionalChineseHongKong:
-                XCTAssertEqual(presentation.subtitle, "新版本可用：1.0.6 -> 1.0.7")
+                XCTAssertEqual(presentation.subtitle, "新版本可用：1.0.6 → 1.0.7")
                 XCTAssertEqual(presentation.buttonTitle, "下載並安裝")
             case .japanese:
-                XCTAssertEqual(presentation.subtitle, "新しいバージョンがあります：1.0.6 -> 1.0.7")
+                XCTAssertEqual(presentation.subtitle, "新しいバージョンがあります：1.0.6 → 1.0.7")
                 XCTAssertEqual(presentation.buttonTitle, "ダウンロードしてインストール")
             case .english:
-                XCTAssertEqual(presentation.subtitle, "New version available: 1.0.6 -> 1.0.7")
+                XCTAssertEqual(presentation.subtitle, "New version available: 1.0.6 → 1.0.7")
                 XCTAssertEqual(presentation.buttonTitle, "Download and Install")
             case .korean:
-                XCTAssertEqual(presentation.subtitle, "새 버전 사용 가능: 1.0.6 -> 1.0.7")
+                XCTAssertEqual(presentation.subtitle, "새 버전 사용 가능: 1.0.6 → 1.0.7")
                 XCTAssertEqual(presentation.buttonTitle, "다운로드 및 설치")
             case .spanish:
-                XCTAssertEqual(presentation.subtitle, "Nueva versión disponible: 1.0.6 -> 1.0.7")
+                XCTAssertEqual(presentation.subtitle, "Nueva versión disponible: 1.0.6 → 1.0.7")
                 XCTAssertEqual(presentation.buttonTitle, "Descargar e instalar")
             case .german:
-                XCTAssertEqual(presentation.subtitle, "Neue Version verfügbar: 1.0.6 -> 1.0.7")
+                XCTAssertEqual(presentation.subtitle, "Neue Version verfügbar: 1.0.6 → 1.0.7")
                 XCTAssertEqual(presentation.buttonTitle, "Laden und installieren")
             case .french:
-                XCTAssertEqual(presentation.subtitle, "Nouvelle version disponible : 1.0.6 -> 1.0.7")
+                XCTAssertEqual(presentation.subtitle, "Nouvelle version disponible : 1.0.6 → 1.0.7")
                 XCTAssertEqual(presentation.buttonTitle, "Télécharger et installer")
             case .portuguese, .russian, .italian:
                 XCTAssertFalse(presentation.subtitle.isEmpty)
@@ -4228,11 +4228,11 @@ final class UpdateTests: XCTestCase {
             )
             switch language {
             case .simplifiedChinese:
-                XCTAssertEqual(downloading.buttonTitle, "下载中 25% …")
-                XCTAssertEqual(installing.buttonTitle, "安装中 25% …")
+                XCTAssertEqual(downloading.buttonTitle, "正在下载 25%…")
+                XCTAssertEqual(installing.buttonTitle, "正在安装 25%…")
             case .traditionalChineseTaiwan, .traditionalChineseHongKong:
-                XCTAssertEqual(downloading.buttonTitle, "下載中 25% …")
-                XCTAssertEqual(installing.buttonTitle, "安裝中 25% …")
+                XCTAssertEqual(downloading.buttonTitle, "正在下載 25%…")
+                XCTAssertEqual(installing.buttonTitle, "正在安裝 25%…")
             case .japanese:
                 XCTAssertEqual(downloading.buttonTitle, "ダウンロード中 25% …")
                 XCTAssertEqual(installing.buttonTitle, "インストール中 25% …")
