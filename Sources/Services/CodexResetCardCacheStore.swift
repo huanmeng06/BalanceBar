@@ -1,0 +1,58 @@
+import Foundation
+import OSLog
+
+struct CodexResetCardCacheStore {
+    private struct StoredCache: Codable {
+        struct Credit: Codable {
+            let id: String?
+            let resetType: String
+            let apiTitle: String?
+            let expiresAt: Date?
+        }
+
+        let version: Int
+        let accountKey: String?
+        let fetchedAt: Date
+        let credits: [Credit]
+    }
+
+    private let fileURL: URL
+
+    init(fileURL: URL? = nil) {
+        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+        self.fileURL = fileURL ?? support
+            .appendingPathComponent(Bundle.main.bundleIdentifier ?? "BalanceBar", isDirectory: true)
+            .appendingPathComponent("Quota", isDirectory: true)
+            .appendingPathComponent("codex-reset-cards.json")
+    }
+
+    func save(_ reset: CodexBankedReset, accountKey: String?, fetchedAt: Date) {
+        let stored = StoredCache(version: 1, accountKey: accountKey, fetchedAt: fetchedAt, credits: reset.cards.map {
+            StoredCache.Credit(id: $0.id, resetType: $0.resetType,
+                apiTitle: $0.titleLocalizationKey == nil ? $0.titleText : nil, expiresAt: $0.expiresAt)
+        })
+        do {
+            try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            try encoder.encode(stored).write(to: fileURL, options: .atomic)
+        } catch {
+            Logger(subsystem: Bundle.main.bundleIdentifier ?? "BalanceBar", category: "Quota")
+                .debug("Codex reset-card cache write failed")
+        }
+    }
+
+    func load(now: Date) -> (reset: CodexBankedReset, fetchedAt: Date)? {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        guard let data = try? Data(contentsOf: fileURL),
+              let stored = try? decoder.decode(StoredCache.self, from: data),
+              stored.version == 1 else { return nil }
+        let cards = stored.credits.compactMap {
+            OfficialQuotaResponseParser.codexBankedResetCard(
+                id: $0.id, resetType: $0.resetType, apiTitle: $0.apiTitle, expiresAt: $0.expiresAt, now: now)
+        }.sorted(by: OfficialQuotaResponseParser.bankedResetCardSort)
+        return (CodexBankedReset(cards: cards, ownerEmail: stored.accountKey), stored.fetchedAt)
+    }
+}
