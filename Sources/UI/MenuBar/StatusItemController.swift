@@ -392,6 +392,20 @@ final class AccountMarqueeView: NSView {
         updateEdgeFadeMaskFrame()
     }
 
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        if let link = accountLabel as? HoverLinkTextField, link.animatedTextViewport === self, link.onActivate != nil {
+            addCursorRect(visibleRect, cursor: .pointingHand)
+        }
+    }
+
+    override func accessibilityPerformPress() -> Bool {
+        guard let link = accountLabel as? HoverLinkTextField, link.animatedTextViewport === self,
+              let activate = link.onActivate else { return super.accessibilityPerformPress() }
+        activate()
+        return true
+    }
+
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         if window == nil {
@@ -3077,7 +3091,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             // outlive the user's accessibility preference.
             self.updateActivityIcon()
             let hosts = self.overviewCardHosts()
-            hosts.forEach { $0.paceViews.forEach { $0.refreshMarkerAccessibility() } }
+            hosts.forEach {
+                $0.refreshMarqueeVisibility()
+                $0.paceViews.forEach { $0.refreshMarkerAccessibility() }
+            }
             MainActor.assumeIsolated {
                 hosts.forEach {
                     $0.sectionFocus.refreshAccessibility()
@@ -6853,10 +6870,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 ? snapshot.officialRetryReason(timeZone: settings.displayTimeZone) : nil
             var record: AggregationCard
             if var existing = aggregationCards[display.identity], existing.snapshot.kind == snapshot.kind {
-                if let host = existing.card as? MenuHoverLinkHostView {
+                if let host = existing.card as? MenuHoverLinkHostView, host.overviewLayout != nil {
                     reconcileOverviewSections(in: host, context: context)
-                    // Third-party cards have no section topology. Their source
-                    // link is unchanged because configuration is part of identity.
                     if snapshot.kind == .balance {
                         let presentation = snapshot.officialQuotaMenuPresentation(
                             lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
@@ -6880,10 +6895,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                                       showResetProbability: settings.showResetProbability).first {
                             content.addSubview(makeOverviewNumericProgress(plan: overviewNumericPlan(for: sample), frame: frame))
                         }
-                        let labels = content.subviews.compactMap { $0 as? NSTextField }
-                        labels.first { $0.font?.pointSize == 15 }?.stringValue = snapshot.overviewProvider
                     }
                 } else if existing.snapshot != snapshot || existing.errorRetryReason != errorRetryReason {
+                    (existing.card as? MenuHoverLinkHostView)?.setMenuContentVisible(false)
                     existing.card.removeFromSuperview()
                     existing.card = makeOverviewMenuItem(for: snapshot, context: context).view!
                     existing.wrapper.addSubview(existing.card)
@@ -6986,37 +7000,36 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func updateOverviewHeaderNotes(in card: NSView, context: OverviewCardContext) {
-        guard let title = descendantViews(of: card, as: NSTextField.self).first(where: {
-            $0.identifier?.rawValue == "overview.providerTitle"
-        }), let header = title.superview,
-        let time = descendantViews(of: card, as: NSTextField.self).first(where: {
-            $0.identifier?.rawValue == "overview.refreshTime"
-        }) else { return }
+        let header = card.subviews.first { $0 is OpenCodexAccountSectionView } ?? balanceContent(in: card)
+        guard let title = header.subviews.first(where: { $0.identifier?.rawValue == "overview.providerTitle" }),
+              let titleLabel = (title as? AccountMarqueeView)?.accountLabel ?? title as? NSTextField,
+              let titleFont = titleLabel.font,
+              let time = header.subviews.first(where: { $0.identifier?.rawValue == "overview.refreshTime" }) else { return }
+
         let prefix = "aggregation.notes." + context.identity
         let existing = header.subviews.compactMap { $0 as? AggregationNoteTagView }
-        let titleFrame: NSRect
+        let baseFrame: NSRect
         if let layout = (card as? MenuHoverLinkHostView)?.overviewLayout {
-            titleFrame = header.convert(layout.title, from: card)
-        } else { titleFrame = existing.first?.originalTitleFrame ?? title.frame }
+            baseFrame = header.convert(layout.title, from: card)
+        } else {
+            baseFrame = existing.first?.originalTitleFrame ?? title.frame
+        }
+        let available = max(0, time.frame.minX - 6 - baseFrame.minX)
+        var titleFrame = baseFrame
+        if time is StatusSlotView { titleFrame.size.width = min(baseFrame.width, available) }
         let raw = context.noteTags ?? context.notes.map { [$0] } ?? []
         let notes = raw.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
         var labels = Array(notes.prefix(2))
         if notes.count > 2 { labels.append("+\(notes.count - 2)") }
-        title.toolTip = context.snapshot.overviewProvider
-        title.setAccessibilityLabel(context.snapshot.overviewProvider)
-        title.lineBreakMode = .byTruncatingTail
-        if let link = title as? HoverLinkTextField {
-            let url = context.snapshot.websiteURL.flatMap { url -> URL? in
-                guard ["http", "https"].contains(url.scheme?.lowercased() ?? ""), url.user == nil, url.password == nil else { return nil }
-                return url
-            }
-            link.onActivate = url.map { url in { [weak self] in self?.actions.openStatusLink(url) } }
-        }
+
         for tag in existing where !labels.indices.contains(where: { tag.identifier?.rawValue == prefix + ".\($0)" }) {
             tag.removeFromSuperview()
         }
-        guard !labels.isEmpty else { title.frame = titleFrame; return }
-        let available = max(0, header.convert(time.frame, from: time.superview).minX - 6 - titleFrame.minX)
+        if labels.isEmpty {
+            updateOverviewProviderTitle(for: context.snapshot, font: titleFont, frame: titleFrame,
+                in: header, host: card as? MenuHoverLinkHostView, replacing: title)
+            return
+        }
         let font = NSFont.systemFont(ofSize: 11)
         let desired = labels.enumerated().map { index, text -> CGFloat in
             let measure = NSTextField(labelWithString: text)
@@ -7034,16 +7047,17 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let wantedExtra = max(1, desired.reduce(0, +) - minimum.reduce(0, +))
         let minimumScale = min(1, budget / max(1, minimum.reduce(0, +)))
         let widths = labels.indices.map { minimum[$0] * minimumScale + extra * max(0, desired[$0] - minimum[$0]) / wantedExtra }
-        let titleWidth = min(ceil(title.cell?.cellSize.width ?? titleFrame.width), max(0, available - widths.reduce(0, +) - gaps - 8))
-        title.frame = NSRect(x: titleFrame.minX, y: titleFrame.minY, width: titleWidth, height: titleFrame.height)
-        var x = title.frame.maxX + 8
-        let capCenter = title.frame.maxY - title.firstBaselineOffsetFromTop + (title.font?.capHeight ?? 0) / 2
+        titleFrame.size.width = max(0, available - widths.reduce(0, +) - gaps - 8)
+        let updated = updateOverviewProviderTitle(for: context.snapshot, font: titleFont, frame: titleFrame,
+            in: header, host: card as? MenuHoverLinkHostView, replacing: title, fitsBesideNotes: true)
+        var x = updated.view.frame.maxX + 8
+        let capCenter = Self.overviewBaselineY(for: updated.label, in: header) + titleFont.capHeight / 2
         for index in labels.indices {
             let id = NSUserInterfaceItemIdentifier(prefix + ".\(index)")
             let frame = NSRect(x: x, y: capCenter - 7.5, width: widths[index], height: 15)
             let tag = existing.first { $0.identifier == id } ?? AggregationNoteTagView(text: labels[index], frame: frame)
             tag.identifier = id
-            tag.originalTitleFrame = titleFrame
+            tag.originalTitleFrame = baseFrame
             tag.frame = frame
             tag.updateText(labels[index])
             if index == 2 { tag.toolTip = notes.joined(separator: "\n"); tag.setAccessibilityLabel(notes.joined(separator: ", ")) }
@@ -7632,43 +7646,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         func headerFrame(_ frame: NSRect) -> NSRect {
             frame.offsetBy(dx: -headerHost.frame.minX, dy: headerHost === view ? 0 : -headerHost.frame.minY)
         }
-        let websiteURL = snapshot.websiteURL.flatMap { url -> URL? in
-            guard let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme),
-                  url.user == nil, url.password == nil else { return nil }
-            return url
+        var titleFrame = headerFrame(layout.title)
+        if snapshot.kind == .official || snapshot.kind == .balance {
+            let time = updateOverviewRefreshTime(for: context, frame: headerFrame(layout.refreshTime), in: headerHost)
+            if time is StatusSlotView {
+                titleFrame.size.width = max(0, min(titleFrame.width, time.frame.minX - titleFrame.minX - 6))
+            }
         }
-        let provider: NSTextField
-        if isBalance, let websiteURL {
-            let link = HoverLinkTextField(text: snapshot.overviewProvider)
-            link.font = .systemFont(ofSize: 15, weight: .semibold)
-            link.restingTextColor = .labelColor
-            link.onActivate = { [weak self] in self?.actions.openStatusLink(websiteURL) }
-            view.track(link)
-            provider = link
-        } else {
-            provider = makeOverviewLabel(snapshot.overviewProvider, font: .systemFont(ofSize: 15, weight: .semibold))
-        }
-        provider.identifier = NSUserInterfaceItemIdentifier("overview.providerTitle")
-        provider.frame = headerFrame(layout.title)
-
-        let staleReason = snapshot.displayedStaleReason(timeZone: settings.displayTimeZone)
-        if snapshot.kind == .official, let quotaStatus = snapshot.quotaStatus {
-            // Claude official quota: BB-07's status slot replaces the plain refresh time.
-            let slot = StatusSlotView(localize: StatusSlotText.appLocalize, timeZone: settings.displayTimeZone)
-            applyQuotaStatus(quotaStatus, reason: staleReason, to: slot)
-            slot.identifier = NSUserInterfaceItemIdentifier("overview.refreshTime")
-            slot.frame = Self.statusSlotFrame(in: headerFrame(layout.refreshTime))
-            // The slot extends left of the refresh-time column; the title yields the space.
-            provider.frame.size.width = max(0, min(provider.frame.width, slot.frame.minX - provider.frame.minX - 6))
-            headerHost.addSubview(slot)
-        } else if snapshot.kind == .official || snapshot.kind == .balance {
-            let refreshTime = makeOverviewLabel("", font: .monospacedDigitSystemFont(ofSize: 12, weight: .regular))
-            refreshTime.alignment = .right
-            applyRefreshTime(to: refreshTime, date: context.date, staleReason: staleReason)
-            refreshTime.identifier = NSUserInterfaceItemIdentifier("overview.refreshTime")
-            refreshTime.frame = headerFrame(layout.refreshTime)
-            headerHost.addSubview(refreshTime)
-        }
+        updateOverviewProviderTitle(for: snapshot, font: .systemFont(ofSize: 15, weight: .semibold),
+            frame: titleFrame, in: headerHost, host: view)
         if let account = context.account, let accountFrame = layout.account {
             let accountLabel = makeAccountLabel(
                 account,
@@ -7809,7 +7795,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 bankedReset: bankedReset,
                 forecast: quotaPresentation.resetForecast
             )
-            headerHost.addSubview(provider)
         } else {
             let bodyHost: NSView = sectionViews[.legacyQuota] ?? view
             func attachBody(_ child: NSView) {
@@ -7878,7 +7863,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     linkPrefix.textColor = .secondaryLabelColor
                     linkPrefix.frame = layout.linkPrefix ?? .zero
                     view.addSubview(linkPrefix)
-                    if let websiteURL, let linkFrame = layout.link {
+                    if overviewWebsiteURL(snapshot) != nil, let linkFrame = layout.link {
                         let link = HoverLinkTextField(text: snapshot.provider)
                         link.frame = linkFrame
                         link.onActivate = { [weak self] in self?.actions.openProviderWebsite() }
@@ -7903,7 +7888,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 )
                 attachBody(reset)
             }
-            headerHost.addSubview(provider)
             [quotaDetail, amount].forEach(attachBody)
             if isBalance { installBalanceSection(in: view, layout: layout) }
             installNonOfficialResetSections()
@@ -7942,11 +7926,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let accountOnlyInset = promptCarriesReason
             ? baseFrames.account.map { $0.minY - baseFrames.detail.minY } : nil
         let frames = baseFrames.shiftedUp(by: isLoading ? -loadingInset : -(accountOnlyInset ?? 0))
-        let view = NSView(frame: NSRect(origin: .zero, size: frames.cardSize))
-        let provider = makeOverviewLabel(snapshot.overviewProvider, font: ErrorCardLayout.titleFont)
-        provider.frame = frames.title
-        provider.identifier = NSUserInterfaceItemIdentifier("overview.providerTitle")
-        view.addSubview(provider)
+        let view = MenuHoverLinkHostView(frame: NSRect(origin: .zero, size: frames.cardSize))
+        updateOverviewProviderTitle(for: snapshot, font: ErrorCardLayout.titleFont,
+            frame: frames.title, in: view, host: view)
         if let account = context.account, let accountFrame = frames.account {
             let accountLabel = makeAccountLabel(
                 account,
@@ -8091,6 +8073,77 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let labelBaseline = label.frame.maxY - label.firstBaselineOffsetFromTop
         let referenceBaseline = reference.frame.maxY - reference.firstBaselineOffsetFromTop
         label.frame.origin.y += referenceBaseline - labelBaseline
+    }
+
+    private func overviewWebsiteURL(_ snapshot: Snapshot) -> URL? {
+        snapshot.websiteURL.flatMap { url -> URL? in
+            guard ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
+                  url.user == nil, url.password == nil else { return nil }
+            return url
+        }
+    }
+
+    @discardableResult
+    private func updateOverviewProviderTitle(
+        for snapshot: Snapshot, font: NSFont, frame: NSRect,
+        in header: NSView, host: MenuHoverLinkHostView?, replacing existing: NSView? = nil,
+        fitsBesideNotes: Bool = false
+    ) -> (view: NSView, label: NSTextField) {
+        let text = snapshot.overviewProvider
+        let identifier = NSUserInterfaceItemIdentifier("overview.providerTitle")
+        let website = snapshot.kind == .balance ? overviewWebsiteURL(snapshot) : nil
+        let scrolls = textWidth(text, font: font) + 4 > frame.width
+        let oldMarquee = existing as? AccountMarqueeView
+        let oldLabel = oldMarquee?.accountLabel ?? existing as? NSTextField
+        let label: NSTextField
+        let title: NSView
+        if let oldLabel, let existing, scrolls == (oldMarquee != nil),
+           (website != nil) == (oldLabel is HoverLinkTextField) {
+            label = oldLabel
+            title = existing
+            if let oldMarquee {
+                if title.frame != frame {
+                    title.frame = frame
+                    oldMarquee.needsLayout = true
+                    oldMarquee.layoutSubtreeIfNeeded()
+                }
+                oldMarquee.updateText(text, preserveScrollPosition: true)
+            } else if label.stringValue != text { label.stringValue = text }
+        } else {
+            if website != nil {
+                let link = HoverLinkTextField(text: text)
+                link.font = font
+                link.restingTextColor = .labelColor
+                label = link
+            } else {
+                label = makeOverviewLabel(text, font: font)
+            }
+            label.identifier = identifier
+            if scrolls {
+                let marquee = AccountMarqueeView(text: text, font: font, textColor: .labelColor, frame: frame, label: label)
+                marquee.respectsReduceMotion = true
+                marquee.setAccessibilityElement(true)
+                marquee.setAccessibilityRole(website == nil ? .staticText : .link)
+                label.setAccessibilityElement(false)
+                (label as? HoverLinkTextField)?.animatedTextViewport = marquee
+                title = marquee
+            } else {
+                title = label
+            }
+            title.identifier = identifier
+            if let existing { header.replaceSubview(existing, with: title) }
+            else { header.addSubview(title) }
+            if let link = label as? HoverLinkTextField { host?.track(link) }
+        }
+        if !scrolls {
+            var labelFrame = frame
+            if fitsBesideNotes { labelFrame.size.width = min(frame.width, ceil(label.cell?.cellSize.width ?? frame.width)) }
+            if label.frame != labelFrame { label.frame = labelFrame }
+        }
+        (label as? HoverLinkTextField)?.onActivate = website.map { url in { [weak self] in self?.actions.openStatusLink(url) } }
+        title.toolTip = text
+        title.setAccessibilityLabel(text)
+        return (title, label)
     }
 
     private func makeMarqueeOverviewLabel(
@@ -8927,6 +8980,35 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         label.setAccessibilityLabel(staleReason.map { tr(.keyAggregationStale) + " · " + timeText + " · " + $0 } ?? timeText)
     }
 
+    @discardableResult
+    private func updateOverviewRefreshTime(for context: OverviewCardContext, frame: NSRect, in header: NSView) -> NSView {
+        let id = NSUserInterfaceItemIdentifier("overview.refreshTime")
+        let existing = header.subviews.first { $0.identifier == id }
+        let staleReason = context.snapshot.displayedStaleReason(timeZone: settings.displayTimeZone)
+        let time: NSView
+        if let quotaStatus = context.snapshot.quotaStatus, context.snapshot.kind == .official {
+            let slot = (existing as? StatusSlotView)
+                ?? StatusSlotView(localize: StatusSlotText.appLocalize, timeZone: settings.displayTimeZone)
+            slot.updateTimeZone(settings.displayTimeZone)
+            applyQuotaStatus(quotaStatus, reason: staleReason, to: slot)
+            slot.frame = Self.statusSlotFrame(in: frame)
+            time = slot
+        } else {
+            let label = (existing as? NSTextField)
+                ?? makeOverviewLabel("", font: .monospacedDigitSystemFont(ofSize: 12, weight: .regular))
+            label.alignment = .right
+            applyRefreshTime(to: label, date: context.date, staleReason: staleReason)
+            label.frame = frame
+            time = label
+        }
+        if time !== existing {
+            existing?.removeFromSuperview()
+            time.identifier = id
+            header.addSubview(time)
+        }
+        return time
+    }
+
     /// Right-aligns the fixed-size status slot inside the refresh-time frame.
     static func statusSlotFrame(in frame: NSRect) -> NSRect {
         NSRect(x: frame.maxX - StatusSlotView.fixedWidth,
@@ -9035,17 +9117,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             host.refreshMarqueeVisibility()
         }
         if let header = host.subviews.compactMap({ $0 as? OpenCodexAccountSectionView }).first {
+            updateOverviewRefreshTime(for: context, frame: header.convert(next.refreshTime, from: host), in: header)
             let labels = header.subviews.compactMap { $0 as? NSTextField }
-            let staleReason = snapshot.displayedStaleReason(timeZone: settings.displayTimeZone)
-            labels.first { $0.font?.pointSize == 15 }?.stringValue = snapshot.overviewProvider
-            if let refreshTime = labels.first(where: { $0.identifier?.rawValue == "overview.refreshTime" }) {
-                applyRefreshTime(to: refreshTime, date: context.date, staleReason: staleReason)
-            }
-            if let slot = header.subviews.compactMap({ $0 as? StatusSlotView }).first,
-               let quotaStatus = snapshot.quotaStatus {
-                slot.updateTimeZone(settings.displayTimeZone)
-                applyQuotaStatus(quotaStatus, reason: staleReason, to: slot)
-            }
             if let account = context.account, case .available(let email) = account.state {
                 descendantViews(of: header, as: AccountEmailView.self).first?.updateText(email)
             }
@@ -9125,12 +9198,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         guard statusMenu.items.first?.view != nil else { return }
         let cards = menuContentCardsForUpdate("numerics")
         let aggregated = !menuInput.aggregatedProviders.isEmpty
-        // Error cards are plain views without their own dismissal state; they
-        // follow the menu-wide gate.
-        let plainCards = aggregated && isStatusMenuTracking && !outgoingMenuIsDismissing
-            ? aggregationOverviewDisplays.filter { !(aggregationCards[$0.identity]?.card is MenuHoverLinkHostView) }
-            : []
-        guard !cards.isEmpty || !plainCards.isEmpty else { return }
+        guard !cards.isEmpty else { return }
         presentedOverviewNumerics = currentOverviewNumericSamples()
         for (host, context) in cards {
             applyInPlaceOverviewNumericUpdates(in: host, context: context)
@@ -9140,17 +9208,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 updateAggregationTimestamp(in: host, display: display)
             }
         }
-        for display in plainCards {
-            guard let card = aggregationCards[display.identity]?.card else { continue }
-            applyInPlaceOverviewNumericUpdates(in: card, context: cardContext(display))
-            updateAggregationTimestamp(in: card, display: display)
-        }
     }
 
     private func applyInPlaceOverviewNumericUpdates(in overview: NSView, context: OverviewCardContext) {
         defer { (overview as? MenuHoverLinkHostView)?.refreshLiftedTickets() }
         let snapshot = context.snapshot
-        if snapshot.kind == .balance, let host = overview as? MenuHoverLinkHostView {
+        if snapshot.kind == .balance, let host = overview as? MenuHoverLinkHostView, host.overviewLayout != nil {
             let presentation = snapshot.officialQuotaMenuPresentation(lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
                 hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota,
             showsEmptyBankedReset: settings.showEmptyBankedReset)
@@ -9165,6 +9228,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             }) {
                 applyRefreshTime(to: time, date: context.date, staleReason: context.staleBalanceReason)
             }
+        }
+        if menuInput.aggregatedProviders.isEmpty, let host = overview as? MenuHoverLinkHostView,
+           (snapshot.kind == .balance && host.overviewLayout != nil)
+            || ((snapshot.kind == .error || snapshot.kind == .placeholder) && host.overviewLayout == nil) {
+            updateOverviewHeaderNotes(in: host, context: context)
         }
         let samples = numericSamples(for: context)
         let reduceMotion = shouldReduceOverviewNumericMotion()

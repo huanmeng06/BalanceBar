@@ -1290,6 +1290,7 @@ final class OverviewNumericPresentationControllerTests: XCTestCase {
                 let content = try XCTUnwrap(overview.subviews.compactMap { $0 as? OpenCodexOverviewSectionView }
                     .first { $0.sectionID == .legacyQuota })
                 let title = try XCTUnwrap(content.subviews.first { $0.identifier?.rawValue == "overview.providerTitle" })
+                XCTAssertTrue(title is NSTextField, "the short title keeps its static frame")
                 let refresh = try XCTUnwrap(content.subviews.first { $0.identifier?.rawValue == "overview.refreshTime" })
                 let amount = try XCTUnwrap(amountViews(in: overview).first {
                     if case .thirdPartyBalance = $0.sample?.identity { return true }
