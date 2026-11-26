@@ -491,10 +491,15 @@ final class BalanceNotificationCoordinator {
 
     /// Called from the existing render/quick-switch callbacks. No timer or
     /// provider request is owned here; one source snapshot is evaluated once.
+    func process(snapshot: Snapshot, agent: BalanceNotificationAgent, providerID: String) {
+        process(snapshot: snapshot, agent: agent, providerID: providerID, adoptingLocalSettingsFrom: nil)
+    }
+
     func process(
         snapshot: Snapshot,
         agent: BalanceNotificationAgent,
-        providerID: String
+        providerID: String,
+        adoptingLocalSettingsFrom localProviderID: String?
     ) {
         let key = SnapshotKey(agent: agent, providerID: providerID)
         // Data kept on screen after a failed refresh must neither trigger an
@@ -507,6 +512,11 @@ final class BalanceNotificationCoordinator {
             // A late result from an account that is no longer signed in is not
             // a sample of the current account.
             guard self.belongsToCurrentAccount(snapshot, agent: agent) else { return }
+            if let localProviderID {
+                // Adopt before evaluating the first sample: evaluation can
+                // persist an inherited rule even while the target is disabled.
+                self.adoptLocalOfficialSettings(agent: agent, from: localProviderID, to: providerID)
+            }
             self.staleSampleKeys.remove(key)
             self.storeSnapshotOnQueue(snapshot, agent: agent, providerID: providerID)
             self.processSnapshotOnQueue(snapshot, agent: agent, providerID: providerID)

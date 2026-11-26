@@ -65,7 +65,10 @@ final class CurrentProviderResolver {
                 default: break
                 }
             }
-            return FileManager.default.fileExists(atPath: repository.databaseURL.path)
+            var entry = stat()
+            // Only ENOENT proves absence. Inaccessible parents and invalid
+            // paths must go through the repository's normal read-error path.
+            return lstat(repository.databaseURL.path, &entry) == 0 || errno != ENOENT
         }
     }
 

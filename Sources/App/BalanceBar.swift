@@ -975,10 +975,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 },
                 notificationSnapshot: { [weak self] client, providerID, snapshot in
                     guard let self else { return }
+                    let adoptionSource = snapshot.kind == .official && client != .grok
+                        && !LocalOfficialProvider.isLocalOfficialID(providerID)
+                        && self.currentCCSwitchOfficialProviderID(for: client) == providerID
+                        ? LocalOfficialProvider.id(for: client) : nil
                     self.notificationCoordinator.process(
                         snapshot: snapshot,
                         agent: Self.notificationAgent(for: client),
-                        providerID: providerID
+                        providerID: providerID,
+                        adoptingLocalSettingsFrom: adoptionSource
                     )
                 },
                 notificationSamplesInvalidated: { [weak self] client, providerIDs in
@@ -1176,7 +1181,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             activeClient: activeClient,
             providerIsOfficial: isOfficialOpenAICodex || isOfficialClaude,
             email: claudeMenuEmail ?? accountProfile?.email,
-            subscription: OpenAISubscriptionTier(planType: accountProfile?.planType, client: activeClient),
+            subscription: OpenAISubscriptionTier(
+                planType: (isOfficialOpenAICodex ? snapshot.codexPlanType : nil) ?? accountProfile?.planType,
+                client: activeClient),
             unavailableReason: claudeLoginHint
         )
         let directProviderID = providerChoicesCache.first(where: \.isCurrent)?.id ?? lastProviderID
@@ -2357,13 +2364,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         }
         for target in notificationCoordinator.monitoredNotificationTargets()
         where seen.insert(target.client).inserted {
-            providerRefreshCoordinator.refreshQuickSwitchSummaries(
-                force: force,
-                for: target.client,
-                providerIDs: target.providerIDs,
-                configurationChanged: configurationChanged
-            )
+            let localID = LocalOfficialProvider.id(for: target.client)
+            guard target.client != .grok, target.providerIDs.contains(localID) else {
+                providerRefreshCoordinator.refreshQuickSwitchSummaries(
+                    force: force, for: target.client, providerIDs: target.providerIDs,
+                    configurationChanged: configurationChanged)
+                continue
+            }
+            providerRefreshCoordinator.performAsync { [weak self] in
+                guard let self else { return }
+                var providerIDs = target.providerIDs
+                if let restoredID = self.currentCCSwitchOfficialProviderID(for: target.client) {
+                    self.notificationCoordinator.adoptLocalOfficialSettings(
+                        agent: Self.notificationAgent(for: target.client), from: localID, to: restoredID)
+                    providerIDs = self.notificationCoordinator.monitoredNotificationTargets()
+                        .first { $0.client == target.client }?.providerIDs ?? []
+                    providerIDs.remove(localID)
+                }
+                guard !providerIDs.isEmpty else { return }
+                self.providerRefreshCoordinator.refreshQuickSwitchSummaries(
+                    force: force, for: target.client, providerIDs: providerIDs,
+                    configurationChanged: configurationChanged)
+            }
         }
+    }
+
+    private func currentCCSwitchOfficialProviderID(for client: AssistantClient) -> String? {
+        guard case .ccSwitch(let provider) = currentProviderResolver.resolve(client), provider.isOfficial else { return nil }
+        return provider.id
     }
 
     private func configureRefreshTimers() {

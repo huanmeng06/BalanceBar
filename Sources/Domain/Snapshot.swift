@@ -1105,6 +1105,9 @@ struct Snapshot: Equatable {
     let lunaReserve: LunaReserveQuota?
     var bankedReset: CodexBankedReset?
     var resetForecast: CodexResetForecast
+    /// Plan reported by the Codex usage response; preferred over the token claim
+    /// for the subscription badge because it reflects a lapsed subscription.
+    var codexPlanType: String? = nil
     /// The window selected for the compact/menu-bar presentation. The full
     /// quota card keeps all source windows, so this marker prevents the
     /// selected row's exact reset timestamp from being replaced by the
@@ -1178,7 +1181,8 @@ struct Snapshot: Equatable {
         bankedReset: CodexBankedReset? = nil,
         resetForecast: CodexResetForecast = .unavailable,
         quotaPredictionContexts: [QuotaPredictionContext] = [],
-        quotaPredictionAccountKey: String? = nil
+        quotaPredictionAccountKey: String? = nil,
+        codexPlanType: String? = nil
     ) -> Snapshot {
         let fallbackWindows = windows.isEmpty
             ? [OfficialQuotaWindow(
@@ -1199,7 +1203,7 @@ struct Snapshot: Equatable {
         let representative = resolvedWindows.first(where: { $0.kind == .sevenDay })
             ?? resolvedWindows.first(where: { $0.kind == .fiveHour })
             ?? resolvedWindows[0]
-        return Snapshot(
+        var snapshot = Snapshot(
             kind: .official,
             provider: provider,
             amount: representative.remaining,
@@ -1215,6 +1219,8 @@ struct Snapshot: Equatable {
             quotaPredictionContexts: quotaPredictionContexts,
             quotaPredictionAccountKey: quotaPredictionAccountKey
         )
+        snapshot.codexPlanType = codexPlanType
+        return snapshot
     }
 
     static func balance(

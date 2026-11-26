@@ -72,6 +72,24 @@ final class CCSwitchRepositoryTests: XCTestCase {
         XCTAssertEqual(try resolver.resolveChecked(.codex), .noCurrentProvider)
     }
 
+    func testInaccessibleDatabaseIsNotTreatedAsMissing() throws {
+        let manager = FileManager.default
+        let directory = temporaryDirectoryURL.appendingPathComponent("restricted")
+        try manager.createDirectory(at: directory, withIntermediateDirectories: false)
+        let file = directory.appendingPathComponent("cc-switch.db")
+        try manager.moveItem(at: databaseURL, to: file)
+        defer { try? manager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path) }
+        try manager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: directory.path)
+        guard !manager.fileExists(atPath: file.path) else {
+            throw XCTSkip("This test requires directory traversal permissions to be enforced")
+        }
+        let resolver = CurrentProviderResolver(repository: CCSwitchRepository(databaseURL: file))
+        XCTAssertTrue(resolver.isDatabasePresent)
+        XCTAssertThrowsError(try resolver.resolveChecked(.claude)) { error in
+            XCTAssertTrue(error is CCSwitchReadError)
+        }
+    }
+
     func testLocalCodexRouteInspectorRecognizesExplicitProviderWhenRouteCannotBeParsed() throws {
         let inspector = LocalAgentRouteInspector(homeDirectoryURL: temporaryDirectoryURL)
         let file = temporaryDirectoryURL.appendingPathComponent(".codex/config.toml")
@@ -81,6 +99,10 @@ final class CCSwitchRepositoryTests: XCTestCase {
             ("model_provider = \"openai\"\nprofile = \"x\"", .undetermined),
             ("profile = \"x\"\n'model_provider' = 'ollama' # local provider", .thirdParty),
             ("profile = \"x\"\n[profiles.x]\nmodel_provider = \"ollama\"", .undetermined),
+            ("developer_instructions = \"\"\"be concise\"\"\"\nmodel_provider = \"ollama\"", .thirdParty),
+            ("profile = \"x\" # '''\nmodel_provider = \"ollama\"", .thirdParty),
+            ("developer_instructions = '''\nmodel_provider = \"ollama\"\n'''\nmodel_provider = \"openai\"", .undetermined),
+            ("developer_instructions = \"\"\"\n[fake.section]\nmodel_provider = \"openai\"\n\"\"\"\nmodel_provider = \"ollama\"", .thirdParty),
             ("model_provider = \"custom\"\n[model_providers.custom]\nname = \"OpenAI\"\nrequires_openai_auth = true\nsupports_websockets = true\nwire_api = \"responses\"\n", .official)
         ]
         for (config, expected) in cases {

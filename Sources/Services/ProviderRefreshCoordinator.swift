@@ -435,10 +435,12 @@ final class ProviderRefreshCoordinator {
     private var lastClaudePublication: (providerID: String, revision: String, snapshot: Snapshot)?
     private let actions: ProviderRefreshActions
     private let codexResetObservationStore: CodexResetObservationStore
+    private let codexResetCardCache: CodexResetCardCacheStore
     // Cadence timestamps are owned by `queue`; public entry points never read
     // or write them until their work reaches that serial boundary.
     private var lastBalanceFetch: Date?
     private var lastOfficialFetch: Date?
+    private var lastLocalCodexFetch: Date?
     private var quickSwitchSourceRevisions: [AssistantClient: [String: String]] = [:]
     private var lastStandardSourceKey: String?
     private var quickSwitchSummaryLock = NSLock()
@@ -515,6 +517,7 @@ final class ProviderRefreshCoordinator {
         balanceAPIClient: BalanceAPIClient = BalanceAPIClient(),
         balanceProgressStore: ProviderBalanceProgressStore = ProviderBalanceProgressStore(),
         codexResetObservationStore: CodexResetObservationStore = CodexResetObservationStore(),
+        codexResetCardCache: CodexResetCardCacheStore = CodexResetCardCacheStore(),
         queue: DispatchQueue = DispatchQueue(label: "local.balancebar.provider-refresh"),
         actions: ProviderRefreshActions,
         refreshPreferences: AppPreferences? = nil,
@@ -528,6 +531,7 @@ final class ProviderRefreshCoordinator {
         self.balanceAPIClient = balanceAPIClient
         self.balanceProgressStore = balanceProgressStore
         self.codexResetObservationStore = codexResetObservationStore
+        self.codexResetCardCache = codexResetCardCache
         self.queue = queue
         self.now = now
         self.refreshPreferences = refreshPreferences
@@ -665,13 +669,9 @@ final class ProviderRefreshCoordinator {
                     account: display.account, status: display.status, reason: display.reason, fetchedAt: display.fetchedAt)
                 aggregationDisplays[identity] = display
             } else {
-                let profile = entry.source.officialAccessToken != nil
-                    ? entry.source.officialAccount : officialQuotaClient.codexAccountProfile()
                 aggregationDisplays[identity] = AggregatedProviderDisplay(entry: entry, identity: identity,
                     snapshot: .loadingProvider(entry.source.name),
-                    account: entry.source.isOfficial ? OpenAIAccountPresentation.current(
-                        activeClient: .codex, providerIsOfficial: true, email: profile?.email,
-                        subscription: OpenAISubscriptionTier(planType: profile?.planType)) : nil,
+                    account: aggregationAccount(for: entry.source),
                     status: .loading, reason: nil, fetchedAt: nil)
             }
             let interval = entry.source.isOfficial ? officialInterval(for: .codex)
@@ -744,6 +744,13 @@ final class ProviderRefreshCoordinator {
         } else { scope = entry.source.configurationRevision }
         return AggregationDisplayIdentity(providerID: entry.providerID, accountScope: scope,
             configurationRevision: entry.source.configurationRevision)
+    }
+
+    private func aggregationAccount(for source: ProviderSummarySource, quotaPlanType: String? = nil) -> OpenAIAccountPresentation? {
+        guard source.isOfficial else { return nil }
+        let profile = source.officialAccessToken != nil ? source.officialAccount : officialQuotaClient.codexAccountProfile()
+        return OpenAIAccountPresentation(email: profile?.email,
+            subscription: OpenAISubscriptionTier(planType: quotaPlanType ?? profile?.planType))
     }
 
     private func cancelAggregationTransport(_ display: AggregatedProviderDisplay) {
@@ -833,6 +840,7 @@ final class ProviderRefreshCoordinator {
                         else { current.snapshot.officialRetryAt = snapshot.officialRetryAt }
                     } else {
                         current.snapshot = snapshot
+                        current.account = self.aggregationAccount(for: current.entry.source, quotaPlanType: snapshot.codexPlanType)
                         current.status = .fresh
                         current.reason = nil
                         current.fetchedAt = snapshot.date ?? self.now()
@@ -1015,6 +1023,11 @@ final class ProviderRefreshCoordinator {
                     userInitiated: userInitiated)
                 return
             }
+            if current.id == LocalOfficialProvider.id(for: .codex) {
+                lastStandardSourceKey = sourceKey
+                refreshLocalCodexQuota(current)
+                return
+            }
             let currentDate = now()
             let due = lastOfficialFetch.map { currentDate.timeIntervalSince($0) >= officialInterval(for: client) } ?? true
             let shouldRefresh = refreshPreferences != nil ? (sourceChanged || due)
@@ -1101,6 +1114,14 @@ final class ProviderRefreshCoordinator {
         let client = requestedClient ?? .codex
         queue.async { [weak self] in
             guard let self, self.lifetime.isCurrent() else { return }
+            let localCodexID = LocalOfficialProvider.id(for: .codex)
+            if client == .codex, providerIDs?.contains(localCodexID) == true,
+               case .localOfficial(let provider) = self.resolver.resolve(.codex) {
+                if !self.resolver.isDatabasePresent { self.stopAggregation(publish: true) }
+                self.refreshLocalCodexQuota(provider)
+                if providerIDs == [localCodexID] { return }
+            }
+            guard self.resolver.isDatabasePresent else { return }
             let currentDate = self.now()
             let initialLoad = !self.loadedSummaryClients.contains(client)
             // Aggregation members follow refreshAggregation's own cadence, so
@@ -1285,6 +1306,21 @@ final class ProviderRefreshCoordinator {
                 if let state = claudeQuota.latestState { self.applyClaudeSummaries(state) }
             }
         }
+    }
+
+    /// Shares the direct Codex request and its cadence with notification-only
+    /// polls, without depending on whichever agent owns the menu bar.
+    private func refreshLocalCodexQuota(_ provider: CCSwitchProvider) {
+        guard aggregationEntries.isEmpty else { return }
+        let date = now()
+        if let lastLocalCodexFetch, date.timeIntervalSince(lastLocalCodexFetch) < officialInterval(for: .codex) { return }
+        lastLocalCodexFetch = date
+        let revision = provider.configurationRevision
+        fetchOfficialQuota(providerID: provider.id, providerName: provider.name, client: .codex,
+            configurationRevision: revision,
+            isValid: { [weak self] in
+                self?.standardRequestIsCurrent(client: .codex, providerID: provider.id, revision: revision) == true
+            })
     }
 
     private func performOnQueue(_ work: @escaping () -> Void) {
@@ -1604,15 +1640,16 @@ final class ProviderRefreshCoordinator {
             }
         }
 
+        if fetchCards && token == nil {
+            let stored = codexResetCardCache.load(now: now)
+            finish(stored?.reset, stored?.fetchedAt)
+            return
+        }
         guard cardFetchDue else {
             finish(cached?.cards, cached?.cardsFetchedAt)
             return
         }
-        guard nonOfficialResetRequests[providerID] == nil else { return }
-        guard let token else {
-            finish(cached?.cards, cached?.cardsFetchedAt)
-            return
-        }
+        guard nonOfficialResetRequests[providerID] == nil, let token else { return }
         let requestID = UUID()
         let requestContext = OfficialQuotaRequestContext(
             client: .codex,
@@ -1628,10 +1665,15 @@ final class ProviderRefreshCoordinator {
                 guard self.nonOfficialResetRequests[providerID] == requestID else { return }
                 self.nonOfficialResetRequests.removeValue(forKey: providerID)
                 self.nonOfficialResetRequestContexts.removeValue(forKey: providerID)
+                guard isCurrent() else { return }
                 switch result {
                 case .success(var cards):
                     cards?.ownerEmail = credentials.accountKey
-                    finish(cards, self.now())
+                    let fetchedAt = self.now()
+                    if let cards {
+                        self.codexResetCardCache.save(cards, accountKey: credentials.accountKey, fetchedAt: fetchedAt)
+                    }
+                    finish(cards, fetchedAt)
                 case .failure:
                     // Keep the five-minute throttle, not stale Codex reset credits.
                     finish(nil, self.now())
@@ -1654,7 +1696,8 @@ final class ProviderRefreshCoordinator {
             return snapshot
         }
         let credentials = officialQuotaClient.codexRequestCredentials()
-        let scopeMatches = state.accountScope == nil || state.accountScope == credentials.requestScope
+        let accountScope = credentials.accessToken?.isEmpty == false ? credentials.requestScope : nil
+        let scopeMatches = state.accountScope == accountScope
         guard !showCards || scopeMatches else { return snapshot }
         var next = snapshot
         next.bankedReset = showCards ? state.cards : nil
@@ -2029,7 +2072,8 @@ final class ProviderRefreshCoordinator {
                             bankedReset: client == .codex ? ownedReset : nil,
                             resetForecast: resolvedForecast,
                             quotaPredictionContexts: predictionContexts,
-                            quotaPredictionAccountKey: client == .codex ? accountKey : nil
+                            quotaPredictionAccountKey: client == .codex ? accountKey : nil,
+                            codexPlanType: client == .codex ? response.output.planType : nil
                         )
                         publish(
                             snapshot,
@@ -2052,6 +2096,9 @@ final class ProviderRefreshCoordinator {
                         self.performOnQueue {
                             guard credentialsMatch(false),
                                   isCurrentQuota() else { return }
+                            if client == .codex, let bankedReset {
+                                self.codexResetCardCache.save(bankedReset, accountKey: accountKey, fetchedAt: self.now())
+                            }
                             guard client == .codex, bankedReset != nil || self.cachedCodexResetForecast != nil else {
                                 renderOfficial(bankedReset, cachedForecast)
                                 return
@@ -2188,7 +2235,7 @@ final class ProviderRefreshCoordinator {
             snapshot.unit ?? representative?.label ?? "", representative?.reset, snapshot.date ?? now,
             windows: windows, lunaReserve: snapshot.lunaReserve, bankedReset: snapshot.bankedReset,
             resetForecast: snapshot.resetForecast, quotaPredictionContexts: snapshot.quotaPredictionContexts,
-            quotaPredictionAccountKey: snapshot.quotaPredictionAccountKey)
+            quotaPredictionAccountKey: snapshot.quotaPredictionAccountKey, codexPlanType: snapshot.codexPlanType)
         stale.staleReason = reason
         stale.notificationAccountScope = snapshot.notificationAccountScope
         return stale

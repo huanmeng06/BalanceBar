@@ -183,7 +183,7 @@ final class DashboardContentSafeAreaTests: XCTestCase {
 
     func testStartupSettingsRowKeepsIntrinsicHeightWhenDocumentIsTallerThanContent() throws {
         let launchAtLogin = DashboardSettingsComponents.makeSettingsRow(
-            "登录时自动启动",
+            "登录时打开",
             subtitle: "登录 Mac 后自动启动 BalanceBar",
             control: NSSwitch()
         )

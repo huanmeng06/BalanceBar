@@ -75,17 +75,20 @@ struct LocalAgentRouteInspector {
     }
 
     private static func topLevelCodexProvider(in config: String) -> String? {
-        for raw in config.components(separatedBy: .newlines) {
+        // Keep ordinary quoted keys/values intact, but hide comments and
+        // multiline values (including an unterminated value through EOF).
+        let ignoredOrQuoted = #/"{3}(?:[^"\\]|\\[\s\S]|"{1,2}(?!"))*(?:"{3,5}|\z)|'{3}(?:[^']|'{1,2}(?!'))*(?:'{3,5}|\z)|#[^\r\n]*|("(?:[^"\\\r\n]|\\[^\r\n])*"|'[^'\r\n]*')/#
+        let visible = config.replacing(ignoredOrQuoted) { match in
+            match.output.1.map(String.init) ?? " "
+        }
+        for raw in visible.components(separatedBy: .newlines) {
             let line = raw.trimmingCharacters(in: .whitespaces)
             if line.hasPrefix("[") { break }
-            if line.hasPrefix("#") { continue }
-            if let match = line.wholeMatch(of: #/(?:model_provider|"model_provider"|'model_provider')[ \t]*=[ \t]*("(?:[^"\\]|\\.)*"|'[^']*')[ \t]*(?:#.*)?/#) {
+            if let match = line.wholeMatch(of: #/(?:model_provider|"model_provider"|'model_provider')[ \t]*=[ \t]*("(?:[^"\\]|\\.)*"|'[^']*')/#) {
                 let value = match.output.1
                 if value.hasPrefix("'") { return String(value.dropFirst().dropLast()) }
                 return (try? JSONSerialization.jsonObject(with: Data(value.utf8), options: .fragmentsAllowed)) as? String
             }
-            // Do not mistake assignments inside an unsupported multiline string for TOML keys.
-            if line.contains("\"\"\"") || line.contains("'''") { break }
         }
         return nil
     }

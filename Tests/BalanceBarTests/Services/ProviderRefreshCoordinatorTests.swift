@@ -428,6 +428,8 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         preferences.showNonOfficialBankedReset = true
 
         let rendered = expectation(description: "balance and attached reset-card snapshots")
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let cache = makeResetCardCache()
         rendered.expectedFulfillmentCount = 2
         let lock = NSLock()
         var snapshots: [Snapshot] = []
@@ -438,6 +440,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
                 credentialReader: FixtureCredentialReader(codexToken: "fixture-codex-token", codexEmail: "owner@example.com")
             ),
             balanceAPIClient: BalanceAPIClient(session: session),
+            codexResetCardCache: cache,
             actions: ProviderRefreshActions(
                 currentProvider: { [repository] client in repository?.loadCurrent(appType: client.appType) },
                 isActiveClient: { _ in true },
@@ -448,7 +451,8 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
                 storeClientSnapshot: { _, _, _ in },
                 quickSwitchSummaryChanged: { _ in }
             ),
-            refreshPreferences: preferences
+            refreshPreferences: preferences,
+            now: { now }
         )
 
         let current = try XCTUnwrap(repository.loadCurrent(appType: "codex"))
@@ -465,6 +469,41 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         XCTAssertEqual(balance.bankedReset?.ownerEmail, "owner@example.com")
         XCTAssertEqual(balance.bankedReset?.cards.first?.id, "relay-card")
         XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 2)
+        let stored = try XCTUnwrap(cache.load(now: now))
+        XCTAssertEqual(stored.reset, balance.bankedReset)
+
+        for (showCards, showNonOfficialCards) in [(true, true), (false, true), (true, false)] {
+            preferences.showBankedReset = showCards
+            preferences.showNonOfficialBankedReset = showNonOfficialCards
+            let directRendered = expectation(description: "balance after restart without Codex login")
+            var directSnapshot: Snapshot?
+            let direct = makeCoordinator(
+                repository: repository,
+                officialQuotaClient: OfficialQuotaClient(session: session,
+                    credentialReader: FixtureCredentialReader(codexToken: nil)),
+                codexResetCardCache: cache,
+                actions: ProviderRefreshActions(
+                    currentProvider: { [repository] client in repository?.loadCurrent(appType: client.appType) },
+                    isActiveClient: { _ in true },
+                    render: { snapshot in
+                        guard snapshot.kind == .balance, directSnapshot == nil else { return }
+                        directSnapshot = snapshot
+                        directRendered.fulfill()
+                    },
+                    storeClientSnapshot: { _, _, _ in },
+                    quickSwitchSummaryChanged: { _ in }),
+                refreshPreferences: preferences,
+                now: { now })
+            let before = DelayedBalanceURLProtocol.requestCount
+            direct.refreshStandardProvider(current: current, client: .codex, forceBalance: true, switched: false)
+            wait(for: [directRendered], timeout: 3)
+            waitForCoordinator(direct)
+            XCTAssertEqual(try XCTUnwrap(directSnapshot).bankedReset,
+                showCards && showNonOfficialCards ? stored.reset : nil)
+            XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, before + 1)
+            XCTAssertEqual(cache.load(now: now)?.reset, stored.reset)
+            direct.stop()
+        }
     }
 
     func testNonOfficialCodexResetCardFailureKeepsSuccessfulBalance() throws {
@@ -482,6 +521,9 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         preferences.showNonOfficialBankedReset = true
 
         let rendered = expectation(description: "balance and isolated reset-card fallback")
+        let cache = makeResetCardCache()
+        let prior = CodexBankedReset(cards: [], ownerEmail: "previous@example.com")
+        cache.save(prior, accountKey: prior.ownerEmail, fetchedAt: .now)
         rendered.expectedFulfillmentCount = 2
         let lock = NSLock()
         var snapshots: [Snapshot] = []
@@ -492,6 +534,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
                 credentialReader: FixtureCredentialReader(codexToken: "fixture-codex-token")
             ),
             balanceAPIClient: BalanceAPIClient(session: session),
+            codexResetCardCache: cache,
             actions: ProviderRefreshActions(
                 currentProvider: { [repository] client in repository?.loadCurrent(appType: client.appType) },
                 isActiveClient: { _ in true },
@@ -516,6 +559,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(balance.amount), 9.87, accuracy: 0.000001)
         XCTAssertNil(balance.bankedReset)
         XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 2)
+        XCTAssertEqual(cache.load(now: .now)?.reset, prior)
     }
 
     func testNonOfficialCodexResetFailureClearsPriorCardsButKeepsAttemptThrottle() throws {
@@ -665,7 +709,12 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
             actions: ProviderRefreshActions(
                 currentProvider: { [repository] client in repository?.loadCurrent(appType: client.appType) },
                 isActiveClient: { _ in true },
-                render: { snapshot in if snapshot.kind == .balance { rendered.fulfill() } },
+                render: { snapshot in
+                    if snapshot.kind == .balance {
+                        XCTAssertNil(snapshot.bankedReset)
+                        rendered.fulfill()
+                    }
+                },
                 storeClientSnapshot: { _, _, _ in },
                 quickSwitchSummaryChanged: { _ in }),
             refreshPreferences: preferences)
@@ -948,6 +997,55 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         wait(for: [rendered], timeout: 3)
     }
 
+    func testBackgroundLocalCodexPollUsesOfficialCadenceAndDeliversNotification() throws {
+        try FileManager.default.removeItem(at: databaseURL)
+        try FileManager.default.removeItem(at: temporaryDirectoryURL.appendingPathComponent(".codex/config.toml"))
+        let suite = "ProviderRefreshCoordinatorTests.LocalCodex.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let client = FakeBalanceNotificationClient(status: .authorized, requestResult: true)
+        let notifications = BalanceNotificationCoordinator(defaults: defaults, client: client)
+        let providerID = LocalOfficialProvider.id(for: .codex)
+        notifications.setGlobalEnabled(true)
+        notifications.setAgentEnabled(true, agent: .gpt)
+        notifications.setProviderEnabled(true, agent: .gpt, providerID: providerID)
+        let target = try XCTUnwrap(notifications.monitoredNotificationTargets().first)
+        let clock = TestClock(date: Date(timeIntervalSince1970: 1_700_000_000))
+        let sample = DispatchSemaphore(value: 0)
+        let resolver = CurrentProviderResolver(repository: repository)
+        DelayedBalanceURLProtocol.setHandler { _ in DelayedBalanceURLProtocol.success(amount: "0.00") }
+        let coordinator = makeCoordinator(repository: repository,
+            officialQuotaClient: OfficialQuotaClient(session: session,
+                credentialReader: FixtureCredentialReader(codexToken: "fixture-token"),
+                parser: IncrementingOfficialQuotaParser(counter: IncrementingCounter())),
+            actions: ProviderRefreshActions(
+                currentProvider: resolver.currentProvider, isActiveClient: { $0 == .claude },
+                render: { _ in XCTFail("background Codex quota must not replace the Claude card") },
+                storeClientSnapshot: { _, _, _ in }, quickSwitchSummaryChanged: { _ in },
+                notificationSnapshot: { agent, id, snapshot in
+                    XCTAssertEqual(agent, .codex)
+                    XCTAssertEqual(id, providerID)
+                    notifications.process(snapshot: snapshot, agent: .gpt, providerID: id)
+                    sample.signal()
+                }),
+            now: { clock.now })
+        func poll() {
+            coordinator.refreshQuickSwitchSummaries(force: false, for: target.client, providerIDs: target.providerIDs)
+        }
+        poll()
+        waitForEvent(sample)
+        XCTAssertEqual(client.deliveries.count, 1)
+        clock.advance(by: 3)
+        poll()
+        waitForCoordinator(coordinator)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 1)
+        clock.advance(by: 57)
+        poll()
+        waitForEvent(sample)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 2)
+        XCTAssertEqual(client.deliveries.count, 1, "the next low sample does not repeat the alert")
+    }
+
     func testOfficialProviderCadenceRetainsSixtySecondIntervalAndResetBehavior() throws {
         try setCurrentProvider("codex-replacement")
         let clock = TestClock(date: Date(timeIntervalSince1970: 1_700_000_000))
@@ -1107,6 +1205,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
             )
         }
         let rendered = expectation(description: "official snapshot with usage credits")
+        let cache = makeResetCardCache()
         rendered.expectedFulfillmentCount = 2
         var captured: Snapshot?
         let coordinator = makeCoordinator(
@@ -1120,6 +1219,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
                 )
             ),
             balanceAPIClient: BalanceAPIClient(session: session),
+            codexResetCardCache: cache,
             queue: DispatchQueue(label: "test.provider-refresh-banked-reset-usage"),
             actions: ProviderRefreshActions(
                 currentProvider: { [repository] client in
@@ -1144,6 +1244,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         wait(for: [rendered], timeout: 2)
         XCTAssertEqual(try XCTUnwrap(captured).officialQuotaWindows.map(\.kind), [.fiveHour, .sevenDay])
         XCTAssertEqual(try XCTUnwrap(captured).bankedReset?.availableCount, 1)
+        XCTAssertEqual(cache.load(now: Date(timeIntervalSince1970: 1_700_000_000))?.reset.cards.first?.id, "usage-card")
         XCTAssertEqual(try XCTUnwrap(captured).resetForecast.probability24h, .percent(24))
         XCTAssertEqual(try XCTUnwrap(captured).resetForecast.probability48h, .percent(42))
         XCTAssertEqual(try XCTUnwrap(captured).resetForecast.confidence, .low)
@@ -1157,6 +1258,9 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
 
     func testOfficialRefreshHidesBankedResetWhenCreditListFailsAndKeepsQuotaWindows() throws {
         try setCurrentProvider("codex-replacement")
+        let cache = makeResetCardCache()
+        let prior = CodexBankedReset(cards: [], ownerEmail: "previous@example.com")
+        cache.save(prior, accountKey: prior.ownerEmail, fetchedAt: .now)
         let fiveHour = OfficialQuotaWindow(
             kind: .fiveHour,
             remaining: 80,
@@ -1211,6 +1315,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
                 )
             ),
             balanceAPIClient: BalanceAPIClient(session: session),
+            codexResetCardCache: cache,
             queue: DispatchQueue(label: "test.provider-refresh-banked-reset-list-failure"),
             actions: ProviderRefreshActions(
                 currentProvider: { [repository] client in
@@ -1238,6 +1343,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         XCTAssertEqual(snapshot.officialQuotaWindows.map(\.remaining), [80, 45])
         XCTAssertNil(snapshot.bankedReset)
         XCTAssertEqual(snapshot.resetForecast, .unavailable)
+        XCTAssertEqual(cache.load(now: .now)?.reset, prior)
         requestLock.lock()
         let paths = requestPaths
         requestLock.unlock()
@@ -1289,6 +1395,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
             )
         }
         let rendered = expectation(description: "official snapshot after list success")
+        let cache = makeResetCardCache()
         rendered.expectedFulfillmentCount = 2
         var captured: Snapshot?
         let coordinator = makeCoordinator(
@@ -1302,6 +1409,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
                 )
             ),
             balanceAPIClient: BalanceAPIClient(session: session),
+            codexResetCardCache: cache,
             queue: DispatchQueue(label: "test.provider-refresh-banked-reset-list-success"),
             actions: ProviderRefreshActions(
                 currentProvider: { [repository] client in
@@ -1329,6 +1437,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         XCTAssertEqual(snapshot.officialQuotaWindows.map(\.kind), [.fiveHour, .sevenDay])
         XCTAssertEqual(snapshot.bankedReset?.availableCount, 1)
         XCTAssertEqual(snapshot.bankedReset?.cards.first?.resetType, "codex_rate_limits")
+        XCTAssertEqual(cache.load(now: fixedNow)?.reset, snapshot.bankedReset)
         XCTAssertEqual(snapshot.resetForecast.probability24h, .percent(24))
         XCTAssertEqual(snapshot.resetForecast.probability48h, .percent(42))
         XCTAssertEqual(snapshot.resetForecast.confidence, .low)
@@ -3076,6 +3185,10 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         return try XCTUnwrap(snapshots.last)
     }
 
+    private func makeResetCardCache() -> CodexResetCardCacheStore {
+        CodexResetCardCacheStore(fileURL: temporaryDirectoryURL.appendingPathComponent("\(UUID().uuidString).json"))
+    }
+
     private func makeCoordinator(
         repository: CCSwitchRepository,
         officialQuotaClient: OfficialQuotaClient,
@@ -3084,6 +3197,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         balanceAPIClient: BalanceAPIClient? = nil,
         balanceProgressStore: ProviderBalanceProgressStore = ProviderBalanceProgressStore(),
         codexResetObservationStore: CodexResetObservationStore = CodexResetObservationStore(),
+        codexResetCardCache: CodexResetCardCacheStore? = nil,
         queue: DispatchQueue = DispatchQueue(label: "test.provider-refresh.owner"),
         actions: ProviderRefreshActions,
         refreshPreferences: AppPreferences? = nil,
@@ -3093,7 +3207,8 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         let coordinator = ProviderRefreshCoordinator(repository: repository, officialQuotaClient: officialQuotaClient,
             balanceAPIClient: balanceAPIClient ?? BalanceAPIClient(session: session),
             balanceProgressStore: balanceProgressStore,
-            codexResetObservationStore: codexResetObservationStore, queue: queue, actions: actions,
+            codexResetObservationStore: codexResetObservationStore,
+            codexResetCardCache: codexResetCardCache ?? makeResetCardCache(), queue: queue, actions: actions,
             refreshPreferences: refreshPreferences, claudeQuota: claudeQuota, now: now)
         coordinators.append(coordinator)
         return coordinator
@@ -3661,11 +3776,13 @@ extension ProviderRefreshCoordinatorTests {
 
     func testCodexNetworkFailureKeepsEarlierWindowsAsStaleData() throws {
         let fixture = ObservationFixture()
+        fixture.update { $0.localPlanType = "plus"; $0.quotaPlanType = "free" }
         let clock = TestClock(date: Date(timeIntervalSince1970: 1_800_000_000))
         let coordinator = try observationCoordinator(fixture, store: try observationStore(), clock: clock)
         let fresh = try observationRefresh(coordinator, fixture: fixture, renders: 2)
         XCTAssertEqual(fresh.kind, .official)
         XCTAssertNil(fresh.staleReason)
+        XCTAssertEqual(fresh.codexPlanType, "free")
 
         fixture.update { $0.quotaTransportFailure = true }
         clock.advance(by: 120)
@@ -3673,6 +3790,7 @@ extension ProviderRefreshCoordinatorTests {
         XCTAssertEqual(stale.kind, .official, "one network failure keeps the card's data")
         XCTAssertEqual(stale.officialQuotaWindows.map(\.remaining), fresh.officialQuotaWindows.map(\.remaining))
         XCTAssertEqual(stale.date, fresh.date, "the card keeps the last successful refresh time")
+        XCTAssertEqual(stale.codexPlanType, "free")
         XCTAssertNotNil(stale.staleReason)
         XCTAssertEqual(stale.failureClient, .codex)
         XCTAssertEqual(stale.failureRecovery, .openUsagePage)
@@ -3702,6 +3820,8 @@ extension ProviderRefreshCoordinatorTests {
 private final class ObservationFixture: OfficialQuotaCredentialReading, OfficialQuotaParsing {
     struct State {
         var email = "a@example.com"
+        var localPlanType: String?
+        var quotaPlanType: String?
         var windows = ObservationFixture.windows(70, 80, cycle: 1)
         var forecast = ObservationFixture.forecast(episode: "first")
         var quotaStatus = 200
@@ -3729,7 +3849,10 @@ private final class ObservationFixture: OfficialQuotaCredentialReading, Official
     var forecastRequestCount: Int { read().forecastRequests }
     var quotaRequestCount: Int { read().quotaRequests }
     func codexAccessToken() -> String? { codexRequestCredentials().accessToken }
-    func codexAccountProfile() -> CodexAccountProfile? { CodexAccountProfile(email: read().email, planType: nil) }
+    func codexAccountProfile() -> CodexAccountProfile? {
+        let state = read()
+        return CodexAccountProfile(email: state.email, planType: state.localPlanType)
+    }
     func claudeAccessToken() -> String? { nil }
     func codexRequestCredentials() -> CodexRequestCredentials {
         let state = read()
@@ -3742,7 +3865,9 @@ private final class ObservationFixture: OfficialQuotaCredentialReading, Official
         let windows = values.map {
             OfficialQuotaWindow(kind: OfficialQuotaWindow.Kind(rawValue: $0["kind"] as! Int)!, remaining: $0["remaining"] as! Double, label: $0["label"] as! String, daysText: $0["label"] as! String, reset: nil, durationSeconds: $0["duration"] as? Double, resetAt: ($0["resetAt"] as? Double).map(Date.init(timeIntervalSince1970:)))
         }
-        return OfficialQuotaResponseParser.Output(windows: windows, bankedReset: (object["hasBankedReset"] as! Bool) ? CodexBankedReset(cards: []) : nil, bankedResetNeedsCreditList: object["needsCreditList"] as! Bool)
+        return OfficialQuotaResponseParser.Output(windows: windows,
+            bankedReset: (object["hasBankedReset"] as! Bool) ? CodexBankedReset(cards: []) : nil,
+            bankedResetNeedsCreditList: object["needsCreditList"] as! Bool, planType: object["plan_type"] as? String)
     }
     func reply(_ request: URLRequest) -> DelayedBalanceURLProtocol.Reply {
         let state = read()
@@ -3763,7 +3888,9 @@ private final class ObservationFixture: OfficialQuotaCredentialReading, Official
             value["resetAt"] = $0.resetAt?.timeIntervalSince1970
             return value
         }
-        let data = try! JSONSerialization.data(withJSONObject: ["windows": windows, "needsCreditList": state.needsCreditList, "hasBankedReset": state.hasBankedReset])
+        var payload: [String: Any] = ["windows": windows, "needsCreditList": state.needsCreditList, "hasBankedReset": state.hasBankedReset]
+        payload["plan_type"] = state.quotaPlanType
+        let data = try! JSONSerialization.data(withJSONObject: payload)
         return .init(data: data, statusCode: state.quotaStatus, delayUntil: state.quotaGate?.1,
                      headers: state.quotaRetryAfter.map { ["Retry-After": $0] } ?? [:])
     }
@@ -4133,6 +4260,37 @@ extension ProviderRefreshCoordinatorTests {
         fixture.update { $0.email = "b@example.com"; $0.windows = ObservationFixture.windows(10, 20, cycle: 1); $0.quotaGate = nil }
         coordinator.performAsync { _ = coordinator.refreshAggregation(reader: reader, force: false) }
         wait(for: [ready], timeout: 3)
+        XCTAssertEqual(fixture.quotaRequestCount, 2)
+    }
+
+    func testAggregationMissingPlanTypeFallsBackToLocalAccountAfterFreeResponse() throws {
+        let reader = try aggregationFixture(route: "codex-replacement")
+        let fixture = ObservationFixture()
+        fixture.update {
+            $0.localPlanType = "plus"
+            $0.quotaPlanType = "free"
+            $0.hasBankedReset = false
+        }
+        DelayedBalanceURLProtocol.setHandler { fixture.reply($0) }
+        let free = expectation(description: "first quota response uses the API plan")
+        let fallback = expectation(description: "second quota response uses the local plan")
+        let official = OfficialQuotaClient(session: session, credentialReader: fixture, parser: fixture)
+        let coordinator = aggregationCoordinator(official: official) { displays, _ in
+            guard let display = displays.first, display.status == .fresh else { return }
+            XCTAssertEqual(display.account?.state, .available("a@example.com"))
+            if display.snapshot.codexPlanType == "free" {
+                XCTAssertEqual(display.account?.subscription, .free)
+                free.fulfill()
+            } else {
+                XCTAssertEqual(display.account?.subscription, .plus)
+                fallback.fulfill()
+            }
+        }
+        coordinator.performAsync { _ = coordinator.refreshAggregation(reader: reader, force: true) }
+        wait(for: [free], timeout: 3)
+        fixture.update { $0.quotaPlanType = nil }
+        coordinator.performAsync { _ = coordinator.refreshAggregation(reader: reader, force: true) }
+        wait(for: [fallback], timeout: 3)
         XCTAssertEqual(fixture.quotaRequestCount, 2)
     }
 }

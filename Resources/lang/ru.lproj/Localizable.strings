@@ -99,6 +99,8 @@
 "response.parsers.quota" = "Квота";
 "response.parsers.7_days.4" = "7д";
 "response.parsers.quota.2" = "Квота";
+"response.parsers.30_day_quota" = "Квота на 30 дней";
+"response.parsers.30_days" = "30д";
 "provider.balance.progress.store.the_balance_data_is_invalid" = "Данные баланса недействительны";
 "provider.balance.progress.store.the_balance_unit_is_invalid" = "Единица баланса недействительна";
 "provider.balance.progress.store.the_balance_unit_changed" = "Единица баланса изменилась";
@@ -164,7 +166,7 @@
 "dashboard.general.and.refresh.pages.checking" = "Проверка…";
 "dashboard.general.and.refresh.pages.you_are_up_to_date" = "У вас последняя версия";
 "dashboard.general.and.refresh.pages.check_for_updates.2" = "Проверить обновления";
-"dashboard.general.and.refresh.pages.new_version_available_value_value" = "Доступна новая версия: %1$@ -> %2$@";
+"dashboard.general.and.refresh.pages.new_version_available_value_value" = "Доступна новая версия: %1$@ → %2$@";
 "dashboard.general.and.refresh.pages.download_and_install" = "Загрузить и установить";
 "dashboard.general.and.refresh.pages.ignore_this_version" = "Игнорировать эту версию";
 "dashboard.general.and.refresh.pages.view_release_notes" = "Просмотреть заметки о выпуске";
@@ -197,17 +199,17 @@
 "dashboard.general.and.refresh.pages.update_check_failure_suggestion_http_too_many_requests" = "Подождите немного перед повторной попыткой и избегайте частых проверок.";
 "dashboard.general.and.refresh.pages.update_check_failure_suggestion_invalid_response" = "Повторите попытку позже; если проблема сохранится, обратитесь к сопровождающему проекта.";
 "dashboard.general.and.refresh.pages.update_check_failure_suggestion_invalid_release_version" = "Повторите попытку позже; если проблема сохранится, обратитесь к сопровождающему проекта.";
-"dashboard.general.and.refresh.pages.update_available_revalidating_value_value" = "Доступна новая версия: %1$@ -> %2$@; идёт проверка обновлений…";
+"dashboard.general.and.refresh.pages.update_available_revalidating_value_value" = "Доступна новая версия: %1$@ → %2$@; идёт проверка обновлений…";
 "dashboard.general.and.refresh.pages.update_check_failed_update_retained_value_value_value" = "Найденное в прошлый раз обновление: %1$@; в этот раз получить его не удалось.\nПричина: %2$@\nПредложение: %3$@";
 "dashboard.general.and.refresh.pages.update_check_failure_reason_rate_limited" = "Достигнут лимит запросов к GitHub API";
 "dashboard.general.and.refresh.pages.update_check_failure_suggestion_rate_limited_wait_value" = "GitHub ограничивает запросы обновлений; повторите попытку примерно через %1$@ мин. Также можно включить или сменить прокси и сразу повторить попытку.";
 "dashboard.general.and.refresh.pages.retry" = "Повторить";
 "dashboard.general.and.refresh.pages.open_cc_switch" = "Открыть CC Switch";
 "dashboard.general.and.refresh.pages.cc_switch" = "CC Switch";
-"dashboard.general.and.refresh.pages.launch_at_login" = "Запуск при входе";
+"dashboard.general.and.refresh.pages.launch_at_login" = "Открывать при входе";
 "dashboard.general.and.refresh.pages.launch_at_login_description" = "Автоматически запускать BalanceBar после входа на Mac";
-"dashboard.general.and.refresh.pages.launch_at_login_requires_approval" = "Автоматически запускать BalanceBar после входа на Mac";
-"dashboard.general.and.refresh.pages.launch_at_login_operation_failed" = "Не удалось обновить настройку запуска при входе. Проверьте раздел «Системные настройки» → «Основные» → «Объекты входа» и повторите попытку.";
+"dashboard.general.and.refresh.pages.launch_at_login_requires_approval" = "Разрешите BalanceBar в разделе Системные настройки > Основные > Объекты входа";
+"dashboard.general.and.refresh.pages.launch_at_login_operation_failed" = "Не удалось обновить настройку «Открывать при входе». Проверьте раздел «Системные настройки» > «Основные» > «Объекты входа» и повторите попытку.";
 "dashboard.general.and.refresh.pages.launch_at_login_unavailable" = "Не удалось прочитать состояние объекта входа";
 "dashboard.general.and.refresh.pages.launch_at_login_open_settings" = "Открыть настройки";
 "dashboard.general.and.refresh.pages.startup" = "Запуск";
@@ -215,8 +217,8 @@
 "dashboard.general.and.refresh.pages.silent_launch_description" = "Запускать BalanceBar без открытия главного окна";
 "dashboard.general.and.refresh.pages.launch_with_chatgpt" = "Запускать вместе с ChatGPT";
 "dashboard.general.and.refresh.pages.launch_with_chatgpt_description" = "Если BalanceBar ещё не запущен, он автоматически запустится при запуске ChatGPT";
-"dashboard.general.and.refresh.pages.launch_with_chatgpt_requires_approval" = "Включите BalanceBar в Системных настройках → Основные → Объекты входа → Фоновая активность приложений";
-"dashboard.general.and.refresh.pages.launch_with_chatgpt_operation_failed" = "Не удалось обновить настройку запуска вместе с ChatGPT. Проверьте Системные настройки → Основные → Объекты входа и повторите попытку.";
+"dashboard.general.and.refresh.pages.launch_with_chatgpt_requires_approval" = "Включите BalanceBar в Системных настройках > Основные > Объекты входа > Фоновая активность приложений";
+"dashboard.general.and.refresh.pages.launch_with_chatgpt_operation_failed" = "Не удалось обновить настройку запуска вместе с ChatGPT. Проверьте Системные настройки > Основные > Объекты входа и повторите попытку.";
 "dashboard.general.and.refresh.pages.launch_with_chatgpt_unavailable" = "Не удалось прочитать состояние службы запуска ChatGPT";
 "dashboard.general.and.refresh.pages.current_provider_value" = "Текущий провайдер: %1$@";
 "dashboard.general.and.refresh.pages.connection_mode_line" = "%1$@: %2$@ · %3$@";
@@ -295,11 +297,11 @@
 "dashboard.menu.bar.page.quota_reset_display_remaining" = "Оставшееся время";
 "dashboard.menu.bar.page.quota_reset_display_target" = "Время сброса";
 "dashboard.menu.bar.page.quota_reset_display_both" = "Показывать оба";
-"dashboard.menu.bar.page.auto_switch_luna_reserve" = "🌙 Автопереключение на %1$@";
-"dashboard.menu.bar.page.auto_switch_luna_reserve_description" = "После входа в 🌙 %1$@ автоматически переключает квоту, отображаемую в строке меню.";
-"dashboard.menu.bar.page.luna_reserve_reset_time" = "Время сброса 🌙 %1$@";
-"dashboard.menu.bar.page.luna_reserve_reset_time_description" = "После входа в 🌙 %1$@ выберите, продолжать ли показывать время сброса исходной квоты или квоты 🌙 %1$@.";
-"dashboard.menu.bar.page.luna_reserve_reset_time_luna_reserve" = "🌙 %1$@";
+"dashboard.menu.bar.page.auto_switch_luna_reserve" = "Автопереключение на %1$@";
+"dashboard.menu.bar.page.auto_switch_luna_reserve_description" = "После входа в %1$@ автоматически переключает квоту, отображаемую в строке меню";
+"dashboard.menu.bar.page.luna_reserve_reset_time" = "Время сброса %1$@";
+"dashboard.menu.bar.page.luna_reserve_reset_time_description" = "После входа в %1$@ выберите, продолжать ли показывать время сброса исходной квоты или квоты %1$@";
+"dashboard.menu.bar.page.luna_reserve_reset_time_luna_reserve" = "%1$@";
 "dashboard.menu.bar.page.luna_reserve_reset_time_original_quota" = "Исходная квота";
 "dashboard.menu.bar.page.animation" = "Режим анимации";
 "dashboard.menu.bar.page.animation_mode_description_efficient" = "Производительность: значительно снижает использование системных ресурсов; при работе с несколькими дисплеями анимация на неактивных дисплеях приостанавливается и загорается\nBeta: из-за ограничений системы macOS значок на дополнительном дисплее иногда может пропадать; перезапустите BalanceBar, чтобы это исправить";
@@ -368,13 +370,13 @@
 "dashboard.menu.page.show_quota_progress_bar_description" = "Если выключено, меню и карточки квоты больше не показывают индикатор оставшейся квоты";
 "dashboard.menu.page.show_quota_pace_indicator" = "Показывать темп использования";
 "dashboard.menu.page.show_quota_pace_indicator_description" = "Показывать ориентир равномерного использования для официальных квот на 5 часов и 7 дней";
-"dashboard.menu.page.luna_reserve_display_mode" = "Отображение 🌙 %1$@";
-"dashboard.menu.page.luna_reserve_display_mode_description" = "Выберите, когда показывать 🌙 %1$@ в меню";
+"dashboard.menu.page.luna_reserve_display_mode" = "Отображение %1$@";
+"dashboard.menu.page.luna_reserve_display_mode_description" = "Выберите, когда показывать %1$@ в меню";
 "dashboard.menu.page.luna_reserve_display_mode_disabled" = "Не показывать";
 "dashboard.menu.page.luna_reserve_display_mode_when_quota_exhausted" = "Показывать после исчерпания квоты";
 "dashboard.menu.page.luna_reserve_display_mode_always" = "Всегда показывать";
 "dashboard.menu.page.hide_exhausted_quota" = "Скрывать исчерпанные квоты";
-"dashboard.menu.page.hide_exhausted_quota_description" = "Если включено, исчерпанные квоты скрываются в меню при отображении 🌙 %1$@";
+"dashboard.menu.page.hide_exhausted_quota_description" = "Если включено, исчерпанные квоты скрываются в меню при отображении %1$@";
 "dashboard.menu.page.low_balance_display_threshold" = "Порог предупреждения о низком балансе";
 "dashboard.menu.page.after_a_recharge_keep_the_progress_bar_red_while_the_balance_remains_below_this_amount" = "После пополнения оставлять индикатор выполнения красным, пока баланс ниже этого значения";
 "dashboard.menu.page.show_banked_reset" = "Показывать карты сброса";
@@ -410,7 +412,7 @@
 "dashboard.menu.page.open_project" = "Быстрые ссылки";
 "dashboard.menu.page.status_links" = "Ссылки статуса";
 "dashboard.menu.page.show_customizable_service_status_links.2" = "Настроить ссылки «Посмотреть состояние»";
-"dashboard.menu.page.show_status_links_in_the_menu_bar.2" = "Показывать ссылки на состояние в строке меню";
+"dashboard.menu.page.show_status_links_in_the_menu_bar.2" = "Показывать ссылки на состояние сервисов в строке меню";
 "dashboard.provider.pages.select_this_provider_to_display_detailed_reset_information" = "Выберите этого провайдера, чтобы посмотреть подробные сведения о времени сброса квоты";
 "dashboard.provider.pages.usage" = "Использование";
 "dashboard.provider.pages.remaining_balance" = "Оставшийся баланс";
@@ -452,6 +454,8 @@
 "status.links.editor.open_link" = "Открыть ссылку";
 "status.links.editor.copy_url" = "Скопировать URL";
 "status.links.editor.copy_item" = "Скопировать элемент";
+"status.links.editor.actions_tooltip" = "Добавить или удалить ссылки на статус";
+"status.links.editor.move_tooltip" = "Переместить ссылку на статус вверх или вниз";
 "status.links.editor.action_completed" = "Действие выполнено";
 "status.item.controller.refresh_now" = "Обновить сейчас";
 "status.item.controller.open_main_window" = "Открыть главное окно";
@@ -526,7 +530,7 @@
 "common.restore_defaults" = "Восстановить значения по умолчанию";
 
 "codex.banked_reset.official_hint_confirmed" = "Этот цикл завершён";
-"codex.banked_reset.official_reset_confirmed" = "✅ Сброшено";
+"codex.banked_reset.official_reset_confirmed" = "Сброшено";
 "codex.banked_reset.window_deadline_countdown" = "Окно сброса";
 
 "codex.reset_signal.tooltip_title" = "Официальный сигнал сброса";
@@ -708,7 +712,7 @@
 "claude.login.reason.keychain" = "Связка ключей не разрешила прочитать данные входа";
 "claude.login.action.retry" = "Нажмите «Обновить сейчас», чтобы разрешить снова";
 "claude.quota.calibration_off_detail" = "Официальные запросы Claude выключены, этот интервал не действует.";
-"claude.quota.calibration_off_link" = "Настроить белый список IP…";
+"claude.quota.calibration_off_link" = "Настроить белый список IP";
 "claude.token_refresh.title" = "Автообновление токена входа";
 "claude.token_refresh.detail" = "Продлевает вход в Claude Code в фоне, когда он истекает";
 "claude.token_refresh.off_detail" = "Официальные запросы Claude выключены, автообновление не действует.";
@@ -748,7 +752,7 @@
 // BalanceBar Mod realtime sync (Issue #597)
 "claude.mod_sync.title" = "BalanceBar Mod ускорение реального времени";
 "claude.mod_sync.manage" = "Управление…";
-"mod.prompt.row" = "Включить ускорение реального времени ›";
+"mod.prompt.row" = "Включить ускорение реального времени";
 "mod.prompt.menu" = "Установить Mod для Claude: квота в реальном времени";
 "mod.prompt.why" = "Зачем это?";
 "mod.panel.title" = "Ускорение реального времени";
@@ -756,13 +760,13 @@
 "mod.panel.point2" = "Плагин работает в Claude Code с вашими правами пользователя и может быть удалён в любой момент командой /plugin.";
 "mod.panel.point3" = "Данные записываются только локально; ничего не отправляется в сеть.";
 "mod.panel.point4" = "Новые сеансы подхватывают его автоматически; в существующих сеансах можно выполнить /reload-plugins.";
-"mod.panel.install" = "Установить в один клик";
+"mod.panel.install" = "Установить";
 "mod.panel.dismiss_checkbox" = "Больше не показывать в меню";
 "mod.panel.close" = "Закрыть";
 "mod.install.step1" = "Добавить источник";
 "mod.install.step2" = "Установить Mod";
 "mod.install.step3" = "Готово";
-"mod.install.enabled" = "Включено ✓";
+"mod.install.enabled" = "Включено";
 "mod.install.enabled_note" = "Заново открытые сеансы Claude Code подхватывают его автоматически.";
 "mod.install.reload_hint" = "В уже открытых сессиях при желании можно выполнить команду ниже.";
 "mod.failure.title" = "Не удалось установить автоматически";
@@ -771,12 +775,12 @@
 "mod.failure.copy" = "Копировать команды";
 "mod.failure.copied" = "Скопировано";
 "mod.dismissed.title" = "Подсказка скрыта";
-"mod.dismissed.note" = "Позже BalanceBar Mod можно установить в Настройки › Основные › Обновить.";
+"mod.dismissed.note" = "Позже BalanceBar Mod можно установить в Настройки > Основные > Обновить.";
 "mod.dismissed.undo" = "Отменить";
 "mod.panel.uninstall" = "Удалить BalanceBar Mod";
 "mod.uninstall.step1" = "Удалить Mod";
 "mod.uninstall.step2" = "Убрать источник";
-"mod.uninstall.done" = "Удалено ✓";
+"mod.uninstall.done" = "Удалено";
 "mod.uninstall.done_note" = "Квота теперь периодически запрашивается у официального источника. Другие плагины это не затрагивает.";
 "mod.failure.uninstall_command" = "Удаление не завершено. Выполните следующие команды в Терминале:";
 "mod.failure.copy_enable" = "Копировать команду включения";
@@ -787,7 +791,7 @@
 "mod.settings.status.active" = "Включено, последние достоверные данные %1$@";
 "mod.settings.status.silent" = "Установлено, но 10 минут нет данных. Откройте новый сеанс или выполните /reload-plugins в существующем";
 "mod.settings.status.unsupported" = "Claude Code %1$@ слишком стар; требуется v2.1.287 или новее";
-"mod.settings.action.install" = "Установить в один клик";
+"mod.settings.action.install" = "Установить";
 "mod.settings.action.copy" = "Копировать команды";
 "mod.settings.prompt_toggle" = "Показывать ускорение реального времени в меню";
 "mod.sync.status.detecting" = "Проверка…";
@@ -806,7 +810,7 @@
 "mod.update.progress_title" = "Обновление BalanceBar Mod";
 "mod.update.step1" = "Обновить источник";
 "mod.update.step2" = "Обновить Mod";
-"mod.update.done" = "Обновлено ✓";
+"mod.update.done" = "Обновлено";
 "mod.update.done_note" = "Перезапустите сессию Claude Code, чтобы новый Mod вступил в силу.";
 "mod.failure.update_command" = "Обновление не завершено. Выполните эти команды в терминале по очереди, затем перезапустите сессию:";
 "mod.card.update.button" = "Обновить";
@@ -905,11 +909,11 @@
 "ccswitch.database_unreadable" = "Не удаётся прочитать базу данных CC Switch. Откройте CC Switch заново и повторите попытку";
 "ccswitch.database_busy" = "База данных CC Switch занята. BalanceBar продолжит попытки";
 "aggregation.not_configured" = "Для этого провайдера не настроен запрос использования. Настройте скрипт использования в CC Switch";
-"claude.refresh.egress_guard_mismatch" = "Исходящий IP не входит в белый список, официальные запросы Claude приостановлены. Белый список IP можно изменить в разделе Настройки › Дополнительно.";
-"claude.refresh.egress_guard_check_failed" = "Не удалось проверить исходящий IP, официальные запросы Claude приостановлены. Белый список IP можно изменить в разделе Настройки › Дополнительно.";
-"claude.refresh.egress_guard_no_targets" = "Белый список IP пуст, официальные запросы Claude приостановлены. Белый список IP можно изменить в разделе Настройки › Дополнительно.";
-"claude.refresh.egress_guard_unsupported_region" = "Регион выхода не поддерживается Anthropic или не определён, поэтому официальные запросы Claude приостановлены. Белый список IP можно изменить в разделе Настройки › Дополнительно.";
-"claude.refresh.egress_guard_disabled" = "Официальные запросы Claude выключены. Включите белый список IP в разделе Настройки › Дополнительно.";
+"claude.refresh.egress_guard_mismatch" = "Исходящий IP не входит в белый список, официальные запросы Claude приостановлены. Белый список IP можно изменить в разделе Настройки > Дополнительно.";
+"claude.refresh.egress_guard_check_failed" = "Не удалось проверить исходящий IP, официальные запросы Claude приостановлены. Белый список IP можно изменить в разделе Настройки > Дополнительно.";
+"claude.refresh.egress_guard_no_targets" = "Белый список IP пуст, официальные запросы Claude приостановлены. Белый список IP можно изменить в разделе Настройки > Дополнительно.";
+"claude.refresh.egress_guard_unsupported_region" = "Регион выхода не поддерживается Anthropic или не определён, поэтому официальные запросы Claude приостановлены. Белый список IP можно изменить в разделе Настройки > Дополнительно.";
+"claude.refresh.egress_guard_disabled" = "Официальные запросы Claude выключены. Включите белый список IP в разделе Настройки > Дополнительно.";
 "claude.timeline.failure.egress_guard" = "Заблокировано белым списком IP";
 "quota.failure.open_egress_guard_settings" = "Настроить белый список IP";
 "dashboard.advanced.page.egress_guard" = "Белый список IP для Claude";
@@ -936,8 +940,8 @@
 "dashboard.advanced.page.egress_guard_available_no" = "Вне регионов, где Anthropic предоставляет Claude";
 "dashboard.general.data_sources" = "Источники данных";
 "dashboard.menu.bar.position_adjustments" = "Точная настройка положения";
-"dashboard.menu.bar.required_display" = "Должен отображаться хотя бы значок или значение.";
-"dashboard.advanced.official_validity_dependency" = "Применяется только при включённых официальных запросах квот.";
+"dashboard.menu.bar.required_display" = "Должен отображаться хотя бы значок или значение";
+"dashboard.advanced.official_validity_dependency" = "Применяется только при включённых официальных запросах квот";
 
 // #691 official mode
 "official_mode.provider_name" = "%1$@ Official";

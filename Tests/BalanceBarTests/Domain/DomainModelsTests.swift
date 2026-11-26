@@ -382,7 +382,7 @@ final class DomainModelsTests: XCTestCase {
         )
         XCTAssertEqual(unavailable?.state, .unavailable)
         XCTAssertEqual(unavailable?.text(language: .simplifiedChinese), "账户不可用")
-        XCTAssertEqual(unavailable?.text(language: .traditionalChineseTaiwan), "帳號不可用")
+        XCTAssertEqual(unavailable?.text(language: .traditionalChineseTaiwan), "帳戶不可用")
         XCTAssertEqual(unavailable?.text(language: .japanese), "アカウントを利用できません")
         XCTAssertEqual(unavailable?.text(language: .english), "Account unavailable")
 
@@ -407,7 +407,7 @@ final class DomainModelsTests: XCTestCase {
         )
         XCTAssertEqual(
             claudeLoginRequired?.text(language: .simplifiedChinese),
-            "登录已失效"
+            "登录已过期"
         )
         typealias Reason = OpenAIAccountPresentation.UnavailableReason
         // The re-login row under the card: shown whenever data stays on the card while the login
@@ -436,7 +436,7 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertEqual(
             OpenAIAccountPresentation(email: nil, unavailableReason: .claudeNoSubscriptionAccount)
                 .text(language: .simplifiedChinese),
-            "未登录订阅账号"
+            "未登录订阅账户"
         )
         XCTAssertNil(
             OpenAIAccountPresentation.current(
@@ -497,6 +497,7 @@ final class DomainModelsTests: XCTestCase {
     }
 
     func testOpenAISubscriptionTierMapsOfficialPlanClaimsToTheRequestedBadgeText() {
+        XCTAssertEqual(OpenAISubscriptionTier(planType: "free"), .free)
         XCTAssertEqual(OpenAISubscriptionTier(planType: "plus"), .plus)
         XCTAssertEqual(OpenAISubscriptionTier(planType: "prolite"), .proFiveX)
         XCTAssertEqual(OpenAISubscriptionTier(planType: "PRO"), .proTwentyX)
@@ -504,6 +505,7 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertNil(OpenAISubscriptionTier(planType: "team"))
         XCTAssertNil(OpenAISubscriptionTier(planType: nil))
 
+        XCTAssertEqual(OpenAISubscriptionTier.free.text, "FREE")
         XCTAssertEqual(OpenAISubscriptionTier.plus.text, "PLUS")
         XCTAssertEqual(OpenAISubscriptionTier.proFiveX.text, "Pro · 5x")
         XCTAssertEqual(OpenAISubscriptionTier.proTwentyX.text, "Pro · 20x")
@@ -837,7 +839,7 @@ final class DomainModelsTests: XCTestCase {
         )
         XCTAssertEqual(
             fallbackForecast.menuPrimaryDisplayText(language: .english),
-            "High Prob."
+            "Likely"
         )
         XCTAssertNotEqual(fallbackForecast.menuPrimaryDisplayText(), "20%")
         XCTAssertNotEqual(fallbackForecast.menuPrimaryDisplayText(), "83%")
@@ -1193,7 +1195,7 @@ final class DomainModelsTests: XCTestCase {
         )
         XCTAssertTrue(forecast.isOfficialResetConfirmed)
         XCTAssertNil(forecast.remainingCountdownSeconds(now: Date(timeIntervalSince1970: 1_700_000_000)))
-        XCTAssertEqual(forecast.menuPrimaryDisplayText(language: .simplifiedChinese), "✅ 已重置")
+        XCTAssertEqual(forecast.menuPrimaryDisplayText(language: .simplifiedChinese), "已重置")
         XCTAssertEqual(
             forecast.officialHintText(language: .simplifiedChinese),
             "本轮已完成"
