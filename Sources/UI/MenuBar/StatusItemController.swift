@@ -8324,6 +8324,42 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         return snapshot.quotaPredictionContexts.first { $0.cycle == cycle }?.inferredCycleStart
     }
 
+    /// Account display details can fill in while the same quota snapshot is still shown.
+    static func quotaPaceSnapshotBelongsToCurrentAccount(
+        snapshotAccountKey: String?,
+        recordedAccount: OpenAIAccountPresentation?,
+        currentAccount: OpenAIAccountPresentation?
+    ) -> Bool {
+        let currentEmail = quotaPaceAccountEmail(currentAccount)
+        if let snapshotAccountKey, let currentEmail {
+            return snapshotAccountKey.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == currentEmail
+        }
+        return quotaPaceAccountEmail(recordedAccount) == currentEmail
+    }
+
+    private static func quotaPaceAccountEmail(_ account: OpenAIAccountPresentation?) -> String? {
+        guard case .available(let email) = account?.state else { return nil }
+        return email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    private static func quotaPaceSnapshotAccountDiagnostics(
+        snapshotAccountKey: String?,
+        recordedAccount: OpenAIAccountPresentation?,
+        currentAccount: OpenAIAccountPresentation?
+    ) -> String {
+        let currentEmail = quotaPaceAccountEmail(currentAccount)
+        func matchesCurrentEmail(_ email: String?) -> String {
+            guard let email, let currentEmail else { return "n/a" }
+            return String(email == currentEmail)
+        }
+        let snapshotEmail = snapshotAccountKey?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return "snapshot_key_present=\(snapshotAccountKey != nil); "
+            + "snapshot_key_eq_current=\(matchesCurrentEmail(snapshotEmail)); "
+            + "recorded_email_eq_current=\(matchesCurrentEmail(quotaPaceAccountEmail(recordedAccount))); "
+            + "recorded_subscription_eq_current=\(recordedAccount?.subscription == currentAccount?.subscription); "
+            + "recorded_reason_eq_current=\(recordedAccount?.unavailableReason == currentAccount?.unavailableReason)"
+    }
+
     private func refreshQuotaPaceViews() {
         let cards = menuContentCardsForUpdate("pace")
         guard !cards.isEmpty else {
@@ -8348,7 +8384,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 snapshot: snapshot, activeClient: menuInput.activeClient)
             let ownerAccountMatches = host.quotaPaceAccount == expectedAccount
             let ownerClientMatches = host.quotaPaceClient == (aggregated ? context.paceClient : menuInput.activeClient)
-            let snapshotAccountMatches = quotaPaceSnapshotAccount == menuInput.openAIAccount
+            let recordedAccount = quotaPaceSnapshotAccount
+            let currentAccount = menuInput.openAIAccount
+            let snapshotAccountKey = snapshot.quotaPredictionAccountKey
+            let snapshotAccountMatches = Self.quotaPaceSnapshotBelongsToCurrentAccount(
+                snapshotAccountKey: snapshotAccountKey, recordedAccount: recordedAccount, currentAccount: currentAccount)
+            let snapshotAccountDiagnostics = {
+                Self.quotaPaceSnapshotAccountDiagnostics(snapshotAccountKey: snapshotAccountKey,
+                    recordedAccount: recordedAccount, currentAccount: currentAccount)
+            }
             let snapshotClientMatches = quotaPaceSnapshotClient == menuInput.activeClient
             let identityMatches = ownerAccountMatches && ownerClientMatches
                 && (aggregated || (snapshotAccountMatches && snapshotClientMatches))
@@ -8375,12 +8419,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     writeMissingQuotaPaceDiagnostic(view, window: diagnosticWindow, branch: branch,
                         ownerAccountMatches: ownerAccountMatches, ownerClientMatches: ownerClientMatches,
                         snapshotAccountMatches: snapshotAccountMatches, snapshotClientMatches: snapshotClientMatches,
-                        aggregated: aggregated, paceClient: context.paceClient, host: host)
+                        aggregated: aggregated, paceClient: context.paceClient, host: host,
+                        snapshotAccountDiagnostics: snapshotAccountDiagnostics())
                 } else if view.hasEmptyPaceMarkerFrame && view.isPaceMarkerSuspended {
                     writeMissingQuotaPaceDiagnostic(view, window: diagnosticWindow, branch: branch,
                         ownerAccountMatches: ownerAccountMatches, ownerClientMatches: ownerClientMatches,
                         snapshotAccountMatches: snapshotAccountMatches, snapshotClientMatches: snapshotClientMatches,
-                        aggregated: aggregated, paceClient: context.paceClient, host: host)
+                        aggregated: aggregated, paceClient: context.paceClient, host: host,
+                        snapshotAccountDiagnostics: snapshotAccountDiagnostics())
                 } else if view.hasEmptyPaceMarkerFrame {
                     // A new section can be refreshed before its first layout. Only
                     // report an empty frame after that view's next completed layout.
@@ -8389,7 +8435,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                         self.writeMissingQuotaPaceDiagnostic(view, window: diagnosticWindow, branch: branch,
                             ownerAccountMatches: ownerAccountMatches, ownerClientMatches: ownerClientMatches,
                             snapshotAccountMatches: snapshotAccountMatches, snapshotClientMatches: snapshotClientMatches,
-                            aggregated: aggregated, paceClient: context.paceClient, host: host)
+                            aggregated: aggregated, paceClient: context.paceClient, host: host,
+                            snapshotAccountDiagnostics: snapshotAccountDiagnostics())
                     }
                 }
             }
@@ -8418,13 +8465,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         snapshotClientMatches: Bool,
         aggregated: Bool,
         paceClient: AssistantClient,
-        host: MenuHoverLinkHostView
+        host: MenuHoverLinkHostView,
+        snapshotAccountDiagnostics: String
     ) {
         logQuotaPaceDiagnostic("quota pace marker missing; \(view.paceDiagnostics); branch=\(branch); "
             + "owner_account_eq=\(ownerAccountMatches); owner_client_eq=\(ownerClientMatches); "
             + "snapshot_account_eq=\(snapshotAccountMatches); snapshot_client_eq=\(snapshotClientMatches); "
             + "aggregated=\(aggregated); pace_client=\(paceClient.rawValue); menu_tracking=\(isStatusMenuTracking); "
-            + "host_visible=\(host.isMenuContentVisible); host_dismissing=\(host.isMenuDismissing)",
+            + "host_visible=\(host.isMenuContentVisible); host_dismissing=\(host.isMenuDismissing); \(snapshotAccountDiagnostics)",
             throttleKey: "pace.missing|\(window.kind)")
     }
 
