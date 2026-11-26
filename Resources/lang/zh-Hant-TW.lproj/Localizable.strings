@@ -66,7 +66,7 @@
 "snapshot.remaining_balance" = "剩餘餘額";
 "snapshot.waiting_to_refresh" = "等待刷新";
 "snapshot.load_failed" = "讀取失敗";
-"snapshot.loading_cc_switch" = "正在讀取目前供應商…";
+"snapshot.loading_cc_switch" = "正在讀取目前服務商…";
 "snapshot.value_remaining_value_value" = "%1$@ 剩餘：%2$@%%（%3$@）";
 "snapshot.value_remaining_value" = "%1$@ 剩餘：%2$@";
 "snapshot.failed_to_load_balance.2" = "餘額讀取失敗";
@@ -77,7 +77,7 @@
 "snapshot.reset_value.3" = "· %1$@";
 "snapshot.official_quota_updates_every_minutevalue" = "每分鐘更新官方額度%1$@";
 "snapshot.unknown_error" = "未知錯誤";
-"snapshot.waiting_for_cc_switch_status" = "等待供應商狀態";
+"snapshot.waiting_for_cc_switch_status" = "等待服務商狀態";
 "ccswitch.repository.unable_to_open_the_cc_switch_database" = "無法開啟 CC Switch 資料庫";
 "ccswitch.repository.provider_does_not_exist" = "服務商不存在";
 "ccswitch.repository.the_provider_s_claude_configuration_is_incomplete" = "服務商的 Claude 設定不完整";
@@ -945,7 +945,7 @@
 
 // #691 official mode
 "official_mode.provider_name" = "%1$@ Official";
-"official_mode.third_party_route" = "%1$@ 目前未使用官方帳號，查詢第三方供應商餘額需要 CC Switch";
+"official_mode.third_party_route" = "%1$@ 目前未使用官方帳號，查詢第三方服務商餘額需要 CC Switch";
 "dashboard.general.and.refresh.pages.connection_mode_official" = "官方";
 "dashboard.general.and.refresh.pages.connection_mode_local_sign_in" = "本機登入";
 "dashboard.general.and.refresh.pages.connection_mode_third_party" = "第三方";
