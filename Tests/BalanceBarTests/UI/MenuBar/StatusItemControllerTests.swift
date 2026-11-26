@@ -147,6 +147,67 @@ final class StatusItemControllerTests: XCTestCase {
         XCTAssertTrue(diagnostic.contains("marker_frame="))
     }
 
+    func testQuotaPaceSnapshotAccountMatchesByNormalizedEmail() {
+        let first = OpenAIAccountPresentation(email: "a@example.invalid")
+        let firstWithPlan = OpenAIAccountPresentation(email: " A@example.invalid ", subscription: .claudePro)
+        let second = OpenAIAccountPresentation(email: "b@example.invalid")
+        let unavailable = OpenAIAccountPresentation(email: nil, unavailableReason: .claudeLoginRequired)
+        let cases: [(key: String?, recorded: OpenAIAccountPresentation?, current: OpenAIAccountPresentation?,
+                     expected: Bool)] = [
+            (" A@example.invalid\n", unavailable, firstWithPlan, true),
+            ("a@example.invalid", first, second, false),
+            ("a@example.invalid", second, second, false),
+            (nil, first, firstWithPlan, true),
+            (nil, first, second, false),
+            (nil, unavailable, first, false),
+            (nil, first, unavailable, false),
+            (nil, unavailable, .init(email: nil, unavailableReason: .claudeCredentialsUnreadable), true),
+            (nil, nil, nil, true)
+        ]
+
+        for (index, testCase) in cases.enumerated() {
+            XCTAssertEqual(StatusItemController.quotaPaceSnapshotBelongsToCurrentAccount(
+                snapshotAccountKey: testCase.key, recordedAccount: testCase.recorded, currentAccount: testCase.current),
+                testCase.expected, "Case \(index)")
+        }
+    }
+
+    @MainActor
+    func testClaudePaceMarkersSurviveAccountDetailsFillingInWithoutNewSnapshot() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        var diagnostics: [String] = []
+        controller.quotaPaceDiagnosticSinkForTesting = { diagnostics.append($0) }
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        controller.quotaPaceNowForTesting = now
+        let fiveHour = OfficialQuotaWindow(kind: .fiveHour, remaining: 62, label: "5h", daysText: "5h",
+            reset: nil, durationSeconds: 5 * 3600, resetAt: now.addingTimeInterval(37 * 60))
+        let sevenDay = OfficialQuotaWindow(kind: .sevenDay, remaining: 45, label: "7d", daysText: "7d",
+            reset: nil, durationSeconds: 7 * 24 * 3600, resetAt: now.addingTimeInterval(92 * 3600))
+        let snapshot = Snapshot.official("Claude Official", 62, "5h", nil, now, windows: [fiveHour, sevenDay],
+            quotaPredictionAccountKey: "a@example.invalid")
+        func input(_ account: OpenAIAccountPresentation) -> StatusItemController.MenuInput {
+            .init(choices: [], quickSwitchSummaries: [:], activeClient: .claude, openAIAccount: account,
+                statusLinks: [], showQuickSwitchMenu: false, showOpenChatGPTMenu: false,
+                showOpenCCSwitchMenu: false, showStatusMenu: false, directProviderID: "claude-official")
+        }
+        controller.start(snapshot: snapshot, refreshDate: now, menuInput: input(.init(email: nil)),
+            settings: makeSettings())
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        let host = try XCTUnwrap(controller.menuItemsForTesting.first?.view as? MenuHoverLinkHostView)
+        XCTAssertEqual(host.paceViews.count, 2)
+        XCTAssertTrue(host.paceViews.allSatisfy { $0.pace != nil && !$0.isPaceMarkerHidden })
+
+        controller.updateMenu(input: input(.init(email: "a@example.invalid", subscription: .claudePro)))
+
+        XCTAssertEqual(host.paceViews.count, 2)
+        for view in host.paceViews {
+            XCTAssertNotNil(view.pace, "\(view.quotaWindow.kind)")
+            XCTAssertFalse(view.isPaceMarkerHidden, "\(view.quotaWindow.kind)")
+        }
+        XCTAssertTrue(diagnostics.isEmpty, "\(diagnostics)")
+    }
+
     @MainActor
     func testPaceAccountSwitchAndTeardownStopTimerAndInvalidateOldMarker() throws {
         let controller = makeController()
@@ -184,6 +245,49 @@ final class StatusItemControllerTests: XCTestCase {
         XCTAssertFalse(diagnostic.contains("example.invalid"))
         controller.teardown()
         XCTAssertFalse(pace.isMenuTracking)
+    }
+
+    @MainActor
+    func testPaceAccountSwitchInvalidatesMarkerWhenSnapshotHasAccountKey() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        var diagnostics: [String] = []
+        controller.quotaPaceDiagnosticSinkForTesting = { diagnostics.append($0) }
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        controller.quotaPaceNowForTesting = now
+        let quota = OfficialQuotaWindow(kind: .fiveHour, remaining: 50, label: "5h", daysText: "5h",
+            reset: nil, durationSeconds: 18_000, resetAt: now.addingTimeInterval(9_000))
+        let snapshot = Snapshot.official("Claude Official", 50, "5h", nil, now, windows: [quota],
+            quotaPredictionAccountKey: "a@example.invalid")
+        func input(_ email: String, subscription: OpenAISubscriptionTier? = nil) -> StatusItemController.MenuInput {
+            .init(choices: [], quickSwitchSummaries: [:], activeClient: .claude,
+                openAIAccount: .init(email: email, subscription: subscription), statusLinks: [],
+                showQuickSwitchMenu: false, showOpenChatGPTMenu: false, showOpenCCSwitchMenu: false,
+                showStatusMenu: false, directProviderID: "claude-official")
+        }
+        controller.start(snapshot: snapshot, refreshDate: now, menuInput: input("a@example.invalid"),
+            settings: makeSettings())
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        let host = try XCTUnwrap(controller.menuItemsForTesting.first?.view as? MenuHoverLinkHostView)
+        let view = try XCTUnwrap(host.paceViews.first)
+        XCTAssertNotNil(view.pace)
+        XCTAssertFalse(view.isPaceMarkerHidden)
+        XCTAssertTrue(diagnostics.isEmpty)
+
+        controller.updateMenu(input: input("b@example.invalid", subscription: .claudePro))
+
+        XCTAssertNil(view.pace)
+        XCTAssertTrue(view.isPaceMarkerHidden)
+        XCTAssertNil(controller.quotaPaceTimerForTesting)
+        XCTAssertEqual(diagnostics.count, 1)
+        let diagnostic = try XCTUnwrap(diagnostics.first)
+        XCTAssertTrue(diagnostic.contains("reason=identity_mismatch"))
+        XCTAssertTrue(diagnostic.contains("snapshot_account_eq=false"))
+        XCTAssertTrue(diagnostic.contains("snapshot_key_present=true; snapshot_key_eq_current=false"))
+        XCTAssertTrue(diagnostic.contains("recorded_email_eq_current=false"))
+        XCTAssertTrue(diagnostic.contains("recorded_subscription_eq_current=false"))
+        XCTAssertTrue(diagnostic.contains("recorded_reason_eq_current=true"))
+        XCTAssertFalse(diagnostic.contains("example.invalid"))
     }
 
     @MainActor
