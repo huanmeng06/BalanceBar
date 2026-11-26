@@ -456,6 +456,7 @@ final class DashboardGeneralPage {
     private var updateNotesButton: NSButton?
     private var updateBadge: NSView?
     private weak var currentProviderDetailLabel: NSTextField?
+    private weak var ccSwitchButton: NSButton?
     private var connectionSummaries: CCSwitchConnectionSummaries = .unknown
     private var launchAtLoginSwitch: NSSwitch?
     private var launchAtLoginSubtitleLabel: NSTextField?
@@ -471,10 +472,11 @@ final class DashboardGeneralPage {
             onShowDescription: { [weak relay = input.relay] button in relay?.manageModSync(button) })
         realtimeBoostRows = modRows
         let openButton = NSButton(
-            title: tr(.keyDashboardGeneralAndRefreshPagesOpenCcSwitch),
+            title: Self.ccSwitchButtonTitle(installed: input.connectionSummaries.isCCSwitchInstalled),
             target: input.relay,
             action: #selector(DashboardPreferencePageRelay.openCCSwitch(_:))
         )
+        ccSwitchButton = openButton
         connectionSummaries = input.connectionSummaries
         let currentProviderRow = SettingsRowView(
             title: tr(.keyDashboardGeneralAndRefreshPagesCcSwitch),
@@ -1248,7 +1250,12 @@ final class DashboardGeneralPage {
 
     func refreshConnectionSummaries(_ summaries: CCSwitchConnectionSummaries) {
         connectionSummaries = summaries
+        ccSwitchButton?.title = Self.ccSwitchButtonTitle(installed: summaries.isCCSwitchInstalled)
         applyConnectionSummaries()
+    }
+
+    private static func ccSwitchButtonTitle(installed: Bool) -> String {
+        tr(installed ? .keyDashboardGeneralAndRefreshPagesOpenCcSwitch : .keyDashboardGeneralAndRefreshPagesDownloadCcSwitch)
     }
 
     private func applyConnectionSummaries() {

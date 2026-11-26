@@ -3,6 +3,27 @@ import SQLite3
 import XCTest
 @testable import BalanceBar
 
+extension DashboardPageSearchTests {
+    func testOfficialModeConnectionCopyInEnglishAndSimplifiedChinese() {
+        let previous = AppLanguage.selected
+        defer { AppLanguage.selected = previous }
+        let summaries = CCSwitchConnectionSummaries(
+            codex: .init(mode: .localOfficial, providerNames: []),
+            claude: .init(mode: .localThirdParty, providerNames: []),
+            grok: .init(mode: .requiresCCSwitch, providerNames: []))
+        AppLanguage.selected = .english
+        let english = DashboardSettingsFormattedCopy.ccSwitchConnectionPlainText(summaries)
+        XCTAssertTrue(english.contains("Codex: Official · Signed in on this Mac"))
+        XCTAssertTrue(english.contains("Claude Code: Third-party · Requires CC Switch"))
+        XCTAssertTrue(english.contains("Grok: Requires CC Switch"))
+        AppLanguage.selected = .simplifiedChinese
+        let chinese = DashboardSettingsFormattedCopy.ccSwitchConnectionPlainText(summaries)
+        XCTAssertTrue(chinese.contains("Codex：官方 · 本机登录"))
+        XCTAssertTrue(chinese.contains("Claude Code：第三方 · 需要 CC Switch"))
+        XCTAssertTrue(chinese.contains("Grok：需要 CC Switch"))
+    }
+}
+
 @MainActor
 final class DashboardPageSearchTests: XCTestCase {
     func testClaudeTokenRefreshTitleMatchesGeneralInChineseAndEnglish() {
