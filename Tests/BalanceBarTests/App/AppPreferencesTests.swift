@@ -145,6 +145,20 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertEqual(reloaded.updateChannel, .stable)
     }
 
+    func testAutomaticUpdatePreferenceDefaultsOffAndPersistsPerChannel() {
+        let (preferences, defaults, suite) = makePreferences()
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        XCTAssertFalse(preferences.automaticUpdateEnabled(for: .stable))
+        XCTAssertFalse(preferences.automaticUpdateEnabled(for: .beta))
+        XCTAssertTrue(PreferencesMigrationPlan.allKeys.contains(AppPreferences.automaticUpdateEnabledKey))
+        preferences.setAutomaticUpdateEnabled(true, for: .beta)
+
+        let reloaded = AppPreferences(defaults: defaults)
+        XCTAssertFalse(reloaded.automaticUpdateEnabled(for: .stable))
+        XCTAssertTrue(reloaded.automaticUpdateEnabled(for: .beta))
+    }
+
     func testMenuBarQuotaWindowPreferenceDefaultsPersistsAcrossReloadAndRejectsUnknownValues() {
         let (preferences, defaults, suite) = makePreferences()
         defer { defaults.removePersistentDomain(forName: suite) }

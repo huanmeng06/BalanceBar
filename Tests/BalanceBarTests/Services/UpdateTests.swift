@@ -7,6 +7,65 @@ import CryptoKit
 @testable import BalanceBar
 
 final class UpdateTests: XCTestCase {
+    func testUpdateSignatureVerifierAcceptsContractVectorAndRejectsModifiedManifest() throws {
+        let publicKey = try XCTUnwrap(Data(base64Encoded: "EMOTR6+Fb1+w7DIjYiZuTC7Bqj6ZuO26B7xYBIDvDyA="))
+        let verifier = UpdateSignatureVerifier(publicKeys: ["test-vector-1": publicKey])
+        let manifest = try XCTUnwrap(Data(base64Encoded: "eyJzY2hlbWEiOjEsImJ1bmRsZUlkZW50aWZpZXIiOiJjb20uaHVhbm1lbmcwNi5CYWxhbmNlQmFyLmFwcCIsInZlcnNpb24iOiI5LjkuMSIsImNoYW5uZWwiOiJiZXRhIiwidGFnIjoidjkuOS4xIiwiYXNzZXQiOnsibmFtZSI6IkJhbGFuY2VCYXItOS45LjEuZG1nIiwic2l6ZSI6MTA0ODU3Niwic2hhMjU2IjoiNWQwZjZhMWM2ZTJhM2Q0YjhmOWUwYTFiMmMzZDRlNWY2MDcxODI5M2E0YjVjNmQ3ZThmOTAxMjM0NTY3ODlhYiJ9LCJzb3VyY2UiOnsicmVwb3NpdG9yeSI6Imh1YW5tZW5nMDYvQmFsYW5jZUJhciIsImNvbW1pdCI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmMDEyMzQ1NjciLCJydW5JZCI6IjEyMzQ1Njc4OTAiLCJydW5BdHRlbXB0IjoiMSJ9LCJzaWduZWRBdCI6IjIwMjYtMTEtMjZUMDA6MDA6MDBaIn0K"))
+        let signature = Data(#"{"schema":1,"algorithm":"ed25519","keyId":"test-vector-1","signature":"jgTUjyF3OYBAPqlePVqLvGNMY60E0PCCtZ75d3bOlJctW8L5UtIbGSZX0UdcHF88SpjPFeC6SSSOaPlT9V/EAw=="}"#.utf8)
+
+        XCTAssertEqual(try verifier.verify(manifestData: manifest, signatureData: signature).version, "9.9.1")
+        let unknownKeySignature = Data(#"{"schema":1,"algorithm":"ed25519","keyId":"unknown","signature":"jgTUjyF3OYBAPqlePVqLvGNMY60E0PCCtZ75d3bOlJctW8L5UtIbGSZX0UdcHF88SpjPFeC6SSSOaPlT9V/EAw=="}"#.utf8)
+        XCTAssertThrowsError(try verifier.verify(manifestData: manifest, signatureData: unknownKeySignature))
+        let unknownAlgorithm = Data(#"{"schema":1,"algorithm":"rsa","keyId":"test-vector-1","signature":"jgTUjyF3OYBAPqlePVqLvGNMY60E0PCCtZ75d3bOlJctW8L5UtIbGSZX0UdcHF88SpjPFeC6SSSOaPlT9V/EAw=="}"#.utf8)
+        XCTAssertThrowsError(try verifier.verify(manifestData: manifest, signatureData: unknownAlgorithm))
+        let unsupportedSchema = Data(#"{"schema":2,"algorithm":"ed25519","keyId":"test-vector-1","signature":"jgTUjyF3OYBAPqlePVqLvGNMY60E0PCCtZ75d3bOlJctW8L5UtIbGSZX0UdcHF88SpjPFeC6SSSOaPlT9V/EAw=="}"#.utf8)
+        XCTAssertThrowsError(try verifier.verify(manifestData: manifest, signatureData: unsupportedSchema))
+        var modifiedManifest = manifest
+        modifiedManifest[modifiedManifest.count - 3] ^= 1
+        XCTAssertThrowsError(try verifier.verify(manifestData: modifiedManifest, signatureData: signature))
+    }
+
+    func testUpdateSignatureVerifierRejectsAbsentTrustedKeyAndOversizedPayloads() throws {
+        let manifest = Data("{}".utf8)
+        let signature = Data("{}".utf8)
+        XCTAssertThrowsError(try UpdateSignatureVerifier(publicKeys: [:]).verify(manifestData: manifest, signatureData: signature))
+
+        let publicKey = try XCTUnwrap(Data(base64Encoded: "EMOTR6+Fb1+w7DIjYiZuTC7Bqj6ZuO26B7xYBIDvDyA="))
+        let verifier = UpdateSignatureVerifier(publicKeys: ["test-vector-1": publicKey])
+        XCTAssertThrowsError(try verifier.verify(
+            manifestData: Data(repeating: 0, count: 16 * 1024 + 1),
+            signatureData: signature
+        ))
+        XCTAssertThrowsError(try verifier.verify(
+            manifestData: manifest,
+            signatureData: Data(repeating: 0, count: 4 * 1024 + 1)
+        ))
+    }
+
+    func testDevelopmentUpdateAssetFixtureDownloadsByExactAssetName() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("BalanceBar-update-fixture-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let contents = Data("fixture asset".utf8)
+        try contents.write(to: directory.appendingPathComponent("BalanceBar-99.0.0.dmg"))
+        let asset = GitHubReleaseAsset(
+            name: "BalanceBar-99.0.0.dmg",
+            browserDownloadURL: URL(string: "https://github.com/huanmeng06/BalanceBar/releases/download/v99.0.0/BalanceBar-99.0.0.dmg"),
+            size: contents.count,
+            digest: nil
+        )
+        let downloader = DevelopmentUpdateAssetFixture(directoryURL: directory)
+        var result: Result<URL, UpdateAssetDownloadError>?
+
+        downloader.download(asset: asset) { result = $0 }
+
+        let downloadedURL = try XCTUnwrap(try result?.get())
+        XCTAssertEqual(try Data(contentsOf: downloadedURL), contents)
+        downloader.cleanupDownloadedFile(at: downloadedURL)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: downloadedURL.deletingLastPathComponent().path))
+    }
+
     private struct StubURLResult {
         let statusCode: Int
         let data: Data?

@@ -421,6 +421,7 @@ final class AppPreferences {
     static let showQuotaPaceIndicatorDefault = true
     static let updateChannelKey = "updateChannel"
     static let defaultUpdateChannel: UpdateChannel = .stable
+    static let automaticUpdateEnabledKey = "automaticUpdateEnabledByChannel"
     static let silentLaunchKey = "silentLaunch"
     static let silentLaunchDefault = false
     static let balanceDisplayThresholdKey = "balanceDisplayThreshold"
@@ -809,6 +810,14 @@ final class AppPreferences {
             return channel
         }
         set { defaults.set(newValue.rawValue, forKey: Self.updateChannelKey) }
+    }
+    func automaticUpdateEnabled(for channel: UpdateChannel) -> Bool {
+        (defaults.dictionary(forKey: Self.automaticUpdateEnabledKey) as? [String: Bool])?[channel.rawValue] ?? false
+    }
+    func setAutomaticUpdateEnabled(_ enabled: Bool, for channel: UpdateChannel) {
+        var values = defaults.dictionary(forKey: Self.automaticUpdateEnabledKey) as? [String: Bool] ?? [:]
+        values[channel.rawValue] = enabled
+        defaults.set(values, forKey: Self.automaticUpdateEnabledKey)
     }
     var silentLaunch: Bool {
         get { bool(Self.silentLaunchKey, default: Self.silentLaunchDefault) }

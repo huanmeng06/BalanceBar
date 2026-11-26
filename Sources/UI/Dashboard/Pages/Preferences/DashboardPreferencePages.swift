@@ -459,6 +459,13 @@ final class DashboardPreferencePages {
         }
     }
 
+    func refreshAutomaticUpdatePreference(_ preferences: AppPreferences) {
+        generalPage.refreshAutomaticUpdatePreference(preferences)
+        if isSearchProjectionActive {
+            searchGeneralPage.refreshAutomaticUpdatePreference(preferences)
+        }
+    }
+
     func refreshConnectionSummaries(_ summaries: CCSwitchConnectionSummaries) {
         generalPage.refreshConnectionSummaries(summaries)
         if isSearchProjectionActive {

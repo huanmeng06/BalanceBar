@@ -957,3 +957,18 @@
 "dashboard.general.and.refresh.pages.connection_mode_requires_cc_switch" = "需要 CC Switch";
 "dashboard.general.and.refresh.pages.download_cc_switch" = "下载 CC Switch";
 "status.item.controller.download_cc_switch" = "下载 CC Switch";
+
+"dashboard.general.and.refresh.pages.automatic_update" = "自动更新";
+"dashboard.general.and.refresh.pages.automatic_update_description" = "有新版本时在后台下载，退出 BalanceBar 后安装。";
+"dashboard.general.and.refresh.pages.automatic_update_download_failed" = "后台下载失败，请重新检查更新。";
+"dashboard.general.and.refresh.pages.automatic_update_verification_failed" = "签名或文件验证失败，未安装此更新。请重新检查。";
+
+"dashboard.general.and.refresh.pages.automatic_update_downloading" = "正在下载更新…";
+
+"dashboard.general.and.refresh.pages.automatic_update_ready" = "已下载并验证，将在退出 BalanceBar 时安装。";
+
+"dashboard.general.and.refresh.pages.automatic_update_install_failed" = "安装失败。请重试或手动安装。";
+
+"dashboard.general.and.refresh.pages.automatic_update_manual" = "此版本需要手动安装。";
+
+"dashboard.general.and.refresh.pages.install_now" = "立即安装";
