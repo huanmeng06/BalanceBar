@@ -2096,7 +2096,8 @@ final class ProviderRefreshCoordinator {
                         self.performOnQueue {
                             guard credentialsMatch(false),
                                   isCurrentQuota() else { return }
-                            if client == .codex, let bankedReset {
+                            // Only the local Codex login backs the direct-mode fallback.
+                            if client == .codex, context.storedAccessToken == nil, let bankedReset {
                                 self.codexResetCardCache.save(bankedReset, accountKey: accountKey, fetchedAt: self.now())
                             }
                             guard client == .codex, bankedReset != nil || self.cachedCodexResetForecast != nil else {

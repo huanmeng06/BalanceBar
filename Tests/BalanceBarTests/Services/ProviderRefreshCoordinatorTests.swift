@@ -3922,6 +3922,7 @@ extension ProviderRefreshCoordinatorTests {
     }
 
     private func aggregationCoordinator(official: OfficialQuotaClient? = nil,
+                                        codexResetCardCache: CodexResetCardCacheStore? = nil,
                                         _ changed: @escaping ([AggregatedProviderDisplay], Bool) -> Void) -> ProviderRefreshCoordinator {
         var actions = makeActions()
         actions.aggregationChanged = changed
@@ -3931,6 +3932,7 @@ extension ProviderRefreshCoordinatorTests {
             balanceAPIClient: BalanceAPIClient(session: session),
             balanceProgressStore: ProviderBalanceProgressStore(defaults: defaults),
             codexResetObservationStore: CodexResetObservationStore(defaults: defaults),
+            codexResetCardCache: codexResetCardCache,
             actions: actions)
     }
 
@@ -4211,15 +4213,16 @@ extension ProviderRefreshCoordinatorTests {
         let windows = ObservationFixture.windows(80, 45, cycle: 1)
         let banked = CodexBankedReset(cards: [CodexBankedResetCard(id: "fixture-card", resetType: "codex_rate_limits",
             titleText: "Fixture reset", expiresAt: Date().addingTimeInterval(3600), expiresText: nil)])
+        let cache = makeResetCardCache()
         let ready = expectation(description: "full official and independent balance")
         var done = false
         DelayedBalanceURLProtocol.setHandler { request in
             if request.url?.host == "codex-reset.com" { return .init(data: Data(#"{"probabilities":{"rounded_24h":24,"rounded_48h":42}}"#.utf8), statusCode: 200) }
             return DelayedBalanceURLProtocol.success(amount: "2.67", unit: "CNY")
         }
-        let official = OfficialQuotaClient(session: session, credentialReader: FixtureCredentialReader(codexToken: "fixture-token"),
+        let official = OfficialQuotaClient(session: session, credentialReader: FixtureCredentialReader(codexToken: "fixture-token", codexEmail: "local@example.com"),
             parser: FixedOfficialQuotaParser(windows: windows, bankedReset: banked))
-        let coordinator = aggregationCoordinator(official: official) { displays, _ in
+        let coordinator = aggregationCoordinator(official: official, codexResetCardCache: cache) { displays, _ in
             guard displays.count == 2, displays.allSatisfy({ $0.status == .fresh }), !done else { return }
             done = true
             XCTAssertEqual(displays.first(where: { $0.entry.role == .default })!.entry.role, .default)
@@ -4235,6 +4238,62 @@ extension ProviderRefreshCoordinatorTests {
         }
         coordinator.performAsync { _ = coordinator.refreshAggregation(reader: reader, force: false) }
         wait(for: [ready], timeout: 3)
+        let cached = try XCTUnwrap(cache.load(now: Date()))
+        XCTAssertEqual(cached.reset.cards.map(\.id), ["fixture-card"])
+        XCTAssertEqual(cached.reset.ownerEmail, "local@example.com")
+    }
+
+    func testAggregationStoredTokenShowsResetCardsWithoutWritingCache() throws {
+        try withDatabase { db in
+            try execute(db, sql: """
+                UPDATE providers SET settings_config='{"auth":{"tokens":{"access_token":"fixture-stored-token"}}}'
+                WHERE id='codex-replacement'
+                """)
+        }
+        let reader = try aggregationFixture(route: "codex-replacement")
+        let now = Date()
+        let storedCard = CodexBankedResetCard(id: "stored-card", resetType: "codex_rate_limits",
+            titleText: "Stored token reset", expiresAt: now.addingTimeInterval(3600), expiresText: nil)
+        let localCard = CodexBankedResetCard(id: "local-card", resetType: "codex_rate_limits",
+            titleText: "Local reset", expiresAt: now.addingTimeInterval(3600), expiresText: nil)
+        DelayedBalanceURLProtocol.setHandler { request in
+            if request.url?.host == "codex-reset.com" {
+                return .init(data: Data(), statusCode: 503)
+            }
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer fixture-stored-token")
+            return .init(data: Data("{}".utf8), statusCode: 200)
+        }
+        let official = OfficialQuotaClient(session: session,
+            credentialReader: FixtureCredentialReader(codexToken: "fixture-local-token", codexEmail: "local@example.com"),
+            parser: FixedOfficialQuotaParser(windows: ObservationFixture.windows(80, 45, cycle: 1),
+                bankedReset: CodexBankedReset(cards: [storedCard])))
+
+        for hasExistingCache in [false, true] {
+            let cache = makeResetCardCache()
+            if hasExistingCache {
+                cache.save(CodexBankedReset(cards: [localCard]), accountKey: "local@example.com",
+                    fetchedAt: now.addingTimeInterval(-60))
+            }
+            let before = cache.load(now: now)
+            if hasExistingCache {
+                XCTAssertEqual(before?.reset.cards.map(\.id), ["local-card"])
+            }
+            let ready = expectation(description: "stored token reset card published (seeded cache: \(hasExistingCache))")
+            var done = false
+            let coordinator = aggregationCoordinator(official: official, codexResetCardCache: cache) { displays, _ in
+                guard displays.count == 1, let display = displays.first, display.status == .fresh, !done else { return }
+                done = true
+                XCTAssertEqual(display.identity.providerID, "codex-replacement")
+                XCTAssertEqual(display.snapshot.bankedReset?.cards.map(\.id), ["stored-card"])
+                ready.fulfill()
+            }
+            defer { coordinator.stop() }
+            coordinator.performAsync { _ = coordinator.refreshAggregation(reader: reader, force: true) }
+            wait(for: [ready], timeout: 3)
+            let after = cache.load(now: now)
+            XCTAssertEqual(after?.reset, before?.reset)
+            XCTAssertEqual(after?.fetchedAt, before?.fetchedAt)
+        }
     }
 
     func testAggregationAccountChangeDiscardsOldOfficialRequestAndCache() throws {
