@@ -120,7 +120,7 @@ enum ModOnboardingText: String, CaseIterable {
         case .cancel: return "取消"
         case .viewStatus: return "查看当前状态"
         case .backToIntro: return "返回介绍"
-        case .lastDataNote: return "「最近可信数据」是 BalanceBar 最后一次采用额度数据的时间；额度没变化时不会更新。"
+        case .lastDataNote: return "“最近可信数据”是 BalanceBar 最后一次采用额度数据的时间；额度没变化时不会更新。"
         case .uninstallFailureTitle: return "卸载未完成"
         case .updateFailureTitle: return "更新失败"
         case .unknownStatusTitle: return "无法确认安装状态"

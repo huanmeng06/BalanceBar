@@ -454,7 +454,9 @@
 "status.links.editor.open_link" = "Abrir enlace";
 "status.links.editor.copy_url" = "Copiar URL";
 "status.links.editor.copy_item" = "Copiar elemento";
+"status.links.editor.actions_accessibility" = "Acciones de enlaces de estado";
 "status.links.editor.actions_tooltip" = "Añadir o eliminar enlaces de estado";
+"status.links.editor.move_accessibility" = "Mover enlace de estado";
 "status.links.editor.move_tooltip" = "Mover el enlace de estado hacia arriba o abajo";
 "status.links.editor.action_completed" = "Acción completada";
 "status.item.controller.refresh_now" = "Actualizar ahora";
@@ -495,7 +497,9 @@
 "codex.banked_reset.expires_value" = "Caduca el %1$@";
 "codex.banked_reset.nearest_expiry" = "Caducidad más próxima: %1$@";
 "codex.banked_reset.remaining_hours" = "%1$@ horas";
+"codex.banked_reset.remaining_day" = "%1$@ día";
 "codex.banked_reset.remaining_days" = "%1$@ días";
+"codex.banked_reset.remaining_day_hours" = "%1$@ d %2$@ h";
 "codex.banked_reset.remaining_days_hours" = "%1$@ d %2$@ h";
 "codex.banked_reset.remaining_minutes" = "%1$@ minutos";
 "codex.banked_reset.probability_prefix" = "Probabilidad de reinicio";
@@ -616,6 +620,7 @@
 "quota.status.realtime" = "En vivo";
 "quota.status.ago.minutes" = "hace %1$@ min";
 "quota.status.ago.hours" = "hace %1$@ h";
+"quota.status.ago.day" = "hace %1$@ d";
 "quota.status.ago.days" = "hace %1$@ d";
 "quota.status.source.oauth_api" = "OAuth API";
 "quota.status.source.mod" = "Mod";

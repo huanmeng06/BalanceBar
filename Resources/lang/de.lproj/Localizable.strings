@@ -454,7 +454,9 @@
 "status.links.editor.open_link" = "Link öffnen";
 "status.links.editor.copy_url" = "URL kopieren";
 "status.links.editor.copy_item" = "Eintrag kopieren";
+"status.links.editor.actions_accessibility" = "Aktionen für Statuslinks";
 "status.links.editor.actions_tooltip" = "Statuslinks hinzufügen oder entfernen";
+"status.links.editor.move_accessibility" = "Statuslink bewegen";
 "status.links.editor.move_tooltip" = "Statuslink nach oben oder unten bewegen";
 "status.links.editor.action_completed" = "Aktion abgeschlossen";
 "status.item.controller.refresh_now" = "Jetzt aktualisieren";
@@ -495,7 +497,9 @@
 "codex.banked_reset.expires_value" = "Läuft am %1$@ ab";
 "codex.banked_reset.nearest_expiry" = "Nächster Ablauf: %1$@";
 "codex.banked_reset.remaining_hours" = "%1$@ Stunden";
+"codex.banked_reset.remaining_day" = "%1$@ Tag";
 "codex.banked_reset.remaining_days" = "%1$@ Tage";
+"codex.banked_reset.remaining_day_hours" = "%1$@ T. %2$@ Std.";
 "codex.banked_reset.remaining_days_hours" = "%1$@ T. %2$@ Std.";
 "codex.banked_reset.remaining_minutes" = "%1$@ Minuten";
 "codex.banked_reset.probability_prefix" = "Reset-Wahrscheinlichkeit";
@@ -616,6 +620,7 @@
 "quota.status.realtime" = "Live";
 "quota.status.ago.minutes" = "vor %1$@ Min.";
 "quota.status.ago.hours" = "vor %1$@ Std.";
+"quota.status.ago.day" = "vor %1$@ T.";
 "quota.status.ago.days" = "vor %1$@ T.";
 "quota.status.source.oauth_api" = "OAuth API";
 "quota.status.source.mod" = "Mod";

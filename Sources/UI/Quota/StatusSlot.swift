@@ -81,6 +81,7 @@ enum StatusSlotText: String, CaseIterable {
     case hoverExternalActivity = "quota.status.hover.external_activity"
     case agoMinutes = "quota.status.ago.minutes"
     case agoHours = "quota.status.ago.hours"
+    case agoDay = "quota.status.ago.day"
     case agoDays = "quota.status.ago.days"
     case sourceOAuthAPI = "quota.status.source.oauth_api"
     case sourceMod = "quota.status.source.mod"
@@ -106,7 +107,7 @@ enum StatusSlotText: String, CaseIterable {
         case .hoverExternalActivity: return "检测到其他端在使用，已提高更新频率"
         case .agoMinutes: return "%@ 分钟前"
         case .agoHours: return "%@ 小时前"
-        case .agoDays: return "%@ 天前"
+        case .agoDay, .agoDays: return "%@ 天前"
         case .sourceOAuthAPI: return "OAuth API"
         case .sourceMod: return "Mod"
         case .resetPending: return "预计已重置，等待确认"
@@ -114,7 +115,7 @@ enum StatusSlotText: String, CaseIterable {
         case .openUsagePage: return "打开官方用量页"
         case .copySignInCommand: return "拷贝 claude 命令"
         case .copyCodexLoginCommand: return "拷贝 codex login 命令"
-        case .openEgressGuardSettings: return "打开护栏设置"
+        case .openEgressGuardSettings: return "设置 IP 白名单"
         case .copied: return "已拷贝"
         case .accessibilityStatus: return "额度状态：%@"
         }
@@ -150,7 +151,8 @@ enum StatusSlotAppearance {
         if minutes < 60 { return String(format: localize(.agoMinutes), "\(minutes)") }
         let hours = minutes / 60
         if hours < 24 { return String(format: localize(.agoHours), "\(hours)") }
-        return String(format: localize(.agoDays), "\(hours / 24)")
+        let days = hours / 24
+        return String(format: localize(days == 1 ? .agoDay : .agoDays), "\(days)")
     }
 
     static func timeText(_ date: Date?, timeZone: TimeZone = .current) -> String {
@@ -168,7 +170,7 @@ final class StatusSlotView: NSView {
     /// Fixed slot width, sized for the widest state ("● 实时 · OAuth API" in the longest language /
     /// "⚠︎ 88:88:88") at the same 12 pt as the plain refresh time. It is anchored at the right edge
     /// of the card's refresh-time column and extends leftwards; the card title shrinks to make room.
-    static let fixedWidth: CGFloat = 156
+    static let fixedWidth: CGFloat = 166
     static let fontSize: CGFloat = 12
     static let fixedHeight: CGFloat = 16
     static let dotDiameter: CGFloat = 6
@@ -375,7 +377,7 @@ extension StatusSlotText {
     static func appLocalize(text: StatusSlotText, language: AppLanguage) -> String {
         guard let key = LocalizationKey(rawValue: text.rawValue) else { return text.defaultText }
         switch text {
-        case .hoverError, .hoverEstimated, .hoverOfficial, .hoverLocal, .accessibilityStatus, .agoMinutes, .agoHours, .agoDays:
+        case .hoverError, .hoverEstimated, .hoverOfficial, .hoverLocal, .accessibilityStatus, .agoMinutes, .agoHours, .agoDay, .agoDays:
             return tr(key, arguments: ["%@"], language: language)
         default:
             return tr(key, language: language)

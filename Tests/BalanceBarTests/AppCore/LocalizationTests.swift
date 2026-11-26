@@ -16,6 +16,52 @@ final class LocalizationTests: XCTestCase {
         }
     }
 
+    func testEnglishAndRussianRelativeTimeCopy() throws {
+        func loadStrings(_ localization: String) throws -> [String: String] {
+            let directory = try XCTUnwrap(testBundle.url(forResource: localization, withExtension: "lproj"))
+            let data = try Data(contentsOf: directory.appendingPathComponent("Localizable.strings"))
+            return try XCTUnwrap(
+                PropertyListSerialization.propertyList(from: data, format: nil) as? [String: String]
+            )
+        }
+
+        let english = try loadStrings("en")
+        XCTAssertFalse(english.values.contains("%1$@ d ago"))
+        XCTAssertFalse(english.values.contains("%1$@d %2$@h"))
+
+        let russian = try loadStrings("ru")
+        for key: LocalizationKey in [.keyQuotaStatusAgoMinutes, .keyQuotaStatusAgoHours, .keyQuotaStatusAgoDay, .keyQuotaStatusAgoDays] {
+            XCTAssertTrue(russian[key.rawKey]?.hasSuffix(" назад") == true, key.rawKey)
+        }
+    }
+
+    func testEnglishBankedResetRemainingUsesSingularDayOnlyBelowTwoDays() {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .english
+
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        for (hours, expected) in [(24, "1 day"), (27, "1 day, 3 hr"), (48, "2 days"), (51, "2 days, 3 hr")] {
+            let remaining = CodexBankedResetFormatting.remaining(
+                until: now.addingTimeInterval(TimeInterval(hours * 3_600)),
+                now: now
+            )
+            XCTAssertEqual(remaining?.text, expected)
+        }
+    }
+
+    func testEnglishStatusSlotRelativeTimeUsesSingularDayOnlyBelowTwoDays() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        for (hours, expected) in [(24, "1 day ago"), (47, "1 day ago"), (48, "2 days ago")] {
+            let text = StatusSlotAppearance.relativeText(
+                from: now.addingTimeInterval(TimeInterval(-hours * 3_600)),
+                now: now,
+                localize: { StatusSlotText.appLocalize(text: $0, language: .english) }
+            )
+            XCTAssertEqual(text, expected)
+        }
+    }
+
     func testTraditionalChineseCopyUsesConsistentProviderAndProgressTerms() throws {
         for directory in ["zh-Hant-TW", "zh-Hant-HK"] {
             let url = try XCTUnwrap(testBundle.url(forResource: directory, withExtension: "lproj"))
@@ -346,7 +392,7 @@ final class LocalizationTests: XCTestCase {
         )
         XCTAssertEqual(
             tr(.keyCodexBankedResetProbabilityPrefix, language: .english),
-            "Reset probability"
+            "Reset Probability"
         )
         XCTAssertEqual(
             tr(.keyCodexBankedResetWindowDeadlineCountdown, language: .simplifiedChinese),
@@ -720,7 +766,7 @@ final class LocalizationTests: XCTestCase {
                 "使い切ったクォータを隠す", "オンにすると、%1$@ の表示時に残り 0% のクォータをメニューから隠します"
             ],
             .english: [
-                "%1$@ Display", "Choose when %1$@ is shown in the menu", "Do not show", "Show after quota is used up", "Always show",
+                "%1$@ display", "Choose when %1$@ is shown in the menu", "Do Not Show", "Show After Quota Is Used Up", "Always Show",
                 "Hide used-up quotas", "When enabled, zeroed quotas are hidden from the menu when %1$@ is shown"
             ],
             .korean: [
@@ -837,10 +883,10 @@ final class LocalizationTests: XCTestCase {
                 "%1$@", "元のクォータ"
             ],
             .english: [
-                "Prioritize Quota", "Choose whether the 5-hour or 7-day quota is prioritized in the menu bar and the Quick Switch menu", "5-Hour Quota", "7-Day Quota",
-                "Reset Time Display", "Choose whether to show the time remaining, the specific reset time, or both", "Time Remaining", "Reset Time", "Show Both",
-                "%1$@ Auto-Switch", "After entering %1$@, automatically switch the quota shown in the menu bar",
-                "%1$@ Reset Time", "After entering %1$@, choose whether to keep showing the original quota's reset time or %1$@'s",
+                "Prioritize quota", "Choose whether the 5-hour or 7-day quota is prioritized in the menu bar and the Quick Switch menu", "5-Hour Quota", "7-Day Quota",
+                "Reset time display", "Choose whether to show the time remaining, the specific reset time, or both", "Time Remaining", "Reset Time", "Show Both",
+                "%1$@ auto-switch", "After entering %1$@, automatically switch the quota shown in the menu bar",
+                "%1$@ reset time", "After entering %1$@, choose whether to keep showing the original quota's reset time or %1$@'s",
                 "%1$@", "Original Quota"
             ],
             .korean: [
@@ -1108,7 +1154,7 @@ final class LocalizationTests: XCTestCase {
             .simplifiedChinese: "运行时动画帧率",
             .traditionalChineseTaiwan: "執行時動畫幀率",
             .traditionalChineseHongKong: "執行時動畫幀率",
-            .english: "Animation Frame Rate",
+            .english: "Animation frame rate",
             .japanese: "アニメーションのフレームレート",
             .korean: "애니메이션 프레임 속도",
             .german: "Animationsrate",
@@ -1270,7 +1316,7 @@ final class LocalizationTests: XCTestCase {
                 "タスク実行中にメニューバーでアイコンをアニメーション表示します；デバイスの性能が低い場合は、オフにしてリソース使用量を減らせます"
             ),
             .english: (
-                "Task Icon Animation While Running",
+                "Task icon animation while running",
                 "Play the icon animation in the menu bar while a task runs; turn it off to reduce resource use on lower-performance devices"
             ),
             .korean: (
@@ -1325,7 +1371,7 @@ final class LocalizationTests: XCTestCase {
     func testAllTypedKeysExistInEveryBundledLanguage() throws {
         let expectedKeys = Set(LocalizationKey.allCases.map(\.rawKey))
         XCTAssertEqual(expectedKeys.count, LocalizationKey.allCases.count)
-        XCTAssertEqual(expectedKeys.count, 912)
+        XCTAssertEqual(expectedKeys.count, 917)
         let copyPrefix = "status.item.controller."
         for key in ["copy_link", "copy_version_number"] {
             XCTAssertTrue(expectedKeys.contains(copyPrefix + key))
@@ -1448,7 +1494,7 @@ final class LocalizationTests: XCTestCase {
             .traditionalChineseTaiwan: ("啟動", "靜默啟動", "啟動 BalanceBar 時不開啟主視窗", "隨 ChatGPT 啟動", "若 BalanceBar 尚未執行，會隨著 ChatGPT 啟動時自動啟動", "請在「系統設定」>「一般」>「登入項目」>「App 背景活動」中開啟 BalanceBar"),
             .traditionalChineseHongKong: ("啟動", "靜默啟動", "啟動 BalanceBar 時不開啟主視窗", "隨 ChatGPT 啟動", "若 BalanceBar 尚未執行，會隨著 ChatGPT 啟動時自動啟動", "請在「系統設定」>「一般」>「登入項目」>「App 背景活動」中開啟 BalanceBar"),
             .japanese: ("起動", "サイレント起動", "BalanceBarの起動時にメインウインドウを開きません", "ChatGPTと一緒に起動", "BalanceBarが実行中でなければ、ChatGPTの起動時に自動的に起動します", "システム設定 > 一般 > ログイン項目 > AppのバックグラウンドアクティビティでBalanceBarをオンにしてください"),
-            .english: ("Startup", "Launch Silently", "Start BalanceBar without opening the main window", "Launch with ChatGPT", "If BalanceBar is not already running, it will launch automatically when ChatGPT starts", "Turn on BalanceBar under System Settings > General > Login Items > App Background Activity"),
+            .english: ("Startup", "Launch silently", "Start BalanceBar without opening the main window", "Launch with ChatGPT", "If BalanceBar is not already running, it will launch automatically when ChatGPT starts", "Turn on BalanceBar under System Settings > General > Login Items > App Background Activity"),
             .korean: ("시작", "조용히 실행", "BalanceBar를 실행할 때 메인 창을 열지 않습니다", "ChatGPT와 함께 실행", "BalanceBar가 실행 중이 아니면 ChatGPT가 시작될 때 자동으로 실행됩니다", "시스템 설정 > 일반 > 로그인 항목 > 앱 백그라운드 활동에서 BalanceBar를 켜세요"),
             .spanish: ("Inicio", "Inicio silencioso", "Inicia BalanceBar sin abrir la ventana principal", "Iniciar con ChatGPT", "Si BalanceBar aún no está en ejecución, se iniciará automáticamente cuando se abra ChatGPT", "Activa BalanceBar en Ajustes del Sistema > General > Ítems de inicio > Actividad en segundo plano de las apps"),
             .german: ("Start", "Im Hintergrund starten", "BalanceBar starten, ohne das Hauptfenster zu öffnen", "Mit ChatGPT starten", "Wenn BalanceBar noch nicht läuft, wird es beim Start von ChatGPT automatisch gestartet", "Aktiviere BalanceBar unter Systemeinstellungen > Allgemein > Anmeldeobjekte > App-Hintergrundaktivität"),
@@ -2464,7 +2510,7 @@ final class LocalizationTests: XCTestCase {
             .traditionalChineseTaiwan: ("配額與重設", "圖示與動畫", "版面", "行為", "選單行為", "狀態連結", "選單列顯示"),
             .traditionalChineseHongKong: ("配額與重設", "圖示與動畫", "版面", "行為", "選單行為", "狀態連結", "選單列顯示"),
             .japanese: ("クォータとリセット", "アイコンとアニメーション", "レイアウト", "動作", "メニューの動作", "ステータスリンク", "メニューバーの表示"),
-            .english: ("Quota & Reset", "Icon & Animation", "Layout", "Behavior", "Menu Behavior", "Status Links", "Menu Bar Display"),
+            .english: ("Quota & Reset", "Icon & Animation", "Layout", "Behavior", "Menu Behavior", "Status Links", "Menu bar display"),
             .korean: ("할당량 및 재설정", "아이콘 및 애니메이션", "레이아웃", "동작", "메뉴 동작", "상태 링크", "메뉴 막대 표시"),
             .spanish: ("Cuota y reinicio", "Icono y animación", "Diseño", "Comportamiento", "Comportamiento del menú", "Enlaces de estado", "Visualización de la barra de menús"),
             .german: ("Kontingent und Zurücksetzung", "Symbol und Animation", "Layout", "Verhalten", "Menüverhalten", "Statuslinks", "Anzeige der Menüleiste"),
@@ -2668,7 +2714,7 @@ final class LocalizationTests: XCTestCase {
                 "オンにすると、左クリックで上の操作を実行し、右クリックでメニューを開きます"
             ),
             .english: (
-                "Reverse Left and Right Click",
+                "Reverse left and right click",
                 "When on, left-click runs the action above and right-click opens the menu"
             ),
             .korean: (
@@ -2977,6 +3023,28 @@ final class LocalizationTests: XCTestCase {
                 AppLanguage.french.localizedTitle,
                 expected[9]
             )
+        }
+    }
+}
+
+final class DefaultTextMatchesSimplifiedChineseTests: XCTestCase {
+    func testDefaultTextMatchesSimplifiedChinese() throws {
+        let bundle = Bundle(for: Self.self)
+        let directory = try XCTUnwrap(bundle.url(forResource: "zh-Hans", withExtension: "lproj"))
+        let data = try Data(contentsOf: directory.appendingPathComponent("Localizable.strings"))
+        let strings = try XCTUnwrap(
+            PropertyListSerialization.propertyList(from: data, format: nil) as? [String: String]
+        )
+
+        let defaults = StatusSlotText.allCases.map { ($0.rawValue, $0.defaultText) }
+            + RealtimeBoostText.allCases.map { ($0.rawValue, $0.defaultText) }
+            + ModOnboardingText.allCases.map { ($0.rawValue, $0.defaultText) }
+        for (key, defaultText) in defaults {
+            let localized = try XCTUnwrap(strings[key], key)
+            let normalized = localized.replacingOccurrences(
+                of: #"%[0-9]+\$@"#, with: "%@", options: .regularExpression
+            )
+            XCTAssertEqual(defaultText, normalized, key)
         }
     }
 }

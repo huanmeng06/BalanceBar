@@ -3029,7 +3029,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             ),
             (
                 .english,
-                "Menu Bar Display",
+                "Menu bar display",
                 "Choose to always show the icon, or only while a task is running",
                 ["Always Visible", "Only While Running"]
             ),
@@ -4540,7 +4540,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             .simplifiedChinese: "显示重置卡",
             .traditionalChineseTaiwan: "顯示重置卡",
             .traditionalChineseHongKong: "顯示重置卡",
-            .english: "Show Reset Cards"
+            .english: "Show reset cards"
         ]
         let expectedSubtitles: [AppLanguage: String] = [
             .simplifiedChinese: "在下拉菜单里显示 Codex 和 Claude 的重置卡",
@@ -9013,7 +9013,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
         let labels = descendants(of: page).compactMap { $0 as? NSTextField }
         XCTAssertTrue(labels.contains { $0.stringValue == "Layout" })
-        XCTAssertTrue(labels.contains { $0.stringValue == "Menu Bar Font Size" })
+        XCTAssertTrue(labels.contains { $0.stringValue == "Menu bar font size" })
         XCTAssertTrue(labels.contains { $0.stringValue == "Adjust menu bar text size" })
         XCTAssertFalse(labels.contains { $0.stringValue == "11.7 / 9.0 pt" })
 
@@ -9185,7 +9185,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
         let labels = descendants(of: page).compactMap { $0 as? NSTextField }
         XCTAssertTrue(labels.contains { $0.stringValue == "Layout" })
-        XCTAssertTrue(labels.contains { $0.stringValue == "Menu Bar Icon Size" })
+        XCTAssertTrue(labels.contains { $0.stringValue == "Menu bar icon size" })
         XCTAssertTrue(labels.contains { $0.stringValue == "Adjust menu bar icon size" })
 
         let previewIcon = try XCTUnwrap(
@@ -9731,7 +9731,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             ),
             (
                 .english,
-                ["Layout", "Menu Bar Font Size", "Icon vertical position", "Amount vertical position", "Spacing from other menu bar icons"],
+                ["Layout", "Menu bar font size", "Icon vertical position", "Amount vertical position", "Spacing from other menu bar icons"],
                 [
                     "Adjust menu bar text size",
                     "Fine-tune the icon's vertical position",
