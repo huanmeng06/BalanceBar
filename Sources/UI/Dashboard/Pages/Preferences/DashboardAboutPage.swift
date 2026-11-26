@@ -10,8 +10,9 @@ enum DashboardAboutPage {
         let isDevBuild: Bool
         let pullRequestNumber: Int?
         let sha: String?
+        let releaseRunID: String?
 
-        init(shortVersion: String?, isDevBuild: Bool, buildPR: String? = nil, buildSHA: String? = nil) {
+        init(shortVersion: String?, isDevBuild: Bool, buildPR: String? = nil, buildSHA: String? = nil, releaseRunID: String? = nil) {
             self.shortVersion = shortVersion
             self.isDevBuild = isDevBuild
             if isDevBuild, let buildPR, buildPR.range(of: #"\A[0-9]+\z"#, options: .regularExpression) != nil,
@@ -23,6 +24,9 @@ enum DashboardAboutPage {
             sha = isDevBuild ? buildSHA.flatMap {
                 $0.range(of: #"\A[0-9a-fA-F]{7,}\z"#, options: .regularExpression) == nil ? nil : $0
             } : nil
+            self.releaseRunID = isDevBuild ? nil : releaseRunID.flatMap {
+                $0.range(of: #"\A[0-9]+\z"#, options: .regularExpression) == nil ? nil : $0
+            }
         }
 
         init(bundle: Bundle, devBundleIdentifier: String) {
@@ -31,7 +35,8 @@ enum DashboardAboutPage {
                 shortVersion: bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
                 isDevBuild: isDevBuild,
                 buildPR: isDevBuild ? bundle.object(forInfoDictionaryKey: "BalanceBarBuildPR") as? String : nil,
-                buildSHA: isDevBuild ? bundle.object(forInfoDictionaryKey: "BalanceBarBuildSHA") as? String : nil
+                buildSHA: isDevBuild ? bundle.object(forInfoDictionaryKey: "BalanceBarBuildSHA") as? String : nil,
+                releaseRunID: bundle.object(forInfoDictionaryKey: "BalanceBarReleaseRunID") as? String
             )
         }
 
@@ -68,6 +73,12 @@ enum DashboardAboutPage {
         version.textColor = .secondaryLabelColor
         let detail = NSTextField(labelWithString: tr(.keyDashboardAboutPageACcSwitchBasedMenuBarBalanceViewer))
         detail.textColor = .secondaryLabelColor
+        var aboutViews: [NSView] = [icon, name, version]
+        if let runID = buildVersion.releaseRunID,
+           let runURL = URL(string: "https://github.com/huanmeng06/BalanceBar/actions/runs/\(runID)") {
+            aboutViews.append(DashboardAboutRunButton(runID: runID, destinationURL: runURL, openURL: openURL))
+        }
+        aboutViews.append(detail)
         let githubIcon = bundle.url(forResource: "GitHub", withExtension: "svg")
             .flatMap(NSImage.init(contentsOf:))
         let githubButton = DashboardAboutGitHubButton(
@@ -82,7 +93,7 @@ enum DashboardAboutPage {
         githubRow.alignment = .centerY
         githubRow.spacing = 0
 
-        let stack = NSStackView(views: [icon, name, version, detail, githubRow])
+        let stack = NSStackView(views: aboutViews + [githubRow])
         stack.identifier = DashboardPageSearch.aboutContentIdentifier
         stack.orientation = .vertical
         stack.alignment = .centerX
@@ -94,6 +105,34 @@ enum DashboardAboutPage {
             stack.topAnchor.constraint(equalTo: root.topAnchor, constant: 92)
         ])
         return root
+    }
+}
+
+final class DashboardAboutRunButton: NSButton {
+    let destinationURL: URL
+    private let openURL: (URL) -> Bool
+
+    init(runID: String, destinationURL: URL, openURL: @escaping (URL) -> Bool) {
+        self.destinationURL = destinationURL
+        self.openURL = openURL
+        super.init(frame: .zero)
+        title = tr(.keyDashboardAboutPageGithubActionsBuild, arguments: [runID])
+        attributedTitle = NSAttributedString(string: title, attributes: [.foregroundColor: NSColor.controlAccentColor])
+        isBordered = false
+        bezelStyle = .regularSquare
+        toolTip = tr(.keyDashboardAboutPageGithubActionsBuildHelp)
+        setAccessibilityRole(.button)
+        setAccessibilityLabel(title)
+        setAccessibilityHelp(tr(.keyDashboardAboutPageGithubActionsBuildHelp))
+        identifier = NSUserInterfaceItemIdentifier("about.githubActionsRun")
+        target = self
+        action = #selector(activate(_:))
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    @objc func activate(_ sender: Any?) {
+        _ = openURL(destinationURL)
     }
 }
 

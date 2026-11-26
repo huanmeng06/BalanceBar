@@ -22,6 +22,15 @@
 	<string>1.8.7</string>
   <key>CFBundleVersion</key>
 	<string>252</string>
+	<key>BalanceBarUpdateSigningKeys</key>
+	<array>
+		<dict>
+			<key>keyId</key>
+			<string>bb-release-1</string>
+			<key>publicKey</key>
+			<string>Z4dbnkee+aDNq6slVuvkgn3WM/ynHpvSADnLjSYaKmI=</string>
+		</dict>
+	</array>
   <key>LSMinimumSystemVersion</key>
   <string>14.0</string>
   <key>LSMultipleInstancesProhibited</key>

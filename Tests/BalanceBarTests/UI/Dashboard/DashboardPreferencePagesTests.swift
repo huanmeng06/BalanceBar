@@ -10283,6 +10283,56 @@ final class DashboardPreferencePagesTests: XCTestCase {
         }
     }
 
+    func testAboutPageShowsOnlyNumericReleaseRunIDAndOpensItsActionsRun() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .english
+        var openedURLs: [URL] = []
+        let fixtures = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: fixtures) }
+        let bundleURL = fixtures.appendingPathComponent("Release.bundle")
+        let contents = bundleURL.appendingPathComponent("Contents")
+        try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
+        let info: [String: Any] = [
+            "CFBundleIdentifier": "com.huanmeng06.BalanceBar.app",
+            "CFBundleShortVersionString": "1.2.3",
+            "BalanceBarReleaseRunID": "1234567890"
+        ]
+        let data = try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0)
+        try data.write(to: contents.appendingPathComponent("Info.plist"))
+        let bundle = try XCTUnwrap(Bundle(url: bundleURL))
+        let page = DashboardAboutPage.make(
+            bundle: bundle,
+            devBundleIdentifier: "com.huanmeng06.BalanceBar.dev",
+            openURL: { url in openedURLs.append(url); return true }
+        )
+        let button = try XCTUnwrap(descendant(withIdentifier: "about.githubActionsRun", in: page) as? DashboardAboutRunButton)
+        XCTAssertEqual(button.title, "GitHub Actions build #1234567890")
+        XCTAssertEqual(button.toolTip, tr(.keyDashboardAboutPageGithubActionsBuildHelp))
+        XCTAssertEqual(button.accessibilityLabel(), button.title)
+        XCTAssertEqual(button.accessibilityHelp(), tr(.keyDashboardAboutPageGithubActionsBuildHelp))
+        XCTAssertEqual(button.destinationURL.absoluteString, "https://github.com/huanmeng06/BalanceBar/actions/runs/1234567890")
+        button.activate(nil)
+        XCTAssertEqual(openedURLs, [button.destinationURL])
+
+        for (bundleIdentifier, runID) in [
+            ("com.huanmeng06.BalanceBar.app", "12abc"),
+            ("com.huanmeng06.BalanceBar.dev", "1234567890")
+        ] {
+            var invalidInfo = info
+            invalidInfo["CFBundleIdentifier"] = bundleIdentifier
+            invalidInfo["BalanceBarReleaseRunID"] = runID
+            let invalidURL = fixtures.appendingPathComponent("Invalid-\(bundleIdentifier).bundle")
+            let invalidContents = invalidURL.appendingPathComponent("Contents")
+            try FileManager.default.createDirectory(at: invalidContents, withIntermediateDirectories: true)
+            let invalidData = try PropertyListSerialization.data(fromPropertyList: invalidInfo, format: .xml, options: 0)
+            try invalidData.write(to: invalidContents.appendingPathComponent("Info.plist"))
+            let invalidBundle = try XCTUnwrap(Bundle(url: invalidURL))
+            let invalidPage = DashboardAboutPage.make(bundle: invalidBundle, devBundleIdentifier: "com.huanmeng06.BalanceBar.dev")
+            XCTAssertNil(descendant(withIdentifier: "about.githubActionsRun", in: invalidPage))
+        }
+    }
+
     func testAdvancedPageContainsOnlyActiveSettingsSections() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }

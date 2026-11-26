@@ -143,6 +143,8 @@
 "dashboard.navigation.forward" = "Adelante";
 "dashboard.about.page.github_repository" = "Repositorio de GitHub";
 "dashboard.about.page.version_value" = "Versión %1$@";
+"dashboard.about.page.github_actions_build" = "Compilación de GitHub Actions #%1$@";
+"dashboard.about.page.github_actions_build_help" = "GitHub Actions compiló esta versión a partir del código abierto. Haz clic para ver la ejecución.";
 "dashboard.about.page.a_cc_switch_based_menu_bar_balance_viewer" = "Consulta cuotas oficiales en la barra de menús y, con CC Switch, también saldos de terceros";
 "dashboard.about.page.open_the_balancebar_github_repository" = "Abrir el repositorio de BalanceBar en GitHub";
 "dashboard.advanced.page.reload" = "Volver a cargar";
@@ -957,3 +959,8 @@
 "dashboard.general.and.refresh.pages.connection_mode_requires_cc_switch" = "Requiere CC Switch";
 "dashboard.general.and.refresh.pages.download_cc_switch" = "Descargar CC Switch";
 "status.item.controller.download_cc_switch" = "Descargar CC Switch";
+"dashboard.general.and.refresh.pages.automatic_update_downloading" = "Descargando actualización…";
+"dashboard.general.and.refresh.pages.automatic_update_ready" = "Descargada y verificada. Se instalará al salir de BalanceBar.";
+"dashboard.general.and.refresh.pages.automatic_update_install_failed" = "No se pudo instalar la actualización. Vuelve a intentarlo o instálala manualmente.";
+"dashboard.general.and.refresh.pages.automatic_update_manual" = "Esta versión requiere instalación manual.";
+"dashboard.general.and.refresh.pages.install_now" = "Instalar ahora";
