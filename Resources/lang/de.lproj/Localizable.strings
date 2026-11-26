@@ -959,8 +959,3 @@
 "dashboard.general.and.refresh.pages.connection_mode_requires_cc_switch" = "Erfordert CC Switch";
 "dashboard.general.and.refresh.pages.download_cc_switch" = "CC Switch herunterladen";
 "status.item.controller.download_cc_switch" = "CC Switch herunterladen";
-"dashboard.general.and.refresh.pages.automatic_update_downloading" = "Update wird geladen …";
-"dashboard.general.and.refresh.pages.automatic_update_ready" = "Heruntergeladen und überprüft. Die Installation erfolgt beim Beenden von BalanceBar.";
-"dashboard.general.and.refresh.pages.automatic_update_install_failed" = "Das Update konnte nicht installiert werden. Versuche es erneut oder installiere es manuell.";
-"dashboard.general.and.refresh.pages.automatic_update_manual" = "Diese Version muss manuell installiert werden.";
-"dashboard.general.and.refresh.pages.install_now" = "Jetzt installieren";

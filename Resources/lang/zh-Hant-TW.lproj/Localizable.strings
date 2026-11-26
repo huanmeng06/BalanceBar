@@ -959,8 +959,3 @@
 "dashboard.general.and.refresh.pages.connection_mode_requires_cc_switch" = "需要 CC Switch";
 "dashboard.general.and.refresh.pages.download_cc_switch" = "下載 CC Switch";
 "status.item.controller.download_cc_switch" = "下載 CC Switch";
-"dashboard.general.and.refresh.pages.automatic_update_downloading" = "正在下載更新…";
-"dashboard.general.and.refresh.pages.automatic_update_ready" = "已下載並驗證，結束 BalanceBar 後會安裝。";
-"dashboard.general.and.refresh.pages.automatic_update_install_failed" = "安裝失敗。請重試或手動安裝。";
-"dashboard.general.and.refresh.pages.automatic_update_manual" = "此版本需要手動安裝。";
-"dashboard.general.and.refresh.pages.install_now" = "立即安裝";

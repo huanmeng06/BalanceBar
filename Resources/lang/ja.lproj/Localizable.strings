@@ -959,8 +959,3 @@
 "dashboard.general.and.refresh.pages.connection_mode_requires_cc_switch" = "CC Switch が必要";
 "dashboard.general.and.refresh.pages.download_cc_switch" = "CC Switch をダウンロード";
 "status.item.controller.download_cc_switch" = "CC Switch をダウンロード";
-"dashboard.general.and.refresh.pages.automatic_update_downloading" = "アップデートをダウンロード中…";
-"dashboard.general.and.refresh.pages.automatic_update_ready" = "ダウンロードと検証が完了しました。BalanceBar の終了時にインストールします。";
-"dashboard.general.and.refresh.pages.automatic_update_install_failed" = "アップデートをインストールできませんでした。再試行するか、手動でインストールしてください。";
-"dashboard.general.and.refresh.pages.automatic_update_manual" = "このバージョンは手動インストールが必要です。";
-"dashboard.general.and.refresh.pages.install_now" = "今すぐインストール";

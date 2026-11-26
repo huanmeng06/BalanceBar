@@ -959,8 +959,3 @@
 "dashboard.general.and.refresh.pages.connection_mode_requires_cc_switch" = "Нужен CC Switch";
 "dashboard.general.and.refresh.pages.download_cc_switch" = "Скачать CC Switch";
 "status.item.controller.download_cc_switch" = "Скачать CC Switch";
-"dashboard.general.and.refresh.pages.automatic_update_downloading" = "Загрузка обновления…";
-"dashboard.general.and.refresh.pages.automatic_update_ready" = "Загружено и проверено. Установка произойдёт при выходе из BalanceBar.";
-"dashboard.general.and.refresh.pages.automatic_update_install_failed" = "Не удалось установить обновление. Повторите попытку или установите его вручную.";
-"dashboard.general.and.refresh.pages.automatic_update_manual" = "Эта версия требует ручной установки.";
-"dashboard.general.and.refresh.pages.install_now" = "Установить сейчас";
