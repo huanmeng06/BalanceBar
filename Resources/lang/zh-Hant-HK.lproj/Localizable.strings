@@ -99,6 +99,8 @@
 "response.parsers.quota" = "配額";
 "response.parsers.7_days.4" = "7日";
 "response.parsers.quota.2" = "配額";
+"response.parsers.30_day_quota" = "30 日配額";
+"response.parsers.30_days" = "30日";
 "provider.balance.progress.store.the_balance_data_is_invalid" = "餘額資料無效";
 "provider.balance.progress.store.the_balance_unit_is_invalid" = "餘額單位無效";
 "provider.balance.progress.store.the_balance_unit_changed" = "餘額單位已變更";

@@ -52,6 +52,8 @@ struct ProviderChoice: Equatable {
 /// Subscription badge for official accounts. Codex and Claude plan claims use
 /// separate initializers because both vendors call a different plan "pro".
 enum OpenAISubscriptionTier: Equatable {
+    /// A lapsed or never-paid ChatGPT account; Codex then reports a 30-day window.
+    case free
     case plus
     case proFiveX
     case proTwentyX
@@ -65,6 +67,8 @@ enum OpenAISubscriptionTier: Equatable {
     init?(planType: String?) {
         guard let planType else { return nil }
         switch planType.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "free":
+            self = .free
         case "plus":
             self = .plus
         case "prolite", "pro_5x", "pro5x":
@@ -99,6 +103,8 @@ enum OpenAISubscriptionTier: Equatable {
 
     var text: String {
         switch self {
+        case .free:
+            return "FREE"
         case .plus:
             return "PLUS"
         case .proFiveX:

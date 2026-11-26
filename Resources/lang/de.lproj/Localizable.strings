@@ -99,6 +99,8 @@
 "response.parsers.7_day_quota.2" = "7-Tage-Kontingent";
 "response.parsers.7_days.4" = "7d";
 "response.parsers.quota.2" = "Kontingent";
+"response.parsers.30_day_quota" = "30-Tage-Kontingent";
+"response.parsers.30_days" = "30d";
 "provider.balance.progress.store.the_balance_data_is_invalid" = "Die Guthabendaten sind ungültig";
 "provider.balance.progress.store.the_balance_unit_is_invalid" = "Die Guthabeneinheit ist ungültig";
 "provider.balance.progress.store.the_balance_unit_changed" = "Die Guthabeneinheit wurde geändert";

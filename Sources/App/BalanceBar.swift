@@ -1164,7 +1164,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             activeClient: activeClient,
             providerIsOfficial: isOfficialOpenAICodex || isOfficialClaude,
             email: claudeMenuEmail ?? accountProfile?.email,
-            subscription: OpenAISubscriptionTier(planType: accountProfile?.planType, client: activeClient),
+            subscription: OpenAISubscriptionTier(
+                planType: (isOfficialOpenAICodex ? snapshot.codexPlanType : nil) ?? accountProfile?.planType,
+                client: activeClient),
             unavailableReason: claudeLoginHint
         )
         let directProviderID = providerChoicesCache.first(where: \.isCurrent)?.id ?? lastProviderID

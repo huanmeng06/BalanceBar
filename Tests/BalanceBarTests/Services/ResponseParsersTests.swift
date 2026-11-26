@@ -423,6 +423,43 @@ final class ResponseParsersTests: XCTestCase {
         XCTAssertEqual(legacyWithoutDuration.reset, "later")
     }
 
+    func testCodexFreePlanThirtyDayWindowIsNotLabelledWeekly() throws {
+        let free = try OfficialQuotaResponseParser.parse(
+            object: [
+                "plan_type": "free",
+                "rate_limit": [
+                    "primary_window": [
+                        "used_percent": 1,
+                        "limit_window_seconds": 2_592_000,
+                        "reset_after_seconds": 1_735_200
+                    ]
+                ]
+            ],
+            client: .codex,
+            now: now
+        )
+        XCTAssertEqual(free.windows.map(\.kind), [.other])
+        XCTAssertEqual(free.label, tr(.keyResponseParsers30DayQuota))
+        XCTAssertEqual(free.daysText, tr(.keyResponseParsers30Days))
+        XCTAssertNotEqual(free.label, tr(.keyResponseParsers7DayQuota2))
+        XCTAssertEqual(free.remaining, 99, accuracy: 0.000001)
+        XCTAssertEqual(free.planType, "free")
+        XCTAssertEqual(OpenAISubscriptionTier(planType: free.planType)?.text, "FREE")
+        XCTAssertEqual(
+            Snapshot.official("Codex", free.remaining, free.label, free.reset, now,
+                windows: free.windows, codexPlanType: free.planType).codexPlanType,
+            "free"
+        )
+
+        let tenDays = try OfficialQuotaResponseParser.parse(
+            object: ["primary_window": ["used_percent": 0, "limit_window_seconds": 864_000]],
+            client: .codex,
+            now: now
+        )
+        XCTAssertEqual(tenDays.label, tr(.keyResponseParsersQuota))
+        XCTAssertNil(tenDays.planType, "a missing plan_type leaves the token claim in charge")
+    }
+
     func testClaudeUnusedWindowShowsFullDurationCountdownLikeCodex() throws {
         let output = try OfficialQuotaResponseParser.parse(
             data: fixture(#"{"five_hour":{"utilization":0,"resets_at":null},"seven_day":{"utilization":0}}"#),
