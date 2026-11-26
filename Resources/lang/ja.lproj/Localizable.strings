@@ -940,7 +940,7 @@
 "dashboard.advanced.official_validity_dependency" = "公式使用量の取得が有効な場合にのみ適用されます。";
 
 // #691 official mode
-"official_mode.provider_name" = "%1$@ 公式";
+"official_mode.provider_name" = "%1$@ Official";
 "official_mode.third_party_route" = "%1$@ は公式アカウントを使用していません。サードパーティのプロバイダー残高を確認するには CC Switch が必要です";
 "dashboard.general.and.refresh.pages.connection_mode_official" = "公式";
 "dashboard.general.and.refresh.pages.connection_mode_local_sign_in" = "この Mac でログイン";

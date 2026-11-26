@@ -940,7 +940,7 @@
 "dashboard.advanced.official_validity_dependency" = "僅在啟用官方用量請求時生效。";
 
 // #691 official mode
-"official_mode.provider_name" = "%1$@ 官方";
+"official_mode.provider_name" = "%1$@ Official";
 "official_mode.third_party_route" = "%1$@ 目前未使用官方帳號，查詢第三方供應商餘額需要 CC Switch";
 "dashboard.general.and.refresh.pages.connection_mode_official" = "官方";
 "dashboard.general.and.refresh.pages.connection_mode_local_sign_in" = "本機登入";

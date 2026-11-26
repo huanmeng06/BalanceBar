@@ -940,7 +940,7 @@
 "dashboard.advanced.official_validity_dependency" = "공식 사용량 요청이 켜져 있을 때만 적용됩니다.";
 
 // #691 official mode
-"official_mode.provider_name" = "%1$@ 공식";
+"official_mode.provider_name" = "%1$@ Official";
 "official_mode.third_party_route" = "%1$@에서 공식 계정을 사용하고 있지 않습니다. 타사 서비스 제공자 잔액을 확인하려면 CC Switch가 필요합니다";
 "dashboard.general.and.refresh.pages.connection_mode_official" = "공식";
 "dashboard.general.and.refresh.pages.connection_mode_local_sign_in" = "이 Mac에서 로그인";

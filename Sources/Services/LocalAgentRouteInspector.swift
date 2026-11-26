@@ -24,8 +24,9 @@ struct LocalAgentRouteInspector {
         if text.contains("PROXY_MANAGED") { return .thirdParty }
         if client == .codex {
             if text.contains("cc-switch-official") { return .thirdParty }
-            guard let route = Self.codexRoute(text) else { return .undetermined }
-            return route.isEmpty ? .official : .thirdParty
+            if let route = Self.codexRoute(text) { return route.isEmpty ? .official : .thirdParty }
+            if let provider = Self.topLevelCodexProvider(in: text), provider != "openai" { return .thirdParty }
+            return .undetermined
         }
         guard let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return .undetermined }
         if object["apiKeyHelper"] != nil { return .thirdParty }
@@ -71,6 +72,22 @@ struct LocalAgentRouteInspector {
               url.query == nil, url.fragment == nil,
               url.port == nil || url.port == 443 else { return false }
         return true
+    }
+
+    private static func topLevelCodexProvider(in config: String) -> String? {
+        for raw in config.components(separatedBy: .newlines) {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            if line.hasPrefix("[") { break }
+            if line.hasPrefix("#") { continue }
+            if let match = line.wholeMatch(of: #/(?:model_provider|"model_provider"|'model_provider')[ \t]*=[ \t]*("(?:[^"\\]|\\.)*"|'[^']*')[ \t]*(?:#.*)?/#) {
+                let value = match.output.1
+                if value.hasPrefix("'") { return String(value.dropFirst().dropLast()) }
+                return (try? JSONSerialization.jsonObject(with: Data(value.utf8), options: .fragmentsAllowed)) as? String
+            }
+            // Do not mistake assignments inside an unsupported multiline string for TOML keys.
+            if line.contains("\"\"\"") || line.contains("'''") { break }
+        }
+        return nil
     }
 
     /// Strict single-line routing subset. Unsupported/ambiguous routing syntax fails closed.

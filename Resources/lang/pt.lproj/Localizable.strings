@@ -940,7 +940,7 @@
 "dashboard.advanced.official_validity_dependency" = "Só se aplica quando os pedidos oficiais de quota estão ativados.";
 
 // #691 official mode
-"official_mode.provider_name" = "%1$@ oficial";
+"official_mode.provider_name" = "%1$@ Official";
 "official_mode.third_party_route" = "%1$@ não está usando uma conta oficial. Para consultar o saldo de provedores de terceiros, é necessário o CC Switch";
 "dashboard.general.and.refresh.pages.connection_mode_official" = "Oficial";
 "dashboard.general.and.refresh.pages.connection_mode_local_sign_in" = "Sessão iniciada neste Mac";

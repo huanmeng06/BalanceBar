@@ -940,7 +940,7 @@
 "dashboard.advanced.official_validity_dependency" = "Gilt nur, wenn offizielle Kontingentabfragen aktiviert sind.";
 
 // #691 official mode
-"official_mode.provider_name" = "%1$@ (offiziell)";
+"official_mode.provider_name" = "%1$@ Official";
 "official_mode.third_party_route" = "%1$@ verwendet derzeit kein offizielles Konto. Für das Guthaben von Drittanbietern wird CC Switch benötigt";
 "dashboard.general.and.refresh.pages.connection_mode_official" = "Offiziell";
 "dashboard.general.and.refresh.pages.connection_mode_local_sign_in" = "Auf diesem Mac angemeldet";

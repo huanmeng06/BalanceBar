@@ -940,7 +940,7 @@
 "dashboard.advanced.official_validity_dependency" = "仅在启用官方额度请求时生效。";
 
 // #691 official mode
-"official_mode.provider_name" = "%1$@ 官方";
+"official_mode.provider_name" = "%1$@ Official";
 "official_mode.third_party_route" = "%1$@ 当前未使用官方账号，查询第三方服务商余额需要 CC Switch";
 "dashboard.general.and.refresh.pages.connection_mode_official" = "官方";
 "dashboard.general.and.refresh.pages.connection_mode_local_sign_in" = "本机登录";

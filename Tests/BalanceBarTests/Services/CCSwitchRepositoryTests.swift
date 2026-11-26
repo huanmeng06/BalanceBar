@@ -72,6 +72,23 @@ final class CCSwitchRepositoryTests: XCTestCase {
         XCTAssertEqual(try resolver.resolveChecked(.codex), .noCurrentProvider)
     }
 
+    func testLocalCodexRouteInspectorRecognizesExplicitProviderWhenRouteCannotBeParsed() throws {
+        let inspector = LocalAgentRouteInspector(homeDirectoryURL: temporaryDirectoryURL)
+        let file = temporaryDirectoryURL.appendingPathComponent(".codex/config.toml")
+        let cases: [(String, LocalAgentRoute)] = [
+            (#"model_provider = "ollama""#, .thirdParty),
+            (#"profile = "x""#, .undetermined),
+            ("model_provider = \"openai\"\nprofile = \"x\"", .undetermined),
+            ("profile = \"x\"\n'model_provider' = 'ollama' # local provider", .thirdParty),
+            ("profile = \"x\"\n[profiles.x]\nmodel_provider = \"ollama\"", .undetermined),
+            ("model_provider = \"custom\"\n[model_providers.custom]\nname = \"OpenAI\"\nrequires_openai_auth = true\nsupports_websockets = true\nwire_api = \"responses\"\n", .official)
+        ]
+        for (config, expected) in cases {
+            try Data(config.utf8).write(to: file)
+            XCTAssertEqual(inspector.route(for: .codex), expected, config)
+        }
+    }
+
     func testLocalClaudeRouteInspectorDistinguishesThirdPartyAndInvalidConfiguration() throws {
         let inspector = LocalAgentRouteInspector(homeDirectoryURL: temporaryDirectoryURL)
         let directory = temporaryDirectoryURL.appendingPathComponent(".claude")

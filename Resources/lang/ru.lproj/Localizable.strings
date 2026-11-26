@@ -940,7 +940,7 @@
 "dashboard.advanced.official_validity_dependency" = "Применяется только при включённых официальных запросах квот.";
 
 // #691 official mode
-"official_mode.provider_name" = "%1$@ (официальный)";
+"official_mode.provider_name" = "%1$@ Official";
 "official_mode.third_party_route" = "%1$@ сейчас не использует официальный аккаунт. Для баланса сторонних провайдеров нужен CC Switch";
 "dashboard.general.and.refresh.pages.connection_mode_official" = "Официальный";
 "dashboard.general.and.refresh.pages.connection_mode_local_sign_in" = "Вход на этом Mac";
