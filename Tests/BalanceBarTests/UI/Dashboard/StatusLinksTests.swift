@@ -96,20 +96,24 @@ private final class TrackingStatusLinksWindow: NSPanel {
 
 @MainActor
 final class StatusLinksTests: XCTestCase {
-    func testEditorTooltipsFollowTheSelectedLanguage() {
+    func testEditorTooltipsAndAccessibilityLabelsFollowTheSelectedLanguage() {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
 
-        for (language, actions, move) in [
-            (AppLanguage.simplifiedChinese, "添加或移除服务状态链接", "上移或下移服务状态链接"),
-            (.japanese, "ステータスリンクを追加または削除", "ステータスリンクを上下に移動"),
-            (.english, "Add or remove status links", "Move status link up or down")
+        for (language, actions, move, actionsLabel, moveLabel) in [
+            (AppLanguage.simplifiedChinese, "添加或移除服务状态链接", "上移或下移服务状态链接", "状态链接操作", "移动状态链接"),
+            (.japanese, "ステータスリンクを追加または削除", "ステータスリンクを上下に移動", "ステータスリンクの操作", "ステータスリンクを移動"),
+            (.english, "Add or remove status links", "Move status link up or down", "Status link actions", "Move status link")
         ] {
             AppLanguage.selected = language
             let editor = makeEditor(links: [])
             let controls = descendants(of: editor).compactMap { $0 as? NSSegmentedControl }
-            XCTAssertEqual(controls.first { $0.identifier?.rawValue == "statusLinks.actions" }?.toolTip, actions)
-            XCTAssertEqual(controls.first { $0.identifier?.rawValue == "statusLinks.move" }?.toolTip, move)
+            let actionsControl = controls.first { $0.identifier?.rawValue == "statusLinks.actions" }
+            let moveControl = controls.first { $0.identifier?.rawValue == "statusLinks.move" }
+            XCTAssertEqual(actionsControl?.toolTip, actions)
+            XCTAssertEqual(moveControl?.toolTip, move)
+            XCTAssertEqual(actionsControl?.accessibilityLabel(), actionsLabel)
+            XCTAssertEqual(moveControl?.accessibilityLabel(), moveLabel)
         }
     }
 

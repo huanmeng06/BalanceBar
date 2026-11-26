@@ -454,7 +454,9 @@
 "status.links.editor.open_link" = "Открыть ссылку";
 "status.links.editor.copy_url" = "Скопировать URL";
 "status.links.editor.copy_item" = "Скопировать элемент";
+"status.links.editor.actions_accessibility" = "Действия со ссылками на статус";
 "status.links.editor.actions_tooltip" = "Добавить или удалить ссылки на статус";
+"status.links.editor.move_accessibility" = "Переместить ссылку на статус";
 "status.links.editor.move_tooltip" = "Переместить ссылку на статус вверх или вниз";
 "status.links.editor.action_completed" = "Действие выполнено";
 "status.item.controller.refresh_now" = "Обновить сейчас";
@@ -495,7 +497,9 @@
 "codex.banked_reset.expires_value" = "Истекает %1$@";
 "codex.banked_reset.nearest_expiry" = "Ближайшее истечение: %1$@";
 "codex.banked_reset.remaining_hours" = "%1$@ ч";
+"codex.banked_reset.remaining_day" = "%1$@ д";
 "codex.banked_reset.remaining_days" = "%1$@ д";
+"codex.banked_reset.remaining_day_hours" = "%1$@ д %2$@ ч";
 "codex.banked_reset.remaining_days_hours" = "%1$@ д %2$@ ч";
 "codex.banked_reset.remaining_minutes" = "%1$@ мин";
 "codex.banked_reset.probability_prefix" = "Вероятность сброса";
@@ -614,9 +618,10 @@
 
 "quota.status.refreshing" = "Чтение…";
 "quota.status.realtime" = "Онлайн";
-"quota.status.ago.minutes" = "%1$@ мин";
-"quota.status.ago.hours" = "%1$@ ч";
-"quota.status.ago.days" = "%1$@ дн";
+"quota.status.ago.minutes" = "%1$@ мин назад";
+"quota.status.ago.hours" = "%1$@ ч назад";
+"quota.status.ago.day" = "%1$@ дн назад";
+"quota.status.ago.days" = "%1$@ дн назад";
 "quota.status.source.oauth_api" = "OAuth API";
 "quota.status.source.mod" = "Mod";
 "quota.status.hover.refreshing" = "Чтение актуальной квоты";

@@ -3691,7 +3691,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
     func testAccountMarqueeOpticalViewportAlignsToTitleInkWithoutDoubleInset() throws {
         for (titleText, hintText) in [
             ("Reset-Wahrscheinlichkeit", "Offizieller Hinweis · Kein Zeitpunkt"),
-            ("Reset probability", "Official reset hint · No specific time"),
+            ("Reset Probability", "Official reset hint · No specific time"),
             ("Probabilité de réinitialisation", "Indication officielle · Pas d'heure"),
             ("重置概率", "官方信号 · 未指定时间")
         ] {
@@ -4600,7 +4600,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             labels.filter { $0 == tr(.keyCodexBankedResetFullResetTitle) }.count,
             2
         )
-        XCTAssertFalse(labels.contains { $0.contains("完全重置（") || $0.contains("Full reset (weekly") })
+        XCTAssertFalse(labels.contains { $0.contains("完全重置（") || $0.contains("Full Reset (weekly") })
         XCTAssertEqual(
             labels.filter { $0 == tr(.keyCodexBankedResetFullResetWindow) }.count,
             2

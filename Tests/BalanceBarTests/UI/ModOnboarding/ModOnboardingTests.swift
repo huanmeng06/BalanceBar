@@ -1831,7 +1831,7 @@ final class RealtimeBoostAdvancedCardTests: XCTestCase {
         XCTAssertEqual(card.statusRow.titleLabel.stringValue, "BalanceBar Mod Real-Time Boost")
         XCTAssertTrue(statusLine(card.statusRow).hasPrefix("● Enabled · Last trusted data: "))
         XCTAssertTrue(card.installButton.isHidden)
-        XCTAssertEqual(card.descriptionButton.title, "Learn more")
+        XCTAssertEqual(card.descriptionButton.title, "Learn More")
         card.update(status: .silent, operation: .intro(dismissChecked: false))
         XCTAssertEqual(card.statusRow.titleLabel.stringValue, "BalanceBar Mod Real-Time Boost")
         XCTAssertEqual(card.statusRow.detailLabel.stringValue,
@@ -1845,7 +1845,7 @@ final class RealtimeBoostAdvancedCardTests: XCTestCase {
         var described: NSButton?
         let card = rows(.notInstalled(hasOtherScopeInstall: false), install: { installed = $0 }, describe: { described = $0 })
         XCTAssertFalse(card.installButton.isHidden)
-        XCTAssertEqual(card.descriptionButton.title, "Learn more")
+        XCTAssertEqual(card.descriptionButton.title, "Learn More")
         card.installButton.performClick(nil)
         card.descriptionButton.performClick(nil)
         XCTAssertTrue(installed === card.installButton)
@@ -1862,7 +1862,7 @@ final class RealtimeBoostAdvancedCardTests: XCTestCase {
         XCTAssertFalse(card.statusRow.detailLabel.stringValue.contains("Enabled"))
         card.update(status: .notInstalled(hasOtherScopeInstall: false), operation: .failed(.inboxNotReady))
         XCTAssertFalse(card.installButton.isHidden)
-        XCTAssertEqual(card.descriptionButton.title, "View error")
+        XCTAssertEqual(card.descriptionButton.title, "View Error")
         card.update(status: .waitingForData, operation: .uninstalling(current: .removeMarketplace))
         XCTAssertTrue(card.statusRow.detailLabel.stringValue.contains("Remove"))
         XCTAssertTrue(card.installButton.isHidden)
@@ -1873,7 +1873,7 @@ final class RealtimeBoostAdvancedCardTests: XCTestCase {
             XCTAssertTrue(rows(status).installButton.isHidden)
         }
         XCTAssertFalse(rows(.inboxNotReady).installButton.isHidden)
-        XCTAssertEqual(rows(.disabled).descriptionButton.title, "Learn more")
+        XCTAssertEqual(rows(.disabled).descriptionButton.title, "Learn More")
     }
 
     func testGeneralRefreshSectionHostsCalibrationThenTokenRefreshThenModAndAdvancedHasNoModRow() throws {
@@ -1882,7 +1882,7 @@ final class RealtimeBoostAdvancedCardTests: XCTestCase {
         defer { AppLanguage.selected = old }
         let advanced = DashboardAdvancedPage().make(.init(relay: DashboardPreferencePageRelay(), logViewer: nil))
         let advancedSections = descendants(advanced).compactMap { $0 as? SettingsSectionView }
-        XCTAssertEqual(advancedSections.map { $0.headingLabel.stringValue }, ["Claude IP Allowlist", "Validity of each Claude data source", "Diagnostics"])
+        XCTAssertEqual(advancedSections.map { $0.headingLabel.stringValue }, ["Claude IP Allowlist", "Validity of Each Claude Data Source", "Diagnostics"])
         XCTAssertFalse(descendants(advanced).contains { ($0 as? SettingsRowView)?.titleLabel.stringValue == "BalanceBar Mod Real-Time Boost" },
                        "the Mod install row lives under General; Advanced only has the validity selectors")
 

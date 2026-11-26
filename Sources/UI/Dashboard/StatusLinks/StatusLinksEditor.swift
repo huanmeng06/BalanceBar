@@ -913,7 +913,7 @@ final class StatusLinksEditorHostingView: NSView,
         control.segmentDistribution = .fillEqually
         if let plus = NSImage(
             systemSymbolName: "plus",
-            accessibilityDescription: "Add status link"
+            accessibilityDescription: tr(.keyDashboardAdvancedPageEgressGuardAddDetected)
         ) {
             control.setImage(plus, forSegment: 0)
             control.setLabel("", forSegment: 0)
@@ -922,7 +922,7 @@ final class StatusLinksEditorHostingView: NSView,
         }
         if let minus = NSImage(
             systemSymbolName: "minus",
-            accessibilityDescription: "Remove status link"
+            accessibilityDescription: tr(.keyDashboardAdvancedPageEgressGuardRemove)
         ) {
             control.setImage(minus, forSegment: 1)
             control.setLabel("", forSegment: 1)
@@ -935,7 +935,7 @@ final class StatusLinksEditorHostingView: NSView,
         control.action = #selector(performAction(_:))
         control.identifier = NSUserInterfaceItemIdentifier("statusLinks.actions")
         control.toolTip = tr(.keyStatusLinksEditorActionsTooltip)
-        control.setAccessibilityLabel("Status Links actions")
+        control.setAccessibilityLabel(tr(.keyStatusLinksEditorActionsAccessibility))
     }
 
     private func configureMoveControl(_ control: NSSegmentedControl) {
@@ -948,14 +948,14 @@ final class StatusLinksEditorHostingView: NSView,
         control.segmentDistribution = .fillEqually
         if let up = NSImage(
             systemSymbolName: "chevron.up",
-            accessibilityDescription: "Move status link up"
+            accessibilityDescription: tr(.keyDashboardMenuBarPageUp)
         ) {
             control.setImage(up, forSegment: 0)
             control.setLabel("", forSegment: 0)
         }
         if let down = NSImage(
             systemSymbolName: "chevron.down",
-            accessibilityDescription: "Move status link down"
+            accessibilityDescription: tr(.keyDashboardMenuBarPageDown)
         ) {
             control.setImage(down, forSegment: 1)
             control.setLabel("", forSegment: 1)
@@ -966,7 +966,7 @@ final class StatusLinksEditorHostingView: NSView,
         control.action = #selector(performMoveAction(_:))
         control.identifier = NSUserInterfaceItemIdentifier("statusLinks.move")
         control.toolTip = tr(.keyStatusLinksEditorMoveTooltip)
-        control.setAccessibilityLabel("Move status link")
+        control.setAccessibilityLabel(tr(.keyStatusLinksEditorMoveAccessibility))
     }
 
     private func configureMoreControl(

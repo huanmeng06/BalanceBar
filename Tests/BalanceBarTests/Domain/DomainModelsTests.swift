@@ -1257,7 +1257,7 @@ final class DomainModelsTests: XCTestCase {
         )
         XCTAssertEqual(
             oneDayFourHours.text,
-            tr(.keyCodexBankedResetRemainingDaysHours, arguments: ["1", "4"])
+            tr(.keyCodexBankedResetRemainingDayHours, arguments: ["1", "4"])
         )
         XCTAssertFalse(oneDayFourHours.isWarning)
 
@@ -1269,7 +1269,7 @@ final class DomainModelsTests: XCTestCase {
         )
         XCTAssertEqual(
             exactlyOneDay.text,
-            tr(.keyCodexBankedResetRemainingDays, arguments: ["1"])
+            tr(.keyCodexBankedResetRemainingDay, arguments: ["1"])
         )
         XCTAssertFalse(exactlyOneDay.isWarning)
 

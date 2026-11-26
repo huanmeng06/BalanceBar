@@ -1284,6 +1284,7 @@ class HoverLinkTextField: NSTextField {
     }
 
     var onActivate: (() -> Void)?
+    weak var animatedTextViewport: NSView?
     var hoverPhrase: String? { didSet { updateVisibleTextHitRect() } }
     var decoratesOnHover = true
     var underlinesHoverPhrase = false
@@ -1381,6 +1382,13 @@ class HoverLinkTextField: NSTextField {
             // embedded in an already styled attributed value.
             applyStyle(text: stringValue, underlined: isHovered)
             updateVisibleTextHitRect()
+        }
+    }
+
+    override var lineBreakMode: NSLineBreakMode {
+        didSet {
+            guard lineBreakMode != oldValue, !isApplyingStyle else { return }
+            applyStyle(text: stringValue, underlined: isHovered)
         }
     }
 
@@ -1490,12 +1498,8 @@ class HoverLinkTextField: NSTextField {
     /// glyph hit test used by the normal Dashboard tracking path.
     func updateHover(atHostPoint point: NSPoint, in host: NSView) {
         guard interactionMode == .menuHosted else { return }
-        var pointInLink = convert(point, from: host)
-        if let model = layer, let presentation = model.presentation() {
-            pointInLink.x -= presentation.frame.minX - model.frame.minX
-        }
-        setHovering(!isHiddenOrHasHiddenAncestor && visibleTextHitRect.contains(pointInLink)
-            && host.visibleRect.contains(point))
+        setHovering(!isHiddenOrHasHiddenAncestor && host.visibleRect.contains(point)
+            && containsVisibleGlyphs(at: point, from: host, followsAnimation: true))
     }
 
     func setInteractionMode(_ mode: InteractionMode) {
@@ -1666,13 +1670,18 @@ class HoverLinkTextField: NSTextField {
     }
 
     private func isPointInsideVisibleText(for event: NSEvent) -> Bool {
-        let point: NSPoint
-        if window != nil {
-            point = convert(event.locationInWindow, from: nil)
-        } else {
-            point = event.locationInWindow
+        containsVisibleGlyphs(at: event.locationInWindow, from: window == nil ? self : nil,
+            followsAnimation: animatedTextViewport != nil)
+    }
+
+    private func containsVisibleGlyphs(at point: NSPoint, from source: NSView?, followsAnimation: Bool) -> Bool {
+        if let viewport = animatedTextViewport,
+           !viewport.visibleRect.contains(viewport.convert(point, from: source)) { return false }
+        var local = convert(point, from: source)
+        if followsAnimation, let model = layer, let presentation = model.presentation() {
+            local.x -= presentation.frame.minX - model.frame.minX
         }
-        return visibleTextHitRect.contains(point)
+        return visibleTextHitRect.contains(local)
     }
 
     private func updateVisibleTextHitRect() {

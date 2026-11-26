@@ -3478,6 +3478,16 @@ final class StatusItemControllerTests: XCTestCase {
         )
     }
 
+    private func providerTitle(in card: NSView) throws -> (view: NSView, label: NSTextField) {
+        func findTitle(in view: NSView) -> NSView? {
+            if view.identifier?.rawValue == "overview.providerTitle" { return view }
+            return view.subviews.lazy.compactMap { findTitle(in: $0) }.first
+        }
+        let view = try XCTUnwrap(findTitle(in: card))
+        let label = try XCTUnwrap((view as? AccountMarqueeView)?.accountLabel ?? view as? NSTextField)
+        return (view, label)
+    }
+
     private func makeMenuInput(
         activeClient: AssistantClient = .codex,
         showQuickSwitchMenu: Bool = false,
@@ -4063,7 +4073,7 @@ extension StatusItemControllerTests {
         XCTAssertTrue(cached is MenuHoverLinkHostView, "a kept balance keeps its normal balance layout")
         XCTAssertGreaterThan(cached.frame.height, freshHeight)
         let labels = cached.subviews.compactMap { $0 as? NSTextField }
-        let providerLink = try XCTUnwrap(labels.first { $0.identifier?.rawValue == "overview.providerTitle" } as? HoverLinkTextField)
+        let providerLink = try XCTUnwrap(providerTitle(in: cached).label as? HoverLinkTextField)
         providerLink.onActivate?()
         XCTAssertEqual(openedURLs, [website])
         let time = try XCTUnwrap(labels.first { $0.identifier?.rawValue == "overview.refreshTime" })
@@ -4710,7 +4720,7 @@ extension StatusItemControllerTests {
         let document = try XCTUnwrap((controller.statusMenuForTesting.items.first?.view as? NSScrollView)?.documentView)
         let card = try XCTUnwrap(document.subviews.first?.subviews.first)
         let tag = try XCTUnwrap(card.subviews.compactMap { $0 as? AggregationNoteTagView }.first)
-        let title = try XCTUnwrap(card.subviews.compactMap { $0 as? NSTextField }.first { $0.identifier?.rawValue == "overview.providerTitle" })
+        XCTAssertEqual(try providerTitle(in: card).label.stringValue, "tokenshop")
         let original = tag.originalTitleFrame
         XCTAssertEqual(tag.textView.accountLabel.stringValue, "Grok")
         controller.updateMenu(input: input("GPT"))
@@ -4718,7 +4728,7 @@ extension StatusItemControllerTests {
         XCTAssertEqual(tag.textView.accountLabel.stringValue, "GPT")
         controller.updateMenu(input: input(nil))
         XCTAssertFalse(card.subviews.contains { $0 is AggregationNoteTagView })
-        XCTAssertEqual(title.frame, original)
+        XCTAssertEqual(try providerTitle(in: card).view.frame, original)
     }
 
     @MainActor
@@ -4774,14 +4784,14 @@ extension StatusItemControllerTests {
         controller.updateMenu(input: aggregationInput(count: 4, notes: [0: text, 1: "Grok", 2: "GPT", 3: "   "]))
         XCTAssertTrue(wrapper.subviews.first === card)
         let tag = try XCTUnwrap(card.subviews.compactMap { $0 as? AggregationNoteTagView }.first)
-        let title = try XCTUnwrap(card.subviews.compactMap { $0 as? NSTextField }.first { $0.identifier?.rawValue == "overview.providerTitle" })
+        let title = try providerTitle(in: card)
         tag.layoutSubtreeIfNeeded()
         tag.textView.layoutSubtreeIfNeeded()
         XCTAssertEqual(tag.toolTip, text.trimmingCharacters(in: .whitespacesAndNewlines))
         XCTAssertEqual(tag.textView.accountLabel.font?.pointSize, 11)
-        XCTAssertEqual(tag.frame.minX, title.frame.maxX + 8)
+        XCTAssertEqual(tag.frame.minX, title.view.frame.maxX + 8)
         XCTAssertEqual(tag.frame.height, 15)
-        XCTAssertEqual(tag.frame.midY, title.frame.maxY - title.firstBaselineOffsetFromTop + (title.font?.capHeight ?? 0) / 2, accuracy: 0.5)
+        XCTAssertEqual(tag.frame.midY, StatusItemController.overviewBaselineY(for: title.label, in: card) + (title.label.font?.capHeight ?? 0) / 2, accuracy: 0.5)
         tag.appearance = NSAppearance(named: .aqua)
         tag.updateLayer()
         let light = tag.layer?.backgroundColor
@@ -4816,7 +4826,7 @@ extension StatusItemControllerTests {
         XCTAssertEqual(controller.aggregationPlacementCountForTesting, placements)
         controller.updateMenu(input: aggregationInput(count: 4))
         XCTAssertFalse(card.subviews.contains { $0 is AggregationNoteTagView })
-        XCTAssertEqual(title.frame, layout.title)
+        XCTAssertEqual(try providerTitle(in: card).view.frame, layout.title)
         let ordinary = OpenCodexCardLayout.frames(for: .balance, includesQuotaProgress: layout.progress != nil)
         XCTAssertEqual(ordinary.cardSize.height, layout.cardSize.height)
         XCTAssertEqual(ordinary.cardSize.height - ordinary.refreshTime.maxY, layout.cardSize.height - layout.refreshTime.maxY)
@@ -5459,7 +5469,7 @@ extension StatusItemControllerTests {
             return false
         })
         XCTAssertEqual(balanceAmount.currentValue, 12.5, accuracy: 0.001)
-        XCTAssertTrue(descendants(card).contains { $0.identifier?.rawValue == "overview.providerTitle" })
+        XCTAssertEqual(try providerTitle(in: card).label.stringValue, snapshot.overviewProvider)
         XCTAssertNotNil(layout.progress, "the balance layout retains its progress slot")
         XCTAssertTrue(descendants(card).contains { $0 is QuotaProgressView },
             "the original balance progress bar remains visible")
@@ -5471,8 +5481,7 @@ extension StatusItemControllerTests {
         XCTAssertEqual(resetSection.frame, sectionLayout.frame)
         XCTAssertNotNil(descendants(card).compactMap { $0 as? BankedResetTicketScrollView }.first,
             "long reset-card lists keep their bounded, scrollable viewport on relay cards")
-        XCTAssertTrue(descendants(card).compactMap { $0 as? HoverLinkTextField }
-            .contains { $0.identifier?.rawValue == "overview.providerTitle" && $0.onActivate != nil })
+        XCTAssertNotNil((try providerTitle(in: card).label as? HoverLinkTextField)?.onActivate)
     }
 
     @MainActor
@@ -5617,8 +5626,7 @@ extension StatusItemControllerTests {
         XCTAssertTrue(card.subviews.contains { $0 is OpenCodexBankedResetSectionView })
         let balanceSection = try XCTUnwrap(card.subviews.compactMap { $0 as? OpenCodexOverviewSectionView }
             .first { $0.sectionID == .legacyQuota })
-        XCTAssertTrue(balanceSection.subviews.compactMap { $0 as? HoverLinkTextField }
-            .contains { $0.identifier?.rawValue == "overview.providerTitle" && $0.onActivate != nil })
+        XCTAssertNotNil((try providerTitle(in: balanceSection).label as? HoverLinkTextField)?.onActivate)
 
         let hidden = makeController()
         defer { hidden.teardown() }
@@ -5678,6 +5686,238 @@ extension StatusItemControllerTests {
                 }
             }
         }
+    }
+
+    @MainActor
+    func testRussianStatusSlotMakesLongProviderTitleScrollWhileTracking() throws {
+        let previous = AppLanguage.selected
+        defer { AppLanguage.selected = previous }
+        AppLanguage.selected = .russian
+        let controller = makeController()
+        defer { controller.teardown() }
+        let date = Date()
+        var snapshot = Snapshot.official("ChatGPT Official", 80, "5h", nil, date)
+        let input = StatusItemController.MenuInput(choices: [], quickSwitchSummaries: [:], activeClient: .claude,
+            openAIAccount: nil, statusLinks: [], showQuickSwitchMenu: false, showOpenChatGPTMenu: false,
+            showOpenCCSwitchMenu: false, showStatusMenu: false, directProviderID: "official")
+        let settings = makeSettings()
+        controller.start(snapshot: snapshot, refreshDate: date, menuInput: input, settings: settings)
+        let menu = controller.statusMenuForTesting
+        let card = try XCTUnwrap(menu.items.first?.view as? MenuHoverLinkHostView)
+        let initial = try providerTitle(in: card)
+        let header = try XCTUnwrap(initial.view.superview)
+        XCTAssertTrue(initial.view is NSTextField)
+        XCTAssertEqual(initial.view.frame, header.convert(try XCTUnwrap(card.overviewLayout).title, from: card))
+
+        controller.menuWillOpen(menu)
+        defer { controller.menuDidClose(menu) }
+        snapshot.quotaStatus = .error(at: date.addingTimeInterval(-59 * 60), source: .oauthAPI)
+        controller.update(snapshot: snapshot, refreshDate: date, menuInput: input, settings: settings)
+        XCTAssertTrue(menu.items.first?.view === card)
+        let slot = try XCTUnwrap(header.subviews.compactMap { $0 as? StatusSlotView }.first)
+        let title = try XCTUnwrap(providerTitle(in: card).view as? AccountMarqueeView)
+        XCTAssertEqual(slot.textForTesting, "⚠︎ 59 мин назад · OAuth API")
+        XCTAssertEqual(slot.frame.width, 166)
+        XCTAssertEqual(title.frame.maxX + 6, slot.frame.minX, accuracy: 0.01)
+        XCTAssertEqual(title.accountLabel.stringValue, "ChatGPT Official")
+        XCTAssertEqual(title.accountLabel.lineBreakMode, .byClipping)
+        XCTAssertGreaterThan(title.accountLabel.frame.width, title.frame.width)
+        XCTAssertTrue(title.isScrollable)
+        XCTAssertTrue(title.respectsReduceMotion)
+        XCTAssertTrue(title.isAccessibilityElement())
+        XCTAssertFalse(title.accountLabel.isAccessibilityElement())
+        XCTAssertEqual(title.accessibilityLabel(), "ChatGPT Official")
+        XCTAssertEqual(title.toolTip, "ChatGPT Official")
+        XCTAssertEqual(title.accountLabel.identifier, title.identifier)
+
+        let rebuilt = makeController()
+        defer { rebuilt.teardown() }
+        rebuilt.start(snapshot: snapshot, refreshDate: date, menuInput: input, settings: settings)
+        let rebuiltCard = try XCTUnwrap(rebuilt.menuItemsForTesting.first?.view)
+        XCTAssertEqual(try providerTitle(in: rebuiltCard).view.frame, title.frame)
+        var shortSnapshot = Snapshot.official("Claude", 80, "5h", nil, date)
+        shortSnapshot.quotaStatus = snapshot.quotaStatus
+        controller.update(snapshot: shortSnapshot, refreshDate: date, menuInput: input, settings: settings)
+        let short = try providerTitle(in: card)
+        XCTAssertTrue(short.view is NSTextField)
+        XCTAssertEqual(short.view.frame, title.frame)
+        XCTAssertEqual(short.label.stringValue, "Claude")
+
+        shortSnapshot.quotaStatus = nil
+        controller.update(snapshot: shortSnapshot, refreshDate: date, menuInput: input, settings: settings)
+        XCTAssertEqual(try providerTitle(in: card).view.frame, initial.view.frame)
+        XCTAssertFalse(header.subviews.contains { $0 is StatusSlotView })
+    }
+
+    @MainActor
+    func testLongBalanceTitleKeepsHoverAndOpensWebsiteFromVisibleTextOnly() throws {
+        let website = try XCTUnwrap(URL(string: "https://example.test/billing"))
+        var opened: [URL] = []
+        let controller = makeController(openStatusLink: { opened.append($0) })
+        defer { controller.teardown() }
+        let date = Date()
+        let name = "A long billing provider name that needs room to scroll"
+        let snapshot = Snapshot.balance(name, 42, "USD", website, date, progressPercentage: nil)
+        controller.start(snapshot: snapshot, refreshDate: date, menuInput: makeMenuInput(), settings: makeSettings())
+        let card = try XCTUnwrap(controller.statusMenuForTesting.items.first?.view as? MenuHoverLinkHostView)
+        let title = try providerTitle(in: card)
+        let marquee = try XCTUnwrap(title.view as? AccountMarqueeView)
+        let link = try XCTUnwrap(title.label as? HoverLinkTextField)
+        XCTAssertEqual(link.stringValue, name)
+        XCTAssertEqual(marquee.accessibilityRole(), .link)
+        XCTAssertEqual(marquee.toolTip, name)
+
+        func click(at point: NSPoint) throws {
+            let event = try XCTUnwrap(NSEvent.mouseEvent(with: .leftMouseDown, location: point, modifierFlags: [],
+                timestamp: 0, windowNumber: 0, context: nil, eventNumber: 1, clickCount: 1, pressure: 1))
+            link.mouseDown(with: event)
+        }
+        let visible = NSPoint(x: link.visibleTextHitRect.minX + 8, y: link.visibleTextHitRect.midY)
+        let clipped = NSPoint(x: marquee.bounds.maxX + 8, y: visible.y)
+        XCTAssertTrue(link.visibleTextHitRect.contains(clipped))
+        card.forwardHover(atHostPoint: card.convert(visible, from: link))
+        XCTAssertNotNil(link.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil))
+        XCTAssertEqual(link.attributedStringValue.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor, .linkColor)
+        card.forwardHover(atHostPoint: card.convert(clipped, from: link))
+        XCTAssertNil(link.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil))
+        try click(at: clipped)
+        XCTAssertTrue(opened.isEmpty)
+        try click(at: visible)
+        XCTAssertEqual(opened, [website])
+        XCTAssertTrue(marquee.accessibilityPerformPress())
+        XCTAssertEqual(opened, [website, website])
+    }
+
+    @MainActor
+    func testRussianBalanceTitleRevealsItsFullEndingAfterRefreshAndHover() throws {
+        let previous = AppLanguage.selected
+        defer { AppLanguage.selected = previous }
+        AppLanguage.selected = .russian
+        let controller = makeController()
+        defer { controller.teardown() }
+        let name = "ChatGPT Official Billing and Balance Demo"
+        let website = try XCTUnwrap(URL(string: "https://example.com"))
+        let date = Date()
+        let settings = makeSettings()
+        let input = makeMenuInput()
+        func snapshot(at date: Date) -> Snapshot {
+            .balance(name, 42, "USD", website, date, progressPercentage: nil)
+        }
+        controller.start(snapshot: snapshot(at: date), refreshDate: date, menuInput: input, settings: settings)
+        let menu = controller.statusMenuForTesting
+        let card = try XCTUnwrap(menu.items.first?.view as? MenuHoverLinkHostView)
+        let title = try providerTitle(in: card)
+        let marquee = try XCTUnwrap(title.view as? AccountMarqueeView)
+        let link = try XCTUnwrap(title.label as? HoverLinkTextField)
+        let font = try XCTUnwrap(link.font)
+        let textWidth = AccountMarqueeView.textWidth(of: name, font: font)
+
+        func assertFullTravel(_ phase: String, line: UInt = #line) {
+            XCTAssertEqual(link.stringValue, name, phase, line: line)
+            XCTAssertGreaterThanOrEqual(link.frame.width, textWidth, phase, line: line)
+            XCTAssertEqual(marquee.scrollDistance, link.frame.width - marquee.bounds.width + marquee.edgeFadeInset,
+                accuracy: 0.5, phase, line: line)
+            XCTAssertLessThanOrEqual(link.frame.maxX - marquee.scrollDistance, marquee.bounds.maxX, phase, line: line)
+            let paragraph = link.attributedStringValue.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+            XCTAssertEqual(paragraph?.lineBreakMode, .byClipping, phase, line: line)
+        }
+
+        assertFullTravel("initial")
+        let window = NSWindow(contentRect: card.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = card
+        ApplicationWindowPresentation.presentInBackground(window)
+        defer { window.orderOut(nil) }
+        controller.menuWillOpen(menu)
+        defer { controller.menuDidClose(menu) }
+        let refreshedAt = date.addingTimeInterval(60)
+        controller.update(snapshot: snapshot(at: refreshedAt), refreshDate: refreshedAt, menuInput: input, settings: settings)
+        XCTAssertTrue(try providerTitle(in: card).view === marquee)
+        assertFullTravel("refreshed")
+        let point = NSPoint(x: link.visibleTextHitRect.minX + 8, y: link.visibleTextHitRect.midY)
+        card.forwardHover(atHostPoint: card.convert(point, from: link))
+        XCTAssertNotNil(link.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil))
+        assertFullTravel("hovered")
+        if !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            let animation = try XCTUnwrap(link.layer?.animation(forKey: AccountMarqueeView.animationKey) as? CAKeyframeAnimation)
+            let positions = try XCTUnwrap(animation.values as? [NSNumber])
+            XCTAssertEqual(positions[2].doubleValue, -marquee.scrollDistance, accuracy: 0.01)
+            XCTAssertEqual(positions[3], positions[2], "hold the ending before scrolling back")
+            XCTAssertEqual(positions.last?.doubleValue, 0)
+        }
+
+        // Inspect the image Core Animation translates, since drawing a detached
+        // text field at its full width can succeed even with a clipped menu.
+        let layer = try XCTUnwrap(link.layer)
+        link.needsDisplay = true
+        layer.displayIfNeeded()
+        let contents = try XCTUnwrap(layer.contents, "the scrolling layer must have a full-width backing image")
+        XCTAssertEqual(CFGetTypeID(contents as CFTypeRef), CGImage.typeID)
+        let image = NSBitmapImageRep(cgImage: contents as! CGImage)
+        let textEnd = min(image.pixelsWide, Int(textWidth * CGFloat(image.pixelsWide) / link.bounds.width))
+        let ending = (textEnd - 25)..<textEnd
+        XCTAssertTrue(ending.contains { x in
+            (0..<image.pixelsHigh).contains { y in (image.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.3 }
+        }, "the layer must contain the final word when the viewport reaches it")
+    }
+
+    @MainActor
+    func testNotesCanSwitchProviderTitleBetweenStaticAndScrollingInPlace() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        let date = Date()
+        var snapshot = Snapshot.official("Codex Demo", 80, "5h", nil, date)
+        snapshot.quotaStatus = .error(at: date, source: .oauthAPI)
+        func input(notes: [String]) -> StatusItemController.MenuInput {
+            .init(choices: [], quickSwitchSummaries: [:], activeClient: .claude, openAIAccount: nil, statusLinks: [],
+                showQuickSwitchMenu: false, showOpenChatGPTMenu: false, showOpenCCSwitchMenu: false, showStatusMenu: false,
+                directProviderNotes: notes)
+        }
+        controller.start(snapshot: snapshot, refreshDate: date, menuInput: input(notes: []), settings: makeSettings())
+        let menu = controller.statusMenuForTesting
+        let card = try XCTUnwrap(menu.items.first?.view)
+        let initial = try providerTitle(in: card)
+        let header = try XCTUnwrap(initial.view.superview)
+        XCTAssertTrue(initial.view is NSTextField)
+        controller.menuWillOpen(menu)
+        defer { controller.menuDidClose(menu) }
+        controller.updateMenu(input: input(notes: ["First long note", "Second long note"]))
+        let title = try XCTUnwrap(providerTitle(in: card).view as? AccountMarqueeView)
+        XCTAssertEqual(title.accountLabel.stringValue, "Codex Demo")
+        XCTAssertLessThan(title.frame.width, initial.view.frame.width)
+        let tags = header.subviews.compactMap { $0 as? AggregationNoteTagView }
+        let slot = try XCTUnwrap(header.subviews.compactMap { $0 as? StatusSlotView }.first)
+        XCTAssertEqual(tags.count, 2)
+        XCTAssertTrue(tags.allSatisfy { $0.frame.minX >= title.frame.maxX + 8 && $0.frame.maxX <= slot.frame.minX - 6 })
+        controller.updateMenu(input: input(notes: []))
+        XCTAssertTrue(menu.items.first?.view === card)
+        let restored = try providerTitle(in: card)
+        XCTAssertTrue(restored.view is NSTextField)
+        XCTAssertEqual(restored.view.frame, initial.view.frame)
+    }
+
+    @MainActor
+    func testLongErrorAndLoadingProviderTitlesScroll() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+        let name = "A very long provider name when the first quota refresh is pending"
+        let date = Date()
+        let error = Snapshot.providerError(name, reason: "Fixture unavailable", cachedBalance: nil)
+        controller.start(snapshot: error, refreshDate: date, menuInput: makeMenuInput(), settings: makeSettings())
+        let errorCard = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        XCTAssertTrue(try providerTitle(in: errorCard).view is AccountMarqueeView)
+
+        let source = ProviderSummarySource(id: "loading-title", name: name, isOfficial: false, query: nil, officialAccessToken: nil)
+        let display = AggregatedProviderDisplay(entry: .init(source: source, role: .default),
+            identity: .init(providerID: source.id, accountScope: "fixture", configurationRevision: "fixture"),
+            snapshot: .loadingProvider(name), account: nil, status: .loading, reason: nil, fetchedAt: nil)
+        let input = StatusItemController.MenuInput(choices: [], quickSwitchSummaries: [:], activeClient: .codex,
+            openAIAccount: nil, statusLinks: [], showQuickSwitchMenu: false, showOpenChatGPTMenu: false,
+            showOpenCCSwitchMenu: false, showStatusMenu: false, aggregatedProviders: [display])
+        controller.start(snapshot: .placeholder, refreshDate: nil, menuInput: input, settings: makeSettings())
+        let document = try XCTUnwrap((controller.menuItemsForTesting.first?.view as? NSScrollView)?.documentView)
+        let loading = try providerTitle(in: document)
+        XCTAssertTrue(loading.view is AccountMarqueeView)
+        XCTAssertEqual(loading.label.stringValue, name)
     }
 
     @MainActor
@@ -5752,7 +5992,7 @@ extension StatusItemControllerTests {
                     XCTAssertEqual(hint.hoverPhrase, tr(.keyBalanceLastRecharge))
                     XCTAssertEqual(hint.hoverHint, "10/16 13:50")
                     XCTAssertNil(hint.onActivate)
-                    XCTAssertNotNil(links.first { $0.identifier?.rawValue == "overview.providerTitle" }?.onActivate)
+                    XCTAssertNotNil((try providerTitle(in: card).label as? HoverLinkTextField)?.onActivate)
                     if language == .german {
                         // Issue #710: the long German subtitle moves below the amount instead of scrolling.
                         XCTAssertEqual((card as? MenuHoverLinkHostView)?.overviewLayout?.balanceSubtitleIsBelowAmount, true)

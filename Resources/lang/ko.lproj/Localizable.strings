@@ -454,7 +454,9 @@
 "status.links.editor.open_link" = "링크 열기";
 "status.links.editor.copy_url" = "URL 복사";
 "status.links.editor.copy_item" = "항목 복사";
+"status.links.editor.actions_accessibility" = "상태 링크 동작";
 "status.links.editor.actions_tooltip" = "상태 링크 추가 또는 제거";
+"status.links.editor.move_accessibility" = "상태 링크 이동";
 "status.links.editor.move_tooltip" = "상태 링크를 위나 아래로 이동";
 "status.links.editor.action_completed" = "작업 완료";
 "status.item.controller.refresh_now" = "지금 업데이트";
@@ -495,7 +497,9 @@
 "codex.banked_reset.expires_value" = "%1$@에 만료";
 "codex.banked_reset.nearest_expiry" = "가장 빠른 만료: %1$@";
 "codex.banked_reset.remaining_hours" = "%1$@시간";
+"codex.banked_reset.remaining_day" = "%1$@일";
 "codex.banked_reset.remaining_days" = "%1$@일";
+"codex.banked_reset.remaining_day_hours" = "%1$@일 %2$@시간";
 "codex.banked_reset.remaining_days_hours" = "%1$@일 %2$@시간";
 "codex.banked_reset.remaining_minutes" = "%1$@분";
 "codex.banked_reset.probability_prefix" = "리셋 확률";
@@ -616,6 +620,7 @@
 "quota.status.realtime" = "실시간";
 "quota.status.ago.minutes" = "%1$@분 전";
 "quota.status.ago.hours" = "%1$@시간 전";
+"quota.status.ago.day" = "%1$@일 전";
 "quota.status.ago.days" = "%1$@일 전";
 "quota.status.source.oauth_api" = "OAuth API";
 "quota.status.source.mod" = "Mod";

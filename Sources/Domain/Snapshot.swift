@@ -985,11 +985,11 @@ enum CodexBankedResetFormatting {
         let text: String
         if days > 0, hours > 0 {
             text = tr(
-                .keyCodexBankedResetRemainingDaysHours,
+                days == 1 ? .keyCodexBankedResetRemainingDayHours : .keyCodexBankedResetRemainingDaysHours,
                 arguments: ["\(days)", "\(hours)"]
             )
         } else if days > 0 {
-            text = tr(.keyCodexBankedResetRemainingDays, arguments: ["\(days)"])
+            text = tr(days == 1 ? .keyCodexBankedResetRemainingDay : .keyCodexBankedResetRemainingDays, arguments: ["\(days)"])
         } else if hours > 0 {
             text = tr(.keyCodexBankedResetRemainingHours, arguments: ["\(hours)"])
         } else {
