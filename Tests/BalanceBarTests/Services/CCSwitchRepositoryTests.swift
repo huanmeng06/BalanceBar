@@ -43,6 +43,92 @@ final class CCSwitchRepositoryTests: XCTestCase {
         try super.tearDownWithError()
     }
 
+    func testCurrentProviderResolverFallsBackOnlyForAbsentDatabaseOrMissingProvider() throws {
+        let resolver = CurrentProviderResolver(repository: repository)
+        let backup = temporaryDirectoryURL.appendingPathComponent("fixture-backup.db")
+        try FileManager.default.moveItem(at: databaseURL, to: backup)
+        XCTAssertEqual(try resolver.resolveChecked(.grok), .databaseAbsent)
+        XCTAssertEqual(try resolver.resolveChecked(.codex), .localThirdParty)
+        XCTAssertEqual(try resolver.resolveChecked(.claude), .localOfficial(LocalOfficialProvider.make(for: .claude)))
+
+        let config = temporaryDirectoryURL.appendingPathComponent(".codex/config.toml")
+        try Data(#"profile = "custom""#.utf8).write(to: config)
+        XCTAssertEqual(try resolver.resolveChecked(.codex), .localOfficial(LocalOfficialProvider.make(for: .codex)))
+        let localID = LocalOfficialProvider.id(for: .codex)
+        XCTAssertEqual(resolver.configurationRevision(.codex, providerID: localID), LocalOfficialProvider.configurationRevision)
+
+        try Data("not a database".utf8).write(to: databaseURL)
+        XCTAssertThrowsError(try resolver.resolveChecked(.codex))
+        try FileManager.default.removeItem(at: databaseURL)
+        try FileManager.default.moveItem(at: backup, to: databaseURL)
+        XCTAssertEqual(resolver.currentProvider(.codex)?.id, "codex-custom")
+        XCTAssertNil(resolver.configurationRevision(.codex, providerID: localID))
+
+        try withDatabase { db in
+            try execute(db, sql: "UPDATE providers SET is_current=0 WHERE app_type='codex'")
+        }
+        XCTAssertEqual(try resolver.resolveChecked(.codex), .localOfficial(LocalOfficialProvider.make(for: .codex)))
+        try Data("openai_base_url = 'https://provider.example'".utf8).write(to: config)
+        XCTAssertEqual(try resolver.resolveChecked(.codex), .noCurrentProvider)
+    }
+
+    func testInaccessibleDatabaseIsNotTreatedAsMissing() throws {
+        let manager = FileManager.default
+        let directory = temporaryDirectoryURL.appendingPathComponent("restricted")
+        try manager.createDirectory(at: directory, withIntermediateDirectories: false)
+        let file = directory.appendingPathComponent("cc-switch.db")
+        try manager.moveItem(at: databaseURL, to: file)
+        defer { try? manager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path) }
+        try manager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: directory.path)
+        guard !manager.fileExists(atPath: file.path) else {
+            throw XCTSkip("This test requires directory traversal permissions to be enforced")
+        }
+        let resolver = CurrentProviderResolver(repository: CCSwitchRepository(databaseURL: file))
+        XCTAssertTrue(resolver.isDatabasePresent)
+        XCTAssertThrowsError(try resolver.resolveChecked(.claude)) { error in
+            XCTAssertTrue(error is CCSwitchReadError)
+        }
+    }
+
+    func testLocalCodexRouteInspectorRecognizesExplicitProviderWhenRouteCannotBeParsed() throws {
+        let inspector = LocalAgentRouteInspector(homeDirectoryURL: temporaryDirectoryURL)
+        let file = temporaryDirectoryURL.appendingPathComponent(".codex/config.toml")
+        let cases: [(String, LocalAgentRoute)] = [
+            (#"model_provider = "ollama""#, .thirdParty),
+            (#"profile = "x""#, .undetermined),
+            ("model_provider = \"openai\"\nprofile = \"x\"", .undetermined),
+            ("profile = \"x\"\n'model_provider' = 'ollama' # local provider", .thirdParty),
+            ("profile = \"x\"\n[profiles.x]\nmodel_provider = \"ollama\"", .undetermined),
+            ("developer_instructions = \"\"\"be concise\"\"\"\nmodel_provider = \"ollama\"", .thirdParty),
+            ("profile = \"x\" # '''\nmodel_provider = \"ollama\"", .thirdParty),
+            ("developer_instructions = '''\nmodel_provider = \"ollama\"\n'''\nmodel_provider = \"openai\"", .undetermined),
+            ("developer_instructions = \"\"\"\n[fake.section]\nmodel_provider = \"openai\"\n\"\"\"\nmodel_provider = \"ollama\"", .thirdParty),
+            ("model_provider = \"custom\"\n[model_providers.custom]\nname = \"OpenAI\"\nrequires_openai_auth = true\nsupports_websockets = true\nwire_api = \"responses\"\n", .official)
+        ]
+        for (config, expected) in cases {
+            try Data(config.utf8).write(to: file)
+            XCTAssertEqual(inspector.route(for: .codex), expected, config)
+        }
+    }
+
+    func testLocalClaudeRouteInspectorDistinguishesThirdPartyAndInvalidConfiguration() throws {
+        let inspector = LocalAgentRouteInspector(homeDirectoryURL: temporaryDirectoryURL)
+        let directory = temporaryDirectoryURL.appendingPathComponent(".claude")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let file = directory.appendingPathComponent("settings.json")
+        for (json, expected): (String, LocalAgentRoute) in [
+            (#"{"env":{"ANTHROPIC_BASE_URL":"https://api.anthropic.com"}}"#, .official),
+            (#"{"env":{"ANTHROPIC_BASE_URL":"https://provider.example"}}"#, .thirdParty),
+            (#"{"apiKeyHelper":"fixture"}"#, .thirdParty),
+            (#"{"env":{"ANTHROPIC_API_KEY":"PROXY_MANAGED"}}"#, .thirdParty),
+            (#"{"env":{"ANTHROPIC_BASE_URL":42}}"#, .undetermined),
+            ("{", .undetermined)
+        ] {
+            try Data(json.utf8).write(to: file)
+            XCTAssertEqual(inspector.route(for: .claude), expected)
+        }
+    }
+
     func testOfficialDefaultWithoutConfigCanSwitchButCustomAndMalformedConfigCannot() throws {
         let configURL = temporaryDirectoryURL.appendingPathComponent(".codex/config.toml")
         try FileManager.default.removeItem(at: configURL)

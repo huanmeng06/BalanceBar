@@ -731,6 +731,9 @@ enum DashboardSettingsFormattedCopy {
         case .aggregation: return tr(.keyDashboardGeneralAndRefreshPagesConnectionModeAggregation)
         case .proxy: return tr(.keyDashboardGeneralAndRefreshPagesConnectionModeProxy)
         case .unknown: return tr(.keyDashboardGeneralAndRefreshPagesConnectionModeUnknown)
+        case .localOfficial: return tr(.keyDashboardGeneralAndRefreshPagesConnectionModeOfficial)
+        case .localThirdParty: return tr(.keyDashboardGeneralAndRefreshPagesConnectionModeThirdParty)
+        case .requiresCCSwitch: return tr(.keyDashboardGeneralAndRefreshPagesConnectionModeRequiresCcSwitch)
         }
     }
 
@@ -741,7 +744,8 @@ enum DashboardSettingsFormattedCopy {
         case .direct: return NSColor(srgbRed: 0x16 / 255, green: 0x77 / 255, blue: 0xFF / 255, alpha: 1)
         case .aggregation: return NSColor(srgbRed: 0x7B / 255, green: 0x5C / 255, blue: 0xF5 / 255, alpha: 1)
         case .proxy: return NSColor(srgbRed: 0x0D / 255, green: 0x94 / 255, blue: 0x88 / 255, alpha: 1)
-        case .unknown: return nil
+        case .localOfficial: return .systemGreen
+        case .unknown, .localThirdParty, .requiresCCSwitch: return nil
         }
     }
 
@@ -787,7 +791,12 @@ enum DashboardSettingsFormattedCopy {
 
     private static func ccSwitchLineText(appName: String, summary: CCSwitchConnectionSummary) -> String {
         let modeName = ccSwitchConnectionModeName(summary.mode)
-        let providers = ccSwitchProviderList(summary.providerNames)
+        let providers: String
+        switch summary.mode {
+        case .localOfficial: providers = tr(.keyDashboardGeneralAndRefreshPagesConnectionModeLocalSignIn)
+        case .localThirdParty: providers = tr(.keyDashboardGeneralAndRefreshPagesConnectionModeRequiresCcSwitch)
+        default: providers = ccSwitchProviderList(summary.providerNames)
+        }
         if providers.isEmpty {
             return tr(.keyDashboardGeneralAndRefreshPagesConnectionModeLineOnly, arguments: [appName, modeName])
         }

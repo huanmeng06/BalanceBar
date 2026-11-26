@@ -974,6 +974,78 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 3)
     }
 
+    func testAbsentDatabasePublishesLocalCodexOfficialQuota() throws {
+        try FileManager.default.removeItem(at: databaseURL)
+        try FileManager.default.removeItem(at: temporaryDirectoryURL.appendingPathComponent(".codex/config.toml"))
+        let resolver = CurrentProviderResolver(repository: repository)
+        let provider = try XCTUnwrap(resolver.currentProvider(.codex))
+        let rendered = expectation(description: "local official quota rendered")
+        DelayedBalanceURLProtocol.setHandler { _ in DelayedBalanceURLProtocol.success(amount: "0.00") }
+        let officialClient = OfficialQuotaClient(session: session,
+            credentialReader: FixtureCredentialReader(codexToken: "fixture-token"),
+            parser: IncrementingOfficialQuotaParser(counter: IncrementingCounter()))
+        let coordinator = makeCoordinator(repository: repository, officialQuotaClient: officialClient,
+            balanceAPIClient: BalanceAPIClient(session: session), queue: DispatchQueue(label: "test.local-official"),
+            actions: ProviderRefreshActions(
+                currentProvider: resolver.currentProvider, isActiveClient: { $0 == .codex },
+                render: { snapshot in
+                    guard snapshot.kind == .official else { return }
+                    XCTAssertFalse(snapshot.officialQuotaWindows.isEmpty)
+                    rendered.fulfill()
+                }, storeClientSnapshot: { _, _, _ in }, quickSwitchSummaryChanged: { _ in }))
+        coordinator.refreshStandardProvider(current: provider, client: .codex, forceBalance: true, switched: true)
+        wait(for: [rendered], timeout: 3)
+    }
+
+    func testBackgroundLocalCodexPollUsesOfficialCadenceAndDeliversNotification() throws {
+        try FileManager.default.removeItem(at: databaseURL)
+        try FileManager.default.removeItem(at: temporaryDirectoryURL.appendingPathComponent(".codex/config.toml"))
+        let suite = "ProviderRefreshCoordinatorTests.LocalCodex.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let client = FakeBalanceNotificationClient(status: .authorized, requestResult: true)
+        let notifications = BalanceNotificationCoordinator(defaults: defaults, client: client)
+        let providerID = LocalOfficialProvider.id(for: .codex)
+        notifications.setGlobalEnabled(true)
+        notifications.setAgentEnabled(true, agent: .gpt)
+        notifications.setProviderEnabled(true, agent: .gpt, providerID: providerID)
+        let target = try XCTUnwrap(notifications.monitoredNotificationTargets().first)
+        let clock = TestClock(date: Date(timeIntervalSince1970: 1_700_000_000))
+        let sample = DispatchSemaphore(value: 0)
+        let resolver = CurrentProviderResolver(repository: repository)
+        DelayedBalanceURLProtocol.setHandler { _ in DelayedBalanceURLProtocol.success(amount: "0.00") }
+        let coordinator = makeCoordinator(repository: repository,
+            officialQuotaClient: OfficialQuotaClient(session: session,
+                credentialReader: FixtureCredentialReader(codexToken: "fixture-token"),
+                parser: IncrementingOfficialQuotaParser(counter: IncrementingCounter())),
+            actions: ProviderRefreshActions(
+                currentProvider: resolver.currentProvider, isActiveClient: { $0 == .claude },
+                render: { _ in XCTFail("background Codex quota must not replace the Claude card") },
+                storeClientSnapshot: { _, _, _ in }, quickSwitchSummaryChanged: { _ in },
+                notificationSnapshot: { agent, id, snapshot in
+                    XCTAssertEqual(agent, .codex)
+                    XCTAssertEqual(id, providerID)
+                    notifications.process(snapshot: snapshot, agent: .gpt, providerID: id)
+                    sample.signal()
+                }),
+            now: { clock.now })
+        func poll() {
+            coordinator.refreshQuickSwitchSummaries(force: false, for: target.client, providerIDs: target.providerIDs)
+        }
+        poll()
+        waitForEvent(sample)
+        XCTAssertEqual(client.deliveries.count, 1)
+        clock.advance(by: 3)
+        poll()
+        waitForCoordinator(coordinator)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 1)
+        clock.advance(by: 57)
+        poll()
+        waitForEvent(sample)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 2)
+        XCTAssertEqual(client.deliveries.count, 1, "the next low sample does not repeat the alert")
+    }
+
     func testOfficialProviderCadenceRetainsSixtySecondIntervalAndResetBehavior() throws {
         try setCurrentProvider("codex-replacement")
         let clock = TestClock(date: Date(timeIntervalSince1970: 1_700_000_000))

@@ -269,6 +269,19 @@ final class BalanceNotificationCoordinator {
         }
     }
 
+    func adoptLocalOfficialSettings(agent: BalanceNotificationAgent, from sourceID: String, to targetID: String) {
+        onQueue {
+            var settings = store.settings
+            let adopted = settings.adoptLocalOfficialSettings(agent: agent, from: sourceID, to: targetID)
+            guard settings.localOfficialAdoptedAgents != store.settings.localOfficialAdoptedAgents else { return }
+            store.replace(settings)
+            if adopted {
+                let count = settings.resourceRules.filter { $0.key.agent == agent && $0.key.providerID == targetID }.count
+                SwitchLog.write("notification settings adopted; agent=\(agent.rawValue); rules=\(count)")
+            }
+        }
+    }
+
     func setProviderEnabled(
         _ enabled: Bool,
         agent: BalanceNotificationAgent,
@@ -478,10 +491,15 @@ final class BalanceNotificationCoordinator {
 
     /// Called from the existing render/quick-switch callbacks. No timer or
     /// provider request is owned here; one source snapshot is evaluated once.
+    func process(snapshot: Snapshot, agent: BalanceNotificationAgent, providerID: String) {
+        process(snapshot: snapshot, agent: agent, providerID: providerID, adoptingLocalSettingsFrom: nil)
+    }
+
     func process(
         snapshot: Snapshot,
         agent: BalanceNotificationAgent,
-        providerID: String
+        providerID: String,
+        adoptingLocalSettingsFrom localProviderID: String?
     ) {
         let key = SnapshotKey(agent: agent, providerID: providerID)
         // Data kept on screen after a failed refresh must neither trigger an
@@ -494,6 +512,11 @@ final class BalanceNotificationCoordinator {
             // A late result from an account that is no longer signed in is not
             // a sample of the current account.
             guard self.belongsToCurrentAccount(snapshot, agent: agent) else { return }
+            if let localProviderID {
+                // Adopt before evaluating the first sample: evaluation can
+                // persist an inherited rule even while the target is disabled.
+                self.adoptLocalOfficialSettings(agent: agent, from: localProviderID, to: providerID)
+            }
             self.staleSampleKeys.remove(key)
             self.storeSnapshotOnQueue(snapshot, agent: agent, providerID: providerID)
             self.processSnapshotOnQueue(snapshot, agent: agent, providerID: providerID)

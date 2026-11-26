@@ -2,6 +2,65 @@ import Foundation
 import XCTest
 @testable import BalanceBar
 
+extension BalanceNotificationCoordinatorTests {
+    func testFirstRestoredClaudeSampleAdoptsSettingsBeforeCreatingAccountRule() throws {
+        let suite = "BalanceNotificationCoordinatorTests.RestoredClaude.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let client = FakeBalanceNotificationClient(status: .authorized, requestResult: true)
+        let localID = LocalOfficialProvider.id(for: .claude)
+        let restoredID = "restored-claude"
+        let localKey = BalanceNotificationResourceKey(agent: .claude, providerID: localID, resourceID: "five-hour")
+        BalanceNotificationSettingsStore(defaults: defaults).update {
+            $0.globalEnabled = true
+            $0.setAgentEnabled(true, for: .claude)
+            $0.setProviderEnabled(true, for: .claude, providerID: localID)
+            $0.upsert(.init(key: localKey, kind: .quotaPercent, firstThreshold: 42))
+        }
+        let coordinator = BalanceNotificationCoordinator(defaults: defaults, client: client)
+        var sample = Snapshot.official("Claude", 30, "5h", nil, Date(), windows: [
+            .init(kind: .fiveHour, remaining: 30, label: "5h", daysText: "5h", reset: nil, durationSeconds: nil)
+        ])
+        sample.notificationAccountScope = "fixture"
+        coordinator.process(snapshot: sample, agent: .claude, providerID: restoredID,
+            adoptingLocalSettingsFrom: localID)
+
+        let persisted = BalanceNotificationSettingsStore(defaults: defaults).settings
+        let target = BalanceNotificationResourceKey(agent: .claude, providerID: restoredID, resourceID: "five-hour")
+        XCTAssertTrue(persisted.isProviderEnabled(.claude, providerID: restoredID))
+        XCTAssertEqual(persisted.rule(for: target)?.firstThreshold, 42)
+        XCTAssertEqual(persisted.localOfficialAdoptedAgents, ["claude"])
+        XCTAssertEqual(client.deliveries.count, 1, "the first sample uses the adopted threshold")
+    }
+
+    func testLocalOfficialSettingsAdoptOnceWithoutProgressOrOverwriting() throws {
+        var settings = try JSONDecoder().decode(BalanceNotificationSettings.self, from: Data("{}".utf8))
+        XCTAssertFalse(settings.adoptLocalOfficialSettings(agent: .gpt, from: "local", to: "official"))
+        XCTAssertTrue(settings.localOfficialAdoptedAgents.isEmpty)
+        settings.setProviderEnabled(true, for: .gpt, providerID: "local")
+        var rule = BalanceNotificationResourceRule(
+            key: .init(agent: .gpt, providerID: "local", resourceID: "five-hour"),
+            kind: .quotaPercent, firstThreshold: 42, lastValue: 17)
+        rule.progressScope = "fixture"
+        settings.resourceRules = [rule]
+        XCTAssertTrue(settings.adoptLocalOfficialSettings(agent: .gpt, from: "local", to: "official"))
+        XCTAssertTrue(settings.isProviderEnabled(.gpt, providerID: "official"))
+        let copied = try XCTUnwrap(settings.rule(for: .init(agent: .gpt, providerID: "official", resourceID: "five-hour")))
+        XCTAssertEqual(copied.firstThreshold, 42)
+        XCTAssertEqual(copied.stage, .normal)
+        XCTAssertNil(copied.lastValue)
+        XCTAssertNil(copied.progressScope)
+        XCTAssertEqual(settings.rule(for: rule.key), rule)
+        XCTAssertFalse(settings.adoptLocalOfficialSettings(agent: .gpt, from: "local", to: "another"))
+        settings.setProviderEnabled(true, for: .claude, providerID: "local")
+        settings.setProviderEnabled(false, for: .claude, providerID: "official")
+        XCTAssertFalse(settings.adoptLocalOfficialSettings(agent: .claude, from: "local", to: "official"))
+        XCTAssertFalse(settings.isProviderEnabled(.claude, providerID: "official"))
+        let decoded = try JSONDecoder().decode(BalanceNotificationSettings.self, from: JSONEncoder().encode(settings))
+        XCTAssertEqual(decoded.localOfficialAdoptedAgents, ["gpt", "claude"])
+    }
+}
+
 final class BalanceNotificationCoordinatorTests: XCTestCase {
     func testThresholdCrossingSecondAlertAndHysteresisRearm() {
         let key = BalanceNotificationResourceKey(agent: .claude, providerID: "p", resourceID: "weekly")

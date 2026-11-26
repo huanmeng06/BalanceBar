@@ -3495,6 +3495,8 @@ final class StatusItemControllerTests: XCTestCase {
         quickSwitchSummaries: [String: String]? = nil,
         showOpenCCSwitchMenu: Bool = false,
         showStatusMenu: Bool = false,
+        isCCSwitchInstalled: Bool = true,
+        quickSwitchAvailable: Bool = true,
         showsAvailableUpdateBadge: Bool = false
     ) -> StatusItemController.MenuInput {
         StatusItemController.MenuInput(
@@ -3508,9 +3510,26 @@ final class StatusItemControllerTests: XCTestCase {
             showQuickSwitchMenu: showQuickSwitchMenu,
             showOpenChatGPTMenu: showOpenChatGPTMenu,
             showOpenCCSwitchMenu: showOpenCCSwitchMenu,
+            isCCSwitchInstalled: isCCSwitchInstalled,
+            quickSwitchAvailable: quickSwitchAvailable,
             showStatusMenu: showStatusMenu,
             showsAvailableUpdateBadge: showsAvailableUpdateBadge
         )
+    }
+
+    @MainActor
+    func testLocalOfficialMenuHidesQuickSwitchAndOffersDownload() {
+        let controller = makeController()
+        defer { controller.teardown() }
+        let direct = makeMenuInput(showQuickSwitchMenu: true, showOpenCCSwitchMenu: true)
+        let local = makeMenuInput(showQuickSwitchMenu: true, showOpenCCSwitchMenu: true,
+                                  isCCSwitchInstalled: false, quickSwitchAvailable: false)
+        XCTAssertNotEqual(direct, local)
+        controller.start(snapshot: .placeholder, refreshDate: nil, menuInput: direct, settings: makeSettings())
+        controller.updateMenu(input: local)
+        let titles = controller.menuItemsForTesting.map(\.title)
+        XCTAssertTrue(titles.contains(tr(.keyStatusItemControllerDownloadCcSwitch)))
+        XCTAssertFalse(titles.contains(tr(.keyStatusItemControllerQuickSwitch)))
     }
 
     private func openCurrentAgentMenuItem(

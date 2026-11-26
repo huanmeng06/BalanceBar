@@ -66,7 +66,7 @@
 "snapshot.remaining_balance" = "Остаток баланса";
 "snapshot.waiting_to_refresh" = "Ожидание обновления";
 "snapshot.load_failed" = "Ошибка загрузки";
-"snapshot.loading_cc_switch" = "Загрузка CC Switch…";
+"snapshot.loading_cc_switch" = "Загрузка текущего провайдера…";
 "snapshot.value_remaining_value_value" = "%1$@: осталось %2$@%% (%3$@)";
 "snapshot.value_remaining_value" = "%1$@: осталось %2$@";
 "snapshot.failed_to_load_balance.2" = "Не удалось загрузить баланс";
@@ -77,7 +77,7 @@
 "snapshot.reset_value.3" = "· %1$@";
 "snapshot.official_quota_updates_every_minutevalue" = "Официальное обновление квоты каждую минуту%1$@";
 "snapshot.unknown_error" = "Неизвестная ошибка";
-"snapshot.waiting_for_cc_switch_status" = "Ожидание состояния CC Switch";
+"snapshot.waiting_for_cc_switch_status" = "Ожидание состояния провайдера";
 "ccswitch.repository.unable_to_open_the_cc_switch_database" = "Не удалось открыть базу данных CC Switch";
 "ccswitch.repository.provider_does_not_exist" = "Провайдер не существует";
 "ccswitch.repository.the_provider_s_claude_configuration_is_incomplete" = "Конфигурация Claude у провайдера неполна";
@@ -143,7 +143,7 @@
 "dashboard.navigation.forward" = "Вперёд";
 "dashboard.about.page.github_repository" = "Репозиторий GitHub";
 "dashboard.about.page.version_value" = "Версия %1$@";
-"dashboard.about.page.a_cc_switch_based_menu_bar_balance_viewer" = "Просматривайте балансы и квоты в строке меню через CC Switch";
+"dashboard.about.page.a_cc_switch_based_menu_bar_balance_viewer" = "Официальные квоты в строке меню, а с CC Switch — и балансы сторонних провайдеров";
 "dashboard.about.page.open_the_balancebar_github_repository" = "Открыть репозиторий BalanceBar на GitHub";
 "dashboard.advanced.page.reload" = "Перезагрузить";
 "dashboard.advanced.page.show_in_finder" = "Показать в Finder";
@@ -947,3 +947,13 @@
 "dashboard.menu.bar.position_adjustments" = "Точная настройка положения";
 "dashboard.menu.bar.required_display" = "Должен отображаться хотя бы значок или значение";
 "dashboard.advanced.official_validity_dependency" = "Применяется только при включённых официальных запросах квот";
+
+// #691 official mode
+"official_mode.provider_name" = "%1$@ Official";
+"official_mode.third_party_route" = "%1$@ сейчас не использует официальный аккаунт. Для баланса сторонних провайдеров нужен CC Switch";
+"dashboard.general.and.refresh.pages.connection_mode_official" = "Официальный";
+"dashboard.general.and.refresh.pages.connection_mode_local_sign_in" = "Вход на этом Mac";
+"dashboard.general.and.refresh.pages.connection_mode_third_party" = "Сторонний";
+"dashboard.general.and.refresh.pages.connection_mode_requires_cc_switch" = "Нужен CC Switch";
+"dashboard.general.and.refresh.pages.download_cc_switch" = "Скачать CC Switch";
+"status.item.controller.download_cc_switch" = "Скачать CC Switch";

@@ -66,7 +66,7 @@
 "snapshot.remaining_balance" = "Saldo rimanente";
 "snapshot.waiting_to_refresh" = "In attesa dell'aggiornamento";
 "snapshot.load_failed" = "Caricamento non riuscito";
-"snapshot.loading_cc_switch" = "Caricamento CC Switch…";
+"snapshot.loading_cc_switch" = "Caricamento del provider corrente…";
 "snapshot.value_remaining_value_value" = "%1$@ rimanente: %2$@%% (%3$@)";
 "snapshot.value_remaining_value" = "%1$@ rimanente: %2$@";
 "snapshot.failed_to_load_balance.2" = "Impossibile caricare il saldo";
@@ -77,7 +77,7 @@
 "snapshot.reset_value.3" = "· %1$@";
 "snapshot.official_quota_updates_every_minutevalue" = "Aggiornamento ufficiale della quota ogni minuto%1$@";
 "snapshot.unknown_error" = "Errore sconosciuto";
-"snapshot.waiting_for_cc_switch_status" = "In attesa dello stato di CC Switch";
+"snapshot.waiting_for_cc_switch_status" = "In attesa dello stato del provider";
 "ccswitch.repository.unable_to_open_the_cc_switch_database" = "Impossibile aprire il database di CC Switch";
 "ccswitch.repository.provider_does_not_exist" = "Il provider non esiste";
 "ccswitch.repository.the_provider_s_claude_configuration_is_incomplete" = "La configurazione Claude del provider è incompleta";
@@ -143,7 +143,7 @@
 "dashboard.navigation.forward" = "Avanti";
 "dashboard.about.page.github_repository" = "Repository GitHub";
 "dashboard.about.page.version_value" = "Versione %1$@";
-"dashboard.about.page.a_cc_switch_based_menu_bar_balance_viewer" = "Visualizza saldi e quote nella barra dei menu tramite CC Switch";
+"dashboard.about.page.a_cc_switch_based_menu_bar_balance_viewer" = "Visualizza le quote ufficiali nella barra dei menu e, con CC Switch, anche i saldi di terze parti";
 "dashboard.about.page.open_the_balancebar_github_repository" = "Apri il repository GitHub di BalanceBar";
 "dashboard.advanced.page.reload" = "Ricarica";
 "dashboard.advanced.page.show_in_finder" = "Mostra nel Finder";
@@ -947,3 +947,13 @@
 "dashboard.menu.bar.position_adjustments" = "Regolazione fine della posizione";
 "dashboard.menu.bar.required_display" = "Almeno l’icona o il valore deve restare visibile";
 "dashboard.advanced.official_validity_dependency" = "Si applica solo se le richieste di quota ufficiali sono attive";
+
+// #691 official mode
+"official_mode.provider_name" = "%1$@ Official";
+"official_mode.third_party_route" = "%1$@ non sta usando un account ufficiale. Per il saldo dei provider di terze parti serve CC Switch";
+"dashboard.general.and.refresh.pages.connection_mode_official" = "Ufficiale";
+"dashboard.general.and.refresh.pages.connection_mode_local_sign_in" = "Accesso su questo Mac";
+"dashboard.general.and.refresh.pages.connection_mode_third_party" = "Terze parti";
+"dashboard.general.and.refresh.pages.connection_mode_requires_cc_switch" = "Richiede CC Switch";
+"dashboard.general.and.refresh.pages.download_cc_switch" = "Scarica CC Switch";
+"status.item.controller.download_cc_switch" = "Scarica CC Switch";

@@ -382,6 +382,7 @@ struct BalanceNotificationSettings: Codable, Equatable {
     )
     var providerPreferences: [BalanceNotificationProviderPreference] = []
     var resourceRules: [BalanceNotificationResourceRule] = []
+    var localOfficialAdoptedAgents: [String] = []
     /// Crossing progress of accounts that are not currently active, keyed by
     /// resource and account scope, restored when that account returns.
     var parkedProgress: [String: BalanceNotificationProgress] = [:]
@@ -402,6 +403,7 @@ struct BalanceNotificationSettings: Codable, Equatable {
         case agentEnabled
         case providerPreferences
         case resourceRules
+        case localOfficialAdoptedAgents
         case parkedProgress
         case pauseUntil
         case pauseMode
@@ -424,6 +426,7 @@ struct BalanceNotificationSettings: Codable, Equatable {
             ?? Dictionary(uniqueKeysWithValues: BalanceNotificationAgent.allCases.map { ($0.rawValue, false) })
         providerPreferences = try container.decodeIfPresent([BalanceNotificationProviderPreference].self, forKey: .providerPreferences) ?? []
         resourceRules = try container.decodeIfPresent([BalanceNotificationResourceRule].self, forKey: .resourceRules) ?? []
+        localOfficialAdoptedAgents = try container.decodeIfPresent([String].self, forKey: .localOfficialAdoptedAgents) ?? []
         parkedProgress = try container.decodeIfPresent([String: BalanceNotificationProgress].self, forKey: .parkedProgress) ?? [:]
         pauseUntil = try container.decodeIfPresent(Date.self, forKey: .pauseUntil)
         if let rawMode = try? container.decode(String.self, forKey: .pauseMode) {
@@ -433,6 +436,25 @@ struct BalanceNotificationSettings: Codable, Equatable {
 
     func isAgentEnabled(_ agent: BalanceNotificationAgent) -> Bool {
         agentEnabled[agent.rawValue] ?? false
+    }
+
+    mutating func adoptLocalOfficialSettings(agent: BalanceNotificationAgent, from sourceID: String, to targetID: String) -> Bool {
+        guard !localOfficialAdoptedAgents.contains(agent.rawValue) else { return false }
+        let preference = providerPreferences.first { $0.agent == agent && $0.providerID == sourceID }
+        let rules = resourceRules.filter { $0.key.agent == agent && $0.key.providerID == sourceID }
+        guard preference != nil || !rules.isEmpty else { return false }
+        localOfficialAdoptedAgents.append(agent.rawValue)
+        guard !providerPreferences.contains(where: { $0.agent == agent && $0.providerID == targetID }),
+              !resourceRules.contains(where: { $0.key.agent == agent && $0.key.providerID == targetID }) else { return false }
+        if let preference { setProviderEnabled(preference.enabled, for: agent, providerID: targetID) }
+        resourceRules += rules.map { rule in
+            BalanceNotificationResourceRule(
+                key: .init(agent: agent, providerID: targetID, resourceID: rule.key.resourceID),
+                kind: rule.kind, unit: rule.unit, enabled: rule.enabled, firstThreshold: rule.firstThreshold,
+                secondEnabled: rule.secondEnabled, secondThreshold: rule.secondThreshold,
+                recoveryEnabled: rule.recoveryEnabled, usesGlobalDefaults: rule.usesGlobalDefaults)
+        }
+        return true
     }
 
     mutating func setAgentEnabled(_ enabled: Bool, for agent: BalanceNotificationAgent) {

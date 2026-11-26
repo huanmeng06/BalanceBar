@@ -2514,6 +2514,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let showQuickSwitchMenu: Bool
         let showOpenChatGPTMenu: Bool
         let showOpenCCSwitchMenu: Bool
+        let isCCSwitchInstalled: Bool
+        let quickSwitchAvailable: Bool
         let showStatusMenu: Bool
         let directProviderNotes: [String]
         let directProviderID: String?
@@ -2538,6 +2540,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             showQuickSwitchMenu: Bool,
             showOpenChatGPTMenu: Bool,
             showOpenCCSwitchMenu: Bool,
+            isCCSwitchInstalled: Bool = true,
+            quickSwitchAvailable: Bool = true,
             showStatusMenu: Bool,
             directProviderNotes: [String] = [],
             directProviderID: String? = nil,
@@ -2565,6 +2569,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             self.showQuickSwitchMenu = showQuickSwitchMenu
             self.showOpenChatGPTMenu = showOpenChatGPTMenu
             self.showOpenCCSwitchMenu = showOpenCCSwitchMenu
+            self.isCCSwitchInstalled = isCCSwitchInstalled
+            self.quickSwitchAvailable = quickSwitchAvailable
             self.showStatusMenu = showStatusMenu
             self.directProviderNotes = directProviderNotes
             self.directProviderID = directProviderID
@@ -2593,6 +2599,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 && lhs.showQuickSwitchMenu == rhs.showQuickSwitchMenu
                 && lhs.showOpenChatGPTMenu == rhs.showOpenChatGPTMenu
                 && lhs.showOpenCCSwitchMenu == rhs.showOpenCCSwitchMenu
+                && lhs.isCCSwitchInstalled == rhs.isCCSwitchInstalled && lhs.quickSwitchAvailable == rhs.quickSwitchAvailable
                 && lhs.showStatusMenu == rhs.showStatusMenu
                 && lhs.directProviderNotes == rhs.directProviderNotes
                 && lhs.directProviderID == rhs.directProviderID
@@ -2609,6 +2616,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             activeClient == other.activeClient
                 && statusLinks == other.statusLinks && showQuickSwitchMenu == other.showQuickSwitchMenu
                 && showOpenChatGPTMenu == other.showOpenChatGPTMenu && showOpenCCSwitchMenu == other.showOpenCCSwitchMenu
+                && isCCSwitchInstalled == other.isCCSwitchInstalled && quickSwitchAvailable == other.quickSwitchAvailable
                 && showStatusMenu == other.showStatusMenu && showsAvailableUpdateBadge == other.showsAvailableUpdateBadge
                 && language == other.language && modRow == other.modRow
                 && claudeLoginPrompt == other.claudeLoginPrompt
@@ -6518,7 +6526,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         if let prompt = makeClaudeLoginPromptItem() { menu.addItem(prompt) }
         if let prompt = makeModPromptItem() { menu.addItem(prompt) }
         menu.addItem(.separator())
-        if menuInput.showQuickSwitchMenu {
+        if menuInput.showQuickSwitchMenu && menuInput.quickSwitchAvailable {
             menu.addItem(makeQuickSwitchMenuItem())
         }
         let refreshItem = menu.addItem(
@@ -6538,7 +6546,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         if menuInput.showOpenCCSwitchMenu {
             menu.addItem(
-                withTitle: tr(.keyStatusItemControllerOpenCcSwitch),
+                withTitle: tr(menuInput.isCCSwitchInstalled ? .keyStatusItemControllerOpenCcSwitch : .keyStatusItemControllerDownloadCcSwitch),
                 action: #selector(openCCSwitch),
                 keyEquivalent: ""
             ).target = self
