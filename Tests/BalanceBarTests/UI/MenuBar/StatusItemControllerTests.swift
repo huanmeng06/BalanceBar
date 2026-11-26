@@ -5770,6 +5770,78 @@ extension StatusItemControllerTests {
     }
 
     @MainActor
+    func testRussianBalanceTitleRevealsItsFullEndingAfterRefreshAndHover() throws {
+        let previous = AppLanguage.selected
+        defer { AppLanguage.selected = previous }
+        AppLanguage.selected = .russian
+        let controller = makeController()
+        defer { controller.teardown() }
+        let name = "ChatGPT Official Billing and Balance Demo"
+        let website = try XCTUnwrap(URL(string: "https://example.com"))
+        let date = Date()
+        let settings = makeSettings()
+        let input = makeMenuInput()
+        func snapshot(at date: Date) -> Snapshot {
+            .balance(name, 42, "USD", website, date, progressPercentage: nil)
+        }
+        controller.start(snapshot: snapshot(at: date), refreshDate: date, menuInput: input, settings: settings)
+        let menu = controller.statusMenuForTesting
+        let card = try XCTUnwrap(menu.items.first?.view as? MenuHoverLinkHostView)
+        let title = try providerTitle(in: card)
+        let marquee = try XCTUnwrap(title.view as? AccountMarqueeView)
+        let link = try XCTUnwrap(title.label as? HoverLinkTextField)
+        let font = try XCTUnwrap(link.font)
+        let textWidth = AccountMarqueeView.textWidth(of: name, font: font)
+
+        func assertFullTravel(_ phase: String, line: UInt = #line) {
+            XCTAssertEqual(link.stringValue, name, phase, line: line)
+            XCTAssertGreaterThanOrEqual(link.frame.width, textWidth, phase, line: line)
+            XCTAssertEqual(marquee.scrollDistance, link.frame.width - marquee.bounds.width + marquee.edgeFadeInset,
+                accuracy: 0.5, phase, line: line)
+            XCTAssertLessThanOrEqual(link.frame.maxX - marquee.scrollDistance, marquee.bounds.maxX, phase, line: line)
+            let paragraph = link.attributedStringValue.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+            XCTAssertEqual(paragraph?.lineBreakMode, .byClipping, phase, line: line)
+        }
+
+        assertFullTravel("initial")
+        let window = NSWindow(contentRect: card.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = card
+        ApplicationWindowPresentation.presentInBackground(window)
+        defer { window.orderOut(nil) }
+        controller.menuWillOpen(menu)
+        defer { controller.menuDidClose(menu) }
+        let refreshedAt = date.addingTimeInterval(60)
+        controller.update(snapshot: snapshot(at: refreshedAt), refreshDate: refreshedAt, menuInput: input, settings: settings)
+        XCTAssertTrue(try providerTitle(in: card).view === marquee)
+        assertFullTravel("refreshed")
+        let point = NSPoint(x: link.visibleTextHitRect.minX + 8, y: link.visibleTextHitRect.midY)
+        card.forwardHover(atHostPoint: card.convert(point, from: link))
+        XCTAssertNotNil(link.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil))
+        assertFullTravel("hovered")
+        if !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            let animation = try XCTUnwrap(link.layer?.animation(forKey: AccountMarqueeView.animationKey) as? CAKeyframeAnimation)
+            let positions = try XCTUnwrap(animation.values as? [NSNumber])
+            XCTAssertEqual(positions[2].doubleValue, -marquee.scrollDistance, accuracy: 0.01)
+            XCTAssertEqual(positions[3], positions[2], "hold the ending before scrolling back")
+            XCTAssertEqual(positions.last?.doubleValue, 0)
+        }
+
+        // Inspect the image Core Animation translates, since drawing a detached
+        // text field at its full width can succeed even with a clipped menu.
+        let layer = try XCTUnwrap(link.layer)
+        link.needsDisplay = true
+        layer.displayIfNeeded()
+        let contents = try XCTUnwrap(layer.contents, "the scrolling layer must have a full-width backing image")
+        XCTAssertEqual(CFGetTypeID(contents as CFTypeRef), CGImage.typeID)
+        let image = NSBitmapImageRep(cgImage: contents as! CGImage)
+        let textEnd = min(image.pixelsWide, Int(textWidth * CGFloat(image.pixelsWide) / link.bounds.width))
+        let ending = (textEnd - 25)..<textEnd
+        XCTAssertTrue(ending.contains { x in
+            (0..<image.pixelsHigh).contains { y in (image.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.3 }
+        }, "the layer must contain the final word when the viewport reaches it")
+    }
+
+    @MainActor
     func testNotesCanSwitchProviderTitleBetweenStaticAndScrollingInPlace() throws {
         let controller = makeController()
         defer { controller.teardown() }

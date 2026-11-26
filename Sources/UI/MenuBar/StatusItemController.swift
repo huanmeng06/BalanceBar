@@ -282,6 +282,59 @@ final class AggregationNoteTagView: NSView {
     }
 }
 
+/// AppKit may draw a menu item's layer-backed text field only for its clipped
+/// viewport. Supply the animated link's whole line before the marquee masks it.
+private final class MarqueeTitleLinkTextField: HoverLinkTextField {
+    override var wantsUpdateLayer: Bool { true }
+
+    override init(text: String) {
+        super.init(text: text)
+        layerContentsRedrawPolicy = .onSetNeedsDisplay
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        let previous = bounds.size
+        super.setFrameSize(newSize)
+        if bounds.size != previous { needsDisplay = true }
+    }
+
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        needsDisplay = true
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        needsDisplay = true
+    }
+
+    override func updateLayer() {
+        guard let layer else { return }
+        let scale = window?.backingScaleFactor ?? layer.contentsScale
+        guard !bounds.isEmpty, let context = CGContext(
+            data: nil, width: Int(ceil(bounds.width * scale)), height: Int(ceil(bounds.height * scale)),
+            bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else {
+            layer.contents = nil
+            return
+        }
+        context.scaleBy(x: scale, y: scale)
+        if isFlipped {
+            context.translateBy(x: 0, y: bounds.height)
+            context.scaleBy(x: 1, y: -1)
+        }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: isFlipped)
+        cell?.draw(withFrame: bounds, in: self)
+        NSGraphicsContext.restoreGraphicsState()
+        layer.contentsScale = scale
+        layer.contents = context.makeImage()
+    }
+}
+
 final class AccountMarqueeView: NSView {
     static let animationKey = "BalanceBar.accountMarquee"
     static let defaultEdgeFadeWidth = AccountMarqueeLayout.defaultFadeWidth
@@ -8111,7 +8164,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             } else if label.stringValue != text { label.stringValue = text }
         } else {
             if website != nil {
-                let link = HoverLinkTextField(text: text)
+                let link = scrolls ? MarqueeTitleLinkTextField(text: text) : HoverLinkTextField(text: text)
                 link.font = font
                 link.restingTextColor = .labelColor
                 label = link

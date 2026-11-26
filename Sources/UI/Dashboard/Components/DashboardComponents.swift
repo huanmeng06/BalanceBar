@@ -1385,6 +1385,13 @@ class HoverLinkTextField: NSTextField {
         }
     }
 
+    override var lineBreakMode: NSLineBreakMode {
+        didSet {
+            guard lineBreakMode != oldValue, !isApplyingStyle else { return }
+            applyStyle(text: stringValue, underlined: isHovered)
+        }
+    }
+
     init(text: String) {
         super.init(frame: .zero)
         isEditable = false
