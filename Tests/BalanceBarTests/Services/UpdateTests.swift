@@ -7,6 +7,92 @@ import CryptoKit
 @testable import BalanceBar
 
 final class UpdateTests: XCTestCase {
+    func testAutomaticDownloadPrunesOlderCacheAfterPublishingCandidate() throws {
+        try verifyAutomaticCachePruning(restore: false)
+    }
+
+    func testAutomaticCacheRestorePrunesOlderCacheWithoutDownloading() throws {
+        try verifyAutomaticCachePruning(restore: true)
+    }
+
+    func testStartupPrunesInstalledCachesAndInterruptedWork() throws {
+        let support = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: support) }
+        let bundleID = "com.huanmeng06.BalanceBar.app"
+        let bundleSupport = support.appendingPathComponent(bundleID)
+        let updates = bundleSupport.appendingPathComponent("Updates")
+        let updater = bundleSupport.appendingPathComponent("Updater")
+        for name in ["1.8.7", "1.8.8", "1.8.9", ".download-xxx", "preflight-xxx", "other"] {
+            try FileManager.default.createDirectory(at: updates.appendingPathComponent(name), withIntermediateDirectories: true)
+        }
+        try FileManager.default.createDirectory(at: updater, withIntermediateDirectories: true)
+        let journal = updater.appendingPathComponent("installation.json")
+        try Data("keep".utf8).write(to: journal)
+        try Data().write(to: updates.appendingPathComponent("1.8.6"))
+        try FileManager.default.createSymbolicLink(at: updates.appendingPathComponent("1.8.5"), withDestinationURL: updater)
+        let service = UpdateService(
+            currentVersionString: "1.8.8",
+            currentBundleIdentifier: bundleID,
+            applicationSupportDirectory: support
+        )
+        let coordinator = AutomaticUpdateCoordinator(preferences: AppPreferences(), updateService: service)
+        defer { coordinator.stop() }
+
+        coordinator.start {}
+
+        XCTAssertEqual(
+            Set(try FileManager.default.contentsOfDirectory(atPath: updates.path)),
+            ["1.8.5", "1.8.6", "1.8.9", "other"]
+        )
+        XCTAssertEqual(try Data(contentsOf: journal), Data("keep".utf8))
+    }
+
+    func testCacheCleanupSkipsInstallingAndRestarting() throws {
+        let support = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: support) }
+        let bundleID = "com.huanmeng06.BalanceBar.app"
+        let updates = support.appendingPathComponent(bundleID).appendingPathComponent("Updates")
+        let names: Set<String> = ["1.8.8", ".download-xxx", "preflight-xxx"]
+        for name in names {
+            try FileManager.default.createDirectory(at: updates.appendingPathComponent(name), withIntermediateDirectories: true)
+        }
+        let fetcher = StubReleaseFetcher()
+        let downloader = StubDownloader()
+        let service = UpdateService(
+            releaseFetcher: fetcher, downloader: downloader, installer: StubInstaller(),
+            currentVersionString: "1.8.8", currentBundleIdentifier: bundleID, updateChannel: .beta,
+            minimumCheckingDuration: 0, applicationSupportDirectory: support
+        )
+        let available = waitForState(service, queue: .main) {
+            if case .available = $0 { return true }
+            return false
+        }
+        service.checkForUpdates()
+        fetcher.resolve(.success([makeRelease(tag: "v1.8.10", prerelease: true)]))
+        wait(for: [available], timeout: 2)
+
+        let installing = expectation(description: "installing cache protection")
+        let restarting = expectation(description: "restarting cache protection")
+        service.onStateChange = { state in
+            switch state {
+            case .installing:
+                service.removeInstalledUpdateCaches()
+                XCTAssertEqual(try? Set(FileManager.default.contentsOfDirectory(atPath: updates.path)), names)
+                installing.fulfill()
+            case .restarting:
+                service.removeInstalledUpdateCaches()
+                XCTAssertEqual(try? Set(FileManager.default.contentsOfDirectory(atPath: updates.path)), names)
+                restarting.fulfill()
+            default:
+                break
+            }
+        }
+        defer { service.onStateChange = nil }
+        service.installAvailableUpdate()
+        downloader.resolve(.success(updates.appendingPathComponent("1.8.8/BalanceBar-1.8.10.dmg")))
+        wait(for: [installing, restarting], timeout: 2)
+    }
+
     func testIdleThresholdOverrideAppliesOnlyToDevelopmentBundles() {
         let environment = ["BALANCEBAR_UPDATE_IDLE_SECONDS": "30"]
         XCTAssertEqual(AutomaticUpdateCoordinator.configuredIdleThreshold(
@@ -4567,6 +4653,83 @@ final class UpdateTests: XCTestCase {
             .appendingPathComponent("BalanceBar-UpdateTests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
+    }
+
+    private func verifyAutomaticCachePruning(restore: Bool) throws {
+        let support = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: support) }
+        let files = FileManager.default
+        let bundleID = "com.huanmeng06.BalanceBar.app"
+        let app = support.appendingPathComponent("BalanceBar.app")
+        let updates = support.appendingPathComponent(bundleID).appendingPathComponent("Updates")
+        let version = "1.8.10"
+        let olderCache = updates.appendingPathComponent("1.8.9")
+        let candidateCache = updates.appendingPathComponent(version)
+        let assets = support.appendingPathComponent("assets")
+        let stagingNames: Set<String> = [".download-in-progress", "preflight-in-progress"]
+        for directory in [olderCache, assets] + stagingNames.map({ updates.appendingPathComponent($0) }) {
+            try files.createDirectory(at: directory, withIntermediateDirectories: true)
+        }
+        let dmgName = "BalanceBar-\(version).dmg"
+        let dmg = Data("test disk image".utf8)
+        let manifest = try JSONSerialization.data(withJSONObject: [
+            "schema": 1, "bundleIdentifier": bundleID, "version": version,
+            "channel": "beta", "tag": "v\(version)",
+            "asset": ["name": dmgName, "size": dmg.count, "sha256": sha256(dmg)],
+            "source": ["repository": "huanmeng06/BalanceBar", "commit": String(repeating: "0", count: 40), "runId": "1", "runAttempt": "1"],
+            "signedAt": "2026-11-26T00:00:00Z"
+        ])
+        let key = Curve25519.Signing.PrivateKey()
+        let signature = try JSONSerialization.data(withJSONObject: [
+            "schema": 1, "algorithm": "ed25519", "keyId": "test-key",
+            "signature": key.signature(for: manifest).base64EncodedString()
+        ])
+        let releaseAssets = [
+            (dmgName, dmg), ("BalanceBar-\(version).update.json", manifest),
+            ("BalanceBar-\(version).update.json.sig", signature)
+        ]
+        let release = makeRelease(tag: "v\(version)", prerelease: true, assets: releaseAssets.map { name, contents in
+            ["name": name, "size": contents.count,
+             "browser_download_url": "https://github.com/huanmeng06/BalanceBar/releases/download/v\(version)/\(name)"]
+        })
+        if restore {
+            try files.createDirectory(at: candidateCache, withIntermediateDirectories: true)
+            let context = try JSONSerialization.data(withJSONObject: ["applicationPath": app.path, "channel": "beta"])
+            try context.write(to: candidateCache.appendingPathComponent("install-context.json"))
+        }
+        let assetDirectory = restore ? candidateCache : assets
+        for (name, contents) in releaseAssets {
+            try contents.write(to: assetDirectory.appendingPathComponent(name))
+        }
+        let fetcher = StubReleaseFetcher()
+        let service = UpdateService(
+            releaseFetcher: fetcher, downloader: DevelopmentUpdateAssetFixture(directoryURL: assets),
+            currentVersionString: "1.8.8", currentApplicationURL: app,
+            currentBundleIdentifier: bundleID, updateChannel: .beta, minimumCheckingDuration: 0,
+            applicationSupportDirectory: support,
+            stageAutomaticUpdateApplication: { _, destination, _, _ in
+                XCTAssertFalse(restore, "Restoring a cache should skip downloading and staging")
+                XCTAssertTrue(files.fileExists(atPath: olderCache.path))
+                try files.createDirectory(at: destination, withIntermediateDirectories: false)
+            }
+        )
+        let available = waitForState(service, queue: .main) {
+            if case .available = $0 { return true }
+            return false
+        }
+        service.checkForUpdates()
+        fetcher.resolve(.success([release]))
+        wait(for: [available], timeout: 2)
+
+        let prepared = expectation(description: "candidate cache is ready")
+        let verifier = UpdateSignatureVerifier(publicKeys: ["test-key": key.publicKey.rawRepresentation])
+        service.prepareAutomaticUpdate(verifier: verifier) { result in
+            XCTAssertEqual(try? result.get()?.path, candidateCache.appendingPathComponent(dmgName).path)
+            XCTAssertEqual(service.state, .automaticReady(current: AppSemanticVersion("1.8.8")!, latest: AppSemanticVersion(version)!))
+            XCTAssertEqual(try? Set(files.contentsOfDirectory(atPath: updates.path)), stagingNames.union([version]))
+            prepared.fulfill()
+        }
+        wait(for: [prepared], timeout: 5)
     }
 
     @discardableResult

@@ -45,7 +45,7 @@ final class AutomaticUpdateCoordinator {
     }
 
     func start(onIdle: @escaping () -> Void) {
-        removeInstalledUpdateCaches()
+        updateService.removeInstalledUpdateCaches()
         updateCheckChanged(updateService.state)
         let center = NSWorkspace.shared.notificationCenter
         workspaceObservers = [
@@ -58,18 +58,6 @@ final class AutomaticUpdateCoordinator {
         let timer = Timer(timeInterval: 5, repeats: true) { _ in onIdle() }
         idleTimer = timer
         RunLoop.main.add(timer, forMode: .common)
-    }
-
-    private func removeInstalledUpdateCaches() {
-        guard let current = updateService.installedVersion, let identifier = Bundle.main.bundleIdentifier,
-              let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { return }
-        let updates = root.appendingPathComponent(identifier).appendingPathComponent("Updates")
-        guard let directories = try? FileManager.default.contentsOfDirectory(at: updates, includingPropertiesForKeys: nil) else { return }
-        for directory in directories {
-            if let version = AppSemanticVersion(directory.lastPathComponent), version <= current {
-                try? FileManager.default.removeItem(at: directory)
-            }
-        }
     }
 
     func stop() {

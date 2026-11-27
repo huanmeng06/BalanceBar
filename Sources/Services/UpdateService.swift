@@ -1036,6 +1036,8 @@ final class UpdateService {
     private let currentVersion: AppSemanticVersion?
     private let currentApplicationURL: URL
     private let currentBundleIdentifier: String?
+    private let automaticUpdatesDirectory: URL?
+    private let stageAutomaticUpdateApplication: (URL, URL, String, AppSemanticVersion) throws -> Void
     private let callbackQueue: DispatchQueue
     private let workQueue: DispatchQueue
     private let scheduler: UpdateScheduling
@@ -1141,6 +1143,44 @@ final class UpdateService {
         cachedAutomaticRelease = nil
     }
 
+    func removeInstalledUpdateCaches() {
+        removeAutomaticUpdateCacheDirectories { name in
+            if name.hasPrefix(".download-") || name.hasPrefix("preflight-") {
+                return true
+            }
+            guard let currentVersion, let version = AppSemanticVersion(name) else { return false }
+            return version <= currentVersion
+        }
+    }
+
+    private func pruneAutomaticUpdateCaches(keeping version: AppSemanticVersion) {
+        removeAutomaticUpdateCacheDirectories { name in
+            AppSemanticVersion(name) != nil && name != version.description
+        }
+    }
+
+    private func removeAutomaticUpdateCacheDirectories(where shouldRemove: (String) -> Bool) {
+        switch state {
+        case .installing, .restarting:
+            return
+        default:
+            break
+        }
+        let keys: Set<URLResourceKey> = [.isDirectoryKey, .isSymbolicLinkKey]
+        guard let updates = automaticUpdatesDirectory,
+              (try? updates.deletingLastPathComponent().resourceValues(forKeys: keys).isSymbolicLink) == false,
+              let properties = try? updates.resourceValues(forKeys: keys),
+              properties.isDirectory == true, properties.isSymbolicLink == false,
+              let children = try? FileManager.default.contentsOfDirectory(at: updates, includingPropertiesForKeys: Array(keys))
+        else { return }
+
+        for child in children where shouldRemove(child.lastPathComponent) {
+            guard let properties = try? child.resourceValues(forKeys: keys),
+                  properties.isDirectory == true, properties.isSymbolicLink == false else { continue }
+            try? FileManager.default.removeItem(at: child)
+        }
+    }
+
     func automaticUpdateRequiresManualInstallation() {
         guard case .automaticReady(let current, let latest) = state else { return }
         transition(to: .automaticNeedsManual(current: current, latest: latest))
@@ -1163,7 +1203,10 @@ final class UpdateService {
         scheduler: UpdateScheduling = DispatchUpdateScheduler(),
         minimumCheckingDuration: TimeInterval = 1.0,
         automaticCheckMinimumInterval: TimeInterval = 15 * 60,
-        ignoredVersionStore: UpdateVersionIgnoring = UserDefaultsUpdateVersionIgnoreStore()
+        ignoredVersionStore: UpdateVersionIgnoring = UserDefaultsUpdateVersionIgnoreStore(),
+        applicationSupportDirectory: URL? = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first,
+        stageAutomaticUpdateApplication: @escaping (URL, URL, String, AppSemanticVersion) throws -> Void =
+            AutomaticUpdateCommand.stageVerifiedApplication
     ) {
         self.releaseFetcher = releaseFetcher
         self.downloader = downloader
@@ -1171,6 +1214,10 @@ final class UpdateService {
         self.currentVersion = currentVersionString.flatMap(AppSemanticVersion.init)
         self.currentApplicationURL = currentApplicationURL
         self.currentBundleIdentifier = currentBundleIdentifier
+        self.automaticUpdatesDirectory = applicationSupportDirectory?
+            .appendingPathComponent(currentBundleIdentifier ?? "com.huanmeng06.BalanceBar.app", isDirectory: true)
+            .appendingPathComponent("Updates", isDirectory: true)
+        self.stageAutomaticUpdateApplication = stageAutomaticUpdateApplication
         self.updateChannel = updateChannel
         self.callbackQueue = callbackQueue
         self.workQueue = workQueue
@@ -1330,6 +1377,7 @@ final class UpdateService {
         ) {
             automaticCachedUpdateURL = cachedUpdate
             cachedAutomaticRelease = candidate.release
+            pruneAutomaticUpdateCaches(keeping: candidate.version)
             transition(to: .automaticReady(current: currentVersion, latest: candidate.version))
             callbackQueue.async { completion(.success(cachedUpdate)) }
             return
@@ -1415,23 +1463,13 @@ final class UpdateService {
                             return
                         }
                         do {
-                            let support = try FileManager.default.url(
-                                for: .applicationSupportDirectory,
-                                in: .userDomainMask,
-                                appropriateFor: nil,
-                                create: true
-                            )
+                            guard let updates = self.automaticUpdatesDirectory else { throw UpdateFailure.downloadFailed }
                             let bundleIdentifier = self.currentBundleIdentifier ?? "com.huanmeng06.BalanceBar.app"
-                            let updates = support
-                                .appendingPathComponent(bundleIdentifier, isDirectory: true)
-                                .appendingPathComponent("Updates", isDirectory: true)
                             let directory = updates.appendingPathComponent(".download-\(UUID().uuidString)", isDirectory: true)
                             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
                             let stagedApp = directory.appendingPathComponent("BalanceBar.app", isDirectory: true)
                             do {
-                                try AutomaticUpdateCommand.stageVerifiedApplication(
-                                    from: downloadedDMG, at: stagedApp, bundleIdentifier: bundleIdentifier, version: candidate.version
-                                )
+                                try self.stageAutomaticUpdateApplication(downloadedDMG, stagedApp, bundleIdentifier, candidate.version)
                                 try FileManager.default.removeItem(at: stagedApp)
                             } catch {
                                 try? FileManager.default.removeItem(at: directory)
@@ -1517,6 +1555,7 @@ final class UpdateService {
                     self.automaticCachedUpdateURL = url
                     self.cachedAutomaticRelease = self.availableRelease
                     guard case .automaticDownloading(_, let latest, _) = self.state else { return }
+                    self.pruneAutomaticUpdateCaches(keeping: latest)
                     self.transition(to: .automaticReady(current: currentVersion, latest: latest))
                 }
             case .failure(let failure):
@@ -1566,16 +1605,8 @@ final class UpdateService {
         verifier: UpdateSignatureVerifier,
         currentVersion: AppSemanticVersion
     ) -> URL? {
-        guard let support = try? FileManager.default.url(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: false
-        ) else { return nil }
-        let bundleIdentifier = currentBundleIdentifier ?? "com.huanmeng06.BalanceBar.app"
-        let directory = support.appendingPathComponent(bundleIdentifier, isDirectory: true)
-            .appendingPathComponent("Updates", isDirectory: true)
-            .appendingPathComponent(version.description, isDirectory: true)
+        guard let updates = automaticUpdatesDirectory else { return nil }
+        let directory = updates.appendingPathComponent(version.description, isDirectory: true)
         let dmg = directory.appendingPathComponent(dmgAsset.name)
         let manifestURL = directory.appendingPathComponent(manifestAsset.name)
         let signatureURL = directory.appendingPathComponent(signatureAsset.name)
