@@ -57,10 +57,7 @@ enum DashboardAboutPage {
         openURL: @escaping (URL) -> Bool = { NSWorkspace.shared.open($0) }
     ) -> NSView {
         let root = NSView()
-        let icon = NSImageView()
-        if let iconURL = bundle.url(forResource: "BalanceBar", withExtension: "icns") {
-            icon.image = NSImage(contentsOf: iconURL)
-        }
+        let icon = NSImageView(image: BalanceBarAppIcon.image())
         icon.imageScaling = .scaleProportionallyDown
         icon.translatesAutoresizingMaskIntoConstraints = false
         icon.widthAnchor.constraint(equalToConstant: 72).isActive = true

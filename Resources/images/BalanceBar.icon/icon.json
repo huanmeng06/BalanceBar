@@ -1,0 +1,127 @@
+{
+  "fill": {
+    "automatic-gradient": "srgb:1.00000,1.00000,1.00000,1.00000"
+  },
+  "groups": [
+    {
+      "name": "Glyphs",
+      "layers": [
+        {
+          "name": "glyphs",
+          "image-name": "glyphs.svg",
+          "glass": false
+        }
+      ],
+      "shadow": {
+        "kind": "none",
+        "opacity": 0.5
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0.5
+      },
+      "specular": false
+    },
+    {
+      "name": "Pill",
+      "layers": [
+        {
+          "name": "pill",
+          "image-name": "pill.svg",
+          "glass": true
+        }
+      ],
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.5
+      },
+      "translucency": {
+        "enabled": true,
+        "value": 0.15
+      },
+      "specular": true
+    },
+    {
+      "name": "Rays",
+      "layers": [
+        {
+          "name": "orange-right",
+          "image-name": "ray-13-orange-right.svg",
+          "glass": true
+        },
+        {
+          "name": "orange-lower-right",
+          "image-name": "ray-12-orange-lower-right.svg",
+          "glass": true
+        },
+        {
+          "name": "yellow-lower-right",
+          "image-name": "ray-11-yellow-lower-right.svg",
+          "glass": true
+        },
+        {
+          "name": "orange-bottom",
+          "image-name": "ray-10-orange-bottom.svg",
+          "glass": true
+        },
+        {
+          "name": "gradient-bottom",
+          "image-name": "ray-09-gradient-bottom.svg",
+          "glass": true
+        },
+        {
+          "name": "teal-lower-left",
+          "image-name": "ray-08-teal-lower-left.svg",
+          "glass": true
+        },
+        {
+          "name": "orange-lower-left",
+          "image-name": "ray-07-orange-lower-left.svg",
+          "glass": true
+        },
+        {
+          "name": "orange-left",
+          "image-name": "ray-06-orange-left.svg",
+          "glass": true
+        },
+        {
+          "name": "orange-top",
+          "image-name": "ray-05-orange-top.svg",
+          "glass": true
+        },
+        {
+          "name": "yellow-right",
+          "image-name": "ray-04-yellow-right.svg",
+          "glass": true
+        },
+        {
+          "name": "yellow-upper-right",
+          "image-name": "ray-03-yellow-upper-right.svg",
+          "glass": true
+        },
+        {
+          "name": "teal-top",
+          "image-name": "ray-02-teal-top.svg",
+          "glass": true
+        },
+        {
+          "name": "teal-upper-left",
+          "image-name": "ray-01-teal-upper-left.svg",
+          "glass": true
+        }
+      ],
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.5
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0.5
+      },
+      "specular": true
+    }
+  ],
+  "supported-platforms": {
+    "squares": "shared"
+  }
+}

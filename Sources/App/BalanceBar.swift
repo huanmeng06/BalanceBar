@@ -1460,10 +1460,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             let sha = Bundle.main.object(forInfoDictionaryKey: "BalanceBarBuildSHA") as? String ?? "unknown"
             SwitchLog.write("Dev artifact; path=\(Bundle.main.bundlePath); pid=\(ProcessInfo.processInfo.processIdentifier); build_sha=\(sha)", category: "ui.aggregation")
         }
-        if let iconURL = Bundle.main.url(forResource: "BalanceBar", withExtension: "icns"),
-           let icon = NSImage(contentsOf: iconURL) {
-            NSApp.applicationIconImage = icon
-        }
         observeDisplayTimeZone()
         configureApplicationMenu()
         NSApp.appearance = nil

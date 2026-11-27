@@ -825,7 +825,7 @@ final class ModOnboardingPanelView: NSView {
             if let name {
                 icon = symbol(name, color: name.hasPrefix("exclamation") ? .systemOrange : .systemGreen, size: 44, box: 56)
             } else {
-                let image = NSImageView(image: NSApp.applicationIconImage)
+                let image = NSImageView(image: BalanceBarAppIcon.image())
                 image.imageScaling = .scaleProportionallyUpOrDown
                 NSLayoutConstraint.activate([image.widthAnchor.constraint(equalToConstant: 56), image.heightAnchor.constraint(equalToConstant: 56)])
                 image.setAccessibilityElement(false)
@@ -847,7 +847,7 @@ final class ModOnboardingPanelView: NSView {
             field.font = .monospacedSystemFont(ofSize: 11, weight: .regular); field.isSelectable = true
             return field
         case let .title(text):
-            let image = NSImageView(image: NSApp.applicationIconImage)
+            let image = NSImageView(image: BalanceBarAppIcon.image())
             image.imageScaling = .scaleProportionallyUpOrDown
             NSLayoutConstraint.activate([image.widthAnchor.constraint(equalToConstant: 56), image.heightAnchor.constraint(equalToConstant: 56)])
             image.setAccessibilityElement(false)

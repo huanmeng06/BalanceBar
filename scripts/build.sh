@@ -241,6 +241,7 @@ trap 'status=$?; printf "build-balancebar: command failed at line %s (exit %s): 
 
 for required_file in \
     "$resources_src/Info.plist" \
+    "$images_src/BalanceBar.icon/icon.json" \
     "$images_src/BalanceBar.icns" \
     "$images_src/GitHub.svg" \
     "$images_src/BankedResetTicket.svg" \
@@ -400,7 +401,23 @@ plutil -lint "$launch_agent_plist" >/dev/null
 bundle_program="$(plutil -extract BundleProgram raw -o - "$launch_agent_plist")"
 [[ "$bundle_program" == "Contents/Library/LaunchAgents/BalanceBarChatGPTLaunchAgent" ]] \
     || die "ChatGPT launch agent plist has an invalid BundleProgram: $bundle_program"
-for resource_file in BalanceBar.icns GitHub.svg BankedResetTicket.svg CodexIcon.svg Claude.svg ClaudeThinking.svg Grok.svg Grok.png GrokIdle.svg
+printf 'build-balancebar: compiling layered app icon\n'
+icon_partial_plist="$build_dir/icon-partial.plist"
+xcrun actool "$images_src/BalanceBar.icon" \
+    --compile "$resources_dir" \
+    --platform macosx \
+    --minimum-deployment-target "$balancebar_deployment_target" \
+    --app-icon BalanceBar \
+    --output-partial-info-plist "$icon_partial_plist"
+for icon_key in CFBundleIconFile CFBundleIconName
+do
+    icon_value="$(plutil -extract "$icon_key" raw -o - "$icon_partial_plist")"
+    plutil -replace "$icon_key" -string "$icon_value" "$bundle_plist"
+done
+# actool's legacy icon tops out at 256 pixels. Ship the full-size rendering.
+cp "$images_src/BalanceBar.icns" "$resources_dir/BalanceBar.icns"
+
+for resource_file in GitHub.svg BankedResetTicket.svg CodexIcon.svg Claude.svg ClaudeThinking.svg Grok.svg Grok.png GrokIdle.svg
 do
     cp "$images_src/$resource_file" "$resources_dir/$resource_file"
 done
