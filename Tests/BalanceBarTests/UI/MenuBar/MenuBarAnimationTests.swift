@@ -1176,6 +1176,10 @@ final class MenuBarAnimationTests: XCTestCase {
             let cardOnScreen = window.convertToScreen(chrome.convert(chrome.bounds, to: nil))
             XCTAssertEqual(overlay.frame.midX, cardOnScreen.midX, accuracy: 0.5)
             XCTAssertEqual(overlay.frame.midY, cardOnScreen.midY, accuracy: 0.5)
+            let clipLayer = try XCTUnwrap(overlay.cardLayer.superlayer)
+            XCTAssertFalse(clipLayer.masksToBounds)
+            XCTAssertEqual(clipLayer.frame, NSRect(origin: .zero, size: overlay.frame.size))
+            XCTAssertEqual(overlay.cardLayer.position, NSPoint(x: overlay.frame.width / 2, y: overlay.frame.height / 2))
 
             let image = try XCTUnwrap(overlay.restingImageForTesting)
             let rep = NSBitmapImageRep(cgImage: image)
@@ -1198,6 +1202,231 @@ final class MenuBarAnimationTests: XCTestCase {
             XCTAssertEqual(marker.alphaValue, 1)
             XCTAssertFalse(chrome.isHovering)
         }
+    }
+
+    func testScrollingAnimatesLiftedTicketDropInsideViewport() throws {
+        let (window, host, scroll, cards) = makeScrollingTicketHost()
+        defer { window.orderOut(nil) }
+        let card = cards[0]
+        card.setHoverForTesting(at: NSPoint(x: 150, y: card.frame.midY))
+        let overlay = try XCTUnwrap(card.liftOverlayForTesting)
+        let clipLayer = try XCTUnwrap(overlay.cardLayer.superlayer)
+        let origin = scroll.contentView.bounds.origin
+
+        try scrollTickets(in: host)
+        XCTAssertTrue(card.liftOverlayForTesting === overlay)
+        XCTAssertTrue(clipLayer.masksToBounds)
+        XCTAssertEqual(card.liftTargetForTesting, 0)
+        XCTAssertFalse(cards.contains(where: \.isHovering))
+
+        let viewport = window.convertToScreen(scroll.contentView.convert(scroll.contentView.bounds, to: nil))
+        XCTAssertEqual(overlay.convertToScreen(clipLayer.frame), viewport)
+        let originalOverlayFrame = overlay.frame
+        // A synthetic wheel event has no window. Move the clip view explicitly.
+        scroll.contentView.scroll(to: NSPoint(x: 0, y: 40))
+
+        XCTAssertNotEqual(scroll.contentView.bounds.origin, origin)
+        XCTAssertNotEqual(overlay.frame, originalOverlayFrame)
+        XCTAssertEqual(overlay.convertToScreen(clipLayer.frame), viewport)
+        let center = NSPoint(x: overlay.cardLayer.position.x + clipLayer.frame.minX,
+                             y: overlay.cardLayer.position.y + clipLayer.frame.minY)
+        XCTAssertEqual(center, NSPoint(x: overlay.frame.width / 2, y: overlay.frame.height / 2))
+
+        for _ in 0..<180 where card.liftOverlayForTesting != nil {
+            card.advanceLiftAnimation(by: 1.0 / 120)
+        }
+        XCTAssertNil(card.liftOverlayForTesting)
+        XCTAssertFalse(overlay.isVisible)
+        XCTAssertEqual(card.alphaValue, 1)
+    }
+
+    func testFallingTicketClipTracksOuterScrollViewport() throws {
+        let (window, host, scroll, cards) = makeScrollingTicketHost()
+        defer { window.orderOut(nil) }
+        let outer = NSScrollView(frame: host.frame)
+        window.contentView = outer
+        let document = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 400))
+        outer.documentView = document
+        host.frame.origin.y = 20
+        document.addSubview(host)
+        host.displayIfNeeded()
+
+        let card = cards[0]
+        defer { card.resetHover(animated: false) }
+        card.setHoverForTesting(at: NSPoint(x: card.frame.midX, y: card.frame.midY))
+        let overlay = try XCTUnwrap(card.liftOverlayForTesting)
+        let clipLayer = try XCTUnwrap(overlay.cardLayer.superlayer)
+        host.ticketScrollDidOccur(.wheel)
+        let initialClip = overlay.convertToScreen(clipLayer.frame)
+
+        outer.contentView.scroll(to: NSPoint(x: 0, y: 60))
+
+        let clipView = scroll.contentView
+        let visibleRect = clipView.bounds.intersection(clipView.visibleRect)
+        let expectedClip = window.convertToScreen(clipView.convert(visibleRect, to: nil))
+        XCTAssertFalse(visibleRect.isEmpty)
+        XCTAssertLessThan(visibleRect.height, clipView.bounds.height)
+        XCTAssertNotEqual(initialClip, expectedClip)
+        XCTAssertEqual(overlay.convertToScreen(clipLayer.frame), expectedClip)
+
+        outer.contentView.scroll(to: NSPoint(x: 0, y: 160))
+        XCTAssertTrue(clipLayer.masksToBounds)
+        XCTAssertTrue(clipLayer.frame.isEmpty)
+    }
+
+    func testTicketHoverIsSuppressedUntilScrollSettlesUnderPointer() throws {
+        let (window, host, scroll, cards) = makeScrollingTicketHost()
+        defer { window.orderOut(nil) }
+        let target = cards[3]
+        target.reduceMotionForTesting = false
+        try scrollTickets(in: host)
+        try scrollTickets(in: host)
+        scroll.contentView.scroll(to: NSPoint(x: 0, y: 40))
+        let point = target.convert(NSPoint(x: target.bounds.width * 0.75, y: target.bounds.height * 0.25), to: host)
+        host.focusPointerLocationForTesting = point
+        let entered = NSEvent.enterExitEvent(
+            with: .mouseEntered, location: host.convert(point, to: nil), modifierFlags: [],
+            timestamp: 0, windowNumber: window.windowNumber, context: nil,
+            eventNumber: 0, trackingNumber: 0, userData: nil
+        )
+
+        target.mouseEntered(with: try XCTUnwrap(entered))
+        XCTAssertTrue(cards.allSatisfy(\.isScrollSuppressed))
+        XCTAssertFalse(cards.contains(where: \.isHovering))
+
+        host.settleTicketScrollForTesting()
+        XCTAssertFalse(cards.contains(where: \.isScrollSuppressed))
+        XCTAssertEqual(cards.filter(\.isHovering), [target])
+        XCTAssertEqual(target.tiltTargetForTesting, NSPoint(x: 0.5, y: -0.5))
+
+        let moved = NSEvent.mouseEvent(
+            with: .mouseMoved, location: NSPoint(x: 150, y: 135), modifierFlags: [],
+            timestamp: 0, windowNumber: window.windowNumber, context: nil,
+            eventNumber: 0, clickCount: 0, pressure: 0
+        )
+        host.mouseMoved(with: try XCTUnwrap(moved))
+        XCTAssertFalse(cards.contains(where: \.isHovering))
+    }
+
+    func testTicketScrollSettleIgnoresClippedTicketsAndRespectsReduceMotion() throws {
+        let (window, host, scroll, cards) = makeScrollingTicketHost()
+        defer { window.orderOut(nil) }
+        let partiallyClippedCard = cards[2]
+        partiallyClippedCard.reduceMotionForTesting = false
+        let target = cards[3]
+        target.reduceMotionForTesting = true
+
+        for (card, y) in [(cards[0], CGFloat(20)), (partiallyClippedCard, 38), (target, 20)] {
+            try scrollTickets(in: host)
+            scroll.contentView.scroll(to: NSPoint(x: 0, y: 40))
+            let point = card.convert(NSPoint(x: card.bounds.midX, y: y), to: host)
+            XCTAssertEqual(host.containsTicketScrollPoint(host.convert(point, to: nil)), card === target)
+            host.focusPointerLocationForTesting = point
+            host.settleTicketScrollForTesting()
+            XCTAssertFalse(cards.contains(where: \.isHovering))
+        }
+    }
+
+    func testDismissingMenuCancelsTicketScrollSettle() throws {
+        let (window, host, _, cards) = makeScrollingTicketHost()
+        defer { window.orderOut(nil) }
+        host.setMenuContentVisible(true)
+        let first = cards[0]
+        first.reduceMotionForTesting = false
+        first.setHoverForTesting(at: NSPoint(x: first.frame.midX, y: first.frame.midY))
+        XCTAssertNotNil(first.liftOverlayForTesting)
+        host.focusPointerLocationForTesting = first.convert(
+            NSPoint(x: first.bounds.midX, y: first.bounds.midY), to: host
+        )
+        try scrollTickets(in: host)
+        XCTAssertTrue(first.isScrollSuppressed)
+
+        host.setMenuContentVisible(false)
+
+        XCTAssertTrue(host.isMenuDismissing)
+        XCTAssertFalse(cards.contains(where: \.isScrollSuppressed))
+        host.settleTicketScrollForTesting()
+        XCTAssertFalse(cards.contains(where: \.isHovering))
+        XCTAssertNil(first.liftOverlayForTesting)
+    }
+
+    func testTicketHoverResumesImmediatelyWhenMomentumEnds() {
+        let (window, host, _, cards) = makeScrollingTicketHost()
+        defer { window.orderOut(nil) }
+        let card = cards[0]
+        card.reduceMotionForTesting = false
+        host.focusPointerLocationForTesting = card.convert(NSPoint(x: card.bounds.midX, y: card.bounds.midY), to: host)
+
+        host.ticketScrollDidOccur(.gestureChanged)
+        host.settleTicketScrollForTesting()
+        XCTAssertTrue(card.isScrollSuppressed)
+        let outside = NSPoint(x: 150, y: 135)
+        XCTAssertFalse(host.containsTicketScrollPoint(outside))
+        XCTAssertFalse(host.shouldHandleTicketScroll(at: outside, phase: .wheel))
+        XCTAssertTrue(host.shouldHandleTicketScroll(at: outside, phase: .momentumEnded))
+        host.ticketScrollDidOccur(.gestureEnded)
+        host.ticketScrollDidOccur(.momentumChanged)
+        host.settleTicketScrollForTesting()
+        XCTAssertTrue(card.isScrollSuppressed)
+        XCTAssertFalse(cards.contains(where: \.isHovering))
+
+        host.ticketScrollDidOccur(.momentumEnded)
+        XCTAssertFalse(cards.contains(where: \.isScrollSuppressed))
+        XCTAssertFalse(host.shouldHandleTicketScroll(at: outside, phase: .momentumEnded))
+        XCTAssertEqual(cards.filter(\.isHovering), [card])
+    }
+
+    func testTicketHoverResumesAfterGestureWithoutMomentumAndUnclipsFallingCard() throws {
+        let (window, host, _, cards) = makeScrollingTicketHost()
+        defer { window.orderOut(nil) }
+        let card = cards[0]
+        card.reduceMotionForTesting = false
+        card.setHoverForTesting(at: NSPoint(x: card.frame.midX, y: card.frame.midY))
+        let overlay = try XCTUnwrap(card.liftOverlayForTesting)
+        host.focusPointerLocationForTesting = card.convert(NSPoint(x: card.bounds.midX, y: card.bounds.midY), to: host)
+
+        host.ticketScrollDidOccur(.gestureChanged)
+        host.ticketScrollDidOccur(.gestureEnded)
+        XCTAssertTrue(overlay.isClipped)
+        XCTAssertFalse(card.isHovering)
+
+        host.settleTicketScrollForTesting()
+        XCTAssertEqual(cards.filter(\.isHovering), [card])
+        XCTAssertTrue(card.liftOverlayForTesting === overlay)
+        XCTAssertFalse(overlay.isClipped)
+        XCTAssertEqual(card.liftTargetForTesting, 1)
+    }
+
+    private func makeScrollingTicketHost() -> (
+        NSWindow, MenuHoverLinkHostView, BankedResetTicketScrollView, [BankedResetChromeView]
+    ) {
+        let (window, _) = makeTicketHost(flipped: false)
+        let host = MenuHoverLinkHostView(frame: NSRect(x: 0, y: 0, width: 300, height: 160))
+        host.wantsLayer = true
+        window.contentView = host
+        let scroll = BankedResetTicketScrollView(frame: NSRect(x: 10, y: 20, width: 280, height: 100))
+        let document = BankedResetTicketDocumentView(frame: NSRect(x: 0, y: 0, width: 280, height: 250))
+        let cards = (0..<5).map { index in
+            BankedResetChromeView(frame: NSRect(x: 10, y: 205 - index * 50, width: 260, height: 40))
+        }
+        cards.forEach(document.addSubview)
+        scroll.documentView = document
+        host.addSubview(scroll)
+        host.trackTicketScroll(scroll)
+        host.displayIfNeeded()
+        scroll.scrollToTopOfDocument()
+        return (window, host, scroll, cards)
+    }
+
+    private func scrollTickets(in host: MenuHoverLinkHostView) throws {
+        let cgEvent = try XCTUnwrap(CGEvent(
+            scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 1, wheel1: 90, wheel2: 0, wheel3: 0
+        ))
+        let screenHeight = try XCTUnwrap(NSScreen.screens.first).frame.height
+        cgEvent.location = CGPoint(x: 150, y: screenHeight - 80)
+        let event = try XCTUnwrap(NSEvent(cgEvent: cgEvent))
+        XCTAssertTrue(host.containsTicketScrollPoint(event.locationInWindow))
+        host.scrollWheel(with: event)
     }
 
     func testLiftedTicketSnapshotFollowsContentChanges() throws {
