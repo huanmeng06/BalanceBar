@@ -548,7 +548,7 @@ final class BankedResetChromeView: NSView {
 
     private var hoverTrackingArea: NSTrackingArea?
     private(set) var isHovering = false
-    var isScrollSuppressed = false
+    private(set) var isScrollSuppressed = false
     var reduceMotionForTesting: Bool?
     /// 0 at rest, 1 fully lifted (overshoots slightly while springing).
     private var lift = Spring(0)
@@ -569,6 +569,8 @@ final class BankedResetChromeView: NSView {
     private var liftedSignature: [String] = []
 
     var liftOverlayForTesting: BankedResetLiftOverlayWindow? { overlay }
+    var liftTargetForTesting: CGFloat { lift.target }
+    var tiltTargetForTesting: NSPoint { NSPoint(x: tiltX.target, y: tiltY.target) }
     /// Simulates a failed capture (e.g. no backing store yet).
     var failsSnapshotsForTesting = false
 
@@ -625,6 +627,7 @@ final class BankedResetChromeView: NSView {
     func beginHover(atWindowPoint point: NSPoint) {
         guard !isScrollSuppressed, !isMenuDismissing,
               !(reduceMotionForTesting ?? NSWorkspace.shared.accessibilityDisplayShouldReduceMotion) else { return }
+        overlay?.setClipRect(nil)
         isHovering = true
         setPointer(convert(point, from: nil))
         startAnimating()
@@ -650,7 +653,24 @@ final class BankedResetChromeView: NSView {
 
     override func viewWillMove(toWindow newWindow: NSWindow?) {
         super.viewWillMove(toWindow: newWindow)
-        if newWindow == nil { resetHover(animated: false) }
+        if newWindow == nil {
+            endScrollSuppression()
+            resetHover(animated: false)
+        }
+    }
+
+    func beginScrollDrop(viewportScreenRect: NSRect) {
+        isScrollSuppressed = true
+        overlay?.setClipRect(viewportScreenRect)
+        resetHover(animated: true)
+    }
+
+    func endScrollSuppression() {
+        isScrollSuppressed = false
+    }
+
+    func resetScrollDrop() {
+        if overlay?.isClipped == true { resetHover(animated: false) }
     }
 
     /// Test seam mirroring the tracking-area path with a point in the
@@ -727,6 +747,10 @@ final class BankedResetChromeView: NSView {
         }
         let dt = CGFloat(min(1.0 / 30, link.timestamp - (lastFrameTimestamp ?? link.timestamp - 1.0 / 120)))
         lastFrameTimestamp = link.timestamp
+        advanceLiftAnimation(by: dt)
+    }
+
+    func advanceLiftAnimation(by dt: CGFloat) {
         // Sub-step for a stable spring regardless of refresh rate.
         let substeps = 4
         for _ in 0..<substeps {
@@ -889,6 +913,9 @@ final class BankedResetLiftOverlayWindow: NSPanel {
     static let padding: CGFloat = 110
 
     let cardLayer = CALayer()
+    private let clipLayer = CALayer()
+    private var clipScreenRect: NSRect?
+    var isClipped: Bool { clipScreenRect != nil }
     private let restingLayer = CALayer()
     private let liftedLayer = CALayer()
     private let glareLayer = CAGradientLayer()
@@ -914,7 +941,8 @@ final class BankedResetLiftOverlayWindow: NSPanel {
         let content = NSView()
         content.wantsLayer = true
         contentView = content
-        content.layer?.addSublayer(cardLayer)
+        content.layer?.addSublayer(clipLayer)
+        clipLayer.addSublayer(cardLayer)
         [restingLayer, liftedLayer, glareLayer].forEach(cardLayer.addSublayer)
         glareLayer.type = .radial
         glareLayer.colors = [NSColor.white.cgColor, NSColor.white.withAlphaComponent(0).cgColor]
@@ -964,9 +992,22 @@ final class BankedResetLiftOverlayWindow: NSPanel {
     func place(cardScreenFrame: NSRect) {
         let target = cardScreenFrame.insetBy(dx: -Self.padding, dy: -Self.padding)
         if frame != target { setFrame(target, display: false) }
+        updateClipGeometry()
+    }
+
+    func setClipRect(_ screenRect: NSRect?) {
+        guard clipScreenRect != screenRect else { return }
+        clipScreenRect = screenRect
+        updateClipGeometry()
+    }
+
+    private func updateClipGeometry() {
+        let clipFrame = clipScreenRect.map(convertFromScreen) ?? NSRect(origin: .zero, size: frame.size)
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        cardLayer.position = CGPoint(x: target.width / 2, y: target.height / 2)
+        clipLayer.frame = clipFrame
+        clipLayer.masksToBounds = clipScreenRect != nil
+        cardLayer.position = CGPoint(x: frame.width / 2 - clipFrame.minX, y: frame.height / 2 - clipFrame.minY)
         CATransaction.commit()
     }
 
@@ -1790,12 +1831,14 @@ final class AggregationOverviewScrollView: NSScrollView {
         wheelMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
             guard let self, let window = self.window, event.window === window,
                   self.visibleRect.contains(self.convert(event.locationInWindow, from: nil)) else { return event }
-            func insideTicket(_ view: NSView) -> Bool {
-                if view is BankedResetTicketScrollView,
-                   view.visibleRect.contains(view.convert(event.locationInWindow, from: nil)) { return true }
-                return view.subviews.contains(where: insideTicket)
+            let phase = MenuHoverLinkHostView.TicketScrollPhase(event)
+            func routesToTicket(_ view: NSView) -> Bool {
+                if let host = view as? MenuHoverLinkHostView {
+                    return host.shouldHandleTicketScroll(at: event.locationInWindow, phase: phase)
+                }
+                return view.subviews.contains(where: routesToTicket)
             }
-            if self.documentView.map(insideTicket) == true { return event }
+            if self.documentView.map(routesToTicket) == true { return event }
             self.scrollWheel(with: event)
             return nil
         }
