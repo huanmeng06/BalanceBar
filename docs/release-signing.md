@@ -56,6 +56,29 @@ gh attestation verify BalanceBar-<version>.dmg --repo huanmeng06/BalanceBar
 The attestation and displayed Run ID provide build transparency. The update
 manifest's Ed25519 signature is the integrity check used by automatic updates.
 
+## Recovering a draft after verification fails
+
+If the draft asset verification step fails, the workflow leaves the draft
+unpublished and the tag in place. A new run skips that version while either
+exists.
+
+1. Review the failed Release workflow logs and resolve the cause before
+   retrying. Wait for any active Release runs to finish before cleanup.
+2. In GitHub, confirm the Release for the failed version is still a draft
+   and its tag points to the commit recorded by that run. Set `tag` to the
+   verified tag and run the command below to delete the draft and tag. For a
+   published Release, leave the Release and tag in place and issue a new
+   version.
+
+   ```sh
+   gh release delete "$tag" --cleanup-tag --repo huanmeng06/BalanceBar
+   ```
+3. In the original Release workflow run, select **Re-run all jobs** so the
+   plan checks for duplicates again and the DMG and manifest are generated
+   in the same run attempt. Confirm draft verification succeeds before the
+   workflow publishes the Release. If the fix requires a source change,
+   publish a new version from the corrected source.
+
 ## Signed release immutability
 
 A Release with an update manifest cannot be rebuilt. To correct it, publish a
