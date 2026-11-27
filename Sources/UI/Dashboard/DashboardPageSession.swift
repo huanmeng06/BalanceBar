@@ -102,8 +102,6 @@ final class DashboardPageSession {
     func installShell(on windowController: DashboardWindowController) {
         guard let window = windowController.window, !isTornDown else { return }
         self.window = window
-        let reuseSplit = toolbarController.isSearchActive
-            || toolbarController.hostsSearchResponder(window.firstResponder)
         sourceListController?.teardown()
         let sourceList = DashboardSourceListController(layoutPolicy: sidebarScrollLayoutPolicy)
         sourceList.setShowsUpdateAvailableBadge(showsUpdateAvailableBadge)
@@ -111,12 +109,11 @@ final class DashboardPageSession {
             self?.selectSection(section)
         }
         sourceListController = sourceList
-        let sidebar = sourceList.makeSidebar(in: window)
+        let sidebar = sourceList.makeSidebar()
         sidebar.translatesAutoresizingMaskIntoConstraints = false
         accessoryHost.platformCapabilities = platformCapabilities
         let splitController: DashboardSplitViewController
-        if reuseSplit,
-           let existing = window.contentViewController as? DashboardSplitViewController,
+        if let existing = window.contentViewController as? DashboardSplitViewController,
            existing.contentController === pageContainer {
             existing.onSidebarGeometryDidChange = nil
             existing.replaceSidebar(with: sidebar)
@@ -125,18 +122,17 @@ final class DashboardPageSession {
             detachPageContainerFromParent()
             splitController = DashboardSplitViewController(
                 sidebarView: sidebar,
+                sidebarHeader: toolbarController.sidebarSearchView,
                 content: pageContainer,
                 capabilities: platformCapabilities
             )
         }
-        windowController.attachShell(
-            splitController,
-            toolbar: toolbarController,
-            accessoryHost: accessoryHost,
-            applySidebarInset: { hostedWindow in
-                sourceList.applyViewportTopInset(in: hostedWindow)
-            }
-        )
+        toolbarController.onRevealSearch = { [weak splitController] in
+            guard let sidebarItem = splitController?.splitViewItems.first, sidebarItem.isCollapsed else { return }
+            sidebarItem.isCollapsed = false
+            splitController?.view.window?.layoutIfNeeded()
+        }
+        windowController.attachShell(splitController, toolbar: toolbarController, accessoryHost: accessoryHost)
     }
 
     func rebuild(on windowController: DashboardWindowController) {
@@ -144,9 +140,9 @@ final class DashboardPageSession {
         let searchWindow = window as? DashboardSearchWindow
         if toolbarController.isSearchActive
             || toolbarController.hostsSearchResponder(window.firstResponder) {
-            searchWindow?.preservesToolbarSearchEditing = true
+            searchWindow?.preservesSidebarSearchEditing = true
         }
-        defer { searchWindow?.preservesToolbarSearchEditing = false }
+        defer { searchWindow?.preservesSidebarSearchEditing = false }
         invalidateCachedSectionPages()
         DashboardSettingsComponents.disconnectPopUpButtonActions(in: contentHost)
         DashboardSettingsComponents.disconnectPopUpButtonActions(in: window.contentView)
@@ -367,6 +363,7 @@ final class DashboardPageSession {
         sourceListController?.teardown()
         sourceListController = nil
         pageContainer.removeCurrentPage()
+        (window?.contentViewController as? DashboardSplitViewController)?.removeContentScrollEdgeAccessory()
         window = nil
     }
 

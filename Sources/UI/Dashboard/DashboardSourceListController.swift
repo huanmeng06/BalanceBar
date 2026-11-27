@@ -339,7 +339,7 @@ final class DashboardSourceListController: NSObject, NSOutlineViewDataSource, NS
         outlineView.delegate = nil
     }
 
-    func makeSidebar(in window: NSWindow) -> NSView {
+    func makeSidebar() -> NSView {
         let sidebar = NSView()
         let navigation = view
         navigation.translatesAutoresizingMaskIntoConstraints = false
@@ -351,12 +351,8 @@ final class DashboardSourceListController: NSObject, NSOutlineViewDataSource, NS
             notificationButton.translatesAutoresizingMaskIntoConstraints = false
             sidebar.addSubview(notificationButton, positioned: .above, relativeTo: nil)
         }
-        let titlebarHeight = max(0, window.frame.height - window.contentLayoutRect.height)
         NSLayoutConstraint.activate([
-            navigation.topAnchor.constraint(
-                equalTo: sidebar.topAnchor,
-                constant: layoutPolicy.viewportTopInset(titlebarHeight: titlebarHeight)
-            ),
+            navigation.topAnchor.constraint(equalTo: sidebar.topAnchor),
             navigation.leadingAnchor.constraint(equalTo: sidebar.leadingAnchor),
             navigation.trailingAnchor.constraint(equalTo: sidebar.trailingAnchor),
             navigation.bottomAnchor.constraint(equalTo: sidebar.bottomAnchor)
@@ -370,21 +366,6 @@ final class DashboardSourceListController: NSObject, NSOutlineViewDataSource, NS
             ])
         }
         return sidebar
-    }
-
-    func applyViewportTopInset(in window: NSWindow) {
-        guard let sidebar = view.superview else { return }
-        let titlebarHeight = max(0, window.frame.height - window.contentLayoutRect.height)
-        let constant = layoutPolicy.viewportTopInset(titlebarHeight: titlebarHeight)
-        for constraint in sidebar.constraints
-        where constraint.firstAttribute == .top
-            && constraint.secondAttribute == .top
-            && constraint.firstItem === view
-            && constraint.secondItem === sidebar
-        {
-            constraint.constant = constant
-            break
-        }
     }
 
     func selectedSection() -> DashboardSection? {

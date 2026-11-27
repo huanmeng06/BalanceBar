@@ -165,7 +165,7 @@ final class DashboardKeyboardNavigationTests: XCTestCase {
         }
     }
 
-    func testSearchQueryDoesNotResignToolbarSearchField() throws {
+    func testSearchQueryDoesNotResignSidebarSearchField() throws {
         let appDelegate = AppDelegate(
             repository: CCSwitchRepository(
                 databaseURL: URL(fileURLWithPath: "/nonexistent/issue-445-search-field.db")
@@ -179,9 +179,7 @@ final class DashboardKeyboardNavigationTests: XCTestCase {
 
         let owner = try XCTUnwrap(window.toolbar?.delegate as? DashboardToolbarController)
         owner.beginSearch()
-        let searchField = try XCTUnwrap(
-            DashboardSearchToolbarProbe.searchField(in: window.toolbar?.items.last)
-        )
+        let searchField = owner.searchField
         if window.makeFirstResponder(searchField) {
             composition.applySearchQueryForTesting(tr(.keyDashboardGeneralAndRefreshPagesLanguage))
             window.layoutIfNeeded()
@@ -189,25 +187,31 @@ final class DashboardKeyboardNavigationTests: XCTestCase {
             XCTAssertTrue(
                 first === searchField
                     || (first as? NSTextView)?.delegate as AnyObject? === searchField,
-                "typing a query must not resign the toolbar search field"
+                "typing a query must not resign the sidebar search field"
             )
         }
     }
 
-    func testCommandFExpandsTheSingleSearchSlotAndEscapeClosesIt() async throws {
-        let controller = DashboardToolbarController()
-        let window = DashboardSearchWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 880, height: 600),
-            styleMask: [.titled],
-            backing: .buffered,
-            defer: false
+    func testCommandFRevealsCollapsedSidebarAndEscapeResignsSearch() async throws {
+        let harness = DashboardShellTestHarness(
+            actions: DashboardWindowControllerActions(
+                makeSectionPage: { _ in DashboardHostedPageViewController() },
+                makeProviderPage: { _ in DashboardHostedPageViewController() },
+                providerChoices: { [] },
+                prepareForPageReplacement: {},
+                didShowPage: {},
+                didClose: {},
+                didResize: {}
+            )
         )
-        defer {
-            controller.detach()
-            window.close()
-        }
-        ApplicationWindowPresentation.presentInBackground(window)
-        controller.install(on: window)
+        defer { harness.teardown() }
+        harness.open()
+        let window = try XCTUnwrap(harness.window)
+        let split = try XCTUnwrap(window.contentViewController as? DashboardSplitViewController)
+        let sidebar = try XCTUnwrap(split.splitViewItems.first)
+        let controller = harness.pageSession.toolbarController
+        sidebar.isCollapsed = true
+        XCTAssertTrue(sidebar.isCollapsed)
         let event = try XCTUnwrap(NSEvent.keyEvent(
             with: .keyDown,
             location: .zero,
@@ -222,11 +226,11 @@ final class DashboardKeyboardNavigationTests: XCTestCase {
         ))
         XCTAssertTrue(window.performKeyEquivalent(with: event))
         await drainMainQueue()
-        let slot = try XCTUnwrap(window.toolbar?.items.last)
-        let field = try XCTUnwrap(DashboardSearchToolbarProbe.searchField(in: slot))
+        XCTAssertFalse(sidebar.isCollapsed)
+        let field = controller.searchField
         XCTAssertTrue(
             controller.hostsSearchResponder(window.firstResponder),
-            "Cmd+F must let beginSearchInteraction move keyboard focus"
+            "Cmd+F must move keyboard focus to sidebar search"
         )
         XCTAssertNotNil(field.currentEditor())
         controller.setQuery("Language")
@@ -235,6 +239,8 @@ final class DashboardKeyboardNavigationTests: XCTestCase {
         await drainMainQueue()
         XCTAssertEqual(controller.searchQuery, "")
         XCTAssertFalse(controller.isSearchActive)
+        XCTAssertFalse(controller.hostsSearchResponder(window.firstResponder))
+        XCTAssertEqual(field.stringValue, "")
     }
 
     func testSidebarGroupRowsAreNotSelectableAndArrowsSkipThem() throws {

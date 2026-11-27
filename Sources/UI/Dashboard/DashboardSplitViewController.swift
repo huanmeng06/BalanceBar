@@ -62,6 +62,7 @@ final class DashboardSplitViewController: NSSplitViewController {
     /// Legacy compatibility fill only. Native window surface must not create this view.
     private(set) var legacyContentSurface: NSView?
     private(set) var legacyBackdrop: NSVisualEffectView?
+    private(set) var contentScrollEdgeAccessory: NSViewController?
     var contentSplitViewItem: NSSplitViewItem? {
         splitViewItems.first { $0.viewController === contentController }
     }
@@ -70,14 +71,27 @@ final class DashboardSplitViewController: NSSplitViewController {
 
     convenience init(
         sidebarView: NSView,
+        sidebarHeader: NSView? = nil,
         content: NSViewController,
         capabilities: DashboardPlatformCapabilities = .current
     ) {
+        let usesNativeHeader: Bool
+        if #available(macOS 26.0, *) {
+            usesNativeHeader = capabilities.supportsSplitItemAccessories
+        } else {
+            usesNativeHeader = false
+        }
         self.init(
-            sidebar: DashboardSidebarViewController(view: sidebarView),
+            sidebar: DashboardSidebarViewController(
+                hostedView: sidebarView,
+                fixedHeader: usesNativeHeader ? nil : sidebarHeader
+            ),
             content: content,
             capabilities: capabilities
         )
+        if let sidebarHeader, usesNativeHeader {
+            installScrollEdgeAccessories(sidebarHeader: sidebarHeader)
+        }
     }
 
     init(
@@ -117,10 +131,45 @@ final class DashboardSplitViewController: NSSplitViewController {
         addSplitViewItem(contentItem)
     }
 
-    /// Keep the live content controller in the window. Replacing
-    /// `contentViewController` ends toolbar field editing and commits IME.
+    /// Keep the sidebar search attached while replacing the localized list.
     func replaceSidebar(with sidebarView: NSView) {
         (sidebarController as? DashboardSidebarViewController)?.replaceHostedView(sidebarView)
+    }
+
+    private func installScrollEdgeAccessories(sidebarHeader: NSView) {
+        guard #available(macOS 26.0, *) else { return }
+        let sidebarAccessory = NSSplitViewItemAccessoryViewController()
+        let headerHeight = sidebarHeader.fittingSize.height
+        sidebarHeader.frame.size.height = headerHeight
+        sidebarHeader.heightAnchor.constraint(equalToConstant: headerHeight).isActive = true
+        sidebarAccessory.view = sidebarHeader
+        sidebarAccessory.automaticallyAppliesContentInsets = false
+        splitViewItems[0].addTopAlignedAccessoryViewController(sidebarAccessory)
+
+        if #available(macOS 26.1, *), let contentSplitViewItem {
+            sidebarAccessory.preferredScrollEdgeEffectStyle = .soft
+
+            // AppKit exposes Soft through a visible split-item accessory. The
+            // content accessory anchors the effect directly below the toolbar.
+            let contentAccessory = NSSplitViewItemAccessoryViewController()
+            let edge = NSView(frame: NSRect(x: 0, y: 0, width: 0, height: 1))
+            edge.heightAnchor.constraint(equalToConstant: 1).isActive = true
+            contentAccessory.view = edge
+            contentAccessory.automaticallyAppliesContentInsets = false
+            contentAccessory.preferredScrollEdgeEffectStyle = .soft
+            contentSplitViewItem.addTopAlignedAccessoryViewController(contentAccessory)
+            contentScrollEdgeAccessory = contentAccessory
+        }
+    }
+
+    func removeContentScrollEdgeAccessory() {
+        if #available(macOS 26.1, *),
+           let item = contentSplitViewItem,
+           let accessory = contentScrollEdgeAccessory,
+           let index = item.topAlignedAccessoryViewControllers.firstIndex(where: { $0 === accessory }) {
+            item.removeTopAlignedAccessoryViewController(at: index)
+        }
+        contentScrollEdgeAccessory = nil
     }
 
     /// Native AppKit may overlay the sidebar on the adjacent content item and
@@ -227,26 +276,47 @@ final class DashboardSplitViewController: NSSplitViewController {
 }
 
 private final class DashboardSidebarViewController: NSViewController {
-    private let hostedView: NSView
-    init(view: NSView) { hostedView = view; super.init(nibName: nil, bundle: nil) }
-    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
-    override func loadView() { view = hostedView }
+    private var hostedView: NSView
+    private let fixedHeader: NSView?
 
-    func replaceHostedView(_ newView: NSView) {
-        let topInset = newView.constraints.first {
-            $0.firstAttribute == .top && $0.secondAttribute == .top
-        }?.constant ?? 0
-        view.subviews.forEach { $0.removeFromSuperview() }
-        for subview in newView.subviews {
-            subview.removeFromSuperview()
-            subview.translatesAutoresizingMaskIntoConstraints = false
-            view.addSubview(subview)
+    init(hostedView: NSView, fixedHeader: NSView?) {
+        self.hostedView = hostedView
+        self.fixedHeader = fixedHeader
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    override func loadView() {
+        view = NSView()
+        if let fixedHeader {
+            fixedHeader.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(fixedHeader)
             NSLayoutConstraint.activate([
-                subview.topAnchor.constraint(equalTo: view.topAnchor, constant: topInset),
-                subview.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-                subview.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-                subview.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+                fixedHeader.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+                fixedHeader.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                fixedHeader.trailingAnchor.constraint(equalTo: view.trailingAnchor)
             ])
         }
+        installHostedView()
+    }
+
+    func replaceHostedView(_ newView: NSView) {
+        hostedView.removeFromSuperview()
+        hostedView = newView
+        if isViewLoaded {
+            installHostedView()
+        }
+    }
+
+    private func installHostedView() {
+        hostedView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(hostedView)
+        NSLayoutConstraint.activate([
+            hostedView.topAnchor.constraint(equalTo: fixedHeader?.bottomAnchor ?? view.topAnchor),
+            hostedView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            hostedView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            hostedView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
     }
 }

@@ -100,13 +100,9 @@ enum DashboardScrollClampingPolicy {
 /// Page-scroll chrome selected from `DashboardPlatformCapabilities`.
 ///
 /// Native ownership lets the scroll view overlap the titlebar so AppKit can
-/// write content insets and choose the system scroll-edge automatically.
-/// Soft and Hard are both valid system results; this policy never forces
-/// `NSScrollEdgeEffectStyle`. The public style API
-/// (`preferredScrollEdgeEffectStyle`) is accessory-only (macOS 26.1+) and is
-/// not installed here: production pages report no accessory. The window-level
-/// `titlebarSeparatorStyle` must stay `.automatic` on the native family
-/// because a forced `.none` overrides `NSSplitViewItem.titlebarSeparatorStyle`.
+/// write content insets. The split controller sets the accessory's edge style
+/// on systems with public support. The window-level `titlebarSeparatorStyle`
+/// stays `.automatic` so each split item can set its own separator style.
 /// Content-pane separators then use the existing
 /// `NSTrackingSeparatorToolbarItem`. Separator policy is independent of the
 /// Soft/Hard effect; its value is not evidence that AppKit has rendered a
@@ -185,19 +181,9 @@ struct DashboardPageScrollLayoutPolicy: Equatable {
 
 /// Sidebar source-list chrome selected from `DashboardPlatformCapabilities`.
 ///
-/// Native ownership pins the source-list `NSScrollView` to the sidebar root
-/// so AppKit can write content insets for the overlapping unified toolbar /
-/// titlebar. The former `titlebarHeight + 14` gap was a non-scrolling
-/// viewport offset and is not translated into a native fixed content inset.
-/// `sidebarTitlebarSeparatorStyle` stays `.none` on the page policy: that
-/// value does not block automatic insets, and the tracking separator owns
-/// the split divider. The legacy family keeps the titlebar clearance because
-/// a transparent titlebar plus `.fullSizeContentView` does not reliably
-/// produce that inset.
+/// Native AppKit insets the overlapping source list below the split-item
+/// search accessory. The legacy viewport begins below the fixed search header.
 struct DashboardSidebarScrollLayoutPolicy: Equatable {
-    /// Extra visual spacing that used to sit below the titlebar on old OS.
-    static let preTahoeExtraClearance: CGFloat = 14
-
     let automaticallyAdjustsContentInsets: Bool
     let zerosManualInsets: Bool
 
@@ -225,14 +211,6 @@ struct DashboardSidebarScrollLayoutPolicy: Equatable {
         _ version: OperatingSystemVersion
     ) -> DashboardSidebarScrollLayoutPolicy {
         forCapabilities(.resolve(for: version))
-    }
-
-    /// Non-scrolling gap between the sidebar root and the source-list
-    /// `NSScrollView`. Native ownership uses 0 so the scroll view overlaps chrome.
-    func viewportTopInset(titlebarHeight: CGFloat) -> CGFloat {
-        automaticallyAdjustsContentInsets
-            ? 0
-            : max(0, titlebarHeight + Self.preTahoeExtraClearance)
     }
 
     func apply(to scrollView: NSScrollView) {

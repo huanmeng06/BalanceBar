@@ -58,8 +58,7 @@ final class DashboardAccessoryHostTests: XCTestCase {
                 window.contentViewController as? DashboardSplitViewController
             )
             XCTAssertTrue(
-                splitController.contentSplitViewItem?
-                    .topAlignedAccessoryViewControllers.isEmpty ?? true
+                pageAccessories(in: splitController).isEmpty
             )
         }
 
@@ -115,10 +114,9 @@ final class DashboardAccessoryHostTests: XCTestCase {
         let splitController = try XCTUnwrap(
             window.contentViewController as? DashboardSplitViewController
         )
-        let contentItem = try XCTUnwrap(splitController.contentSplitViewItem)
-        XCTAssertEqual(contentItem.topAlignedAccessoryViewControllers.count, 1)
-        XCTAssertTrue(contentItem.topAlignedAccessoryViewControllers.first === wrapper)
-        XCTAssertTrue(splitController.splitViewItems[0].topAlignedAccessoryViewControllers.isEmpty)
+        XCTAssertEqual(pageAccessories(in: splitController).count, 1)
+        XCTAssertTrue(pageAccessories(in: splitController).first === wrapper)
+        XCTAssertTrue(sidebarAccessoriesContainOnlySearch(in: splitController))
         try assertAccessoryStaysInsideContentPane(in: window, marker: "host-split-child")
 
         window.setFrame(
@@ -144,7 +142,7 @@ final class DashboardAccessoryHostTests: XCTestCase {
         window.layoutIfNeeded()
         try assertNoMountedAccessory(in: controller)
         XCTAssertNil(content.parent)
-        XCTAssertTrue(contentItem.topAlignedAccessoryViewControllers.isEmpty)
+        XCTAssertTrue(pageAccessories(in: splitController).isEmpty)
     }
 
     func testCallerProvidedSplitItemAccessoryKeepsChildContainmentAfterUnmount() throws {
@@ -186,8 +184,7 @@ final class DashboardAccessoryHostTests: XCTestCase {
             window.contentViewController as? DashboardSplitViewController
         )
         XCTAssertTrue(
-            splitController.contentSplitViewItem?
-                .topAlignedAccessoryViewControllers.isEmpty ?? true
+            pageAccessories(in: splitController).isEmpty
         )
         XCTAssertTrue(provided.children.contains(child))
         XCTAssertTrue(child.parent === provided)
@@ -313,14 +310,13 @@ final class DashboardAccessoryHostTests: XCTestCase {
         let splitController = try XCTUnwrap(
             window.contentViewController as? DashboardSplitViewController
         )
-        let contentItem = try XCTUnwrap(splitController.contentSplitViewItem)
-        XCTAssertEqual(contentItem.topAlignedAccessoryViewControllers.count, 1)
+        XCTAssertEqual(pageAccessories(in: splitController).count, 1)
         XCTAssertTrue(
-            contentItem.topAlignedAccessoryViewControllers.first
+            pageAccessories(in: splitController).first
                 === controller.accessoryHostForTesting.contentSplitItemAccessoryForTesting
         )
         XCTAssertTrue(
-            splitController.splitViewItems[0].topAlignedAccessoryViewControllers.isEmpty
+            sidebarAccessoriesContainOnlySearch(in: splitController)
         )
         try assertAccessoryStaysInsideContentPane(in: window, marker: "content-accessory")
     }
@@ -377,8 +373,7 @@ final class DashboardAccessoryHostTests: XCTestCase {
                 window.contentViewController as? DashboardSplitViewController
             )
             XCTAssertTrue(
-                splitController.contentSplitViewItem?
-                    .topAlignedAccessoryViewControllers.isEmpty ?? true
+                pageAccessories(in: splitController).isEmpty
             )
         }
     }
@@ -430,8 +425,7 @@ final class DashboardAccessoryHostTests: XCTestCase {
                 window.contentViewController as? DashboardSplitViewController
             )
             XCTAssertTrue(
-                splitController.contentSplitViewItem?
-                    .topAlignedAccessoryViewControllers.isEmpty ?? true
+                pageAccessories(in: splitController).isEmpty
             )
         }
 
@@ -474,8 +468,7 @@ final class DashboardAccessoryHostTests: XCTestCase {
                 window.contentViewController as? DashboardSplitViewController
             )
             XCTAssertTrue(
-                splitController.contentSplitViewItem?
-                    .topAlignedAccessoryViewControllers.isEmpty ?? true
+                pageAccessories(in: splitController).isEmpty
             )
         }
     }
@@ -616,8 +609,7 @@ final class DashboardAccessoryHostTests: XCTestCase {
                 window.contentViewController as? DashboardSplitViewController
             )
             XCTAssertTrue(
-                splitController.contentSplitViewItem?
-                    .topAlignedAccessoryViewControllers.isEmpty ?? true
+                pageAccessories(in: splitController).isEmpty
             )
         }
         XCTAssertEqual(try sourceListTop(in: controller), beforeTop, accuracy: 1)
@@ -788,6 +780,24 @@ final class DashboardAccessoryHostTests: XCTestCase {
         )
     }
 
+    @available(macOS 26.0, *)
+    private func pageAccessories(
+        in split: DashboardSplitViewController
+    ) -> [NSSplitViewItemAccessoryViewController] {
+        split.contentSplitViewItem?.topAlignedAccessoryViewControllers.filter {
+            $0 !== split.contentScrollEdgeAccessory
+        } ?? []
+    }
+
+    @available(macOS 26.0, *)
+    private func sidebarAccessoriesContainOnlySearch(in split: DashboardSplitViewController) -> Bool {
+        let accessories = split.splitViewItems[0].topAlignedAccessoryViewControllers
+        if split.platformCapabilities.supportsSplitItemAccessories {
+            return accessories.count == 1 && accessories[0].view.subviews.contains { $0 is NSSearchField }
+        }
+        return accessories.isEmpty
+    }
+
     private func assertNoMountedAccessory(
         in controller: DashboardShellInspecting,
         file: StaticString = #filePath,
@@ -819,14 +829,13 @@ final class DashboardAccessoryHostTests: XCTestCase {
                 line: line
             )
             XCTAssertTrue(
-                splitController.contentSplitViewItem?
-                    .topAlignedAccessoryViewControllers.isEmpty ?? true,
-                "No-accessory pages must not keep a split-item accessory",
+                pageAccessories(in: splitController).isEmpty,
+                "A page without its own accessory must leave only the shell chrome",
                 file: file,
                 line: line
             )
             XCTAssertTrue(
-                splitController.splitViewItems[0].topAlignedAccessoryViewControllers.isEmpty,
+                sidebarAccessoriesContainOnlySearch(in: splitController),
                 file: file,
                 line: line
             )

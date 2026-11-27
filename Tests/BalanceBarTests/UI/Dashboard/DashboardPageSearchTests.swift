@@ -193,7 +193,7 @@ final class DashboardPageSearchTests: XCTestCase {
         XCTAssertGreaterThan(searchHost.rotationAnimationInstallCount, installCount)
     }
 
-    func testRefreshItemInvokesSessionManualRefreshActionOnceAndSurvivesRebuild() throws {
+    func testCommandRInvokesSessionManualRefreshActionOnceAndSurvivesRebuild() throws {
         var refreshCount = 0
         let harness = DashboardShellTestHarness(
             actions: DashboardWindowControllerActions(
@@ -211,76 +211,61 @@ final class DashboardPageSearchTests: XCTestCase {
         harness.open()
 
         let window = try XCTUnwrap(harness.window)
-        let firstItem = try XCTUnwrap(
-            window.toolbar?.items.first { $0.itemIdentifier == DashboardToolbarController.refreshItemIdentifier }
-        )
-        XCTAssertEqual(firstItem.label, tr(.keyDashboardGeneralAndRefreshPagesRefreshNow))
-        XCTAssertEqual(firstItem.toolTip, tr(.keyDashboardGeneralAndRefreshPagesRefreshNow))
-        XCTAssertNotNil(firstItem.image)
-        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(firstItem.action), to: firstItem.target, from: firstItem))
+        func refreshShortcut(modifiers: NSEvent.ModifierFlags) throws -> NSEvent {
+            try XCTUnwrap(NSEvent.keyEvent(
+                with: .keyDown,
+                location: .zero,
+                modifierFlags: modifiers,
+                timestamp: 0,
+                windowNumber: window.windowNumber,
+                context: nil,
+                characters: "r",
+                charactersIgnoringModifiers: "r",
+                isARepeat: false,
+                keyCode: 15
+            ))
+        }
+        _ = window.performKeyEquivalent(with: try refreshShortcut(modifiers: [.command, .shift]))
+        XCTAssertEqual(refreshCount, 0)
+        let shortcut = try refreshShortcut(modifiers: .command)
+        XCTAssertTrue(window.performKeyEquivalent(with: shortcut))
         XCTAssertEqual(refreshCount, 1)
 
         harness.rebuild()
-        let refreshItems = try XCTUnwrap(window.toolbar?.items.filter {
-            $0.itemIdentifier == DashboardToolbarController.refreshItemIdentifier
-        })
-        XCTAssertEqual(refreshItems.count, 1)
-        let rebuiltItem = try XCTUnwrap(refreshItems.first)
-        XCTAssertTrue(rebuiltItem === firstItem)
-        XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(rebuiltItem.action), to: rebuiltItem.target, from: rebuiltItem))
+        XCTAssertTrue(window.performKeyEquivalent(with: shortcut))
         XCTAssertEqual(refreshCount, 2)
     }
 
-    func testCompositionRefreshActionAndLabelsUpdateWhenToolbarIsReused() throws {
+    func testSidebarSearchLabelsUpdateWhenShellIsReused() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
         AppLanguage.selected = .english
 
-        var refreshCount = 0
         let appDelegate = AppDelegate(repository: CCSwitchRepository(
-            databaseURL: URL(fileURLWithPath: "/nonexistent/issue-459-refresh-localization.db")
+            databaseURL: URL(fileURLWithPath: "/nonexistent/issue-741-search-localization.db")
         ))
-        appDelegate.manualRefreshActionForTesting = { refreshCount += 1 }
         let composition = appDelegate.dashboardCompositionForTesting
         defer { composition.teardownForTesting() }
 
         let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .general))
-        let toolbar = try XCTUnwrap(window.toolbar)
-        let englishItem = try XCTUnwrap(toolbar.items.first {
-            $0.itemIdentifier == DashboardToolbarController.refreshItemIdentifier
-        })
-        let englishLabel = tr(.keyDashboardGeneralAndRefreshPagesRefreshNow, language: .english)
-        XCTAssertEqual(englishItem.label, englishLabel)
-        XCTAssertEqual(englishItem.toolTip, englishLabel)
-        XCTAssertEqual(englishItem.image?.accessibilityDescription, englishLabel)
+        let owner = try XCTUnwrap(window.toolbar?.delegate as? DashboardToolbarController)
+        let field = owner.searchField
+        let parent = try XCTUnwrap(field.superview)
+        let englishLabel = tr(.keyDashboardSearchPlaceholder, language: .english)
+        XCTAssertEqual(field.placeholderString, englishLabel)
+        XCTAssertEqual(field.accessibilityLabel(), englishLabel)
 
-        let chineseLabel = tr(
-            .keyDashboardGeneralAndRefreshPagesRefreshNow,
-            language: .simplifiedChinese
-        )
         AppLanguage.selected = .simplifiedChinese
         composition.rebuild()
-        window.layoutIfNeeded()
-        window.displayIfNeeded()
 
-        let rebuiltItem = try XCTUnwrap(toolbar.items.first {
-            $0.itemIdentifier == DashboardToolbarController.refreshItemIdentifier
-        })
-        XCTAssertTrue(rebuiltItem === englishItem)
-        XCTAssertEqual(rebuiltItem.label, chineseLabel)
-        XCTAssertEqual(rebuiltItem.paletteLabel, chineseLabel)
-        XCTAssertEqual(rebuiltItem.toolTip, chineseLabel)
-        XCTAssertEqual(rebuiltItem.image?.accessibilityDescription, chineseLabel)
-
-        XCTAssertTrue(NSApp.sendAction(
-            try XCTUnwrap(rebuiltItem.action),
-            to: rebuiltItem.target,
-            from: rebuiltItem
-        ))
-        XCTAssertEqual(refreshCount, 1)
+        let chineseLabel = tr(.keyDashboardSearchPlaceholder, language: .simplifiedChinese)
+        XCTAssertTrue(field.superview === parent)
+        XCTAssertTrue(field.window === window)
+        XCTAssertEqual(field.placeholderString, chineseLabel)
+        XCTAssertEqual(field.accessibilityLabel(), chineseLabel)
     }
 
-    func testSearchSlotTransitionsAndCancelPublishesEmptyExactlyOnce() async throws {
+    func testSidebarSearchPublishesQueryAndClearExactlyOnce() async throws {
         let controller = DashboardToolbarController()
         let window = DashboardSearchWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1200, height: 600),
@@ -292,6 +277,7 @@ final class DashboardPageSearchTests: XCTestCase {
             controller.detach()
             window.close()
         }
+        window.contentView = controller.sidebarSearchView
         ApplicationWindowPresentation.presentInBackground(window)
         controller.install(on: window)
         var queries: [String] = []
@@ -301,19 +287,16 @@ final class DashboardPageSearchTests: XCTestCase {
             window.layoutIfNeeded()
             window.displayIfNeeded()
             XCTAssertFalse(controller.isSearchActive)
-            let slot = try XCTUnwrap(window.toolbar?.items.last as? NSSearchToolbarItem)
-            XCTAssertEqual(slot.toolTip, tr(.keyDashboardSearchPlaceholder))
+            let field = controller.searchField
+            XCTAssertEqual(field.placeholderString, tr(.keyDashboardSearchPlaceholder))
             controller.beginSearch()
             await drainMainQueue()
             controller.controlTextDidBeginEditing(
-                Notification(name: NSControl.textDidBeginEditingNotification, object: slot.searchField)
+                Notification(name: NSControl.textDidBeginEditingNotification, object: field)
             )
             XCTAssertTrue(controller.isSearchActive)
-            XCTAssertTrue(window.toolbar?.items.last === slot)
-            let field = slot.searchField
             window.layoutIfNeeded()
             window.displayIfNeeded()
-            XCTAssertEqual(slot.preferredWidthForSearchField, DashboardToolbarController.expandedSearchFieldWidth)
             XCTAssertFalse(field.sendsSearchStringImmediately)
             XCTAssertTrue(field.sendsWholeSearchString)
             field.stringValue = "Language"
@@ -329,7 +312,6 @@ final class DashboardPageSearchTests: XCTestCase {
             controller.controlTextDidEndEditing(Notification(name: NSControl.textDidEndEditingNotification, object: field))
             await drainMainQueue()
             XCTAssertTrue(controller.isSearchActive)
-            XCTAssertTrue(window.toolbar?.items.last === slot)
             XCTAssertEqual(controller.searchQuery, "Language")
             let cell = try XCTUnwrap(field.cell as? NSSearchFieldCell)
             XCTAssertNotNil(cell.cancelButtonCell)
@@ -357,9 +339,7 @@ final class DashboardPageSearchTests: XCTestCase {
             window.close()
         }
         controller.install(on: window)
-        let field = try XCTUnwrap(
-            DashboardSearchToolbarProbe.searchField(in: window.toolbar?.items.last)
-        )
+        let field = controller.searchField
         controller.beginSearch()
         controller.controlTextDidBeginEditing(
             Notification(name: NSControl.textDidBeginEditingNotification, object: field)
@@ -392,12 +372,11 @@ final class DashboardPageSearchTests: XCTestCase {
         controller.install(on: window)
         controller.setQuery("搜索")
         let toolbar = try XCTUnwrap(window.toolbar)
-        let slot = try XCTUnwrap(toolbar.items.last)
-        let field = try XCTUnwrap(DashboardSearchToolbarProbe.searchField(in: slot))
+        let field = controller.searchField
         field.stringValue = "搜索pin"
         controller.install(on: window)
         XCTAssertTrue(window.toolbar === toolbar)
-        XCTAssertTrue(toolbar.items.last === slot)
+        XCTAssertTrue(controller.searchField === field)
         XCTAssertEqual(field.stringValue, "搜索pin")
         XCTAssertEqual(controller.searchQuery, "搜索")
         XCTAssertTrue(controller.isSearchActive)
@@ -418,9 +397,7 @@ final class DashboardPageSearchTests: XCTestCase {
         }
         controller.install(on: window)
         controller.setQuery("搜索")
-        let field = try XCTUnwrap(
-            DashboardSearchToolbarProbe.searchField(in: window.toolbar?.items.last)
-        )
+        let field = controller.searchField
         let editor = NSTextView()
         editor.setMarkedText("pin", selectedRange: NSRange(location: 3, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
         XCTAssertTrue(editor.hasMarkedText())
@@ -464,9 +441,8 @@ final class DashboardPageSearchTests: XCTestCase {
         owner.beginSearch()
         owner.setQuery(tr(.keyDashboardGeneralAndRefreshPagesLanguage))
         let toolbar = try XCTUnwrap(window.toolbar)
-        let field = try XCTUnwrap(
-            DashboardSearchToolbarProbe.searchField(in: toolbar.items.last)
-        )
+        let field = owner.searchField
+        let parent = try XCTUnwrap(field.superview)
         if field.currentEditor() == nil {
             _ = window.makeFirstResponder(field)
         }
@@ -476,6 +452,10 @@ final class DashboardPageSearchTests: XCTestCase {
         let query = owner.searchQuery
         composition.rebuild()
         XCTAssertTrue(window.toolbar === toolbar)
+        XCTAssertTrue(owner.searchField === field)
+        XCTAssertTrue(field.superview === parent)
+        XCTAssertTrue(field.window === window)
+        XCTAssertTrue(window.firstResponder === editor)
         XCTAssertTrue(field.currentEditor() === editor)
         XCTAssertTrue(owner.isSearchActive)
         XCTAssertTrue(editor.hasMarkedText())
@@ -490,7 +470,7 @@ final class DashboardPageSearchTests: XCTestCase {
         XCTAssertFalse(owner.isSearchActive)
     }
 
-    func testTwoSessionsKeepIndependentSearchItemsAndQueries() throws {
+    func testTwoSessionsKeepIndependentSearchFieldsAndQueries() throws {
         let owners = [DashboardToolbarController(), DashboardToolbarController()]
         let windows = (0..<2).map { _ in
             NSWindow(
@@ -509,11 +489,11 @@ final class DashboardPageSearchTests: XCTestCase {
         for index in 0..<2 { owners[index].install(on: windows[index]) }
         XCTAssertNotEqual(windows[0].toolbar?.identifier, windows[1].toolbar?.identifier)
         owners[0].setQuery("Language")
-        let firstItem = try XCTUnwrap(windows[0].toolbar?.items.last)
+        XCTAssertFalse(owners[0].searchField === owners[1].searchField)
         owners[1].beginSearch()
         owners[1].cancelSearch()
         XCTAssertEqual(owners[0].searchQuery, "Language")
-        XCTAssertTrue(windows[0].toolbar?.items.last === firstItem)
+        XCTAssertEqual(owners[0].searchField.stringValue, "Language")
         XCTAssertFalse(owners[1].isSearchActive)
         for window in windows {
             XCTAssertEqual(window.toolbar?.items.map(\.itemIdentifier), DashboardToolbarController.defaultItemIdentifiers)
@@ -2008,7 +1988,7 @@ final class DashboardPageSearchTests: XCTestCase {
         )
     }
 
-    func testToolbarSearchKeepsGlobalResultsAndQueryOnPageChange() throws {
+    func testSidebarSearchKeepsGlobalResultsAndQueryOnPageChange() throws {
         let appDelegate = AppDelegate(
             repository: CCSwitchRepository(
                 databaseURL: URL(fileURLWithPath: "/nonexistent/issue-436-search-filter.db")
@@ -2022,9 +2002,7 @@ final class DashboardPageSearchTests: XCTestCase {
 
         let owner = try XCTUnwrap(window.toolbar?.delegate as? DashboardToolbarController)
         owner.beginSearch()
-        let searchField = try XCTUnwrap(
-            DashboardSearchToolbarProbe.searchField(in: window.toolbar?.items.last)
-        )
+        let searchField = owner.searchField
         XCTAssertEqual(
             searchField.placeholderString,
             tr(.keyDashboardSearchPlaceholder)
@@ -2151,7 +2129,7 @@ final class DashboardPageSearchTests: XCTestCase {
         XCTAssertTrue(emptyState(in: composition.currentHostedPageContentForTesting())?.isHidden != false)
     }
 
-    func testSearchItemStaysOnProviderPagesAndDoesNotUseAccessories() throws {
+    func testSidebarSearchStaysOnProviderPages() throws {
         let choices = [
             ProviderChoice(id: "current", name: "Current", isCurrent: true)
         ]
@@ -2182,24 +2160,10 @@ final class DashboardPageSearchTests: XCTestCase {
         window.layoutIfNeeded()
         window.displayIfNeeded()
 
-        let identifiers = try XCTUnwrap(window.toolbar?.items.map(\.itemIdentifier))
-        XCTAssertEqual(
-            identifiers,
-            [
-                .flexibleSpace,
-                .toggleSidebar,
-                .sidebarTrackingSeparator,
-                DashboardToolbarController.navigationItemIdentifier,
-                .flexibleSpace,
-                DashboardToolbarController.refreshItemIdentifier,
-                DashboardToolbarController.searchItemIdentifier
-            ]
-        )
-        XCTAssertEqual(
-            window.toolbar?.items.last?.itemIdentifier,
-            DashboardToolbarController.searchItemIdentifier
-        )
-        XCTAssertTrue(window.toolbar?.items.last is NSSearchToolbarItem)
+        let owner = controller.pageSession.toolbarController
+        XCTAssertTrue(owner.searchField.window === window)
+        XCTAssertEqual(window.titleVisibility, .visible)
+        XCTAssertEqual(window.title, choices[0].name)
         XCTAssertTrue(window.titlebarAccessoryViewControllers.isEmpty)
     }
 
@@ -3629,11 +3593,11 @@ final class DashboardPageSearchTests: XCTestCase {
             controller.detach()
             window.close()
         }
+        window.contentView = controller.sidebarSearchView
         controller.install(on: window)
         controller.beginSearch()
         let toolbar = try XCTUnwrap(window.toolbar)
-        let searchItem = try XCTUnwrap(toolbar.items.last)
-        let field = try XCTUnwrap(DashboardSearchToolbarProbe.searchField(in: searchItem))
+        let field = controller.searchField
         if field.currentEditor() == nil {
             _ = window.makeFirstResponder(field)
         }
@@ -3648,6 +3612,7 @@ final class DashboardPageSearchTests: XCTestCase {
         controller.setNavigationState(canGoBack: true, canGoForward: false)
 
         XCTAssertTrue(window.toolbar === toolbar)
+        XCTAssertTrue(window.firstResponder === editor)
         XCTAssertTrue(field.currentEditor() === editor)
         XCTAssertTrue(editor.hasMarkedText())
         XCTAssertTrue(try navigationControl(in: toolbar).isEnabled(forSegment: 0))

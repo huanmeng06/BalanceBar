@@ -19,9 +19,9 @@ struct DashboardPlatformCapabilities: Equatable, Sendable {
     var usesAutomaticSidebarContentInsets: Bool
     /// Adjacent content split item publishes sidebar overlap through safe area.
     var adjustsAdjacentContentSafeArea: Bool
-    /// Content pane may host `NSSplitViewItemAccessoryViewController`.
+    /// Content pane and sidebar may host `NSSplitViewItemAccessoryViewController`.
     var supportsSplitItemAccessories: Bool
-    /// Pre-Tahoe non-scrolling titlebar clearance (page 52pt, sidebar titlebar+14).
+    /// Pre-Tahoe non-scrolling titlebar clearance for settings pages (52pt).
     var usesLegacyTitlebarClearance: Bool
 
     /// macOS 26+ native AppKit ownership. Future majors inherit this family
