@@ -2554,17 +2554,6 @@ enum DashboardSection: Int, CaseIterable {
         }
     }
 
-    var symbolName: String {
-        switch self {
-        case .general: return "gearshape.fill"
-        case .menuBar: return "rectangle.topthird.inset.filled"
-        case .menu: return "line.3.horizontal"
-        case .advanced: return "slider.horizontal.3"
-        case .about: return "info"
-        case .notifications: return "bell.fill"
-        }
-    }
-
     var chipColor: NSColor {
         switch self {
         case .general, .advanced: return .systemGray

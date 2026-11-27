@@ -151,9 +151,6 @@ final class DashboardSourceListCellView: NSTableCellView {
 
     private(set) var updateBadgeView = DashboardUpdateBadgeView()
 
-    private let iconBackground = NSView()
-    private let iconShadow = CALayer()
-    private let iconGradient = CAGradientLayer()
     private var iconSection: DashboardSection?
     private var usesDarkIcons = false
 
@@ -170,33 +167,12 @@ final class DashboardSourceListCellView: NSTableCellView {
         identifier = Self.identifier
 
         let icon = NSImageView()
-        icon.imageScaling = .scaleProportionallyUpOrDown
+        icon.imageScaling = .scaleNone
         icon.translatesAutoresizingMaskIntoConstraints = false
         icon.setAccessibilityElement(false)
-        iconBackground.wantsLayer = true
-        let iconBounds = CGRect(x: 0, y: 0, width: 20, height: 20)
-        iconShadow.frame = iconBounds
-        iconShadow.shadowColor = NSColor.black.cgColor
-        iconShadow.shadowOffset = CGSize(width: 0, height: -0.75)
-        iconShadow.shadowRadius = 1.25
-        iconShadow.shadowPath = CGPath(roundedRect: iconBounds, cornerWidth: 5, cornerHeight: 5, transform: nil)
-        iconGradient.frame = iconBounds
-        iconGradient.cornerRadius = 5
-        iconGradient.cornerCurve = .continuous
-        iconGradient.masksToBounds = true
-        iconGradient.startPoint = CGPoint(x: 0.5, y: 1)
-        iconGradient.endPoint = CGPoint(x: 0.5, y: 0)
-        iconShadow.addSublayer(iconGradient)
-        iconBackground.layer?.insertSublayer(iconShadow, at: 0)
-        iconBackground.setAccessibilityElement(false)
-        iconBackground.addSubview(icon)
         NSLayoutConstraint.activate([
-            iconBackground.widthAnchor.constraint(equalToConstant: 20),
-            iconBackground.heightAnchor.constraint(equalToConstant: 20),
-            icon.centerXAnchor.constraint(equalTo: iconBackground.centerXAnchor),
-            icon.centerYAnchor.constraint(equalTo: iconBackground.centerYAnchor),
-            icon.widthAnchor.constraint(equalToConstant: 15),
-            icon.heightAnchor.constraint(equalToConstant: 15)
+            icon.widthAnchor.constraint(equalToConstant: DashboardSidebarIconRenderer.imageSize),
+            icon.heightAnchor.constraint(equalToConstant: DashboardSidebarIconRenderer.imageSize)
         ])
 
         let title = NSTextField(labelWithString: "")
@@ -210,13 +186,13 @@ final class DashboardSourceListCellView: NSTableCellView {
         updateBadgeView.setContentCompressionResistancePriority(.required, for: .horizontal)
         updateBadgeView.isHidden = true
 
-        let stack = NSStackView(views: [iconBackground, title])
+        let stack = NSStackView(views: [icon, title])
         stack.orientation = .horizontal
         stack.alignment = .centerY
-        stack.spacing = 8
-        stack.edgeInsets = NSEdgeInsets(top: 0, left: 2, bottom: 0, right: 2)
+        stack.spacing = 6
+        stack.edgeInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 2)
         stack.detachesHiddenViews = true
-        stack.setViews([iconBackground, title], in: .leading)
+        stack.setViews([icon, title], in: .leading)
         stack.setViews([updateBadgeView], in: .trailing)
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
@@ -251,26 +227,24 @@ final class DashboardSourceListCellView: NSTableCellView {
         updateIconAppearance()
     }
 
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        updateIconAppearance()
+    }
+
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        updateIconAppearance()
+    }
+
     private func updateIconAppearance() {
         guard let section = iconSection else { return }
-        let usesDarkPalette = usesDarkIcons
-            && effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        effectiveAppearance.performAsCurrentDrawingAppearance {
-            let baseColor = usesDarkPalette ? NSColor(white: 0.23, alpha: 1) : section.chipColor
-            let topColor = baseColor.highlight(withLevel: usesDarkPalette ? 0.07 : 0.12) ?? baseColor
-            let bottomColor = baseColor.shadow(withLevel: usesDarkPalette ? 0.06 : 0.11) ?? baseColor
-            CATransaction.begin()
-            CATransaction.setDisableActions(true)
-            iconGradient.colors = [topColor.cgColor, bottomColor.cgColor]
-            iconShadow.shadowOpacity = usesDarkPalette ? 0.24 : 0.18
-            CATransaction.commit()
-            let configuration = NSImage.SymbolConfiguration(pointSize: 15, weight: .semibold)
-                .applying(.init(paletteColors: [usesDarkPalette ? section.chipColor : .white]))
-            let symbol = NSImage(systemSymbolName: section.symbolName, accessibilityDescription: nil)?
-                .withSymbolConfiguration(configuration)
-            symbol?.isTemplate = false
-            imageView?.image = symbol
-        }
+        imageView?.image = DashboardSidebarIconRenderer.shared.image(
+            for: section,
+            appearance: effectiveAppearance,
+            scale: window?.backingScaleFactor ?? 1,
+            usesDarkIcons: usesDarkIcons
+        )
     }
 
     fileprivate func restoreTitleColor() {
@@ -360,7 +334,6 @@ final class DashboardSourceListController: NSObject, NSOutlineViewDataSource, NS
             notificationButton.isBordered = false
             notificationButton.alignment = .left
             notificationButton.imagePosition = .imageLeading
-            notificationButton.image = NSImage(systemSymbolName: DashboardSection.notifications.symbolName, accessibilityDescription: nil)
             notificationButton.title = DashboardSection.notifications.title
             notificationButton.toolTip = DashboardSection.notifications.title
             notificationButton.setAccessibilityLabel(DashboardSection.notifications.title)
@@ -477,10 +450,6 @@ final class DashboardSourceListController: NSObject, NSOutlineViewDataSource, NS
     }
 
     func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
-        (item as? DashboardSidebarNode)?.isGroup ?? false
-    }
-
-    func outlineView(_ outlineView: NSOutlineView, isGroupItem item: Any) -> Bool {
         (item as? DashboardSidebarNode)?.isGroup ?? false
     }
 

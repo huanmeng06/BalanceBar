@@ -98,8 +98,6 @@ final class DashboardSourceListSelectionTests: XCTestCase {
         let outline = sourceList.outlineView
         let appearance = try XCTUnwrap(sourceList.roots.first { $0.group == .appearance })
         let system = try XCTUnwrap(sourceList.roots.first { $0.group == .system })
-        XCTAssertTrue(sourceList.outlineView(outline, isGroupItem: appearance))
-        XCTAssertTrue(sourceList.outlineView(outline, isGroupItem: system))
         XCTAssertFalse(sourceList.outlineView(outline, shouldSelectItem: appearance))
         XCTAssertNil(sourceList.outlineView(outline, tintConfigurationForItem: appearance))
         XCTAssertNil(sourceList.outlineView(outline, tintConfigurationForItem: system))

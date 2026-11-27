@@ -4,37 +4,34 @@ import XCTest
 
 @MainActor
 final class DashboardSourceListAppearanceTests: XCTestCase {
-    func testIconPaletteTracksAppearanceAndPlatform() throws {
-        for (capabilities, usesDarkIcons) in [
-            (DashboardPlatformCapabilities.legacyCompatibility, false),
-            (.nativeAppKitOwnership, true)
-        ] {
-            let cell = DashboardSourceListCellView()
-            cell.configure(section: .menuBar, showsUpdateBadge: false, usesDarkIcons: capabilities.usesNativeWindowSurface)
-            let icon = try XCTUnwrap(cell.imageView)
-            let chip = try XCTUnwrap(icon.superview)
-            for name: NSAppearance.Name in [.aqua, .darkAqua] {
-                cell.appearance = try XCTUnwrap(NSAppearance(named: name))
-                cell.layoutSubtreeIfNeeded()
-                let appearance = cell.effectiveAppearance
-                appearance.performAsCurrentDrawingAppearance {
-                    let color = usesDarkIcons && name == .darkAqua
-                        ? NSColor(white: 0.23, alpha: 1) : DashboardSection.menuBar.chipColor
-                    let dark = usesDarkIcons && name == .darkAqua
-                    let shadow = chip.layer?.sublayers?.first { $0.shadowPath != nil }
-                    let gradient = shadow?.sublayers?.first as? CAGradientLayer
-                    XCTAssertEqual(
-                        gradient?.colors as? [CGColor],
-                        [color.highlight(withLevel: dark ? 0.07 : 0.12)?.cgColor ?? color.cgColor,
-                         color.shadow(withLevel: dark ? 0.06 : 0.11)?.cgColor ?? color.cgColor]
-                    )
-                    XCTAssertEqual(gradient?.cornerRadius, 5)
-                    XCTAssertEqual(gradient?.cornerCurve, .continuous)
-                    XCTAssertEqual(shadow?.shadowOpacity, dark ? 0.24 : 0.18)
-                    XCTAssertEqual(icon.image?.isTemplate, false)
-                }
-            }
+    func testSidebarIconCacheSeparatesAppearanceScaleAndPalette() throws {
+        let renderer = DashboardSidebarIconRenderer()
+        let light = try XCTUnwrap(NSAppearance(named: .aqua))
+        let dark = try XCTUnwrap(NSAppearance(named: .darkAqua))
+        func icon(_ appearance: NSAppearance, _ scale: CGFloat, modern: Bool = true) -> NSImage {
+            renderer.image(for: .menuBar, appearance: appearance, scale: scale, usesDarkIcons: modern)
         }
+        let one = icon(light, 1)
+        let two = icon(light, 2)
+        let modernDark = icon(dark, 2)
+        XCTAssertIdentical(one, icon(light, 1))
+        XCTAssertIdentical(two, icon(light, 2))
+        XCTAssertIdentical(modernDark, icon(dark, 2))
+        XCTAssertNotIdentical(one, two)
+        XCTAssertNotIdentical(two, modernDark)
+        XCTAssertNotIdentical(modernDark, icon(dark, 2, modern: false))
+        XCTAssertEqual(one.representations.first?.pixelsWide, 24)
+        XCTAssertEqual(two.representations.first?.pixelsWide, 48)
+        XCTAssertEqual(two.size, NSSize(width: 24, height: 24))
+        XCTAssertFalse(two.isTemplate)
+        let image = try XCTUnwrap(two.representations.first as? NSBitmapImageRep)
+        let darkImage = try XCTUnwrap(modernDark.representations.first as? NSBitmapImageRep)
+        for (x, y) in [(8, 24), (39, 24), (24, 8), (24, 39)] {
+            let edge = try XCTUnwrap(image.colorAt(x: x, y: y))
+            XCTAssertGreaterThan(edge.alphaComponent, 0.95, "Tile is clipped at \(x), \(y)")
+        }
+        XCTAssertNotEqual(image.colorAt(x: 8, y: 24), darkImage.colorAt(x: 8, y: 24))
+        XCTAssertNotEqual(image.colorAt(x: 8, y: 10), image.colorAt(x: 8, y: 36))
     }
 
     func testSectionRowsUseFixedAlignedIconsAcrossBackgroundStyles() throws {
@@ -57,8 +54,8 @@ final class DashboardSourceListAppearanceTests: XCTestCase {
             let cell = try sectionCell(in: outline, row: row)
             XCTAssertEqual(cell.textField?.stringValue, section.title)
             XCTAssertNotNil(cell.imageView?.image)
-            let chip = try XCTUnwrap(cell.imageView?.superview)
-            XCTAssertEqual(chip.frame.size, NSSize(width: 20, height: 20))
+            let chip = try XCTUnwrap(cell.imageView)
+            XCTAssertEqual(chip.frame.size, NSSize(width: 24, height: 24))
             iconOrigins.append(chip.convert(chip.bounds, to: outline).minX)
             try assertTitleColor(of: cell, selected: outline.isRowSelected(row), section: section)
             let node = try XCTUnwrap(sourceList.node(for: section))
@@ -111,14 +108,15 @@ final class DashboardSourceListAppearanceTests: XCTestCase {
         XCTAssertEqual(generalCell.textField?.isAccessibilityElement(), false)
         XCTAssertNotEqual(generalCell.updateBadgeView.accessibilityLabel(), DashboardSection.general.title)
 
-        let appearance = try XCTUnwrap(sourceList.roots.first { $0.group == .appearance })
-        let groupRow = outline.row(forItem: appearance)
-        let spacer = try XCTUnwrap(outline.rowView(atRow: groupRow, makeIfNecessary: true))
-        XCTAssertFalse(spacer.isAccessibilityElement())
-        XCTAssertNil(outline.view(atColumn: 0, row: groupRow, makeIfNecessary: true))
-        let spacerHeight = outline.rect(ofRow: groupRow).height
-        XCTAssertGreaterThanOrEqual(spacerHeight, 8)
-        XCTAssertLessThanOrEqual(spacerHeight, 10)
+        for group in sourceList.roots.filter(\.isGroup) {
+            let groupRow = outline.row(forItem: group)
+            let spacer = try XCTUnwrap(outline.rowView(atRow: groupRow, makeIfNecessary: true))
+            XCTAssertFalse(spacer.isAccessibilityElement())
+            XCTAssertNil(outline.view(atColumn: 0, row: groupRow, makeIfNecessary: true))
+            let gap = outline.rect(ofRow: groupRow + 1).minY - outline.rect(ofRow: groupRow - 1).maxY
+            XCTAssertGreaterThanOrEqual(gap, 8)
+            XCTAssertLessThanOrEqual(gap, 10)
+        }
     }
 
     func testRebuildLanguageSwitchAndBadgeKeepAppKitAppearanceOwnership() throws {

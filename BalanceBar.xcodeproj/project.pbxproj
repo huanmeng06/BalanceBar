@@ -130,6 +130,7 @@
 		A48100000000000000000002 /* DashboardNavigationHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = A48100000000000000000001 /* DashboardNavigationHistory.swift */; };
 		A40300000000000000000006 /* DashboardShellTestHarness.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40300000000000000000005 /* DashboardShellTestHarness.swift */; };
 		A38600000000000000000002 /* DashboardSourceListController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A38600000000000000000001 /* DashboardSourceListController.swift */; };
+		A74100000000000000000002 /* DashboardSidebarIconRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A74100000000000000000001 /* DashboardSidebarIconRenderer.swift */; };
 		A38800000000000000000002 /* DashboardPageContainerViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A38800000000000000000001 /* DashboardPageContainerViewController.swift */; };
 		A40900000000000000000002 /* DashboardToolbarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40900000000000000000001 /* DashboardToolbarController.swift */; };
 		A43600000000000000000002 /* DashboardPageSearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = A43600000000000000000001 /* DashboardPageSearch.swift */; };
@@ -408,6 +409,7 @@
 		A48100000000000000000001 /* DashboardNavigationHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardNavigationHistory.swift; sourceTree = "<group>"; };
 		A40300000000000000000005 /* DashboardShellTestHarness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardShellTestHarness.swift; sourceTree = "<group>"; };
 		A38600000000000000000001 /* DashboardSourceListController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardSourceListController.swift; sourceTree = "<group>"; };
+		A74100000000000000000001 /* DashboardSidebarIconRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardSidebarIconRenderer.swift; sourceTree = "<group>"; };
 		A38800000000000000000001 /* DashboardPageContainerViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardPageContainerViewController.swift; sourceTree = "<group>"; };
 		A40900000000000000000001 /* DashboardToolbarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardToolbarController.swift; sourceTree = "<group>"; };
 		A43600000000000000000001 /* DashboardPageSearch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardPageSearch.swift; sourceTree = "<group>"; };
@@ -1134,6 +1136,7 @@
 				A38800000000000000000001 /* DashboardPageContainerViewController.swift */,
 				A38900000000000000000001 /* DashboardScrollablePageViewController.swift */,
 				A38600000000000000000001 /* DashboardSourceListController.swift */,
+				A74100000000000000000001 /* DashboardSidebarIconRenderer.swift */,
 				A10000000000000000000106 /* UpdateNotesWindowController.swift */,
 				A10000000000000000000093 /* Components */,
 				A39000000000000000000005 /* Settings */,
@@ -1616,6 +1619,7 @@
 				A38800000000000000000002 /* DashboardPageContainerViewController.swift in Sources */,
 				A38900000000000000000002 /* DashboardScrollablePageViewController.swift in Sources */,
 				A38600000000000000000002 /* DashboardSourceListController.swift in Sources */,
+				A74100000000000000000002 /* DashboardSidebarIconRenderer.swift in Sources */,
 				A10000000000000000000096 /* StatusLinksEditor.swift in Sources */,
 				A74400000000000000000002 /* BalanceBarAppIcon.swift in Sources */,
 				A100000000000000000000B0 /* DashboardAboutPage.swift in Sources */,
