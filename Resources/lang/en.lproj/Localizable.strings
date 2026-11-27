@@ -143,6 +143,8 @@
 "dashboard.navigation.forward" = "Forward";
 "dashboard.about.page.github_repository" = "GitHub repository";
 "dashboard.about.page.version_value" = "Version %1$@";
+"dashboard.about.page.github_actions_build" = "GitHub Actions build #%1$@";
+"dashboard.about.page.github_actions_build_help" = "This version was built from open-source code by GitHub Actions. Click to view the build run.";
 "dashboard.about.page.a_cc_switch_based_menu_bar_balance_viewer" = "View official quotas in the menu bar, plus third-party balances with CC Switch";
 "dashboard.about.page.open_the_balancebar_github_repository" = "Open the BalanceBar GitHub repository";
 "dashboard.advanced.page.reload" = "Reload";

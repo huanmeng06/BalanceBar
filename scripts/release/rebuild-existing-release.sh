@@ -50,6 +50,10 @@ gh release view "$tag" \
     --json databaseId,name,body,isDraft,isPrerelease,assets \
     > "$release_before"
 
+if jq -e '[.assets[].name | select(test("\\.update\\.json(\\.sig)?$"))] | length > 0' "$release_before" >/dev/null; then
+    die "Release $tag already has a signed update manifest; publish a new version instead"
+fi
+
 original_asset_count="$(jq '.assets | length' "$release_before")"
 original_asset_name="$(jq -r '.assets[0].name // empty' "$release_before")"
 [[ "$original_asset_count" -eq 1 && "$original_asset_name" == "$asset_name" ]] \

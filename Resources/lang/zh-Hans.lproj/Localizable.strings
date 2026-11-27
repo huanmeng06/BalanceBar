@@ -143,6 +143,8 @@
 "dashboard.navigation.forward" = "前进";
 "dashboard.about.page.github_repository" = "GitHub 仓库";
 "dashboard.about.page.version_value" = "版本 %1$@";
+"dashboard.about.page.github_actions_build" = "GitHub Actions 构建 #%1$@";
+"dashboard.about.page.github_actions_build_help" = "此版本由 GitHub Actions 从开源代码构建，点击查看构建记录。";
 "dashboard.about.page.a_cc_switch_based_menu_bar_balance_viewer" = "在菜单栏查看官方额度，配合 CC Switch 还可查看第三方余额";
 "dashboard.about.page.open_the_balancebar_github_repository" = "打开 BalanceBar GitHub 仓库";
 "dashboard.advanced.page.reload" = "重新加载";

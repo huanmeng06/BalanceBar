@@ -143,6 +143,8 @@
 "dashboard.navigation.forward" = "前進";
 "dashboard.about.page.github_repository" = "GitHub 儲存庫";
 "dashboard.about.page.version_value" = "版本 %1$@";
+"dashboard.about.page.github_actions_build" = "GitHub Actions 建置 #%1$@";
+"dashboard.about.page.github_actions_build_help" = "此版本由 GitHub Actions 從開源程式碼建置，點擊查看建置記錄。";
 "dashboard.about.page.a_cc_switch_based_menu_bar_balance_viewer" = "在選單列檢視官方配額，搭配 CC Switch 還可檢視第三方餘額";
 "dashboard.about.page.open_the_balancebar_github_repository" = "開啟 BalanceBar GitHub 儲存庫";
 "dashboard.advanced.page.reload" = "重新載入";

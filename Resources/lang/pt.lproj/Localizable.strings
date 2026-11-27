@@ -143,6 +143,8 @@
 "dashboard.navigation.forward" = "Avançar";
 "dashboard.about.page.github_repository" = "Repositório no GitHub";
 "dashboard.about.page.version_value" = "Versão %1$@";
+"dashboard.about.page.github_actions_build" = "Build do GitHub Actions #%1$@";
+"dashboard.about.page.github_actions_build_help" = "Esta versão foi compilada pelo GitHub Actions a partir do código aberto. Clique para ver a execução.";
 "dashboard.about.page.a_cc_switch_based_menu_bar_balance_viewer" = "Veja cotas oficiais na barra de menus e, com o CC Switch, também saldos de terceiros";
 "dashboard.about.page.open_the_balancebar_github_repository" = "Abrir o repositório do BalanceBar no GitHub";
 "dashboard.advanced.page.reload" = "Recarregar";

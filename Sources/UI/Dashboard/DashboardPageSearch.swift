@@ -660,7 +660,8 @@ enum DashboardSettingsSearchCatalog {
             return [
                 .keyDashboardAboutPageGithubRepository,
                 .keyDashboardAboutPageACcSwitchBasedMenuBarBalanceViewer,
-                .keyDashboardAboutPageOpenTheBalancebarGithubRepository
+                .keyDashboardAboutPageOpenTheBalancebarGithubRepository,
+                .keyDashboardAboutPageGithubActionsBuild
             ]
         case .notifications:
             return []
