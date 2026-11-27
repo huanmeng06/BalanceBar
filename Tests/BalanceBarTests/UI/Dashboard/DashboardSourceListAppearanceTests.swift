@@ -34,6 +34,45 @@ final class DashboardSourceListAppearanceTests: XCTestCase {
         XCTAssertNotEqual(image.colorAt(x: 8, y: 10), image.colorAt(x: 8, y: 36))
     }
 
+    func testSidebarSymbolsAreCenteredAndSizedAtDeviceScale() throws {
+        let renderer = DashboardSidebarIconRenderer()
+        let fractions: [(DashboardSection, CGFloat)] = [
+            (.general, 0.75), (.menuBar, 0.74), (.menu, 0.70), (.notifications, 0.70), (.advanced, 0.74)
+        ]
+        for name in [NSAppearance.Name.aqua, .darkAqua] {
+            let appearance = try XCTUnwrap(NSAppearance(named: name))
+            for scale: CGFloat in [1, 2] {
+                for (section, fraction) in fractions {
+                    let image = renderer.image(for: section, appearance: appearance, scale: scale, usesDarkIcons: true)
+                    let bitmap = try XCTUnwrap(image.representations.first as? NSBitmapImageRep)
+                    let inset = Int(4 * scale)
+                    var bounds = CGRect.null
+                    for y in inset..<(bitmap.pixelsHigh - inset) {
+                        let background = try XCTUnwrap(
+                            bitmap.colorAt(x: inset - 1, y: y)?.usingColorSpace(.deviceRGB)
+                        )
+                        for x in inset..<(bitmap.pixelsWide - inset) {
+                            guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB) else { continue }
+                            let contrast = max(
+                                color.redComponent - background.redComponent,
+                                color.greenComponent - background.greenComponent,
+                                color.blueComponent - background.blueComponent
+                            )
+                            if contrast > 0.16 {
+                                bounds = bounds.union(CGRect(x: x, y: y, width: 1, height: 1))
+                            }
+                        }
+                    }
+                    let label = "\(section), \(name.rawValue), \(scale)×"
+                    XCTAssertFalse(bounds.isNull, label)
+                    XCTAssertEqual(bounds.midX, CGFloat(bitmap.pixelsWide) / 2, accuracy: 1, label)
+                    XCTAssertEqual(bounds.midY, CGFloat(bitmap.pixelsHigh) / 2, accuracy: 1, label)
+                    XCTAssertEqual(max(bounds.width, bounds.height), (20 * fraction * scale).rounded(), accuracy: 2, label)
+                }
+            }
+        }
+    }
+
     func testSectionRowsUseFixedAlignedIconsAcrossBackgroundStyles() throws {
         let controller = makeController()
         defer { controller.teardown() }
