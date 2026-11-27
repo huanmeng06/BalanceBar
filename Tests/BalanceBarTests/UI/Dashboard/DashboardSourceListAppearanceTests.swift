@@ -20,8 +20,17 @@ final class DashboardSourceListAppearanceTests: XCTestCase {
                 appearance.performAsCurrentDrawingAppearance {
                     let color = usesDarkIcons && name == .darkAqua
                         ? NSColor(white: 0.23, alpha: 1) : DashboardSection.menuBar.chipColor
-                    XCTAssertEqual(chip.layer?.backgroundColor, color.cgColor)
-                    XCTAssertEqual(chip.layer?.cornerRadius, 5)
+                    let dark = usesDarkIcons && name == .darkAqua
+                    let shadow = chip.layer?.sublayers?.first { $0.shadowPath != nil }
+                    let gradient = shadow?.sublayers?.first as? CAGradientLayer
+                    XCTAssertEqual(
+                        gradient?.colors as? [CGColor],
+                        [color.highlight(withLevel: dark ? 0.07 : 0.12)?.cgColor ?? color.cgColor,
+                         color.shadow(withLevel: dark ? 0.06 : 0.11)?.cgColor ?? color.cgColor]
+                    )
+                    XCTAssertEqual(gradient?.cornerRadius, 5)
+                    XCTAssertEqual(gradient?.cornerCurve, .continuous)
+                    XCTAssertEqual(shadow?.shadowOpacity, dark ? 0.24 : 0.18)
                     XCTAssertEqual(icon.image?.isTemplate, false)
                 }
             }
@@ -107,7 +116,9 @@ final class DashboardSourceListAppearanceTests: XCTestCase {
         let spacer = try XCTUnwrap(outline.rowView(atRow: groupRow, makeIfNecessary: true))
         XCTAssertFalse(spacer.isAccessibilityElement())
         XCTAssertNil(outline.view(atColumn: 0, row: groupRow, makeIfNecessary: true))
-        XCTAssertEqual(outline.rect(ofRow: groupRow).height, 10, accuracy: 1)
+        let spacerHeight = outline.rect(ofRow: groupRow).height
+        XCTAssertGreaterThanOrEqual(spacerHeight, 8)
+        XCTAssertLessThanOrEqual(spacerHeight, 10)
     }
 
     func testRebuildLanguageSwitchAndBadgeKeepAppKitAppearanceOwnership() throws {

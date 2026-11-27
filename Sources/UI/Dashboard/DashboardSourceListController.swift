@@ -83,6 +83,26 @@ final class DashboardSourceListOutlineView: NSOutlineView {
     override var acceptsFirstResponder: Bool { true }
     override var canBecomeKeyView: Bool { true }
 
+    private(set) var isSelectingWithMouse = false
+
+    override func mouseDown(with event: NSEvent) {
+        let clickedRow = row(at: convert(event.locationInWindow, from: nil))
+        let selectionModifiers: NSEvent.ModifierFlags = [.command, .control, .option, .shift]
+        guard event.modifierFlags.intersection(selectionModifiers).isEmpty,
+              clickedRow >= 0, isSelectableRow(clickedRow) else {
+            super.mouseDown(with: event)
+            return
+        }
+
+        window?.makeFirstResponder(self)
+        isSelectingWithMouse = true
+        selectRowIndexes(IndexSet(integer: clickedRow), byExtendingSelection: false)
+        isSelectingWithMouse = false
+        DashboardPageInstrumentation.measure(.sidebarSelectionDisplay) {
+            window?.displayIfNeeded()
+        }
+    }
+
     /// `selectionIndexesForProposedSelection` must not remap group rows: that
     /// path also handles mouse clicks. Arrow keys therefore skip here.
     override func moveUp(_ sender: Any?) {
@@ -132,6 +152,8 @@ final class DashboardSourceListCellView: NSTableCellView {
     private(set) var updateBadgeView = DashboardUpdateBadgeView()
 
     private let iconBackground = NSView()
+    private let iconShadow = CALayer()
+    private let iconGradient = CAGradientLayer()
     private var iconSection: DashboardSection?
     private var usesDarkIcons = false
 
@@ -148,11 +170,24 @@ final class DashboardSourceListCellView: NSTableCellView {
         identifier = Self.identifier
 
         let icon = NSImageView()
-        icon.imageScaling = .scaleProportionallyDown
+        icon.imageScaling = .scaleProportionallyUpOrDown
         icon.translatesAutoresizingMaskIntoConstraints = false
         icon.setAccessibilityElement(false)
         iconBackground.wantsLayer = true
-        iconBackground.layer?.cornerRadius = 5
+        let iconBounds = CGRect(x: 0, y: 0, width: 20, height: 20)
+        iconShadow.frame = iconBounds
+        iconShadow.shadowColor = NSColor.black.cgColor
+        iconShadow.shadowOffset = CGSize(width: 0, height: -0.75)
+        iconShadow.shadowRadius = 1.25
+        iconShadow.shadowPath = CGPath(roundedRect: iconBounds, cornerWidth: 5, cornerHeight: 5, transform: nil)
+        iconGradient.frame = iconBounds
+        iconGradient.cornerRadius = 5
+        iconGradient.cornerCurve = .continuous
+        iconGradient.masksToBounds = true
+        iconGradient.startPoint = CGPoint(x: 0.5, y: 1)
+        iconGradient.endPoint = CGPoint(x: 0.5, y: 0)
+        iconShadow.addSublayer(iconGradient)
+        iconBackground.layer?.insertSublayer(iconShadow, at: 0)
         iconBackground.setAccessibilityElement(false)
         iconBackground.addSubview(icon)
         NSLayoutConstraint.activate([
@@ -160,8 +195,8 @@ final class DashboardSourceListCellView: NSTableCellView {
             iconBackground.heightAnchor.constraint(equalToConstant: 20),
             icon.centerXAnchor.constraint(equalTo: iconBackground.centerXAnchor),
             icon.centerYAnchor.constraint(equalTo: iconBackground.centerYAnchor),
-            icon.widthAnchor.constraint(equalToConstant: 13),
-            icon.heightAnchor.constraint(equalToConstant: 13)
+            icon.widthAnchor.constraint(equalToConstant: 15),
+            icon.heightAnchor.constraint(equalToConstant: 15)
         ])
 
         let title = NSTextField(labelWithString: "")
@@ -221,10 +256,15 @@ final class DashboardSourceListCellView: NSTableCellView {
         let usesDarkPalette = usesDarkIcons
             && effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         effectiveAppearance.performAsCurrentDrawingAppearance {
-            iconBackground.layer?.backgroundColor = (
-                usesDarkPalette ? NSColor(white: 0.23, alpha: 1) : section.chipColor
-            ).cgColor
-            let configuration = NSImage.SymbolConfiguration(pointSize: 12, weight: .semibold)
+            let baseColor = usesDarkPalette ? NSColor(white: 0.23, alpha: 1) : section.chipColor
+            let topColor = baseColor.highlight(withLevel: usesDarkPalette ? 0.07 : 0.12) ?? baseColor
+            let bottomColor = baseColor.shadow(withLevel: usesDarkPalette ? 0.06 : 0.11) ?? baseColor
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            iconGradient.colors = [topColor.cgColor, bottomColor.cgColor]
+            iconShadow.shadowOpacity = usesDarkPalette ? 0.24 : 0.18
+            CATransaction.commit()
+            let configuration = NSImage.SymbolConfiguration(pointSize: 15, weight: .semibold)
                 .applying(.init(paletteColors: [usesDarkPalette ? section.chipColor : .white]))
             let symbol = NSImage(systemSymbolName: section.symbolName, accessibilityDescription: nil)?
                 .withSymbolConfiguration(configuration)
@@ -285,7 +325,7 @@ final class DashboardSourceListController: NSObject, NSOutlineViewDataSource, NS
     private let notificationNode: DashboardSidebarNode
     private let notificationButton = NSButton()
     private let showsNotificationsAsSidebarButton: Bool
-    var onSelectSection: ((DashboardSection) -> Void)?
+    var onSelectSection: ((DashboardSection, Bool) -> Void)?
     let layoutPolicy: DashboardSidebarScrollLayoutPolicy
 
     private let usesDarkIcons: Bool
@@ -498,7 +538,7 @@ final class DashboardSourceListController: NSObject, NSOutlineViewDataSource, NS
     }
 
     func outlineView(_ outlineView: NSOutlineView, heightOfRowByItem item: Any) -> CGFloat {
-        (item as? DashboardSidebarNode)?.isGroup == true ? 10 : outlineView.rowHeight
+        (item as? DashboardSidebarNode)?.isGroup == true ? 8 : outlineView.rowHeight
     }
 
     func outlineView(_ outlineView: NSOutlineView, tintConfigurationForItem item: Any) -> NSTintConfiguration? {
@@ -513,7 +553,7 @@ final class DashboardSourceListController: NSObject, NSOutlineViewDataSource, NS
     func outlineViewSelectionDidChange(_ notification: Notification) {
         guard !isApplyingProgrammaticSelection, !isTornDown else { return }
         guard let section = selectedSection() else { return }
-        onSelectSection?(section)
+        onSelectSection?(section, outlineView.isSelectingWithMouse)
     }
 
     private func configureOutline() {
@@ -552,7 +592,7 @@ final class DashboardSourceListController: NSObject, NSOutlineViewDataSource, NS
         isApplyingProgrammaticSelection = true
         outlineView.deselectAll(nil)
         isApplyingProgrammaticSelection = false
-        onSelectSection?(.notifications)
+        onSelectSection?(.notifications, false)
     }
 
     private func reloadAndExpand() {

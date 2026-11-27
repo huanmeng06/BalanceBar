@@ -202,6 +202,87 @@ final class DashboardSourceListSelectionTests: XCTestCase {
         try assertGeneralBadge(in: rebuilt, visible: false)
     }
 
+    func testMouseSelectionDrawsBeforeNavigationAndKeepsSidebarFocus() async throws {
+        var builds: [DashboardSection] = []
+        let controller = DashboardShellTestHarness(
+            actions: DashboardWindowControllerActions(
+                makeSectionPage: { section in
+                    builds.append(section)
+                    return DashboardHostedPageViewController()
+                },
+                makeProviderPage: { _ in DashboardHostedPageViewController() },
+                providerChoices: { [] },
+                prepareForPageReplacement: {},
+                didShowPage: {},
+                didClose: {},
+                didResize: {}
+            )
+        )
+        defer { controller.teardown() }
+        controller.open()
+        let window = try XCTUnwrap(controller.window)
+        let list = try XCTUnwrap(controller.sourceListForTesting)
+        let outline = list.outlineView
+        XCTAssertTrue(window.makeFirstResponder(controller.pageSession.toolbarController.searchField))
+        var completedPhases: [DashboardPageInstrumentation.Phase] = []
+        DashboardPageInstrumentation.eventRecorder = { phase, boundary in
+            if boundary == .end { completedPhases.append(phase) }
+        }
+        defer { DashboardPageInstrumentation.eventRecorder = nil }
+
+        try mouseDown(on: .menuBar, in: list)
+        XCTAssertTrue(window.firstResponder === outline)
+        XCTAssertEqual(list.selectedSection(), .menuBar)
+        XCTAssertEqual(controller.section, .general)
+        XCTAssertEqual(builds, [.general])
+        XCTAssertTrue(completedPhases.contains(.sidebarSelectionDisplay))
+        XCTAssertFalse(completedPhases.contains(.totalSelectionToReady))
+
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async { continuation.resume() }
+        }
+        XCTAssertTrue(window.firstResponder === outline)
+        XCTAssertEqual(controller.section, .menuBar)
+        XCTAssertEqual(builds, [.general, .menuBar])
+        XCTAssertTrue(completedPhases.contains(.totalSelectionToReady))
+
+        try mouseDown(on: .advanced, in: list)
+        try mouseDown(on: .general, in: list)
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async { continuation.resume() }
+        }
+        XCTAssertEqual(controller.section, .general)
+        XCTAssertEqual(builds, [.general, .menuBar])
+
+        try mouseDown(on: .advanced, in: list)
+        controller.showSection(.menuBar)
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async { continuation.resume() }
+        }
+        XCTAssertEqual(controller.section, .menuBar)
+        XCTAssertEqual(list.selectedSection(), .menuBar)
+        XCTAssertEqual(builds, [.general, .menuBar])
+    }
+
+    private func mouseDown(on section: DashboardSection, in list: DashboardSourceListController) throws {
+        let outline = list.outlineView
+        let row = try XCTUnwrap(list.row(for: section))
+        let rect = outline.rect(ofRow: row)
+        let point = outline.convert(NSPoint(x: rect.midX, y: rect.midY), to: nil)
+        let event = try XCTUnwrap(NSEvent.mouseEvent(
+            with: .leftMouseDown,
+            location: point,
+            modifierFlags: [],
+            timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: outline.window?.windowNumber ?? 0,
+            context: nil,
+            eventNumber: 1,
+            clickCount: 1,
+            pressure: 1
+        ))
+        outline.mouseDown(with: event)
+    }
+
     private func makeController(
         providerChoices: [ProviderChoice] = [],
         didShowPage: @escaping () -> Void = {}

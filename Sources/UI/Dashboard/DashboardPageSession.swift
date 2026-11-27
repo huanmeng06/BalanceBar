@@ -3,6 +3,7 @@ import os
 
 enum DashboardPageInstrumentation {
     enum Phase: String {
+        case sidebarSelectionDisplay = "sidebar-selection-display"
         case sidebarSelectionCallback = "sidebar-selection-callback"
         case prepareForPageReplacement = "prepare-for-page-replacement"
         case preferencePagesSuspend = "preference-pages-suspend"
@@ -81,6 +82,7 @@ final class DashboardPageSession {
     private var showsUpdateAvailableBadge = false
     private var isTornDown = false
     private weak var window: NSWindow?
+    private var pendingSidebarSelection: DispatchWorkItem?
     private var cachedSectionPages: [DashboardSection: NSViewController] = [:]
 
     var contentHost: NSView { pageContainer.view }
@@ -101,6 +103,7 @@ final class DashboardPageSession {
 
     func installShell(on windowController: DashboardWindowController) {
         guard let window = windowController.window, !isTornDown else { return }
+        cancelPendingSidebarSelection()
         self.window = window
         sourceListController?.teardown()
         let sourceList = DashboardSourceListController(
@@ -108,8 +111,12 @@ final class DashboardPageSession {
             capabilities: platformCapabilities
         )
         sourceList.setShowsUpdateAvailableBadge(showsUpdateAvailableBadge)
-        sourceList.onSelectSection = { [weak self] section in
-            self?.selectSection(section)
+        sourceList.onSelectSection = { [weak self] section, isMouseSelection in
+            if isMouseSelection {
+                self?.deferSidebarSelection(section)
+            } else {
+                self?.selectSection(section)
+            }
         }
         sourceListController = sourceList
         let sidebar = sourceList.makeSidebar()
@@ -195,7 +202,24 @@ final class DashboardPageSession {
         }
     }
 
+    private func deferSidebarSelection(_ section: DashboardSection) {
+        cancelPendingSidebarSelection()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.pendingSidebarSelection = nil
+            self.selectSection(section)
+        }
+        pendingSidebarSelection = work
+        DispatchQueue.main.async(execute: work)
+    }
+
+    private func cancelPendingSidebarSelection() {
+        pendingSidebarSelection?.cancel()
+        pendingSidebarSelection = nil
+    }
+
     func selectSection(_ section: DashboardSection) {
+        cancelPendingSidebarSelection()
         guard !isTornDown else { return }
         if shouldPreserveSectionSelection?(section) == true {
             self.section = section
@@ -257,6 +281,7 @@ final class DashboardPageSession {
 
     private func goBack() {
         guard let destination = navigationHistory.goBack() else { return }
+        cancelPendingSidebarSelection()
         guard canPresent(destination), present(destination) else {
             _ = navigationHistory.goForward()
             return
@@ -266,6 +291,7 @@ final class DashboardPageSession {
 
     private func goForward() {
         guard let destination = navigationHistory.goForward() else { return }
+        cancelPendingSidebarSelection()
         guard canPresent(destination), present(destination) else {
             _ = navigationHistory.goBack()
             return
@@ -278,6 +304,7 @@ final class DashboardPageSession {
         recordingHistory: Bool
     ) {
         guard !isTornDown, canPresent(destination) else { return }
+        cancelPendingSidebarSelection()
         guard present(destination) else { return }
         if recordingHistory {
             navigationHistory.push(destination)
@@ -360,6 +387,7 @@ final class DashboardPageSession {
     func teardown() {
         guard !isTornDown else { return }
         isTornDown = true
+        cancelPendingSidebarSelection()
         invalidateCachedSectionPages()
         accessoryHost.detach()
         toolbarController.detach()
