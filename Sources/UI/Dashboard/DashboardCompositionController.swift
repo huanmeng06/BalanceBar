@@ -726,6 +726,7 @@ final class DashboardCompositionController {
     func refreshUpdateState() {
         let updateState = state.updateState()
         dashboardPreferencePages.refreshUpdateState(updateState)
+        dashboardPreferencePages.refreshAutomaticUpdatePreference(state.preferences)
         pageSession.setShowsUpdateAvailableBadge(
             DashboardUpdatePresentation.make(for: updateState).showsUpdateBadge
         )

@@ -98,6 +98,63 @@ struct DashboardUpdatePresentation: Equatable {
                 showsReleaseNotesButton: false,
                 showsUpdateBadge: false
             )
+        case .automaticDownloading(_, _, let progress):
+            return DashboardUpdatePresentation(
+                subtitle: tr(.keyDashboardGeneralAndRefreshPagesAutomaticUpdateDownloading, language: language),
+                buttonTitle: tr(.keyDashboardGeneralAndRefreshPagesDownloadingValue, arguments: [String(describing: progress)], language: language),
+                buttonEnabled: false,
+                performsInstall: false,
+                showsReleaseNotesButton: true,
+                showsUpdateBadge: true
+            )
+        case .automaticIdleUpdated(let current):
+            return DashboardUpdatePresentation(
+                subtitle: tr(.keyDashboardGeneralAndRefreshPagesAutomaticIdleUpdated, arguments: [current.description], language: language),
+                buttonTitle: tr(.keyDashboardGeneralAndRefreshPagesCheckForUpdates, language: language),
+                buttonEnabled: true,
+                performsInstall: false,
+                showsReleaseNotesButton: false,
+                showsUpdateBadge: false
+            )
+        case .automaticDownloadReady(_, let latest), .automaticReady(_, let latest):
+            return DashboardUpdatePresentation(
+                subtitle: tr(.keyDashboardGeneralAndRefreshPagesAutomaticUpdateReady, arguments: [latest.description], language: language),
+                buttonTitle: tr(.keyDashboardGeneralAndRefreshPagesInstallNow, language: language),
+                buttonEnabled: true,
+                performsInstall: true,
+                showsReleaseNotesButton: true,
+                showsUpdateBadge: true
+            )
+        case .automaticDownloadFailed(_, _, let failure):
+            let message = failure == .verificationFailed
+                ? tr(.keyDashboardGeneralAndRefreshPagesAutomaticUpdateVerificationFailed, language: language)
+                : tr(.keyDashboardGeneralAndRefreshPagesAutomaticUpdateDownloadFailed, language: language)
+            return DashboardUpdatePresentation(
+                subtitle: message,
+                buttonTitle: tr(.keyDashboardGeneralAndRefreshPagesRetry, language: language),
+                buttonEnabled: true,
+                performsInstall: false,
+                showsReleaseNotesButton: true,
+                showsUpdateBadge: true
+            )
+        case .automaticInstallationFailed:
+            return DashboardUpdatePresentation(
+                subtitle: tr(.keyDashboardGeneralAndRefreshPagesAutomaticUpdateInstallFailed, language: language),
+                buttonTitle: tr(.keyDashboardGeneralAndRefreshPagesRetry, language: language),
+                buttonEnabled: true,
+                performsInstall: true,
+                showsReleaseNotesButton: true,
+                showsUpdateBadge: true
+            )
+        case .automaticNeedsManual:
+            return DashboardUpdatePresentation(
+                subtitle: tr(.keyDashboardGeneralAndRefreshPagesAutomaticUpdateManual, language: language),
+                buttonTitle: tr(.keyDashboardGeneralAndRefreshPagesDownloadAndInstall, language: language),
+                buttonEnabled: true,
+                performsInstall: true,
+                showsReleaseNotesButton: true,
+                showsUpdateBadge: true
+            )
         case .installing(_, _, let progress):
             return DashboardUpdatePresentation(
                 subtitle: tr(.keyDashboardGeneralAndRefreshPagesInstallingTheNewVersion, language: language),
@@ -143,8 +200,8 @@ struct DashboardUpdatePresentation: Equatable {
                 buttonTitle: tr(.keyDashboardGeneralAndRefreshPagesRetry, language: language),
                 buttonEnabled: true,
                 performsInstall: false,
-                showsReleaseNotesButton: false,
-                showsUpdateBadge: false
+                showsReleaseNotesButton: failure == .installationFailed,
+                showsUpdateBadge: failure == .installationFailed
             )
         }
     }
@@ -371,6 +428,7 @@ final class DashboardGeneralPage {
         let connectionSummaries: CCSwitchConnectionSummaries
         let relay: DashboardPreferencePageRelay
         let updateState: UpdateCheckState
+        let showsAutomaticUpdateSettings: Bool
         let launchAtLoginState: LaunchAtLoginState
         let launchWithChatGPTState: LaunchWithChatGPTState
         let modSyncStatus: ModSyncStatus
@@ -385,6 +443,7 @@ final class DashboardGeneralPage {
             connectionSummaries: CCSwitchConnectionSummaries = .unknown,
             relay: DashboardPreferencePageRelay,
             updateState: UpdateCheckState,
+            showsAutomaticUpdateSettings: Bool = UpdateSignatureVerifier().hasTrustedKeys,
             launchAtLoginState: LaunchAtLoginState = LaunchAtLoginState(status: .notRegistered),
             launchWithChatGPTState: LaunchWithChatGPTState = LaunchWithChatGPTState(status: .notRegistered),
             modSyncStatus: ModSyncStatus = .detecting,
@@ -398,6 +457,7 @@ final class DashboardGeneralPage {
             self.connectionSummaries = connectionSummaries
             self.relay = relay
             self.updateState = updateState
+            self.showsAutomaticUpdateSettings = showsAutomaticUpdateSettings
             self.launchAtLoginState = launchAtLoginState
             self.launchWithChatGPTState = launchWithChatGPTState
             self.modSyncStatus = modSyncStatus
@@ -415,6 +475,9 @@ final class DashboardGeneralPage {
     private weak var systemTimeZoneCheckbox: NSButton?
 
     private var updateSubtitleLabel: NSTextField?
+    private weak var automaticDownloadSwitch: NSSwitch?
+    private weak var automaticInstallSwitch: NSSwitch?
+    private weak var automaticInstallRow: SettingsRowView?
     /// "Claude official calibration": dimmed while the IP allowlist keeps official requests off.
     private(set) var claudeCalibrationRow: SettingsRowView?
     private(set) var claudeCalibrationPopup: NSPopUpButton?
@@ -756,6 +819,36 @@ final class DashboardGeneralPage {
             titleAccessory: updateBadge,
             accessoryView: updateControls
         )
+        var appUpdateRows = [updateRow, updateChannelRow]
+        if input.showsAutomaticUpdateSettings {
+            let downloadSwitch = DashboardSettingsComponents.makeSwitch(
+                identifier: AppPreferences.automaticDownloadKey,
+                isOn: false,
+                target: input.relay,
+                action: #selector(DashboardPreferencePageRelay.toggle(_:))
+            )
+            automaticDownloadSwitch = downloadSwitch
+            appUpdateRows.append(SettingsRowView(
+                title: tr(.keyDashboardGeneralAndRefreshPagesAutomaticDownload),
+                detail: tr(.keyDashboardGeneralAndRefreshPagesAutomaticDownloadDescription),
+                accessoryView: downloadSwitch
+            ))
+            let installSwitch = DashboardSettingsComponents.makeSwitch(
+                identifier: AppPreferences.automaticInstallKey,
+                isOn: false,
+                target: input.relay,
+                action: #selector(DashboardPreferencePageRelay.toggle(_:))
+            )
+            let installRow = SettingsRowView(
+                title: tr(.keyDashboardGeneralAndRefreshPagesAutomaticInstall),
+                detail: tr(.keyDashboardGeneralAndRefreshPagesAutomaticInstallDescription),
+                accessoryView: installSwitch
+            )
+            automaticInstallSwitch = installSwitch
+            automaticInstallRow = installRow
+            appUpdateRows.append(installRow)
+            refreshAutomaticUpdatePreference(input.preferences)
+        }
         updateRow.detailLabel.identifier = NSUserInterfaceItemIdentifier("checkForUpdatesSubtitle")
         apply(updatePresentation, to: updateButton, subtitle: updateRow.detailLabel)
         self.updateSubtitleLabel = updateRow.detailLabel
@@ -804,7 +897,7 @@ final class DashboardGeneralPage {
         )
         let appUpdate = SettingsSectionView(
             title: "",
-            contentViews: [updateRow, updateChannelRow]
+            contentViews: appUpdateRows
         )
         return DashboardSettingsComponents.makeSettingsPageContent(groups: [
             [system], [refreshing, refreshingClaude, refreshNow],
@@ -1246,6 +1339,14 @@ final class DashboardGeneralPage {
         apply(presentation, to: updateNotesButton)
         updateBadge?.isHidden = !presentation.showsUpdateBadge
         (updateButton.superview as? DashboardAdaptiveControlsStackView)?.invalidateLayoutAfterContentChange()
+    }
+
+    func refreshAutomaticUpdatePreference(_ preferences: AppPreferences) {
+        let channel = preferences.updateChannel
+        let downloads = preferences.automaticDownloadEnabled(for: channel)
+        automaticDownloadSwitch?.state = downloads ? .on : .off
+        automaticInstallSwitch?.state = preferences.automaticInstallEnabled(for: channel) ? .on : .off
+        automaticInstallRow?.setDependencyEnabled(downloads)
     }
 
     func refreshConnectionSummaries(_ summaries: CCSwitchConnectionSummaries) {

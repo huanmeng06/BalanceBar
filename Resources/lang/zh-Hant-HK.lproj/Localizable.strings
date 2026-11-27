@@ -959,3 +959,21 @@
 "dashboard.general.and.refresh.pages.connection_mode_requires_cc_switch" = "需要 CC Switch";
 "dashboard.general.and.refresh.pages.download_cc_switch" = "下載 CC Switch";
 "status.item.controller.download_cc_switch" = "下載 CC Switch";
+
+"dashboard.general.and.refresh.pages.automatic_update_download" = "自動下載新版本";
+"dashboard.general.and.refresh.pages.automatic_update_download_description" = "有新版本時在背景下載並驗證";
+"dashboard.general.and.refresh.pages.automatic_update_install" = "自動安裝新版本";
+"dashboard.general.and.refresh.pages.automatic_update_install_description" = "在你結束應用程式或離開電腦時安裝";
+"dashboard.general.and.refresh.pages.automatic_update_download_failed" = "背景下載失敗，請重新檢查更新。";
+"dashboard.general.and.refresh.pages.automatic_update_verification_failed" = "簽署或檔案驗證失敗，未有安裝更新。請重新檢查。";
+
+"dashboard.general.and.refresh.pages.automatic_update_downloading" = "正在下載更新…";
+
+"dashboard.general.and.refresh.pages.automatic_update_ready" = "%1$@ 已下載，等待安裝";
+"dashboard.general.and.refresh.pages.automatic_idle_updated" = "已在你離開時更新至 %1$@";
+
+"dashboard.general.and.refresh.pages.automatic_update_install_failed" = "安裝失敗。請重試或手動安裝。";
+
+"dashboard.general.and.refresh.pages.automatic_update_manual" = "此版本需要手動安裝。";
+
+"dashboard.general.and.refresh.pages.install_now" = "立即安裝";

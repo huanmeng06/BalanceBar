@@ -394,18 +394,27 @@ private let legacyBundleIdentifier = "local.balancebar"
 
 private enum DevelopmentReleaseFixture {
     static let environmentKey = "BALANCEBAR_RELEASE_FIXTURE_PATH"
+    static let assetDirectoryEnvironmentKey = "BALANCEBAR_UPDATE_ASSET_DIRECTORY"
 
     static func releaseFetcher() -> GitHubReleaseFetching {
         let bundleIdentifier = Bundle.main.bundleIdentifier ?? ""
-        let isDevelopmentBundle = bundleIdentifier == devBundleIdentifier
-            || bundleIdentifier.hasPrefix(devBundleIdentifier + ".")
-        guard isDevelopmentBundle,
+        guard UpdateSignatureVerifier.isDevelopmentBundleIdentifier(bundleIdentifier),
               let rawPath = ProcessInfo.processInfo.environment[environmentKey],
               !rawPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         else {
             return GitHubReleaseClient()
         }
         return LocalGitHubReleaseFixture(fileURL: URL(fileURLWithPath: rawPath))
+    }
+
+    static func assetDownloader() -> UpdateAssetDownloading {
+        let bundleIdentifier = Bundle.main.bundleIdentifier ?? ""
+        guard UpdateSignatureVerifier.isDevelopmentBundleIdentifier(bundleIdentifier),
+              let path = ProcessInfo.processInfo.environment[assetDirectoryEnvironmentKey],
+              !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return URLSessionUpdateAssetDownloader()
+        }
+        return DevelopmentUpdateAssetFixture(directoryURL: URL(fileURLWithPath: path, isDirectory: true))
     }
 }
 
@@ -416,7 +425,7 @@ struct PreferencesMigrationPlan {
         AppPreferences.quotaProgressUsedEnabledColorsKey, AppPreferences.quotaProgressUsedRedUpperBoundKey,
         AppPreferences.quotaProgressUsedOrangeUpperBoundKey, AppPreferences.quotaProgressUsedYellowUpperBoundKey
     ]
-    static let keys = [AppPreferences.displayTimeZoneKey, AppPreferences.lastManualDisplayTimeZoneKey, AppPreferences.updateChannelKey, AppPreferences.silentLaunchKey, "appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "officialUsageRefreshInterval", AppPreferences.claudeCalibrationIntervalKey, AppPreferences.claudeOAuthValidityKey, AppPreferences.claudeModValidityKey, "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", AppPreferences.balanceDisplayThresholdKey, AppPreferences.showQuotaProgressBarKey, AppPreferences.showQuotaPaceIndicatorKey, AppPreferences.menuLunaReserveDisplayModeKey, AppPreferences.menuLunaReserveHideExhaustedQuotaKey, AppPreferences.menuBankedResetDisplayModeKey, AppPreferences.showBankedResetKey, AppPreferences.showNonOfficialBankedResetKey, AppPreferences.showNonOfficialResetProbabilityKey, AppPreferences.showEmptyBankedResetKey, AppPreferences.showResetProbabilityKey, "sortProvidersAlphabetically", "menuBarHorizontalPadding", AppPreferences.menuBarIconDisplayModeKey, AppPreferences.menuBarIconDisplayDelayKey, AppPreferences.menuBarRightClickActionKey, AppPreferences.menuBarReverseMouseButtonsKey, AppPreferences.menuBarAnimationModeKey, AppPreferences.menuBarAnimationFrameRateKey, AppPreferences.menuBarQuotaWindowPreferenceKey, AppPreferences.menuBarQuotaValueModeKey, AppPreferences.menuBarQuotaResetDisplayModeKey, AppPreferences.menuBarAutoSwitchLunaReserveKey, AppPreferences.menuBarLunaReserveResetTimeModeKey, AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey, AppPreferences.menuBarFontSizePresetKey, AppPreferences.menuBarFontSizeKey, AppPreferences.menuBarPrimaryFontSizeKey, AppPreferences.menuBarSecondaryFontSizeKey, AppPreferences.menuBarIconSizePresetKey, AppPreferences.notificationSettingsKey]
+    static let keys = [AppPreferences.displayTimeZoneKey, AppPreferences.lastManualDisplayTimeZoneKey, AppPreferences.updateChannelKey, AppPreferences.automaticDownloadKey, AppPreferences.automaticInstallKey, AppPreferences.silentLaunchKey, "appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "officialUsageRefreshInterval", AppPreferences.claudeCalibrationIntervalKey, AppPreferences.claudeOAuthValidityKey, AppPreferences.claudeModValidityKey, "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", AppPreferences.balanceDisplayThresholdKey, AppPreferences.showQuotaProgressBarKey, AppPreferences.showQuotaPaceIndicatorKey, AppPreferences.menuLunaReserveDisplayModeKey, AppPreferences.menuLunaReserveHideExhaustedQuotaKey, AppPreferences.menuBankedResetDisplayModeKey, AppPreferences.showBankedResetKey, AppPreferences.showNonOfficialBankedResetKey, AppPreferences.showNonOfficialResetProbabilityKey, AppPreferences.showEmptyBankedResetKey, AppPreferences.showResetProbabilityKey, "sortProvidersAlphabetically", "menuBarHorizontalPadding", AppPreferences.menuBarIconDisplayModeKey, AppPreferences.menuBarIconDisplayDelayKey, AppPreferences.menuBarRightClickActionKey, AppPreferences.menuBarReverseMouseButtonsKey, AppPreferences.menuBarAnimationModeKey, AppPreferences.menuBarAnimationFrameRateKey, AppPreferences.menuBarQuotaWindowPreferenceKey, AppPreferences.menuBarQuotaValueModeKey, AppPreferences.menuBarQuotaResetDisplayModeKey, AppPreferences.menuBarAutoSwitchLunaReserveKey, AppPreferences.menuBarLunaReserveResetTimeModeKey, AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey, AppPreferences.menuBarFontSizePresetKey, AppPreferences.menuBarFontSizeKey, AppPreferences.menuBarPrimaryFontSizeKey, AppPreferences.menuBarSecondaryFontSizeKey, AppPreferences.menuBarIconSizePresetKey, AppPreferences.notificationSettingsKey]
 
     static func selectedValues(target: [String: Any], production: [String: Any], local: [String: Any]) -> [String: Any] {
         var selected: [String: Any] = [:]
@@ -460,7 +469,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             statusItemVisibility: { [weak self] in
                 self?.statusItemController?.statusItemVisibility ?? .unknown
             },
-            updateState: { [weak self] in self?.updateService.state ?? .failed(.invalidCurrentVersion) },
+            updateState: { [weak self] in self?.presentedUpdateState ?? .failed(.invalidCurrentVersion) },
             statusLinks: { [weak self] in self?.statusLinks ?? [] },
             defaultStatusLinks: { [weak self] in self?.defaultStatusLinks ?? [] },
             setStatusLinks: { [weak self] links in self?.statusLinks = links },
@@ -579,8 +588,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 guard let self else { return }
                 self.modSyncCoordinator.presentPanel(from: anchor)
             },
-            onCheckForUpdates: { [weak self] in self?.updateService.checkForUpdates() },
-            onInstallUpdate: { [weak self] in self?.updateService.installAvailableUpdate() },
+            onCheckForUpdates: { [weak self] in self?.retryUpdate() },
+            onInstallUpdate: { [weak self] in self?.installUpdate() },
             onOpenUpdateNotes: { [weak self] in self?.showUpdateNotes() },
             onClamp: { [weak self] in self?.clampDashboardScrollViewBounds() },
             onStatusLinksChanged: { [weak self] in
@@ -725,8 +734,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         openChatGPT: { [weak self] in self?.openChatGPTApplication() }
     )
     private let updateService: UpdateService
+    private var isNormalMenuQuit = false
+    private var isIdleUpdateQuit = false
+    private var idleNoticeForOpenDashboard: AppSemanticVersion?
+    private var previousUpdateFailure: AutomaticUpdateCommand.Failure?
+    private var presentedUpdateState: UpdateCheckState {
+        if let previousUpdateFailure {
+            if case .installing = updateService.state { return updateService.state }
+            if previousUpdateFailure.requiresManualInstallation,
+               case .automaticReady(let current, let latest) = updateService.state,
+               latest.description == previousUpdateFailure.version {
+                return .automaticNeedsManual(current: current, latest: latest)
+            }
+            return .failed(.installationFailed)
+        }
+        if case .automaticReady(let current, let latest) = updateService.state {
+            if let request = updateService.automaticUpdateInstallationRequest,
+               AutomaticUpdateCommand.idleAttemptFailed(for: request) {
+                return .automaticInstallationFailed(current: current, latest: latest)
+            }
+            if !preferences.permitsAutomaticInstallation(for: preferences.updateChannel) {
+                return .automaticDownloadReady(current: current, latest: latest)
+            }
+        }
+        if let version = idleNoticeForOpenDashboard {
+            switch updateService.state {
+            case .idle, .checking, .latest, .failed:
+                return .automaticIdleUpdated(current: version)
+            default:
+                break
+            }
+        }
+        return updateService.state
+    }
+    private lazy var automaticUpdateCoordinator = AutomaticUpdateCoordinator(
+        preferences: preferences,
+        updateService: updateService
+    )
     private lazy var updateNotesWindowController = UpdateNotesWindowController(
-        onInstall: { [weak self] in self?.updateService.installAvailableUpdate() },
+        onInstall: { [weak self] in self?.installUpdate() },
         onIgnore: { [weak self] in self?.updateService.ignoreAvailableUpdate() }
     )
     private var showMenuBarReset: Bool { get { preferences.showMenuBarReset } set { preferences.showMenuBarReset = newValue } }
@@ -863,6 +909,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         self.launchWithChatGPTController = LaunchWithChatGPTController(service: launchWithChatGPTService)
         self.updateService = updateService ?? UpdateService(
             releaseFetcher: DevelopmentReleaseFixture.releaseFetcher(),
+            downloader: DevelopmentReleaseFixture.assetDownloader(),
             updateChannel: preferences.updateChannel,
             ignoredVersionStore: UserDefaultsUpdateVersionIgnoreStore()
         )
@@ -921,10 +968,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         }
         reloadCurrentProviderNameCache()
         refreshCCSwitchConnectionSummaries()
-        self.updateService.onStateChange = { [weak self] _ in
+        self.updateService.onStateChange = { [weak self] state in
             guard let self else { return }
             let applyUpdateState = { [weak self] in
                 guard let self else { return }
+                self.automaticUpdateCoordinator.updateCheckChanged(state)
                 self.dashboardComposition.refreshUpdateState()
                 self.refreshStatusItemMenuInput()
             }
@@ -1089,7 +1137,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 openCCSwitch: { [weak self] in
                     self?.openCCSwitch()
                 },
-                quit: { NSApp.terminate(nil) },
+                quit: { [weak self] in self?.quit() },
                 switchProvider: { [weak self] providerID in
                     self?.switchProvider(providerID)
                 },
@@ -1236,8 +1284,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     }
 
     private var showsAvailableUpdateBadge: Bool {
-        switch updateService.state {
-        case .available, .revalidating, .recheckFailed:
+        Self.showsAvailableUpdateBadge(for: updateService.state)
+    }
+
+    static func showsAvailableUpdateBadge(for state: UpdateCheckState) -> Bool {
+        switch state {
+        case .available, .automaticDownloading, .automaticReady, .automaticInstallationFailed,
+             .automaticDownloadReady, .automaticDownloadFailed,
+             .automaticNeedsManual, .revalidating, .recheckFailed,
+             .failed(.installationFailed):
             return true
         default:
             return false
@@ -1421,7 +1476,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         let harnessPresented = dashboardAccessoryHarness.presentIfRequested()
         let pendingRestore = DashboardRestoreStore.peek()
         let initialPresentation = InitialLaunchPresentation.resolve(
-            silentLaunch: preferences.silentLaunch,
+            silentLaunch: preferences.silentLaunch || AutomaticUpdateCommand.isBackgroundRelaunch,
             pendingDashboardRestore: pendingRestore != nil
         )
         let shouldShowDashboard = initialPresentation == .dashboard && !harnessPresented
@@ -1443,6 +1498,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             menuInput: makeStatusItemMenuInput(),
             settings: makeStatusItemSettings()
         )
+        AutomaticUpdateCommand.confirmSuccessfulLaunch()
+        automaticUpdateCoordinator.start { [weak self] in self?.quitForIdleUpdateIfNeeded() }
+        previousUpdateFailure = AutomaticUpdateCommand.takePreviousInstallationFailure()
+        dashboardComposition.refreshUpdateState()
         checkForBackgroundUpdate()
         configureUpdateCheckTimer()
         updateStatusItemActivity()
@@ -1520,6 +1579,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         displayTimeZoneObservers.removeAll()
         SwitchLog.write("session terminating", category: "lifecycle")
         timer?.invalidate()
+        automaticUpdateCoordinator.stop()
         updateCheckTimer?.invalidate()
         updateCheckTimer = nil
         activityCoordinator.stop()
@@ -1533,6 +1593,62 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         ccSwitchLifecycleObservers.forEach { NSWorkspace.shared.notificationCenter.removeObserver($0) }
         ccSwitchLifecycleObservers.removeAll()
         providerRefreshCoordinator.stopAggregation()
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if isIdleUpdateQuit {
+            isIdleUpdateQuit = false
+            guard let request = automaticUpdateCoordinator.idleRequest(interfaceInUse: isAutomaticUpdateInterfaceInUse) else {
+                return .terminateCancel
+            }
+            do {
+                try AutomaticUpdateCommand.launch(request, relaunch: true)
+                return .terminateNow
+            } catch {
+                AutomaticUpdateCommand.recordIdleFailure(for: request)
+                dashboardComposition.refreshUpdateState()
+                return .terminateCancel
+            }
+        }
+        guard isNormalMenuQuit,
+              let request = automaticUpdateCoordinator.quitRequest(),
+              previousUpdateFailure?.version != request.expectedVersion else {
+            return .terminateNow
+        }
+        do {
+            try AutomaticUpdateCommand.launch(request)
+        } catch {
+            AutomaticUpdateCommand.recordFailure(applicationURL: request.applicationURL, version: request.expectedVersion)
+        }
+        return .terminateNow
+    }
+
+    private var isAutomaticUpdateInterfaceInUse: Bool {
+        dashboardComposition.window?.isVisible == true || statusItemController?.isMenuTracking == true
+            || NSApp.modalWindow != nil || Self.hasVisibleUpdateInteraction(in: NSApp.windows)
+    }
+
+    static func hasVisibleUpdateInteraction(in windows: [NSWindow]) -> Bool {
+        windows.contains { $0.attachedSheet != nil || ($0.isVisible && ($0.canBecomeKey || $0 is NSPanel)) }
+    }
+
+    private func retryUpdate() {
+        previousUpdateFailure = nil
+        updateService.checkForUpdates()
+        dashboardComposition.refreshUpdateState()
+    }
+
+    private func installUpdate() {
+        previousUpdateFailure = nil
+        updateService.installAvailableUpdate()
+        dashboardComposition.refreshUpdateState()
+    }
+
+    private func quitForIdleUpdateIfNeeded() {
+        guard let request = automaticUpdateCoordinator.idleRequest(interfaceInUse: isAutomaticUpdateInterfaceInUse),
+              previousUpdateFailure?.version != request.expectedVersion else { return }
+        isIdleUpdateQuit = true
+        NSApp.terminate(nil)
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
@@ -1596,6 +1712,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     }
 
     @objc private func quit() {
+        isNormalMenuQuit = true
         NSApp.terminate(nil)
     }
 
@@ -1654,6 +1771,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
 
     private func configureApplicationMenu() {
         let configuration = ApplicationMenuConfiguration.make()
+        if let quitItem = configuration.mainMenu.items.first?.submenu?.items.first(where: {
+            $0.action == #selector(NSApplication.terminate(_:))
+        }) {
+            quitItem.target = self
+            quitItem.action = #selector(quit)
+        }
         NSApp.windowsMenu = configuration.windowMenu
         NSApp.mainMenu = configuration.mainMenu
     }
@@ -1746,6 +1869,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         case AppPreferences.claudeEgressGuardEnabledKey:
             preferences.claudeEgressGuardEnabled = enabled
             claudeEgressGuardSettingsChanged()
+        case AppPreferences.automaticDownloadKey:
+            automaticUpdateCoordinator.setDownloadEnabled(enabled)
+            dashboardComposition.refreshUpdateState()
+        case AppPreferences.automaticInstallKey:
+            guard preferences.automaticDownloadEnabled(for: preferences.updateChannel) else { return }
+            preferences.setAutomaticInstallEnabled(enabled, for: preferences.updateChannel)
+            dashboardComposition.refreshUpdateState()
         case "showMenuBarIcon":
             if !enabled && !showMenuBarAmount {
                 dashboardComposition.restoreRequiredMenuBarToggle(identifier: identifier)
@@ -2232,6 +2362,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     }
 
     private func showDashboard(restore: DashboardRestoreToken? = nil) {
+        if dashboardComposition.window?.isVisible != true {
+            idleNoticeForOpenDashboard = AutomaticUpdateCommand.idleUpdateNotice(markRead: true)
+                .flatMap(AppSemanticVersion.init)
+        }
         dashboardComposition.open(
             initialSection: restore?.section ?? .general,
             scrollOffsetY: restore.map { CGFloat($0.scrollOffsetY) }
@@ -2246,6 +2380,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             }
         }
         updateDashboard(for: snapshot, refreshDate: refreshDate(for: snapshot))
+        dashboardComposition.refreshUpdateState()
     }
 
     private func rebuildDashboardForLanguageChange() {
@@ -3003,6 +3138,11 @@ final class ApplicationLifecycleState {
 @main
 enum BalanceBarMain {
     static func main() {
+        var commandArguments = Array(CommandLine.arguments.dropFirst())
+        if commandArguments.first == "--apply-automatic-update" {
+            commandArguments.removeFirst()
+            Darwin.exit(AutomaticUpdateCommand.run(arguments: commandArguments))
+        }
         if AutomatedTestHost.isRunning {
             AutomatedTestHost.isolateUserDefaults()
             // XCTest still needs the default run loop to attach. Switch to
@@ -3022,9 +3162,10 @@ enum BalanceBarMain {
             NSLog("BalanceBar: refusing duplicate instance; pid=%d", currentPID)
             return
         }
+        guard AutomaticUpdateCommand.prepareForLaunch() else { return }
         let app = NSApplication.shared
         if InitialLaunchPresentation.resolve(
-            silentLaunch: AppPreferences().silentLaunch,
+            silentLaunch: AppPreferences().silentLaunch || AutomaticUpdateCommand.isBackgroundRelaunch,
             pendingDashboardRestore: DashboardRestoreStore.peek() != nil
         ) == .background {
             _ = app.setActivationPolicy(.accessory)

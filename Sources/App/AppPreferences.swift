@@ -421,6 +421,8 @@ final class AppPreferences {
     static let showQuotaPaceIndicatorDefault = true
     static let updateChannelKey = "updateChannel"
     static let defaultUpdateChannel: UpdateChannel = .stable
+    static let automaticDownloadKey = "automaticUpdateEnabledByChannel"
+    static let automaticInstallKey = "automaticInstallEnabledByChannel"
     static let silentLaunchKey = "silentLaunch"
     static let silentLaunchDefault = false
     static let balanceDisplayThresholdKey = "balanceDisplayThreshold"
@@ -809,6 +811,29 @@ final class AppPreferences {
             return channel
         }
         set { defaults.set(newValue.rawValue, forKey: Self.updateChannelKey) }
+    }
+    func automaticDownloadEnabled(for channel: UpdateChannel) -> Bool {
+        automaticUpdatePreference(Self.automaticDownloadKey, channel: channel)
+    }
+    func automaticInstallEnabled(for channel: UpdateChannel) -> Bool {
+        automaticUpdatePreference(Self.automaticInstallKey, channel: channel)
+    }
+    func permitsAutomaticInstallation(for channel: UpdateChannel) -> Bool {
+        automaticDownloadEnabled(for: channel) && automaticInstallEnabled(for: channel)
+    }
+    func setAutomaticDownloadEnabled(_ enabled: Bool, for channel: UpdateChannel) {
+        setAutomaticUpdatePreference(Self.automaticDownloadKey, enabled: enabled, channel: channel)
+    }
+    func setAutomaticInstallEnabled(_ enabled: Bool, for channel: UpdateChannel) {
+        setAutomaticUpdatePreference(Self.automaticInstallKey, enabled: enabled, channel: channel)
+    }
+    private func automaticUpdatePreference(_ key: String, channel: UpdateChannel) -> Bool {
+        (defaults.dictionary(forKey: key)?[channel.rawValue] as? Bool) ?? false
+    }
+    private func setAutomaticUpdatePreference(_ key: String, enabled: Bool, channel: UpdateChannel) {
+        var values = defaults.dictionary(forKey: key) ?? [:]
+        values[channel.rawValue] = enabled
+        defaults.set(values, forKey: key)
     }
     var silentLaunch: Bool {
         get { bool(Self.silentLaunchKey, default: Self.silentLaunchDefault) }

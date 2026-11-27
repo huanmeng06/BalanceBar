@@ -959,3 +959,21 @@
 "dashboard.general.and.refresh.pages.connection_mode_requires_cc_switch" = "CC Switch が必要";
 "dashboard.general.and.refresh.pages.download_cc_switch" = "CC Switch をダウンロード";
 "status.item.controller.download_cc_switch" = "CC Switch をダウンロード";
+
+"dashboard.general.and.refresh.pages.automatic_update_download" = "新しいバージョンを自動でダウンロード";
+"dashboard.general.and.refresh.pages.automatic_update_download_description" = "新しいバージョンをバックグラウンドでダウンロードして検証します。";
+"dashboard.general.and.refresh.pages.automatic_update_install" = "新しいバージョンを自動でインストール";
+"dashboard.general.and.refresh.pages.automatic_update_install_description" = "BalanceBar の終了時または席を離れている間にインストールします。";
+"dashboard.general.and.refresh.pages.automatic_update_download_failed" = "バックグラウンドでのダウンロードに失敗しました。アップデートを再確認してください。";
+"dashboard.general.and.refresh.pages.automatic_update_verification_failed" = "署名またはファイルの検証に失敗しました。アップデートはインストールされていません。再確認してください。";
+
+"dashboard.general.and.refresh.pages.automatic_update_downloading" = "アップデートをダウンロード中…";
+
+"dashboard.general.and.refresh.pages.automatic_update_ready" = "%1$@ をダウンロード済み。インストールできます";
+"dashboard.general.and.refresh.pages.automatic_idle_updated" = "席を離れている間に %1$@ にアップデートしました。";
+
+"dashboard.general.and.refresh.pages.automatic_update_install_failed" = "アップデートをインストールできませんでした。再試行するか、手動でインストールしてください。";
+
+"dashboard.general.and.refresh.pages.automatic_update_manual" = "このバージョンは手動インストールが必要です。";
+
+"dashboard.general.and.refresh.pages.install_now" = "今すぐインストール";
