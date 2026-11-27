@@ -962,13 +962,12 @@
 "dashboard.general.and.refresh.pages.automatic_update_download_description" = "有新版本时在后台下载并验证";
 "dashboard.general.and.refresh.pages.automatic_update_install" = "自动安装新版本";
 "dashboard.general.and.refresh.pages.automatic_update_install_description" = "在你退出应用或离开电脑时安装";
-"dashboard.general.and.refresh.pages.automatic_update_download_ready" = "已下载 %1$@，可以安装";
 "dashboard.general.and.refresh.pages.automatic_update_download_failed" = "后台下载失败，请重新检查更新。";
 "dashboard.general.and.refresh.pages.automatic_update_verification_failed" = "签名或文件验证失败，未安装此更新。请重新检查。";
 
 "dashboard.general.and.refresh.pages.automatic_update_downloading" = "正在下载更新…";
 
-"dashboard.general.and.refresh.pages.automatic_update_ready" = "已下载，将在你退出 BalanceBar 或离开电脑时安装";
+"dashboard.general.and.refresh.pages.automatic_update_ready" = "%1$@ 已下载，等待安装";
 "dashboard.general.and.refresh.pages.automatic_idle_updated" = "已在你离开时更新到 %1$@";
 
 "dashboard.general.and.refresh.pages.automatic_update_install_failed" = "安装失败。请重试或手动安装。";

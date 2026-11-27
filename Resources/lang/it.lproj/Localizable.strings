@@ -962,13 +962,12 @@
 "dashboard.general.and.refresh.pages.automatic_update_download_description" = "Scarica e verifica le nuove versioni in background.";
 "dashboard.general.and.refresh.pages.automatic_update_install" = "Installa automaticamente le nuove versioni";
 "dashboard.general.and.refresh.pages.automatic_update_install_description" = "Installale quando esci da BalanceBar o ti allontani dal Mac.";
-"dashboard.general.and.refresh.pages.automatic_update_download_ready" = "La versione %1$@ è stata scaricata ed è pronta per l’installazione.";
 "dashboard.general.and.refresh.pages.automatic_update_download_failed" = "Download in background non riuscito. Ricontrolla gli aggiornamenti.";
 "dashboard.general.and.refresh.pages.automatic_update_verification_failed" = "Verifica della firma o del file non riuscita. L’aggiornamento non è stato installato. Ricontrolla.";
 
 "dashboard.general.and.refresh.pages.automatic_update_downloading" = "Download dell’aggiornamento…";
 
-"dashboard.general.and.refresh.pages.automatic_update_ready" = "Scaricato. Verrà installato quando esci da BalanceBar o ti allontani dal Mac.";
+"dashboard.general.and.refresh.pages.automatic_update_ready" = "%1$@ scaricata, pronta per l’installazione";
 "dashboard.general.and.refresh.pages.automatic_idle_updated" = "Aggiornato alla versione %1$@ mentre eri assente.";
 
 "dashboard.general.and.refresh.pages.automatic_update_install_failed" = "Impossibile installare l’aggiornamento. Riprova o installalo manualmente.";

@@ -116,18 +116,9 @@ struct DashboardUpdatePresentation: Equatable {
                 showsReleaseNotesButton: false,
                 showsUpdateBadge: false
             )
-        case .automaticDownloadReady(_, let latest):
+        case .automaticDownloadReady(_, let latest), .automaticReady(_, let latest):
             return DashboardUpdatePresentation(
-                subtitle: tr(.keyDashboardGeneralAndRefreshPagesAutomaticDownloadReady, arguments: [latest.description], language: language),
-                buttonTitle: tr(.keyDashboardGeneralAndRefreshPagesInstallNow, language: language),
-                buttonEnabled: true,
-                performsInstall: true,
-                showsReleaseNotesButton: true,
-                showsUpdateBadge: true
-            )
-        case .automaticReady:
-            return DashboardUpdatePresentation(
-                subtitle: tr(.keyDashboardGeneralAndRefreshPagesAutomaticUpdateReady, language: language),
+                subtitle: tr(.keyDashboardGeneralAndRefreshPagesAutomaticUpdateReady, arguments: [latest.description], language: language),
                 buttonTitle: tr(.keyDashboardGeneralAndRefreshPagesInstallNow, language: language),
                 buttonEnabled: true,
                 performsInstall: true,

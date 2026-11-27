@@ -201,7 +201,6 @@
     case keyDashboardGeneralAndRefreshPagesAutomaticDownloadDescription = "dashboard.general.and.refresh.pages.automatic_update_download_description"
     case keyDashboardGeneralAndRefreshPagesAutomaticInstall = "dashboard.general.and.refresh.pages.automatic_update_install"
     case keyDashboardGeneralAndRefreshPagesAutomaticInstallDescription = "dashboard.general.and.refresh.pages.automatic_update_install_description"
-    case keyDashboardGeneralAndRefreshPagesAutomaticDownloadReady = "dashboard.general.and.refresh.pages.automatic_update_download_ready"
     case keyDashboardGeneralAndRefreshPagesAutomaticUpdateDownloading = "dashboard.general.and.refresh.pages.automatic_update_downloading"
     case keyDashboardGeneralAndRefreshPagesAutomaticUpdateReady = "dashboard.general.and.refresh.pages.automatic_update_ready"
     case keyDashboardGeneralAndRefreshPagesAutomaticIdleUpdated = "dashboard.general.and.refresh.pages.automatic_idle_updated"

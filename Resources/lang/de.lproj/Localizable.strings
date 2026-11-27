@@ -962,13 +962,12 @@
 "dashboard.general.and.refresh.pages.automatic_update_download_description" = "Neue Versionen im Hintergrund laden und überprüfen.";
 "dashboard.general.and.refresh.pages.automatic_update_install" = "Neue Versionen automatisch installieren";
 "dashboard.general.and.refresh.pages.automatic_update_install_description" = "Beim Beenden von BalanceBar oder bei Abwesenheit installieren.";
-"dashboard.general.and.refresh.pages.automatic_update_download_ready" = "Version %1$@ wurde geladen und kann installiert werden.";
 "dashboard.general.and.refresh.pages.automatic_update_download_failed" = "Der Hintergrunddownload ist fehlgeschlagen. Prüfe erneut auf Updates.";
 "dashboard.general.and.refresh.pages.automatic_update_verification_failed" = "Signatur- oder Dateiüberprüfung fehlgeschlagen. Das Update wurde nicht installiert. Prüfe erneut auf Updates.";
 
 "dashboard.general.and.refresh.pages.automatic_update_downloading" = "Update wird geladen …";
 
-"dashboard.general.and.refresh.pages.automatic_update_ready" = "Heruntergeladen. Die Installation erfolgt beim Beenden von BalanceBar oder bei Abwesenheit.";
+"dashboard.general.and.refresh.pages.automatic_update_ready" = "%1$@ heruntergeladen und bereit zur Installation";
 "dashboard.general.and.refresh.pages.automatic_idle_updated" = "In deiner Abwesenheit auf %1$@ aktualisiert.";
 
 "dashboard.general.and.refresh.pages.automatic_update_install_failed" = "Das Update konnte nicht installiert werden. Versuche es erneut oder installiere es manuell.";

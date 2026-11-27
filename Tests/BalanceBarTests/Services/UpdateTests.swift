@@ -36,18 +36,24 @@ final class UpdateTests: XCTestCase {
         XCTAssertFalse(presentation.showsUpdateBadge)
     }
 
-    func testDownloadOnlyPresentationOffersImmediateInstallation() throws {
+    func testDownloadedUpdateShowsPendingVersionWithEitherInstallPreference() throws {
         LocalizationRuntime.configure(bundle: Bundle(for: Self.self))
         defer { LocalizationRuntime.configure() }
-        let current = try XCTUnwrap(AppSemanticVersion("90.0.0"))
-        let latest = try XCTUnwrap(AppSemanticVersion("90.1.0"))
-        let presentation = DashboardUpdatePresentation.make(
-            for: .automaticDownloadReady(current: current, latest: latest), language: .english
-        )
-        XCTAssertEqual(presentation.subtitle, "Version 90.1.0 is downloaded and ready to install.")
-        XCTAssertEqual(presentation.buttonTitle, "Install Now")
-        XCTAssertTrue(presentation.performsInstall)
-        XCTAssertTrue(presentation.showsUpdateBadge)
+        let current = try XCTUnwrap(AppSemanticVersion("1.8.8"))
+        let latest = try XCTUnwrap(AppSemanticVersion("1.8.9"))
+        let states: [UpdateCheckState] = [
+            .automaticDownloadReady(current: current, latest: latest),
+            .automaticReady(current: current, latest: latest)
+        ]
+        for state in states {
+            let chinese = DashboardUpdatePresentation.make(for: state, language: .simplifiedChinese)
+            XCTAssertEqual(chinese.subtitle, "1.8.9 已下载，等待安装")
+            let english = DashboardUpdatePresentation.make(for: state, language: .english)
+            XCTAssertEqual(english.subtitle, "1.8.9 downloaded, ready to install")
+            XCTAssertEqual(english.buttonTitle, "Install Now")
+            XCTAssertTrue(english.performsInstall)
+            XCTAssertTrue(english.showsUpdateBadge)
+        }
     }
 
     func testUpdateSignatureVerifierAcceptsContractVectorAndRejectsModifiedManifest() throws {

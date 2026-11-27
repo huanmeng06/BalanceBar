@@ -34,7 +34,7 @@ previous app and suppresses further idle attempts for that update version.
 
 ### 退出安装
 
-1. 运行 `./scripts/test-automatic-update.sh`。在 Dashboard 的 **通用** 页依次打开 **自动下载新版本** 和 **自动安装新版本**，等 **检查更新** 显示「已下载，将在你退出 BalanceBar 或离开电脑时安装」。
+1. 运行 `./scripts/test-automatic-update.sh`。在 Dashboard 的 **通用** 页依次打开 **自动下载新版本** 和 **自动安装新版本**，等 **检查更新** 显示「90.1.0 已下载，等待安装」。
 2. 点红色按钮关闭 Dashboard，再从测试 App 的菜单栏打开它。确认仍在等待安装。
 3. 在菜单栏选择 **退出 BalanceBar**。等安装完成，确认 App 保持退出。切回 Finder，双击同一个测试包，在 **关于** 页确认版本为 `90.1.0`。
 
@@ -46,7 +46,7 @@ previous app and suppresses further idle attempts for that update version.
 
 ### 只下载，手动安装
 
-1. 运行 `./scripts/test-automatic-update.sh idle`。只打开 **自动下载新版本**，等 **检查更新** 显示「已下载 90.1.0，可以安装」。
+1. 运行 `./scripts/test-automatic-update.sh idle`。只打开 **自动下载新版本**，等 **检查更新** 显示「90.1.0 已下载，等待安装」。
 2. 关闭 Dashboard 和菜单，保持电脑唤醒且 35 秒不操作。确认旧版仍在运行。选 **退出 BalanceBar**，再从 Finder 打开测试 App，确认 **关于** 页仍为 `90.0.0`。
 3. 返回 **通用**，等缓存恢复后点 **立即安装**。确认 App 重启并运行 `90.1.0`。
 4. 用一个新测试实例验证开关联动。打开两个开关，再关闭下载，确认安装置灰但仍显示打开。重新打开下载，安装恢复可用。切到 Beta，确认两个开关都是关闭状态。
