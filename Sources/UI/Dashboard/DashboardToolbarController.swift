@@ -25,16 +25,21 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         isSearchEditing || !draftQuery.isEmpty || !searchQuery.isEmpty
     }
 
+    private static let searchTopInset: CGFloat = 9.5
+    private static let searchToListSpacing: CGFloat = 10
+
     let searchField = NSSearchField()
     private(set) lazy var sidebarSearchView: NSView = {
         let container = NSView()
         searchField.translatesAutoresizingMaskIntoConstraints = false
+        // The native accessory and the legacy sidebar both place this header
+        // below the title bar. Inset within that header on both paths.
         container.addSubview(searchField)
         NSLayoutConstraint.activate([
             searchField.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 10),
             searchField.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -10),
-            searchField.topAnchor.constraint(equalTo: container.topAnchor),
-            searchField.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -8)
+            searchField.topAnchor.constraint(equalTo: container.topAnchor, constant: Self.searchTopInset),
+            searchField.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -Self.searchToListSpacing)
         ])
         return container
     }()
@@ -71,6 +76,7 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
     override init() {
         super.init()
         updateSearchFieldLabels()
+        searchField.controlSize = .large
         searchField.sendsSearchStringImmediately = false
         searchField.sendsWholeSearchString = true
         searchField.target = self

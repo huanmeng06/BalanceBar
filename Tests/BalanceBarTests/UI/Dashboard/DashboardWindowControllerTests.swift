@@ -1649,7 +1649,12 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         let viewport = scrollView.convert(scrollView.bounds, to: nil)
         let searchHeader = controller.pageSession.toolbarController.sidebarSearchView
         let headerFrame = searchHeader.convert(searchHeader.bounds, to: nil)
-        XCTAssertGreaterThan(headerFrame.height, 8, file: file, line: line)
+        let searchField = controller.pageSession.toolbarController.searchField
+        let fieldFrame = searchField.convert(searchField.bounds, to: nil)
+        XCTAssertEqual(headerFrame.maxY - fieldFrame.maxY, 9.5, accuracy: 0.5, file: file, line: line)
+        XCTAssertEqual(searchField.controlSize, .large, file: file, line: line)
+        XCTAssertEqual(fieldFrame.height, searchField.intrinsicContentSize.height, accuracy: 0.5, file: file, line: line)
+        XCTAssertEqual(fieldFrame.minY - headerFrame.minY, 10, accuracy: 0.5, file: file, line: line)
         XCTAssertEqual(headerFrame.width, sidebar.bounds.width, accuracy: 1, file: file, line: line)
 
         if policy.automaticallyAdjustsContentInsets {
@@ -1670,6 +1675,7 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         XCTAssertGreaterThan(outline.numberOfRows, 0, file: file, line: line)
         let firstRow = outline.convert(outline.rect(ofRow: 0), to: nil)
         XCTAssertGreaterThan(firstRow.height, 0, file: file, line: line)
+        XCTAssertEqual(fieldFrame.minY - firstRow.maxY, 10, accuracy: 1, file: file, line: line)
         if let closeButton = window.standardWindowButton(.closeButton) {
             let closeFrame = closeButton.convert(closeButton.bounds, to: nil)
             XCTAssertFalse(

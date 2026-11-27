@@ -166,11 +166,18 @@ final class DashboardSourceListCellView: NSTableCellView {
         super.init(frame: frameRect)
         identifier = Self.identifier
 
+        let iconTile = NSView()
+        iconTile.clipsToBounds = false
         let icon = NSImageView()
         icon.imageScaling = .scaleNone
         icon.translatesAutoresizingMaskIntoConstraints = false
         icon.setAccessibilityElement(false)
+        iconTile.addSubview(icon)
         NSLayoutConstraint.activate([
+            iconTile.widthAnchor.constraint(equalToConstant: DashboardSidebarIconRenderer.tileSize),
+            iconTile.heightAnchor.constraint(equalToConstant: DashboardSidebarIconRenderer.tileSize),
+            icon.centerXAnchor.constraint(equalTo: iconTile.centerXAnchor),
+            icon.centerYAnchor.constraint(equalTo: iconTile.centerYAnchor),
             icon.widthAnchor.constraint(equalToConstant: DashboardSidebarIconRenderer.imageSize),
             icon.heightAnchor.constraint(equalToConstant: DashboardSidebarIconRenderer.imageSize)
         ])
@@ -186,13 +193,15 @@ final class DashboardSourceListCellView: NSTableCellView {
         updateBadgeView.setContentCompressionResistancePriority(.required, for: .horizontal)
         updateBadgeView.isHidden = true
 
-        let stack = NSStackView(views: [icon, title])
+        let stack = NSStackView(views: [iconTile, title])
         stack.orientation = .horizontal
         stack.alignment = .centerY
-        stack.spacing = 6
-        stack.edgeInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 2)
+        stack.spacing = 9
+        // The image's shadow extends beyond the tile. Spacing is from the
+        // tile edge to the label, which has its own native text inset.
+        stack.edgeInsets = NSEdgeInsets(top: 0, left: 2.5, bottom: 0, right: 2)
         stack.detachesHiddenViews = true
-        stack.setViews([icon, title], in: .leading)
+        stack.setViews([iconTile, title], in: .leading)
         stack.setViews([updateBadgeView], in: .trailing)
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
