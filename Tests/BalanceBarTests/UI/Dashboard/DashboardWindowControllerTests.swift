@@ -36,7 +36,7 @@ final class DashboardWindowControllerTests: XCTestCase {
         XCTAssertFalse(makeSidebarSource.contains("cornerRadius"))
         XCTAssertFalse(makeSidebarSource.contains("shadowOpacity"))
         XCTAssertFalse(makeSidebarSource.contains("material = .sidebar"))
-        XCTAssertTrue(sessionSource.contains("DashboardSourceListController(layoutPolicy: sidebarScrollLayoutPolicy)"))
+        XCTAssertTrue(sessionSource.contains("layoutPolicy: sidebarScrollLayoutPolicy"))
         XCTAssertTrue(sessionSource.contains("sourceList.makeSidebar()"))
         XCTAssertTrue(sessionSource.contains("var sidebarScrollLayoutPolicy = DashboardSidebarScrollLayoutPolicy.current"))
         XCTAssertTrue(sessionSource.contains("var platformCapabilities = DashboardPlatformCapabilities.current"))
@@ -1902,11 +1902,9 @@ final class DashboardSourceListContractTests: XCTestCase {
 
         let appearance = try XCTUnwrap(sourceList.roots.first { $0.group == .appearance })
         let groupRow = outline.row(forItem: appearance)
-        let groupCell = try XCTUnwrap(
-            outline.view(atColumn: 0, row: groupRow, makeIfNecessary: true) as? DashboardSourceListGroupCellView
-        )
-        XCTAssertEqual(groupCell.textField?.stringValue, appearance.title)
-        XCTAssertEqual(groupCell.accessibilityLabel(), appearance.title)
+        let spacer = try XCTUnwrap(outline.rowView(atRow: groupRow, makeIfNecessary: true))
+        XCTAssertFalse(spacer.isAccessibilityElement())
+        XCTAssertNil(outline.view(atColumn: 0, row: groupRow, makeIfNecessary: true))
     }
 
     func testRebuildAndTeardownDropOldSourceListOwnership() throws {
@@ -1945,7 +1943,7 @@ final class DashboardSourceListContractTests: XCTestCase {
             ),
             encoding: .utf8
         )
-        XCTAssertTrue(source.contains("init(layoutPolicy: DashboardSidebarScrollLayoutPolicy = .current)"))
+        XCTAssertTrue(source.contains("layoutPolicy: DashboardSidebarScrollLayoutPolicy = .current"))
         XCTAssertTrue(source.contains("layoutPolicy.apply(to: scrollView)"))
         XCTAssertFalse(source.contains("DashboardSidebarScrollLayoutPolicy.current.apply(to: scrollView)"))
         XCTAssertFalse(source.contains("automaticallyAdjustsContentInsets = false"))

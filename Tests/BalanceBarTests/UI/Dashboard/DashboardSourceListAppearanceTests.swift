@@ -4,52 +4,31 @@ import XCTest
 
 @MainActor
 final class DashboardSourceListAppearanceTests: XCTestCase {
-    func testSourceListRowAppearanceLeavesTypographyAndTintToAppKit() throws {
-        let source = try sourceListSource()
-        let sectionSource = try typeSource(named: "DashboardSourceListCellView", in: source)
-        let groupSource = try typeSource(named: "DashboardSourceListGroupCellView", in: source)
-
-        XCTAssertTrue(source.contains("style = .sourceList"))
-        XCTAssertTrue(source.contains("rowSizeStyle = .default"))
-        XCTAssertFalse(sectionSource.contains("systemFont(ofSize: 13, weight: .medium)"))
-        XCTAssertFalse(sectionSource.contains("contentTintColor"))
-        XCTAssertFalse(sectionSource.contains("symbolConfiguration"))
-        XCTAssertFalse(sectionSource.contains("allowsVibrancy"))
-        XCTAssertFalse(sectionSource.contains("VibrantLabel"))
-        XCTAssertTrue(sectionSource.contains("controlTextColor"))
-        XCTAssertFalse(sectionSource.contains("secondaryLabelColor"))
-        XCTAssertFalse(sectionSource.contains("unemphasizedSelectedTextColor"))
-        XCTAssertFalse(groupSource.contains("weight: .medium"))
-        XCTAssertFalse(groupSource.contains("systemFont(ofSize: 11, weight: .medium)"))
-        XCTAssertTrue(groupSource.contains("smallSystemFontSize"))
-        XCTAssertTrue(groupSource.contains("tertiaryLabelColor"))
-        XCTAssertTrue(source.contains("tintConfigurationForItem"))
-        XCTAssertTrue(source.contains("NSTintConfiguration.default"))
-        XCTAssertFalse(source.contains("NSTintConfiguration.monochrome"))
-        XCTAssertFalse(source.contains("sidebarUsesInactiveForeground"))
-
-        let forbidden = [
-            "drawSelection",
-            "NSColor(red:",
-            "calibratedRed",
-            "srgbRed",
-            "#colorLiteral",
-            "NSScrollPocket",
-            "value(forKey:",
-            "NSClassFromString",
-            "if #available(macOS 27",
-            "tintConfigurationWithFixedColor",
-            "tintConfigurationWithPreferredColor",
-            "controlAccentColor",
-            "chipColor",
-            "unemphasizedSelectedContentBackgroundColor"
-        ]
-        for token in forbidden {
-            XCTAssertFalse(source.contains(token), "source-list file must not contain \(token)")
+    func testIconPaletteTracksAppearanceAndPlatform() throws {
+        for (capabilities, usesDarkIcons) in [
+            (DashboardPlatformCapabilities.legacyCompatibility, false),
+            (.nativeAppKitOwnership, true)
+        ] {
+            let cell = DashboardSourceListCellView()
+            cell.configure(section: .menuBar, showsUpdateBadge: false, usesDarkIcons: capabilities.usesNativeWindowSurface)
+            let icon = try XCTUnwrap(cell.imageView)
+            let chip = try XCTUnwrap(icon.superview)
+            for name: NSAppearance.Name in [.aqua, .darkAqua] {
+                cell.appearance = try XCTUnwrap(NSAppearance(named: name))
+                cell.layoutSubtreeIfNeeded()
+                let appearance = cell.effectiveAppearance
+                appearance.performAsCurrentDrawingAppearance {
+                    let color = usesDarkIcons && name == .darkAqua
+                        ? NSColor(white: 0.23, alpha: 1) : DashboardSection.menuBar.chipColor
+                    XCTAssertEqual(chip.layer?.backgroundColor, color.cgColor)
+                    XCTAssertEqual(chip.layer?.cornerRadius, 5)
+                    XCTAssertEqual(icon.image?.isTemplate, false)
+                }
+            }
         }
     }
 
-    func testSectionRowsKeepAppKitTintAndRemainReadableAcrossBackgroundStyles() throws {
+    func testSectionRowsUseFixedAlignedIconsAcrossBackgroundStyles() throws {
         let controller = makeController()
         defer { controller.teardown() }
         controller.open()
@@ -60,7 +39,8 @@ final class DashboardSourceListAppearanceTests: XCTestCase {
         let sourceList = try XCTUnwrap(controller.sourceListForTesting)
         let outline = sourceList.outlineView
         XCTAssertEqual(outline.style, .sourceList)
-        XCTAssertEqual(outline.rowSizeStyle, .default)
+        XCTAssertEqual(outline.rowHeight, 30)
+        var iconOrigins: [CGFloat] = []
         XCTAssertEqual(sourceList.selectedSection(), .general)
 
         for section in DashboardSection.allCases {
@@ -68,16 +48,15 @@ final class DashboardSourceListAppearanceTests: XCTestCase {
             let cell = try sectionCell(in: outline, row: row)
             XCTAssertEqual(cell.textField?.stringValue, section.title)
             XCTAssertNotNil(cell.imageView?.image)
-            XCTAssertFalse(
-                cell.imageView?.contentTintColor?.isEqual(NSColor.labelColor) ?? false,
-                "\(section) icon must not lock contentTintColor to labelColor"
-            )
+            let chip = try XCTUnwrap(cell.imageView?.superview)
+            XCTAssertEqual(chip.frame.size, NSSize(width: 20, height: 20))
+            iconOrigins.append(chip.convert(chip.bounds, to: outline).minX)
             try assertTitleColor(of: cell, selected: outline.isRowSelected(row), section: section)
             let node = try XCTUnwrap(sourceList.node(for: section))
             let tint = sourceList.outlineView(outline, tintConfigurationForItem: node)
             XCTAssertTrue(
                 tint?.isEqual(NSTintConfiguration.default) ?? false,
-                "\(section) must keep default source-list tint so the selected mark stays on Accent when inactive"
+                "\(section) must keep native source-list tint"
             )
             assertRowReadable(cell)
 
@@ -88,6 +67,10 @@ final class DashboardSourceListAppearanceTests: XCTestCase {
             rowView.isEmphasized = false
             window.layoutIfNeeded()
             assertRowReadable(cell)
+        }
+        let firstOrigin = try XCTUnwrap(iconOrigins.first)
+        for origin in iconOrigins {
+            XCTAssertEqual(origin, firstOrigin, accuracy: 0.5)
         }
     }
 
@@ -121,13 +104,10 @@ final class DashboardSourceListAppearanceTests: XCTestCase {
 
         let appearance = try XCTUnwrap(sourceList.roots.first { $0.group == .appearance })
         let groupRow = outline.row(forItem: appearance)
-        let groupCell = try XCTUnwrap(
-            outline.view(atColumn: 0, row: groupRow, makeIfNecessary: true)
-                as? DashboardSourceListGroupCellView
-        )
-        XCTAssertEqual(groupCell.accessibilityLabel(), appearance.title)
-        XCTAssertEqual(groupCell.textField?.isAccessibilityElement(), false)
-        XCTAssertEqual(groupCell.textField?.textColor, NSColor.tertiaryLabelColor)
+        let spacer = try XCTUnwrap(outline.rowView(atRow: groupRow, makeIfNecessary: true))
+        XCTAssertFalse(spacer.isAccessibilityElement())
+        XCTAssertNil(outline.view(atColumn: 0, row: groupRow, makeIfNecessary: true))
+        XCTAssertEqual(outline.rect(ofRow: groupRow).height, 10, accuracy: 1)
     }
 
     func testRebuildLanguageSwitchAndBadgeKeepAppKitAppearanceOwnership() throws {
@@ -184,23 +164,6 @@ final class DashboardSourceListAppearanceTests: XCTestCase {
                 didResize: {}
             )
         )
-    }
-
-    private func sourceListSource() throws -> String {
-        let repositoryRoot = try TestRepositoryRoot.locate(from: #filePath)
-        return try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "Sources/UI/Dashboard/DashboardSourceListController.swift"
-            ),
-            encoding: .utf8
-        )
-    }
-
-    private func typeSource(named name: String, in source: String) throws -> String {
-        let start = try XCTUnwrap(source.range(of: "final class \(name)"))
-        let remainder = source[start.upperBound...]
-        let end = remainder.range(of: "\nfinal class ")?.lowerBound ?? source.endIndex
-        return String(source[start.lowerBound..<end])
     }
 
     private func sectionCell(in outline: NSOutlineView, row: Int) throws -> DashboardSourceListCellView {

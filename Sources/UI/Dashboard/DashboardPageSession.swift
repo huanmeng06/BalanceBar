@@ -103,7 +103,10 @@ final class DashboardPageSession {
         guard let window = windowController.window, !isTornDown else { return }
         self.window = window
         sourceListController?.teardown()
-        let sourceList = DashboardSourceListController(layoutPolicy: sidebarScrollLayoutPolicy)
+        let sourceList = DashboardSourceListController(
+            layoutPolicy: sidebarScrollLayoutPolicy,
+            capabilities: platformCapabilities
+        )
         sourceList.setShowsUpdateAvailableBadge(showsUpdateAvailableBadge)
         sourceList.onSelectSection = { [weak self] section in
             self?.selectSection(section)

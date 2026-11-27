@@ -44,7 +44,7 @@ final class DashboardWindowDragRegionTests: XCTestCase {
         XCTAssertTrue(splitFile.contains("override func hitTest(_ point: NSPoint) -> NSView?"))
         XCTAssertTrue(sourceListSource.contains("func makeSidebar()"))
         XCTAssertTrue(
-            sourceListSource.contains("init(layoutPolicy: DashboardSidebarScrollLayoutPolicy = .current)")
+            sourceListSource.contains("layoutPolicy: DashboardSidebarScrollLayoutPolicy = .current")
         )
 
         let splitStart = try XCTUnwrap(splitFile.range(of: "final class DashboardSplitViewController"))

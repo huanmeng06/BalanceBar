@@ -4,13 +4,6 @@ enum DashboardSidebarGroup: Int, CaseIterable {
     case appearance
     case system
 
-    var title: String {
-        switch self {
-        case .appearance: return tr(.keyDashboardWindowControllerAppearance)
-        case .system: return tr(.keyDashboardWindowControllerSystem)
-        }
-    }
-
     var sections: [DashboardSection] {
         switch self {
         case .appearance: return [.menuBar, .menu]
@@ -48,10 +41,7 @@ final class DashboardSidebarNode: NSObject {
     }
 
     var title: String {
-        switch kind {
-        case .group(let group): return group.title
-        case .section(let section): return section.title
-        }
+        section?.title ?? ""
     }
 
     fileprivate init(kind: Kind, children: [DashboardSidebarNode] = []) {
@@ -141,10 +131,10 @@ final class DashboardSourceListCellView: NSTableCellView {
 
     private(set) var updateBadgeView = DashboardUpdateBadgeView()
 
-    /// `NSTableCellView` retints `textField` from `backgroundStyle`. Unselected
-    /// titles use `controlTextColor` so they can follow the inactive control
-    /// variant. Selected titles keep the color AppKit just applied so the
-    /// source-list Accent mark survives resign-key.
+    private let iconBackground = NSView()
+    private var iconSection: DashboardSection?
+    private var usesDarkIcons = false
+
     override var backgroundStyle: NSView.BackgroundStyle {
         get { super.backgroundStyle }
         set {
@@ -159,9 +149,20 @@ final class DashboardSourceListCellView: NSTableCellView {
 
         let icon = NSImageView()
         icon.imageScaling = .scaleProportionallyDown
-        icon.setContentHuggingPriority(.required, for: .horizontal)
-        icon.setContentCompressionResistancePriority(.required, for: .horizontal)
+        icon.translatesAutoresizingMaskIntoConstraints = false
         icon.setAccessibilityElement(false)
+        iconBackground.wantsLayer = true
+        iconBackground.layer?.cornerRadius = 5
+        iconBackground.setAccessibilityElement(false)
+        iconBackground.addSubview(icon)
+        NSLayoutConstraint.activate([
+            iconBackground.widthAnchor.constraint(equalToConstant: 20),
+            iconBackground.heightAnchor.constraint(equalToConstant: 20),
+            icon.centerXAnchor.constraint(equalTo: iconBackground.centerXAnchor),
+            icon.centerYAnchor.constraint(equalTo: iconBackground.centerYAnchor),
+            icon.widthAnchor.constraint(equalToConstant: 13),
+            icon.heightAnchor.constraint(equalToConstant: 13)
+        ])
 
         let title = NSTextField(labelWithString: "")
         title.textColor = .controlTextColor
@@ -174,13 +175,13 @@ final class DashboardSourceListCellView: NSTableCellView {
         updateBadgeView.setContentCompressionResistancePriority(.required, for: .horizontal)
         updateBadgeView.isHidden = true
 
-        let stack = NSStackView(views: [icon, title])
+        let stack = NSStackView(views: [iconBackground, title])
         stack.orientation = .horizontal
         stack.alignment = .centerY
         stack.spacing = 8
         stack.edgeInsets = NSEdgeInsets(top: 0, left: 2, bottom: 0, right: 2)
         stack.detachesHiddenViews = true
-        stack.setViews([icon, title], in: .leading)
+        stack.setViews([iconBackground, title], in: .leading)
         stack.setViews([updateBadgeView], in: .trailing)
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
@@ -198,9 +199,10 @@ final class DashboardSourceListCellView: NSTableCellView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    func configure(section: DashboardSection, showsUpdateBadge: Bool) {
-        imageView?.image = NSImage(systemSymbolName: section.symbolName, accessibilityDescription: nil)
-        imageView?.setAccessibilityElement(false)
+    func configure(section: DashboardSection, showsUpdateBadge: Bool, usesDarkIcons: Bool) {
+        iconSection = section
+        self.usesDarkIcons = usesDarkIcons
+        updateIconAppearance()
         textField?.stringValue = section.title
         textField?.toolTip = section.title
         textField?.setAccessibilityElement(false)
@@ -209,11 +211,34 @@ final class DashboardSourceListCellView: NSTableCellView {
         restoreTitleColor()
     }
 
-    private func restoreTitleColor() {
-        if (superview as? NSTableRowView)?.isSelected == true {
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateIconAppearance()
+    }
+
+    private func updateIconAppearance() {
+        guard let section = iconSection else { return }
+        let usesDarkPalette = usesDarkIcons
+            && effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            iconBackground.layer?.backgroundColor = (
+                usesDarkPalette ? NSColor(white: 0.23, alpha: 1) : section.chipColor
+            ).cgColor
+            let configuration = NSImage.SymbolConfiguration(pointSize: 12, weight: .semibold)
+                .applying(.init(paletteColors: [usesDarkPalette ? section.chipColor : .white]))
+            let symbol = NSImage(systemSymbolName: section.symbolName, accessibilityDescription: nil)?
+                .withSymbolConfiguration(configuration)
+            symbol?.isTemplate = false
+            imageView?.image = symbol
+        }
+    }
+
+    fileprivate func restoreTitleColor() {
+        guard let row = superview as? NSTableRowView, row.isSelected else {
+            textField?.textColor = .controlTextColor
             return
         }
-        textField?.textColor = .controlTextColor
+        textField?.textColor = row.isEmphasized ? .white : .unemphasizedSelectedTextColor
     }
 
     func setShowsUpdateBadge(_ visible: Bool) {
@@ -221,41 +246,7 @@ final class DashboardSourceListCellView: NSTableCellView {
     }
 }
 
-final class DashboardSourceListGroupCellView: NSTableCellView {
-    static let identifier = NSUserInterfaceItemIdentifier("DashboardSourceListGroupCell")
-
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        identifier = Self.identifier
-        let title = NSTextField(labelWithString: "")
-        title.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-        title.textColor = .tertiaryLabelColor
-        title.lineBreakMode = .byTruncatingTail
-        title.setAccessibilityElement(false)
-        title.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(title)
-        NSLayoutConstraint.activate([
-            title.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
-            title.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -2),
-            title.centerYAnchor.constraint(equalTo: centerYAnchor)
-        ])
-        textField = title
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-
-    func configure(title: String) {
-        textField?.stringValue = title
-        textField?.setAccessibilityElement(false)
-        setAccessibilityLabel(title)
-    }
-}
-
-/// Section rows keep AppKit source-list selection drawing and pin
-/// `isEmphasized` so AppKit uses its unemphasized presentation. AppKit writes
-/// this property after installing the row; the setter keeps the ivar aligned
-/// with the getter.
+/// Keep AppKit's highlight and update the label when its selection state changes.
 final class DashboardSourceListRowView: NSTableRowView {
     static let identifier = NSUserInterfaceItemIdentifier("DashboardSourceListSectionRow")
 
@@ -267,9 +258,18 @@ final class DashboardSourceListRowView: NSTableRowView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
+    override var isSelected: Bool {
+        didSet { updateTitleColor() }
+    }
+
     override var isEmphasized: Bool {
-        get { false }
-        set { super.isEmphasized = false }
+        didSet { updateTitleColor() }
+    }
+
+    private func updateTitleColor() {
+        for case let cell as DashboardSourceListCellView in subviews {
+            cell.restoreTitleColor()
+        }
     }
 }
 
@@ -288,6 +288,8 @@ final class DashboardSourceListController: NSObject, NSOutlineViewDataSource, NS
     var onSelectSection: ((DashboardSection) -> Void)?
     let layoutPolicy: DashboardSidebarScrollLayoutPolicy
 
+    private let usesDarkIcons: Bool
+
     var view: NSView { scrollView }
     var notificationButtonForTesting: NSButton { notificationButton }
 
@@ -295,8 +297,12 @@ final class DashboardSourceListController: NSObject, NSOutlineViewDataSource, NS
     private var isApplyingProgrammaticSelection = false
     private var isTornDown = false
 
-    init(layoutPolicy: DashboardSidebarScrollLayoutPolicy = .current) {
+    init(
+        layoutPolicy: DashboardSidebarScrollLayoutPolicy = .current,
+        capabilities: DashboardPlatformCapabilities = .current
+    ) {
         self.layoutPolicy = layoutPolicy
+        usesDarkIcons = capabilities.usesNativeWindowSurface
         let legacyRoots = DashboardSidebarNode.makeNavigationTree()
         roots = legacyRoots
         showsNotificationsAsSidebarButton = AutomatedTestHost.isRunning
@@ -462,28 +468,25 @@ final class DashboardSourceListController: NSObject, NSOutlineViewDataSource, NS
         }
         // Keep the current selection when the proposal is empty or only group
         // rows. Remapping a group onto the next section would make a mouse
-        // click on Appearance/System (including trailing blank space) navigate.
+        // click on group spacing (including trailing blank space) navigate.
         return selectable.isEmpty ? outlineView.selectedRowIndexes : selectable
     }
 
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
         guard let node = item as? DashboardSidebarNode else { return nil }
-        if node.isGroup {
-            let cell = outlineView.makeView(withIdentifier: DashboardSourceListGroupCellView.identifier, owner: self)
-                as? DashboardSourceListGroupCellView ?? DashboardSourceListGroupCellView()
-            cell.configure(title: node.title)
-            return cell
-        }
         guard let section = node.section else { return nil }
         let cell = outlineView.makeView(withIdentifier: DashboardSourceListCellView.identifier, owner: self)
             as? DashboardSourceListCellView ?? DashboardSourceListCellView()
-        cell.configure(section: section, showsUpdateBadge: section == .general && showsUpdateAvailableBadge)
+        cell.configure(section: section, showsUpdateBadge: showsUpdateAvailableBadge, usesDarkIcons: usesDarkIcons)
         return cell
     }
 
     func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? {
-        guard let node = item as? DashboardSidebarNode, node.section != nil else {
-            return nil
+        guard let node = item as? DashboardSidebarNode else { return nil }
+        if node.isGroup {
+            let spacer = NSTableRowView()
+            spacer.setAccessibilityElement(false)
+            return spacer
         }
         if let reused = outlineView.makeView(
             withIdentifier: DashboardSourceListRowView.identifier,
@@ -494,13 +497,17 @@ final class DashboardSourceListController: NSObject, NSOutlineViewDataSource, NS
         return DashboardSourceListRowView()
     }
 
+    func outlineView(_ outlineView: NSOutlineView, heightOfRowByItem item: Any) -> CGFloat {
+        (item as? DashboardSidebarNode)?.isGroup == true ? 10 : outlineView.rowHeight
+    }
+
     func outlineView(_ outlineView: NSOutlineView, tintConfigurationForItem item: Any) -> NSTintConfiguration? {
         guard (item as? DashboardSidebarNode)?.section != nil else { return nil }
         return NSTintConfiguration.default
     }
 
     func outlineView(_ outlineView: NSOutlineView, typeSelectStringFor tableColumn: NSTableColumn?, item: Any) -> String? {
-        (item as? DashboardSidebarNode)?.title
+        (item as? DashboardSidebarNode)?.section?.title
     }
 
     func outlineViewSelectionDidChange(_ notification: Notification) {
@@ -516,7 +523,9 @@ final class DashboardSourceListController: NSObject, NSOutlineViewDataSource, NS
         outlineView.outlineTableColumn = column
         outlineView.headerView = nil
         outlineView.style = .sourceList
-        outlineView.rowSizeStyle = .default
+        outlineView.rowSizeStyle = .custom
+        outlineView.rowHeight = 30
+        outlineView.indentationPerLevel = 0
         outlineView.floatsGroupRows = false
         outlineView.allowsEmptySelection = true
         outlineView.allowsMultipleSelection = false

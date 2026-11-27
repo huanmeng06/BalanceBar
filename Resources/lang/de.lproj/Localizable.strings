@@ -134,8 +134,6 @@
 "dashboard.components.menu" = "Menü";
 "dashboard.components.advanced" = "Erweitert";
 "dashboard.components.about" = "Über";
-"dashboard.window.controller.appearance" = "Erscheinungsbild";
-"dashboard.window.controller.system" = "System";
 "dashboard.search.placeholder" = "Suchen";
 "dashboard.search.no_results" = "Keine Ergebnisse";
 "dashboard.search.no_results_detail" = "Keine Einstellungen entsprechen dieser Suche.";

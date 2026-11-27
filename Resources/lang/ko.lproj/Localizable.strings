@@ -134,8 +134,6 @@
 "dashboard.components.menu" = "메뉴";
 "dashboard.components.advanced" = "고급";
 "dashboard.components.about" = "정보";
-"dashboard.window.controller.appearance" = "모양";
-"dashboard.window.controller.system" = "시스템";
 "dashboard.search.placeholder" = "검색";
 "dashboard.search.no_results" = "결과 없음";
 "dashboard.search.no_results_detail" = "이 검색과 일치하는 설정이 없습니다.";

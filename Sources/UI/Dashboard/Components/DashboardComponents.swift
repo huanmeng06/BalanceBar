@@ -2557,9 +2557,9 @@ enum DashboardSection: Int, CaseIterable {
     var symbolName: String {
         switch self {
         case .general: return "gearshape.fill"
-        case .menuBar: return "menubar.rectangle"
-        case .menu: return "filemenu.and.selection"
-        case .advanced: return "slider.horizontal.3"
+        case .menuBar: return "rectangle.topthird.inset.filled"
+        case .menu: return "list.bullet.rectangle.fill"
+        case .advanced: return "switch.2"
         case .about: return "info.circle.fill"
         case .notifications: return "bell.badge.fill"
         }
