@@ -55,7 +55,8 @@ previous app and suppresses further idle attempts for that update version.
 
 1. 运行 `./scripts/test-automatic-update.sh tampered`。打开 **自动下载新版本**，确认 **检查更新** 显示验证失败及 **重试**，版本保持 `90.0.0`。
 2. 运行 `./scripts/test-automatic-update.sh read-only`。打开两个开关，等下载完成后关闭 Dashboard 和菜单，保持电脑唤醒，等至少 35 秒。确认旧版重新打开，检查更新显示安装失败。再次关窗并等 35 秒，确认同一版本没有再次闲时重启。
-3. 退出测试 App，等安装程序结束后，运行 `./scripts/test-automatic-update.sh clean` 清理测试包、本地更新素材和专用设置。
+3. 重新运行 `./scripts/test-automatic-update.sh read-only`。打开两个开关并等下载完成，在菜单选择 **退出 BalanceBar**。确认一次点击即可退出。等安装程序结束后，从 Finder 重开测试 App，确认仍为 `90.0.0`，**检查更新** 持续显示需要手动安装。
+4. 退出测试 App，等安装程序结束后，运行 `./scripts/test-automatic-update.sh clean` 清理测试包、本地更新素材和专用设置。
 
 使用干净的测试实例重复上述步骤。视觉验收覆盖宽窄窗口、浅色和深色、高对比度、键盘及 VoiceOver。macOS 14 与 Intel 可使用同一命令实测。
 

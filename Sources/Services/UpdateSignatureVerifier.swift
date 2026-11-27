@@ -61,17 +61,72 @@ enum UpdateApplicationPreflight {
         return true
     }
 
-    private static func run(_ path: String, _ arguments: [String]) -> String? {
+    static func run(_ path: String, _ arguments: [String]) -> String? {
         let process = Process()
         let output = Pipe()
         process.executableURL = URL(fileURLWithPath: path)
         process.arguments = arguments
         process.standardOutput = output
-        process.standardError = Pipe()
+        process.standardError = FileHandle.nullDevice
         guard (try? process.run()) != nil else { return nil }
+        let data = output.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
         guard process.terminationStatus == 0 else { return nil }
-        return String(data: output.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)
+        return String(data: data, encoding: .utf8)
+    }
+}
+
+struct VerifiedUpdateCache {
+    let manifest: SignedUpdateManifest
+    let diskImage: Data
+
+    init(
+        at url: URL, application: URL, bundleIdentifier: String, channel: UpdateChannel,
+        current: AppSemanticVersion, expected: AppSemanticVersion, verifier: UpdateSignatureVerifier
+    ) throws {
+        let directory = url.deletingLastPathComponent()
+        let prefix = "BalanceBar-\(expected)"
+        let directoryProperties = try directory.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+        guard directoryProperties.isDirectory == true, directoryProperties.isSymbolicLink == false else {
+            throw UpdateFailure.verificationFailed
+        }
+        let contextData = try Self.read(directory.appendingPathComponent("install-context.json"), limit: 16 * 1024)
+        guard let context = try JSONSerialization.jsonObject(with: contextData) as? [String: String],
+              context["applicationPath"] == application.path, context["channel"] == channel.rawValue,
+              expected > current, url.lastPathComponent == prefix + ".dmg",
+              channel == .beta ? expected.isDevelopmentRelease : expected.isFormalRelease else {
+            throw UpdateFailure.verificationFailed
+        }
+        let manifest = try verifier.verify(
+            manifestData: Self.read(directory.appendingPathComponent(prefix + ".update.json"), limit: 16 * 1024),
+            signatureData: Self.read(directory.appendingPathComponent(prefix + ".update.json.sig"), limit: 4 * 1024)
+        )
+        guard manifest.bundleIdentifier == bundleIdentifier, manifest.channel == channel.rawValue,
+              manifest.version == expected.description, manifest.asset.name == url.lastPathComponent,
+              let size = Int(exactly: manifest.asset.size) else { throw UpdateFailure.verificationFailed }
+        let image = try Self.read(url, limit: size)
+        guard image.count == size, SHA256Hex.digest(image) == manifest.asset.sha256 else {
+            throw UpdateFailure.verificationFailed
+        }
+        self.manifest = manifest
+        self.diskImage = image
+    }
+
+    func withDiskImage(_ use: (URL) throws -> Void) throws {
+        let files = FileManager.default
+        let directory = files.temporaryDirectory.appendingPathComponent("BalanceBar-verified-\(UUID().uuidString)")
+        try files.createDirectory(at: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+        defer { try? files.removeItem(at: directory) }
+        let image = directory.appendingPathComponent(manifest.asset.name)
+        try diskImage.write(to: image, options: .withoutOverwriting)
+        try use(image)
+    }
+
+    private static func read(_ url: URL, limit: Int) throws -> Data {
+        let properties = try url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey])
+        guard properties.isRegularFile == true, properties.isSymbolicLink == false,
+              let size = properties.fileSize, size <= limit else { throw UpdateFailure.verificationFailed }
+        return try Data(contentsOf: url)
     }
 }
 

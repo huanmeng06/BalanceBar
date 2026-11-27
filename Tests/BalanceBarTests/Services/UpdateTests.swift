@@ -15,6 +15,29 @@ final class UpdateTests: XCTestCase {
         try verifyAutomaticCachePruning(restore: true)
     }
 
+    func testOfflineStartupKeepsSignedCacheAvailableForImmediateInstall() throws {
+        try verifyAutomaticCachePruning(restore: true, offline: true)
+    }
+
+    func testImmediateInstallRejectsCacheChangedAfterVerification() throws {
+        try verifyAutomaticCachePruning(restore: true, offline: true, tamperBeforeInstall: true)
+    }
+
+    func testPreflightDrainsLargeOutputAndDiscardsDiagnostics() throws {
+        let output = try XCTUnwrap(UpdateApplicationPreflight.run("/bin/sh", [
+            "-c", "/bin/dd if=/dev/zero bs=65536 count=4 2>/dev/null >&2; /bin/dd if=/dev/zero bs=65536 count=4 2>/dev/null"
+        ]))
+        XCTAssertEqual(output.utf8.count, 262_144)
+    }
+
+    func testInterruptedTransactionBeforeReplacementLeavesOldVersionRetryable() throws {
+        try verifyInterruptedUpdate(replaced: false)
+    }
+
+    func testInterruptedTransactionAfterReplacementConfirmsOnlyTargetCopy() throws {
+        try verifyInterruptedUpdate(replaced: true)
+    }
+
     func testStartupPrunesInstalledCachesAndInterruptedWork() throws {
         let support = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: support) }
@@ -1776,6 +1799,50 @@ final class UpdateTests: XCTestCase {
             XCTAssertEqual(error as? UpdateInstallationError, .relaunchFailed)
         }
         XCTAssertEqual(LiveUpdateFileSystem().bundleMetadata(at: currentApp)?.shortVersion, "1.0.0")
+    }
+
+    func testInstallerDoesNotReplaceCurrentAppWithIncompleteBackup() throws {
+        let root = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let current = try makeAppBundle(at: root.appendingPathComponent("Current.app"), version: "1.0.0")
+        let mount = root.appendingPathComponent("Mounted")
+        try makeAppBundle(at: mount.appendingPathComponent("BalanceBar.app"), version: "1.0.1")
+        let image = root.appendingPathComponent("update.dmg")
+        try Data("test".utf8).write(to: image)
+        let relauncher = StubRelauncher()
+        let installer = UpdateApplicationInstaller(
+            fileSystem: IncompleteBackupFileSystem(current: current),
+            mounter: StubMounter(mountPoint: mount), relauncher: relauncher
+        )
+        XCTAssertThrowsError(try installer.install(
+            diskImageURL: image, expectedVersion: try XCTUnwrap(AppSemanticVersion("1.0.1")),
+            currentApplicationURL: current, expectedBundleIdentifier: "com.huanmeng06.BalanceBar.app"
+        )) { XCTAssertEqual($0 as? UpdateInstallationError, .replacementFailed) }
+        XCTAssertEqual(LiveUpdateFileSystem().bundleMetadata(at: current)?.shortVersion, "1.0.0")
+        XCTAssertEqual(relauncher.relaunchCount, 0)
+        XCTAssertFalse(try FileManager.default.contentsOfDirectory(atPath: root.path).contains { $0.hasPrefix(".BalanceBar.previous-") })
+    }
+
+    private struct IncompleteBackupFileSystem: UpdateFileSystem {
+        let current: URL
+        private let live = LiveUpdateFileSystem()
+
+        func makeTemporaryDirectory() throws -> URL { try live.makeTemporaryDirectory() }
+        func fileExists(at url: URL) -> Bool { live.fileExists(at: url) }
+        func isRegularFile(at url: URL) -> Bool { live.isRegularFile(at: url) }
+        func removeItem(at url: URL) throws { try live.removeItem(at: url) }
+        func bundleMetadata(at url: URL) -> UpdateApplicationBundleMetadata? { live.bundleMetadata(at: url) }
+        func replaceItem(at target: URL, withItemAt replacement: URL, backupItemName: String?) throws {
+            try live.replaceItem(at: target, withItemAt: replacement, backupItemName: backupItemName)
+        }
+
+        func copyItem(at source: URL, to destination: URL) throws {
+            if source == current {
+                try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: false)
+                throw CocoaError(.fileWriteOutOfSpace)
+            }
+            try live.copyItem(at: source, to: destination)
+        }
     }
 
     func testHdiutilMounterParsesMountPointAndDetachesThroughProcessBoundary() throws {
@@ -4655,7 +4722,35 @@ final class UpdateTests: XCTestCase {
         return url
     }
 
-    private func verifyAutomaticCachePruning(restore: Bool) throws {
+    private func verifyInterruptedUpdate(replaced: Bool) throws {
+        let root = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let target = try makeAppBundle(at: root.appendingPathComponent("A.app"), version: replaced ? "1.8.9" : "1.8.8")
+        let other = try makeAppBundle(at: root.appendingPathComponent("B.app"), version: "1.8.9")
+        let backup = try makeAppBundle(at: root.appendingPathComponent("previous.app"), version: "1.8.8")
+        let journal = root.appendingPathComponent("installation.json")
+        let record = try JSONSerialization.data(withJSONObject: [
+            "stage": "backed-up", "applicationPath": target.path, "backupPath": backup.path,
+            "version": "1.8.9", "launchAttempted": false
+        ])
+        try record.write(to: journal)
+
+        XCTAssertTrue(AutomaticUpdateCommand.prepareForLaunch(applicationURL: other, transactionURL: journal))
+        AutomaticUpdateCommand.confirmSuccessfulLaunch(applicationURL: other, transactionURL: journal)
+        XCTAssertEqual(try Data(contentsOf: journal), record)
+        XCTAssertTrue(AutomaticUpdateCommand.prepareForLaunch(applicationURL: target, transactionURL: journal))
+        if replaced {
+            XCTAssertTrue(FileManager.default.fileExists(atPath: backup.path))
+            AutomaticUpdateCommand.confirmSuccessfulLaunch(applicationURL: target, transactionURL: journal)
+        } else {
+            XCTAssertEqual(AutomaticUpdateCommand.takePreviousInstallationFailure(applicationURL: target, transactionURL: journal)?.version, "1.8.9")
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: journal.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: backup.path))
+        XCTAssertEqual(LiveUpdateFileSystem().bundleMetadata(at: target)?.shortVersion, replaced ? "1.8.9" : "1.8.8")
+    }
+
+    private func verifyAutomaticCachePruning(restore: Bool, offline: Bool = false, tamperBeforeInstall: Bool = false) throws {
         let support = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: support) }
         let files = FileManager.default
@@ -4702,8 +4797,9 @@ final class UpdateTests: XCTestCase {
             try contents.write(to: assetDirectory.appendingPathComponent(name))
         }
         let fetcher = StubReleaseFetcher()
+        let installer = StubInstaller()
         let service = UpdateService(
-            releaseFetcher: fetcher, downloader: DevelopmentUpdateAssetFixture(directoryURL: assets),
+            releaseFetcher: fetcher, downloader: DevelopmentUpdateAssetFixture(directoryURL: assets), installer: installer,
             currentVersionString: "1.8.8", currentApplicationURL: app,
             currentBundleIdentifier: bundleID, updateChannel: .beta, minimumCheckingDuration: 0,
             applicationSupportDirectory: support,
@@ -4713,6 +4809,38 @@ final class UpdateTests: XCTestCase {
                 try files.createDirectory(at: destination, withIntermediateDirectories: false)
             }
         )
+        let verifier = UpdateSignatureVerifier(publicKeys: ["test-key": key.publicKey.rawRepresentation])
+        if offline {
+            let current = try XCTUnwrap(AppSemanticVersion("1.8.8"))
+            let latest = try XCTUnwrap(AppSemanticVersion(version))
+            let ready = UpdateCheckState.automaticReady(current: current, latest: latest)
+            service.restoreAutomaticUpdateOnLaunch(verifier: verifier)
+            XCTAssertEqual(service.state, ready)
+            XCTAssertNotNil(service.automaticUpdateInstallationRequest)
+            service.checkForUpdatesIfNeeded()
+            XCTAssertEqual(service.state, ready)
+            fetcher.resolve(.failure(.transport))
+            let response = expectation(description: "offline check leaves the cache ready")
+            DispatchQueue.main.async {
+                XCTAssertEqual(service.state, ready)
+                XCTAssertNotNil(service.automaticUpdateInstallationRequest)
+                response.fulfill()
+            }
+            wait(for: [response], timeout: 2)
+
+            if tamperBeforeInstall {
+                let cacheURL = candidateCache.appendingPathComponent(dmgName)
+                try Data(repeating: 0, count: dmg.count).write(to: cacheURL)
+            }
+            let expected: UpdateCheckState = tamperBeforeInstall
+                ? .automaticDownloadFailed(current: current, latest: latest, failure: .verificationFailed)
+                : .restarting(current: current, latest: latest)
+            let installed = waitForState(service, queue: .main) { $0 == expected }
+            service.installAvailableUpdate()
+            wait(for: [installed], timeout: 2)
+            XCTAssertEqual(installer.installCount, tamperBeforeInstall ? 0 : 1)
+            return
+        }
         let available = waitForState(service, queue: .main) {
             if case .available = $0 { return true }
             return false
@@ -4722,7 +4850,6 @@ final class UpdateTests: XCTestCase {
         wait(for: [available], timeout: 2)
 
         let prepared = expectation(description: "candidate cache is ready")
-        let verifier = UpdateSignatureVerifier(publicKeys: ["test-key": key.publicKey.rawRepresentation])
         service.prepareAutomaticUpdate(verifier: verifier) { result in
             XCTAssertEqual(try? result.get()?.path, candidateCache.appendingPathComponent(dmgName).path)
             XCTAssertEqual(service.state, .automaticReady(current: AppSemanticVersion("1.8.8")!, latest: AppSemanticVersion(version)!))

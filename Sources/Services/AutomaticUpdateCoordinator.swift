@@ -46,6 +46,9 @@ final class AutomaticUpdateCoordinator {
 
     func start(onIdle: @escaping () -> Void) {
         updateService.removeInstalledUpdateCaches()
+        if preferences.automaticDownloadEnabled(for: preferences.updateChannel), verifier.hasTrustedKeys {
+            updateService.restoreAutomaticUpdateOnLaunch(verifier: verifier)
+        }
         updateCheckChanged(updateService.state)
         let center = NSWorkspace.shared.notificationCenter
         workspaceObservers = [
@@ -127,9 +130,9 @@ enum AutomaticUpdateCommand {
     static var isBackgroundRelaunch: Bool {
         CommandLine.arguments.contains("--automatic-update-relaunch")
     }
-    private struct CacheContext: Codable {
-        let applicationPath: String
-        let channel: String
+    struct Failure {
+        let version: String
+        let requiresManualInstallation: Bool
     }
 
     private struct Transaction: Codable {
@@ -141,6 +144,8 @@ enum AutomaticUpdateCommand {
         var idle: Bool? = nil
         var launchedAt: Date? = nil
         var noticeRead: Bool? = nil
+        var helperPID: Int32? = nil
+        var requiresManualInstallation: Bool? = nil
     }
 
     static func launch(_ request: AutomaticUpdateInstallationRequest, relaunch: Bool = false) throws {
@@ -154,9 +159,11 @@ enum AutomaticUpdateCommand {
         let bundleIdentifier = Bundle.main.bundleIdentifier ?? "com.huanmeng06.BalanceBar.app"
         let root = support.appendingPathComponent(bundleIdentifier, isDirectory: true)
             .appendingPathComponent("Updater", isDirectory: true)
-        let host = root.appendingPathComponent("UpdateHost.app", isDirectory: true)
-        try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
-        if fileManager.fileExists(atPath: host.path) { try fileManager.removeItem(at: host) }
+        let hostDirectory = root.appendingPathComponent("host-\(UUID().uuidString)", isDirectory: true)
+        let host = hostDirectory.appendingPathComponent("UpdateHost.app", isDirectory: true)
+        try fileManager.createDirectory(at: hostDirectory, withIntermediateDirectories: true)
+        var launched = false
+        defer { if !launched { try? fileManager.removeItem(at: hostDirectory) } }
         try fileManager.copyItem(at: Bundle.main.bundleURL, to: host)
         guard let executable = Bundle(url: host)?.executableURL else { throw UpdateInstallationError.stagingFailed }
         let process = Process()
@@ -171,59 +178,7 @@ enum AutomaticUpdateCommand {
             relaunch ? "idle" : "quit"
         ]
         try process.run()
-    }
-
-    static func canInstallAutomatically(_ request: AutomaticUpdateInstallationRequest) -> Bool {
-        let diskImageURL = request.diskImageURL
-        guard let support = try? FileManager.default.url(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: false
-        ) else { return false }
-        guard let expectedVersion = AppSemanticVersion(request.expectedVersion),
-              let contextData = try? Data(contentsOf: diskImageURL.deletingLastPathComponent().appendingPathComponent("install-context.json")),
-              let context = try? JSONDecoder().decode(CacheContext.self, from: contextData),
-              context.applicationPath == request.applicationURL.path,
-              context.channel == request.channel.rawValue else {
-            return false
-        }
-        let version = expectedVersion.description
-        let manifestURL = diskImageURL.deletingLastPathComponent().appendingPathComponent("BalanceBar-\(version).update.json")
-        let signatureURL = diskImageURL.deletingLastPathComponent().appendingPathComponent("BalanceBar-\(version).update.json.sig")
-        guard let current = LiveUpdateFileSystem().bundleMetadata(at: request.applicationURL),
-              let manifestData = try? Data(contentsOf: manifestURL),
-              let manifest = try? UpdateSignatureVerifier().verify(
-                manifestData: manifestData,
-                signatureData: Data(contentsOf: signatureURL)
-              ),
-              manifest.version == version,
-              manifest.channel == request.channel.rawValue,
-              manifest.bundleIdentifier == current.bundleIdentifier,
-              let dmgData = try? Data(contentsOf: diskImageURL),
-              (try? diskImageURL.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey]).isRegularFile) == true,
-              (try? diskImageURL.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) != true,
-              Int64(dmgData.count) == manifest.asset.size,
-              SHA256Hex.digest(dmgData) == manifest.asset.sha256,
-              let currentVersion = current.shortVersion.flatMap(AppSemanticVersion.init),
-              expectedVersion > currentVersion else { return false }
-        let writeProbe = request.applicationURL.deletingLastPathComponent()
-            .appendingPathComponent(".balancebar-update-preflight-\(UUID().uuidString)")
-        guard FileManager.default.createFile(atPath: writeProbe.path, contents: Data()) else { return false }
-        try? FileManager.default.removeItem(atPath: writeProbe.path)
-        let preflightDirectory = support
-            .appendingPathComponent(Bundle.main.bundleIdentifier ?? "com.huanmeng06.BalanceBar.app", isDirectory: true)
-            .appendingPathComponent("Updates", isDirectory: true)
-            .appendingPathComponent("preflight-\(UUID().uuidString)", isDirectory: true)
-        let stagedApp = preflightDirectory.appendingPathComponent("BalanceBar.app", isDirectory: true)
-        do {
-            defer { try? FileManager.default.removeItem(at: preflightDirectory) }
-            try FileManager.default.createDirectory(at: preflightDirectory, withIntermediateDirectories: true)
-            try stageVerifiedApplication(from: diskImageURL, at: stagedApp, bundleIdentifier: manifest.bundleIdentifier, version: expectedVersion)
-            return true
-        } catch {
-            return false
-        }
+        launched = true
     }
 
     static func stageVerifiedApplication(
@@ -250,6 +205,14 @@ enum AutomaticUpdateCommand {
     }
 
     static func run(arguments: [String]) -> Int32 {
+        let host = Bundle.main.bundleURL
+        let hostDirectory = host.deletingLastPathComponent()
+        defer {
+            if host.lastPathComponent == "UpdateHost.app", hostDirectory.lastPathComponent.hasPrefix("host-"),
+               hostDirectory.deletingLastPathComponent().resolvingSymlinksInPath().path == transactionURL()?.deletingLastPathComponent().resolvingSymlinksInPath().path {
+                try? FileManager.default.removeItem(at: hostDirectory)
+            }
+        }
         guard arguments.count == 6,
               let expectedVersion = AppSemanticVersion(arguments[2]),
               let channel = UpdateChannel(rawValue: arguments[3]),
@@ -289,7 +252,8 @@ enum AutomaticUpdateCommand {
                 recordIdleFailure(for: request)
                 recoverAndReopen(request)
             } else {
-                recordFailure(applicationURL: application, version: expectedVersion.description)
+                recordFailure(applicationURL: application, version: expectedVersion.description,
+                              requiresManualInstallation: (error as? UpdateInstallationError) == .manualInstallationRequired)
             }
             NSLog("BalanceBar updater: automatic installation failed (idle=%@)", idle ? "yes" : "no")
             return 1
@@ -326,7 +290,7 @@ enum AutomaticUpdateCommand {
     private static func recoverAndReopen(_ request: AutomaticUpdateInstallationRequest) {
         let application = request.applicationURL
         var fallback: URL?
-        if let record = readTransaction(), record.idle == true, record.stage == "replaced",
+        if var record = readTransaction(), record.idle == true, record.stage == "replaced",
            record.applicationPath == application.path, record.version == request.expectedVersion {
             let backup = URL(fileURLWithPath: record.backupPath)
             fallback = backup
@@ -341,6 +305,8 @@ enum AutomaticUpdateCommand {
                 try? FileManager.default.removeItem(at: backup)
                 fallback = nil
             } catch {
+                record.stage = "rollback-failed"
+                if let url = transactionURL() { try? save(record, to: url) }
                 NSLog("BalanceBar updater: restoring the previous installation failed")
             }
         } else if let record = readTransaction(), record.stage == "rollback-failed",
@@ -382,8 +348,8 @@ enum AutomaticUpdateCommand {
         }
     }
 
-    private static func readTransaction() -> Transaction? {
-        guard let url = transactionURL(), let data = try? Data(contentsOf: url) else { return nil }
+    private static func readTransaction(at url: URL? = transactionURL()) -> Transaction? {
+        guard let url, let data = try? Data(contentsOf: url) else { return nil }
         return try? JSONDecoder().decode(Transaction.self, from: data)
     }
 
@@ -414,12 +380,13 @@ enum AutomaticUpdateCommand {
         return record.version
     }
 
-    static func confirmSuccessfulLaunch() {
-        guard let transactionURL = transactionURL(),
-              var transaction = readTransaction(),
+    static func confirmSuccessfulLaunch(
+        applicationURL: URL = Bundle.main.bundleURL, transactionURL: URL? = transactionURL()
+    ) {
+        guard let transactionURL, var transaction = readTransaction(at: transactionURL),
               transaction.stage == "replaced",
-              Bundle.main.bundleURL.resolvingSymlinksInPath().path == URL(fileURLWithPath: transaction.applicationPath).resolvingSymlinksInPath().path,
-              AppSemanticVersion(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")?.description == transaction.version else { return }
+              matches(applicationURL, transaction),
+              LiveUpdateFileSystem().bundleMetadata(at: applicationURL)?.shortVersion == transaction.version else { return }
         if transaction.idle == true {
             guard transaction.launchedAt == nil else { return }
             transaction.launchedAt = Date()
@@ -445,39 +412,66 @@ enum AutomaticUpdateCommand {
         if let url = transactionURL() { try? FileManager.default.removeItem(at: url) }
     }
 
-    static func hasPreviousInstallationFailure() -> Bool {
-        guard let url = transactionURL(),
-              let transaction = try? JSONDecoder().decode(Transaction.self, from: Data(contentsOf: url)) else { return false }
-        return transaction.stage == "failed" || transaction.stage == "rollback-failed"
+    static func takePreviousInstallationFailure(
+        applicationURL: URL = Bundle.main.bundleURL, transactionURL: URL? = transactionURL()
+    ) -> Failure? {
+        guard let transactionURL, let record = readTransaction(at: transactionURL), matches(applicationURL, record),
+              record.stage == "failed" || record.stage == "rollback-failed" else { return nil }
+        if record.stage == "failed" { try? FileManager.default.removeItem(at: transactionURL) }
+        return Failure(version: record.version, requiresManualInstallation: record.requiresManualInstallation == true)
     }
 
-    static func prepareForLaunch() -> Bool {
-        guard let transactionURL = transactionURL(),
-              var transaction = try? JSONDecoder().decode(Transaction.self, from: Data(contentsOf: transactionURL)),
-              transaction.stage == "replaced", transaction.idle != true else { return true }
+    private static func matches(_ application: URL, _ record: Transaction) -> Bool {
+        application.resolvingSymlinksInPath().path == URL(fileURLWithPath: record.applicationPath).resolvingSymlinksInPath().path
+    }
+
+    static func prepareForLaunch(
+        applicationURL: URL = Bundle.main.bundleURL, transactionURL: URL? = transactionURL()
+    ) -> Bool {
+        guard let transactionURL, var transaction = readTransaction(at: transactionURL),
+              matches(applicationURL, transaction) else { return true }
+        let installed = LiveUpdateFileSystem().bundleMetadata(at: applicationURL)?.shortVersion
+        let helperIsRunning = transaction.helperPID.map { $0 > 0 && kill($0, 0) == 0 } ?? false
+        let backup = URL(fileURLWithPath: transaction.backupPath)
+        guard let installed else { return true }
+        switch transaction.stage {
+        case "prepared", "backed-up":
+            guard !helperIsRunning else { return false }
+            if installed != transaction.version {
+                // The old app is still at the target. A prepared backup may be partial.
+                if !transaction.backupPath.isEmpty { try? FileManager.default.removeItem(at: backup) }
+                transaction.stage = "failed"
+                try? save(transaction, to: transactionURL)
+                return true
+            }
+            guard transaction.stage == "backed-up" else { return true }
+            transaction.stage = "replaced"
+            try? save(transaction, to: transactionURL)
+        case "replaced":
+            if installed != transaction.version {
+                if !transaction.backupPath.isEmpty { try? FileManager.default.removeItem(at: backup) }
+                transaction.stage = "failed"
+                try? save(transaction, to: transactionURL)
+                return true
+            }
+        default:
+            return true
+        }
+        if transaction.launchedAt != nil || (transaction.idle == true && helperIsRunning) { return true }
         guard transaction.launchAttempted else {
             transaction.launchAttempted = true
             try? save(transaction, to: transactionURL)
             return true
         }
         do {
-            let applicationURL = URL(fileURLWithPath: transaction.applicationPath)
-            let backupURL = URL(fileURLWithPath: transaction.backupPath)
-            let recoveryURL = applicationURL.deletingLastPathComponent()
-                .appendingPathComponent(".BalanceBar-recovery-\(UUID().uuidString).app", isDirectory: true)
-            try FileManager.default.copyItem(at: backupURL, to: recoveryURL)
-            try FileManager.default.replaceItemAt(
-                applicationURL,
-                withItemAt: recoveryURL,
-                backupItemName: nil,
-                options: .usingNewMetadataOnly
-            )
-            try? FileManager.default.removeItem(at: backupURL)
-            try? FileManager.default.removeItem(at: transactionURL)
+            guard !transaction.backupPath.isEmpty else { throw UpdateInstallationError.replacementFailed }
+            try restoreBackup(backup, to: applicationURL)
+            try? FileManager.default.removeItem(at: backup)
+            transaction.stage = "failed"
         } catch {
             transaction.stage = "rollback-failed"
-            try? save(transaction, to: transactionURL)
         }
+        try? save(transaction, to: transactionURL)
         return false
     }
 
@@ -490,37 +484,15 @@ enum AutomaticUpdateCommand {
     ) throws {
         let fileManager = FileManager.default
         let bundleIdentifier = Bundle.main.bundleIdentifier ?? "com.huanmeng06.BalanceBar.app"
-        let contextURL = diskImageURL.deletingLastPathComponent().appendingPathComponent("install-context.json")
-        let context = try JSONDecoder().decode(CacheContext.self, from: Data(contentsOf: contextURL))
-        guard context.applicationPath == applicationURL.path,
-              context.channel == channel.rawValue,
-              fileManager.fileExists(atPath: diskImageURL.path),
-              (try? diskImageURL.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey]).isRegularFile) == true,
-              (try? diskImageURL.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) != true,
-              let support = try? fileManager.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true) else {
-            throw UpdateInstallationError.invalidDiskImage
-        }
-        let manifestURL = diskImageURL.deletingLastPathComponent()
-            .appendingPathComponent("BalanceBar-\(expectedVersion.description).update.json")
-        let signatureURL = diskImageURL.deletingLastPathComponent()
-            .appendingPathComponent("BalanceBar-\(expectedVersion.description).update.json.sig")
-        let manifestData = try Data(contentsOf: manifestURL)
-        let manifest = try UpdateSignatureVerifier().verify(
-            manifestData: manifestData,
-            signatureData: Data(contentsOf: signatureURL)
-        )
-        let dmgData = try Data(contentsOf: diskImageURL)
-        guard manifest.version == expectedVersion.description,
-              manifest.channel == channel.rawValue,
-              manifest.bundleIdentifier == bundleIdentifier,
-              Int64(dmgData.count) == manifest.asset.size,
-              SHA256Hex.digest(dmgData) == manifest.asset.sha256,
-              let currentMetadata = LiveUpdateFileSystem().bundleMetadata(at: applicationURL),
+        guard let currentMetadata = LiveUpdateFileSystem().bundleMetadata(at: applicationURL),
               currentMetadata.bundleIdentifier == bundleIdentifier,
               let currentVersion = currentMetadata.shortVersion.flatMap(AppSemanticVersion.init),
-              expectedVersion > currentVersion else {
-            throw UpdateInstallationError.bundleMetadataMismatch
-        }
+              let support = try? fileManager.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+        else { throw UpdateInstallationError.bundleMetadataMismatch }
+        let cache = try VerifiedUpdateCache(
+            at: diskImageURL, application: applicationURL, bundleIdentifier: bundleIdentifier, channel: channel,
+            current: currentVersion, expected: expectedVersion, verifier: UpdateSignatureVerifier()
+        )
 
         let parent = applicationURL.deletingLastPathComponent()
         let probe = parent.appendingPathComponent(".balancebar-update-write-check-\(UUID().uuidString)")
@@ -541,16 +513,22 @@ enum AutomaticUpdateCommand {
             backupPath: backup.path,
             version: expectedVersion.description,
             launchAttempted: false,
-            idle: idle
+            idle: idle,
+            helperPID: ProcessInfo.processInfo.processIdentifier
         )
         try save(record, to: transaction)
 
         let stagedApp = parent.appendingPathComponent(".BalanceBar-staged-\(UUID().uuidString).app", isDirectory: true)
         do {
-            try stageVerifiedApplication(from: diskImageURL, at: stagedApp, bundleIdentifier: bundleIdentifier, version: expectedVersion)
+            try cache.withDiskImage {
+                try stageVerifiedApplication(from: $0, at: stagedApp, bundleIdentifier: bundleIdentifier, version: expectedVersion)
+            }
             try fileManager.copyItem(at: applicationURL, to: backup)
             record.stage = "backed-up"
             try save(record, to: transaction)
+            guard !NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier).contains(where: {
+                !$0.isTerminated && $0.bundleURL.map { matches($0, record) } == true
+            }) else { throw UpdateInstallationError.replacementFailed }
             try fileManager.replaceItemAt(applicationURL, withItemAt: stagedApp, backupItemName: nil, options: .usingNewMetadataOnly)
             record.stage = "replaced"
             try save(record, to: transaction)
@@ -559,15 +537,9 @@ enum AutomaticUpdateCommand {
             let targetExists = fileManager.fileExists(atPath: applicationURL.path)
             let targetHasNewVersion = LiveUpdateFileSystem().bundleMetadata(at: applicationURL)?.shortVersion
                 == expectedVersion.description
-            if backupExists && (targetHasNewVersion || !targetExists) {
-                let recovery = parent.appendingPathComponent(".BalanceBar-rollback-\(UUID().uuidString).app", isDirectory: true)
+            if record.stage != "prepared" && backupExists && (targetHasNewVersion || !targetExists) {
                 do {
-                    try fileManager.copyItem(at: backup, to: recovery)
-                    if targetExists {
-                        try fileManager.replaceItemAt(applicationURL, withItemAt: recovery, backupItemName: nil, options: .usingNewMetadataOnly)
-                    } else {
-                        try fileManager.moveItem(at: recovery, to: applicationURL)
-                    }
+                    try restoreBackup(backup, to: applicationURL)
                     try fileManager.removeItem(at: backup)
                     record.stage = "failed"
                 } catch {
@@ -599,16 +571,19 @@ enum AutomaticUpdateCommand {
             .appendingPathComponent("installation.json")
     }
 
-    private static func recordFailure(applicationURL: URL, version: String) {
+    static func recordFailure(applicationURL: URL, version: String, requiresManualInstallation: Bool = false) {
         guard let url = transactionURL() else { return }
-        if let existing = try? JSONDecoder().decode(Transaction.self, from: Data(contentsOf: url)),
-           existing.stage == "rollback-failed" { return }
+        if let existing = readTransaction(at: url) {
+            if existing.stage == "rollback-failed" || existing.stage == "backed-up" { return }
+            if existing.stage == "replaced" && (!matches(applicationURL, existing) || existing.version != version) { return }
+        }
         try? save(Transaction(
             stage: "failed",
             applicationPath: applicationURL.path,
             backupPath: "",
             version: version,
-            launchAttempted: false
+            launchAttempted: false,
+            requiresManualInstallation: requiresManualInstallation
         ), to: url)
     }
 

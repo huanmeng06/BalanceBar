@@ -962,17 +962,21 @@ final class UpdateApplicationInstaller: UpdateApplicationInstalling {
         let backupURL = currentApplicationURL
             .deletingLastPathComponent()
             .appendingPathComponent(backupName)
+        var backupComplete = false
+        var replaced = false
         do {
             // Keep an explicit backup until the relaunched process is known to
             // start. Relying on FileManager's optional backup name makes the
             // backup location/availability platform-dependent and can leave
             // the new bundle in place after a failed relaunch.
             try fileSystem.copyItem(at: currentApplicationURL, to: backupURL)
+            backupComplete = true
             try fileSystem.replaceItem(
                 at: currentApplicationURL,
                 withItemAt: stagedApp,
                 backupItemName: nil
             )
+            replaced = true
             if currentApplicationURL.standardizedFileURL == Bundle.main.bundleURL.standardizedFileURL {
                 try AutomaticUpdateCommand.recordSuccessfulReplacement(
                     applicationURL: currentApplicationURL,
@@ -981,8 +985,10 @@ final class UpdateApplicationInstaller: UpdateApplicationInstalling {
                 )
             }
         } catch {
-            if fileSystem.fileExists(at: backupURL), fileSystem.fileExists(at: currentApplicationURL) {
+            if replaced {
                 try? fileSystem.replaceItem(at: currentApplicationURL, withItemAt: backupURL, backupItemName: nil)
+            } else if !backupComplete {
+                try? fileSystem.removeItem(at: backupURL)
             }
             throw UpdateInstallationError.replacementFailed
         }
@@ -992,12 +998,10 @@ final class UpdateApplicationInstaller: UpdateApplicationInstalling {
             try relauncher.relaunchApplication(at: currentApplicationURL)
         } catch {
             // Restore the old app if the new process could not be started.
-            try? fileSystem.replaceItem(
-                at: currentApplicationURL,
-                withItemAt: backupURL,
-                backupItemName: nil
-            )
-            AutomaticUpdateCommand.clearTransaction()
+            if (try? fileSystem.replaceItem(at: currentApplicationURL, withItemAt: backupURL, backupItemName: nil)) != nil,
+               currentApplicationURL.standardizedFileURL == Bundle.main.bundleURL.standardizedFileURL {
+                AutomaticUpdateCommand.clearTransaction()
+            }
             throw UpdateInstallationError.relaunchFailed
         }
         progress(95)
@@ -1052,6 +1056,7 @@ final class UpdateService {
     private var automaticDownloadGeneration: UInt64 = 0
     private var automaticCachedUpdateURL: URL?
     private var cachedAutomaticRelease: GitHubRelease?
+    private var automaticCacheVerifier: UpdateSignatureVerifier?
 
     private(set) var state: UpdateCheckState
     /// Last verified update per channel. It survives re-checks and check
@@ -1124,8 +1129,7 @@ final class UpdateService {
 
     var automaticUpdateInstallationRequest: AutomaticUpdateInstallationRequest? {
         guard case .automaticReady(_, let version) = state,
-              let automaticCachedUpdateURL,
-              FileManager.default.fileExists(atPath: automaticCachedUpdateURL.path) else { return nil }
+              let automaticCachedUpdateURL else { return nil }
         return AutomaticUpdateInstallationRequest(
             diskImageURL: automaticCachedUpdateURL,
             applicationURL: currentApplicationURL,
@@ -1141,6 +1145,7 @@ final class UpdateService {
         }
         automaticCachedUpdateURL = nil
         cachedAutomaticRelease = nil
+        automaticCacheVerifier = nil
     }
 
     func removeInstalledUpdateCaches() {
@@ -1181,13 +1186,36 @@ final class UpdateService {
         }
     }
 
-    func automaticUpdateRequiresManualInstallation() {
-        guard case .automaticReady(let current, let latest) = state else { return }
-        transition(to: .automaticNeedsManual(current: current, latest: latest))
-    }
-
-    func reportAutomaticInstallationFailure() {
-        transition(to: .failed(.installationFailed))
+    func restoreAutomaticUpdateOnLaunch(verifier: UpdateSignatureVerifier) {
+        guard case .idle(let current) = state, let updates = automaticUpdatesDirectory,
+              let bundleID = currentBundleIdentifier,
+              let directories = try? FileManager.default.contentsOfDirectory(at: updates, includingPropertiesForKeys: nil)
+        else { return }
+        let channel = updateChannel
+        for version in directories.compactMap({ AppSemanticVersion($0.lastPathComponent) }).sorted(by: >) {
+            guard version > current, ignoredVersionStore.ignoredVersion(for: channel) != version else { continue }
+            let directory = updates.appendingPathComponent(version.description)
+            let dmg = directory.appendingPathComponent("BalanceBar-\(version).dmg")
+            guard let cache = try? VerifiedUpdateCache(
+                at: dmg, application: currentApplicationURL, bundleIdentifier: bundleID, channel: channel,
+                current: current, expected: version, verifier: verifier
+            ) else { continue }
+            let manifest = cache.manifest
+            let asset = GitHubReleaseAsset(
+                name: manifest.asset.name,
+                browserDownloadURL: URL(string: "https://github.com/huanmeng06/BalanceBar/releases/download/\(manifest.tag)/\(manifest.asset.name)"),
+                size: cache.diskImage.count, digest: "sha256:\(manifest.asset.sha256)"
+            )
+            let release = GitHubRelease(tagName: manifest.tag, draft: false, prerelease: channel == .beta, assets: [asset])
+            retainedUpdatesByChannel[channel] = RetainedUpdate(release: release, releases: [], latest: version)
+            availableRelease = release
+            automaticCachedUpdateURL = dmg
+            cachedAutomaticRelease = release
+            automaticCacheVerifier = verifier
+            pruneAutomaticUpdateCaches(keeping: version)
+            transition(to: .automaticReady(current: current, latest: version))
+            return
+        }
     }
 
     init(
@@ -1259,7 +1287,7 @@ final class UpdateService {
 
     private func performCheck(respectingRateLimitCooldown: Bool) {
         guard let currentVersion,
-              !isBusy
+              !isBusy, checkingStartedAt == nil
         else { return }
         if respectingRateLimitCooldown, let remainingWait = rateLimitRemainingWait() {
             // A rate-limited endpoint stays rate limited no matter how the
@@ -1280,7 +1308,9 @@ final class UpdateService {
         if let retained = retainedUpdatesByChannel[updateChannel] {
             availableRelease = retained.release
             availableReleases = retained.releases
-            transition(to: .revalidating(current: currentVersion, latest: retained.latest))
+            if automaticUpdateInstallationRequest == nil {
+                transition(to: .revalidating(current: currentVersion, latest: retained.latest))
+            }
         } else {
             availableRelease = nil
             availableReleases = []
@@ -1369,14 +1399,13 @@ final class UpdateService {
         if let cachedUpdate = restoreCachedAutomaticUpdate(
             for: candidate.version,
             release: candidate.release,
-            manifestAsset: manifestAsset,
-            signatureAsset: signatureAsset,
             dmgAsset: dmgAsset,
             verifier: verifier,
             currentVersion: currentVersion
         ) {
             automaticCachedUpdateURL = cachedUpdate
             cachedAutomaticRelease = candidate.release
+            automaticCacheVerifier = verifier
             pruneAutomaticUpdateCaches(keeping: candidate.version)
             transition(to: .automaticReady(current: currentVersion, latest: candidate.version))
             callbackQueue.async { completion(.success(cachedUpdate)) }
@@ -1384,6 +1413,7 @@ final class UpdateService {
         }
 
         automaticDownloadGeneration &+= 1
+        automaticCacheVerifier = verifier
         let generation = automaticDownloadGeneration
         transition(to: .automaticDownloading(current: currentVersion, latest: candidate.version, progress: 0))
         downloader.download(asset: manifestAsset, progress: { [weak self] percent in
@@ -1599,8 +1629,6 @@ final class UpdateService {
     private func restoreCachedAutomaticUpdate(
         for version: AppSemanticVersion,
         release: GitHubRelease,
-        manifestAsset: GitHubReleaseAsset,
-        signatureAsset: GitHubReleaseAsset,
         dmgAsset: GitHubReleaseAsset,
         verifier: UpdateSignatureVerifier,
         currentVersion: AppSemanticVersion
@@ -1608,34 +1636,14 @@ final class UpdateService {
         guard let updates = automaticUpdatesDirectory else { return nil }
         let directory = updates.appendingPathComponent(version.description, isDirectory: true)
         let dmg = directory.appendingPathComponent(dmgAsset.name)
-        let manifestURL = directory.appendingPathComponent(manifestAsset.name)
-        let signatureURL = directory.appendingPathComponent(signatureAsset.name)
         guard FileManager.default.fileExists(atPath: directory.path) else { return nil }
-        guard let contextData = try? Data(contentsOf: directory.appendingPathComponent("install-context.json")),
-              let context = try? JSONSerialization.jsonObject(with: contextData) as? [String: String],
-              context["applicationPath"] == currentApplicationURL.path,
-              context["channel"] == updateChannel.rawValue else {
-            try? FileManager.default.removeItem(at: directory)
-            return nil
-        }
-        guard let manifestData = try? Data(contentsOf: manifestURL),
-              let signatureData = try? Data(contentsOf: signatureURL),
-              let manifest = try? verifier.verify(manifestData: manifestData, signatureData: signatureData),
-              manifest.version == version.description,
-              manifest.tag == release.tagName,
-              manifest.channel == updateChannel.rawValue,
-              release.prerelease == (updateChannel == .beta),
-              manifest.bundleIdentifier == currentBundleIdentifier,
-              manifest.asset.name == dmgAsset.name,
-              manifest.asset.size == Int64(dmgAsset.size ?? -1),
-              version > currentVersion,
-              let data = try? Data(contentsOf: dmg),
-              Int64(data.count) == manifest.asset.size,
-              SHA256Hex.digest(data) == manifest.asset.sha256 else {
-            try? FileManager.default.removeItem(at: directory)
-            return nil
-        }
-        guard (try? UpdateAssetVerifier.verify(data: data, asset: dmgAsset)) != nil else {
+        guard let bundleID = currentBundleIdentifier,
+              let cache = try? VerifiedUpdateCache(
+                at: dmg, application: currentApplicationURL, bundleIdentifier: bundleID, channel: updateChannel,
+                current: currentVersion, expected: version, verifier: verifier
+              ),
+              cache.manifest.tag == release.tagName, updateChannel.accepts(release),
+              (try? UpdateAssetVerifier.verify(data: cache.diskImage, asset: dmgAsset)) != nil else {
             try? FileManager.default.removeItem(at: directory)
             return nil
         }
@@ -1653,7 +1661,6 @@ final class UpdateService {
         let elapsed = checkingStartedAt.map { scheduler.now - $0 } ?? minimumCheckingDuration
         let remaining = max(0, minimumCheckingDuration - elapsed)
         guard remaining > 0 else {
-            checkingStartedAt = nil
             handleReleaseResult(
                 result,
                 currentVersion: currentVersion,
@@ -1668,7 +1675,6 @@ final class UpdateService {
             self.callbackQueue.async {
                 guard self.updateCheckGeneration == updateCheckGeneration,
                       self.isReleaseCheckInFlight else { return }
-                self.checkingStartedAt = nil
                 self.handleReleaseResult(
                     result,
                     currentVersion: currentVersion,
@@ -1692,8 +1698,6 @@ final class UpdateService {
             latestVersion = advertised
         case .automaticInstallationFailed(_, let advertised):
             latestVersion = advertised
-        case .automaticDownloadFailed(_, let advertised, _):
-            latestVersion = advertised
         case .automaticNeedsManual(_, let advertised):
             latestVersion = advertised
         case .available(_, let latest):
@@ -1709,9 +1713,7 @@ final class UpdateService {
               let release = availableRelease,
               let asset = release.matchingAsset(for: latestVersion)
         else { return }
-        if let automaticCachedUpdateURL,
-           automaticCachedUpdateURL.lastPathComponent == asset.name,
-           FileManager.default.fileExists(atPath: automaticCachedUpdateURL.path) {
+        if let automaticCachedUpdateURL, automaticCachedUpdateURL.lastPathComponent == asset.name {
             handleDownloadResult(.success(automaticCachedUpdateURL), currentVersion: currentVersion, latestVersion: latestVersion)
             return
         }
@@ -1759,8 +1761,8 @@ final class UpdateService {
 
     private var isReleaseCheckInFlight: Bool {
         switch state {
-        case .checking, .revalidating:
-            return true
+        case .checking, .revalidating, .automaticReady:
+            return checkingStartedAt != nil
         default:
             return false
         }
@@ -1788,6 +1790,7 @@ final class UpdateService {
         updateChannel: UpdateChannel
     ) {
         checkingStartedAt = nil
+        if case .automaticReady = state { return }
         if let retained = retainedUpdatesByChannel[updateChannel] {
             transition(to: .recheckFailed(
                 current: currentVersion,
@@ -1822,6 +1825,7 @@ final class UpdateService {
     ) {
         guard self.updateCheckGeneration == updateCheckGeneration,
               isReleaseCheckInFlight else { return }
+        checkingStartedAt = nil
         switch result {
         case .failure(let error):
             switch error {
@@ -1879,11 +1883,13 @@ final class UpdateService {
                     releases: notesReleases,
                     latest: candidate.version
                 )
-                if let cachedAutomaticRelease, cachedAutomaticRelease != candidate.release {
+                if let cachedAutomaticRelease, cachedAutomaticRelease.tagName != candidate.release.tagName {
                     discardAutomaticCache()
                 }
                 availableRelease = candidate.release
                 availableReleases = notesReleases
+                if case .automaticReady(_, let version) = state, version == candidate.version,
+                   automaticCachedUpdateURL != nil { return }
                 transition(to: .available(current: currentVersion, latest: candidate.version))
             } else {
                 discardAutomaticCache()
@@ -1977,6 +1983,9 @@ final class UpdateService {
             }
         case .success(let downloadedURL):
             let isAutomaticCache = automaticCachedUpdateURL == downloadedURL
+            let channel = updateChannel
+            let verifier = automaticCacheVerifier
+            checkingStartedAt = nil
             transition(to: .installing(current: currentVersion, latest: latestVersion, progress: 0))
             guard let bundleIdentifier = currentBundleIdentifier else {
                 if !isAutomaticCache { downloader.cleanupDownloadedFile(at: downloadedURL) }
@@ -1986,34 +1995,50 @@ final class UpdateService {
             workQueue.async { [weak self] in
                 guard let self else { return }
                 do {
-                    try self.installer.install(
-                        diskImageURL: downloadedURL,
-                        expectedVersion: latestVersion,
-                        currentApplicationURL: self.currentApplicationURL,
-                        expectedBundleIdentifier: bundleIdentifier,
-                        progress: { [weak self] progress in
-                            guard let self else { return }
-                            self.callbackQueue.async {
-                                guard case .installing(let current, let latest, _) = self.state,
-                                      current == currentVersion,
-                                      latest == latestVersion
-                                else { return }
-                                self.transition(
-                                    to: .installing(
-                                        current: currentVersion,
-                                        latest: latestVersion,
-                                        progress: Self.clampProgress(progress)
+                    func install(_ image: URL) throws {
+                        try self.installer.install(
+                            diskImageURL: image,
+                            expectedVersion: latestVersion,
+                            currentApplicationURL: self.currentApplicationURL,
+                            expectedBundleIdentifier: bundleIdentifier,
+                            progress: { [weak self] progress in
+                                guard let self else { return }
+                                self.callbackQueue.async {
+                                    guard case .installing(let current, let latest, _) = self.state,
+                                          current == currentVersion,
+                                          latest == latestVersion
+                                    else { return }
+                                    self.transition(
+                                        to: .installing(
+                                            current: currentVersion,
+                                            latest: latestVersion,
+                                            progress: Self.clampProgress(progress)
+                                        )
                                     )
-                                )
+                                }
                             }
+                        )
+                    }
+                    if isAutomaticCache {
+                        guard let verifier, let cache = try? VerifiedUpdateCache(
+                            at: downloadedURL, application: self.currentApplicationURL, bundleIdentifier: bundleIdentifier,
+                            channel: channel, current: currentVersion, expected: latestVersion, verifier: verifier
+                        ) else {
+                            self.callbackQueue.async {
+                                self.discardAutomaticCache()
+                                self.transition(to: .automaticDownloadFailed(current: currentVersion, latest: latestVersion, failure: .verificationFailed))
+                            }
+                            return
                         }
-                    )
+                        try cache.withDiskImage(install)
+                    } else {
+                        try install(downloadedURL)
+                    }
                     if !isAutomaticCache {
                         self.downloader.cleanupDownloadedFile(at: downloadedURL)
-                    } else {
-                        self.automaticCachedUpdateURL = nil
                     }
                     self.callbackQueue.async {
+                        if isAutomaticCache { self.automaticCachedUpdateURL = nil }
                         self.transition(to: .restarting(current: currentVersion, latest: latestVersion))
                     }
                 } catch {
@@ -2031,6 +2056,12 @@ final class UpdateService {
     }
 
     private func transition(to newState: UpdateCheckState) {
+        switch newState {
+        case .checking, .revalidating, .automaticReady:
+            break
+        default:
+            checkingStartedAt = nil
+        }
         state = newState
         onStateChange?(newState)
     }

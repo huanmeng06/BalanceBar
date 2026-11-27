@@ -588,8 +588,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 guard let self else { return }
                 self.modSyncCoordinator.presentPanel(from: anchor)
             },
-            onCheckForUpdates: { [weak self] in self?.updateService.checkForUpdates() },
-            onInstallUpdate: { [weak self] in self?.updateService.installAvailableUpdate() },
+            onCheckForUpdates: { [weak self] in self?.retryUpdate() },
+            onInstallUpdate: { [weak self] in self?.installUpdate() },
             onOpenUpdateNotes: { [weak self] in self?.showUpdateNotes() },
             onClamp: { [weak self] in self?.clampDashboardScrollViewBounds() },
             onStatusLinksChanged: { [weak self] in
@@ -737,7 +737,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var isNormalMenuQuit = false
     private var isIdleUpdateQuit = false
     private var idleNoticeForOpenDashboard: AppSemanticVersion?
+    private var previousUpdateFailure: AutomaticUpdateCommand.Failure?
     private var presentedUpdateState: UpdateCheckState {
+        if let previousUpdateFailure {
+            if case .installing = updateService.state { return updateService.state }
+            if previousUpdateFailure.requiresManualInstallation,
+               case .automaticReady(let current, let latest) = updateService.state,
+               latest.description == previousUpdateFailure.version {
+                return .automaticNeedsManual(current: current, latest: latest)
+            }
+            return .failed(.installationFailed)
+        }
         if case .automaticReady(let current, let latest) = updateService.state {
             if let request = updateService.automaticUpdateInstallationRequest,
                AutomaticUpdateCommand.idleAttemptFailed(for: request) {
@@ -762,7 +772,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         updateService: updateService
     )
     private lazy var updateNotesWindowController = UpdateNotesWindowController(
-        onInstall: { [weak self] in self?.updateService.installAvailableUpdate() },
+        onInstall: { [weak self] in self?.installUpdate() },
         onIgnore: { [weak self] in self?.updateService.ignoreAvailableUpdate() }
     )
     private var showMenuBarReset: Bool { get { preferences.showMenuBarReset } set { preferences.showMenuBarReset = newValue } }
@@ -1274,9 +1284,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     }
 
     private var showsAvailableUpdateBadge: Bool {
-        switch updateService.state {
+        Self.showsAvailableUpdateBadge(for: updateService.state)
+    }
+
+    static func showsAvailableUpdateBadge(for state: UpdateCheckState) -> Bool {
+        switch state {
         case .available, .automaticDownloading, .automaticReady, .automaticInstallationFailed,
-             .automaticDownloadFailed,
+             .automaticDownloadReady, .automaticDownloadFailed,
              .automaticNeedsManual, .revalidating, .recheckFailed,
              .failed(.installationFailed):
             return true
@@ -1486,9 +1500,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         )
         AutomaticUpdateCommand.confirmSuccessfulLaunch()
         automaticUpdateCoordinator.start { [weak self] in self?.quitForIdleUpdateIfNeeded() }
-        if AutomaticUpdateCommand.hasPreviousInstallationFailure() {
-            updateService.reportAutomaticInstallationFailure()
-        }
+        previousUpdateFailure = AutomaticUpdateCommand.takePreviousInstallationFailure()
+        dashboardComposition.refreshUpdateState()
         checkForBackgroundUpdate()
         configureUpdateCheckTimer()
         updateStatusItemActivity()
@@ -1598,33 +1611,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             }
         }
         guard isNormalMenuQuit,
-              let request = automaticUpdateCoordinator.quitRequest() else {
+              let request = automaticUpdateCoordinator.quitRequest(),
+              previousUpdateFailure?.version != request.expectedVersion else {
             return .terminateNow
-        }
-        guard AutomaticUpdateCommand.canInstallAutomatically(request) else {
-            isNormalMenuQuit = false
-            updateService.automaticUpdateRequiresManualInstallation()
-            dashboardComposition.refreshUpdateState()
-            return .terminateCancel
         }
         do {
             try AutomaticUpdateCommand.launch(request)
-            return .terminateNow
         } catch {
-            isNormalMenuQuit = false
-            updateService.automaticUpdateRequiresManualInstallation()
-            dashboardComposition.refreshUpdateState()
-            return .terminateCancel
+            AutomaticUpdateCommand.recordFailure(applicationURL: request.applicationURL, version: request.expectedVersion)
         }
+        return .terminateNow
     }
 
     private var isAutomaticUpdateInterfaceInUse: Bool {
-        dashboardComposition.window?.isVisible == true || statusItemController.isMenuTracking
-            || NSApp.modalWindow != nil || NSApp.windows.contains { $0.attachedSheet != nil }
+        dashboardComposition.window?.isVisible == true || statusItemController?.isMenuTracking == true
+            || NSApp.modalWindow != nil || Self.hasVisibleUpdateInteraction(in: NSApp.windows)
+    }
+
+    static func hasVisibleUpdateInteraction(in windows: [NSWindow]) -> Bool {
+        windows.contains { $0.attachedSheet != nil || ($0.isVisible && ($0.canBecomeKey || $0 is NSPanel)) }
+    }
+
+    private func retryUpdate() {
+        previousUpdateFailure = nil
+        updateService.checkForUpdates()
+        dashboardComposition.refreshUpdateState()
+    }
+
+    private func installUpdate() {
+        previousUpdateFailure = nil
+        updateService.installAvailableUpdate()
+        dashboardComposition.refreshUpdateState()
     }
 
     private func quitForIdleUpdateIfNeeded() {
-        guard automaticUpdateCoordinator.idleRequest(interfaceInUse: isAutomaticUpdateInterfaceInUse) != nil else { return }
+        guard let request = automaticUpdateCoordinator.idleRequest(interfaceInUse: isAutomaticUpdateInterfaceInUse),
+              previousUpdateFailure?.version != request.expectedVersion else { return }
         isIdleUpdateQuit = true
         NSApp.terminate(nil)
     }
@@ -3121,7 +3143,6 @@ enum BalanceBarMain {
             commandArguments.removeFirst()
             Darwin.exit(AutomaticUpdateCommand.run(arguments: commandArguments))
         }
-        guard AutomaticUpdateCommand.prepareForLaunch() else { return }
         if AutomatedTestHost.isRunning {
             AutomatedTestHost.isolateUserDefaults()
             // XCTest still needs the default run loop to attach. Switch to
@@ -3141,6 +3162,7 @@ enum BalanceBarMain {
             NSLog("BalanceBar: refusing duplicate instance; pid=%d", currentPID)
             return
         }
+        guard AutomaticUpdateCommand.prepareForLaunch() else { return }
         let app = NSApplication.shared
         if InitialLaunchPresentation.resolve(
             silentLaunch: AppPreferences().silentLaunch || AutomaticUpdateCommand.isBackgroundRelaunch,
