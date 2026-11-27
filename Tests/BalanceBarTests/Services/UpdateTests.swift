@@ -7,6 +7,223 @@ import CryptoKit
 @testable import BalanceBar
 
 final class UpdateTests: XCTestCase {
+    func testAutomaticDownloadPrunesOlderCacheAfterPublishingCandidate() throws {
+        try verifyAutomaticCachePruning(restore: false)
+    }
+
+    func testAutomaticCacheRestorePrunesOlderCacheWithoutDownloading() throws {
+        try verifyAutomaticCachePruning(restore: true)
+    }
+
+    func testOfflineStartupKeepsSignedCacheAvailableForImmediateInstall() throws {
+        try verifyAutomaticCachePruning(restore: true, offline: true)
+    }
+
+    func testImmediateInstallRejectsCacheChangedAfterVerification() throws {
+        try verifyAutomaticCachePruning(restore: true, offline: true, tamperBeforeInstall: true)
+    }
+
+    func testPreflightDrainsLargeOutputAndDiscardsDiagnostics() throws {
+        let output = try XCTUnwrap(UpdateApplicationPreflight.run("/bin/sh", [
+            "-c", "/bin/dd if=/dev/zero bs=65536 count=4 2>/dev/null >&2; /bin/dd if=/dev/zero bs=65536 count=4 2>/dev/null"
+        ]))
+        XCTAssertEqual(output.utf8.count, 262_144)
+    }
+
+    func testInterruptedTransactionBeforeReplacementLeavesOldVersionRetryable() throws {
+        try verifyInterruptedUpdate(replaced: false)
+    }
+
+    func testInterruptedTransactionAfterReplacementConfirmsOnlyTargetCopy() throws {
+        try verifyInterruptedUpdate(replaced: true)
+    }
+
+    func testStartupPrunesInstalledCachesAndInterruptedWork() throws {
+        let support = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: support) }
+        let bundleID = "com.huanmeng06.BalanceBar.app"
+        let bundleSupport = support.appendingPathComponent(bundleID)
+        let updates = bundleSupport.appendingPathComponent("Updates")
+        let updater = bundleSupport.appendingPathComponent("Updater")
+        for name in ["1.8.7", "1.8.8", "1.8.9", ".download-xxx", "preflight-xxx", "other"] {
+            try FileManager.default.createDirectory(at: updates.appendingPathComponent(name), withIntermediateDirectories: true)
+        }
+        try FileManager.default.createDirectory(at: updater, withIntermediateDirectories: true)
+        let journal = updater.appendingPathComponent("installation.json")
+        try Data("keep".utf8).write(to: journal)
+        try Data().write(to: updates.appendingPathComponent("1.8.6"))
+        try FileManager.default.createSymbolicLink(at: updates.appendingPathComponent("1.8.5"), withDestinationURL: updater)
+        let service = UpdateService(
+            currentVersionString: "1.8.8",
+            currentBundleIdentifier: bundleID,
+            applicationSupportDirectory: support
+        )
+        let coordinator = AutomaticUpdateCoordinator(preferences: AppPreferences(), updateService: service)
+        defer { coordinator.stop() }
+
+        coordinator.start {}
+
+        XCTAssertEqual(
+            Set(try FileManager.default.contentsOfDirectory(atPath: updates.path)),
+            ["1.8.5", "1.8.6", "1.8.9", "other"]
+        )
+        XCTAssertEqual(try Data(contentsOf: journal), Data("keep".utf8))
+    }
+
+    func testCacheCleanupSkipsInstallingAndRestarting() throws {
+        let support = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: support) }
+        let bundleID = "com.huanmeng06.BalanceBar.app"
+        let updates = support.appendingPathComponent(bundleID).appendingPathComponent("Updates")
+        let names: Set<String> = ["1.8.8", ".download-xxx", "preflight-xxx"]
+        for name in names {
+            try FileManager.default.createDirectory(at: updates.appendingPathComponent(name), withIntermediateDirectories: true)
+        }
+        let fetcher = StubReleaseFetcher()
+        let downloader = StubDownloader()
+        let service = UpdateService(
+            releaseFetcher: fetcher, downloader: downloader, installer: StubInstaller(),
+            currentVersionString: "1.8.8", currentBundleIdentifier: bundleID, updateChannel: .beta,
+            minimumCheckingDuration: 0, applicationSupportDirectory: support
+        )
+        let available = waitForState(service, queue: .main) {
+            if case .available = $0 { return true }
+            return false
+        }
+        service.checkForUpdates()
+        fetcher.resolve(.success([makeRelease(tag: "v1.8.10", prerelease: true)]))
+        wait(for: [available], timeout: 2)
+
+        let installing = expectation(description: "installing cache protection")
+        let restarting = expectation(description: "restarting cache protection")
+        service.onStateChange = { state in
+            switch state {
+            case .installing:
+                service.removeInstalledUpdateCaches()
+                XCTAssertEqual(try? Set(FileManager.default.contentsOfDirectory(atPath: updates.path)), names)
+                installing.fulfill()
+            case .restarting:
+                service.removeInstalledUpdateCaches()
+                XCTAssertEqual(try? Set(FileManager.default.contentsOfDirectory(atPath: updates.path)), names)
+                restarting.fulfill()
+            default:
+                break
+            }
+        }
+        defer { service.onStateChange = nil }
+        service.installAvailableUpdate()
+        downloader.resolve(.success(updates.appendingPathComponent("1.8.8/BalanceBar-1.8.10.dmg")))
+        wait(for: [installing, restarting], timeout: 2)
+    }
+
+    func testIdleThresholdOverrideAppliesOnlyToDevelopmentBundles() {
+        let environment = ["BALANCEBAR_UPDATE_IDLE_SECONDS": "30"]
+        XCTAssertEqual(AutomaticUpdateCoordinator.configuredIdleThreshold(
+            bundleIdentifier: "com.huanmeng06.BalanceBar.dev.update-test.fixture", environment: environment
+        ), 30)
+        XCTAssertEqual(AutomaticUpdateCoordinator.configuredIdleThreshold(
+            bundleIdentifier: "com.huanmeng06.BalanceBar.app", environment: environment
+        ), 600)
+        XCTAssertEqual(AutomaticUpdateCoordinator.configuredIdleThreshold(
+            bundleIdentifier: "com.huanmeng06.BalanceBar.dev", environment: ["BALANCEBAR_UPDATE_IDLE_SECONDS": "nan"]
+        ), 600)
+    }
+
+    func testIdleInstallerRequiresExplicitLaunchConfirmation() throws {
+        XCTAssertNoThrow(try AutomaticUpdateCommand.waitForSuccessfulLaunch(timeout: 0) { true })
+        XCTAssertThrowsError(try AutomaticUpdateCommand.waitForSuccessfulLaunch(timeout: 0) { false }) {
+            XCTAssertEqual($0 as? UpdateInstallationError, .relaunchFailed)
+        }
+    }
+
+    func testIdleUpdatePresentationShowsInstalledVersionWithoutBadge() throws {
+        LocalizationRuntime.configure(bundle: Bundle(for: Self.self))
+        defer { LocalizationRuntime.configure() }
+        let version = try XCTUnwrap(AppSemanticVersion("90.1.0"))
+        let presentation = DashboardUpdatePresentation.make(for: .automaticIdleUpdated(current: version), language: .english)
+        XCTAssertEqual(presentation.subtitle, "Updated to 90.1.0 while you were away.")
+        XCTAssertFalse(presentation.showsUpdateBadge)
+    }
+
+    func testDownloadedUpdateShowsPendingVersionWithEitherInstallPreference() throws {
+        LocalizationRuntime.configure(bundle: Bundle(for: Self.self))
+        defer { LocalizationRuntime.configure() }
+        let current = try XCTUnwrap(AppSemanticVersion("1.8.8"))
+        let latest = try XCTUnwrap(AppSemanticVersion("1.8.9"))
+        let states: [UpdateCheckState] = [
+            .automaticDownloadReady(current: current, latest: latest),
+            .automaticReady(current: current, latest: latest)
+        ]
+        for state in states {
+            let chinese = DashboardUpdatePresentation.make(for: state, language: .simplifiedChinese)
+            XCTAssertEqual(chinese.subtitle, "1.8.9 已下载，等待安装")
+            let english = DashboardUpdatePresentation.make(for: state, language: .english)
+            XCTAssertEqual(english.subtitle, "1.8.9 downloaded, ready to install")
+            XCTAssertEqual(english.buttonTitle, "Install Now")
+            XCTAssertTrue(english.performsInstall)
+            XCTAssertTrue(english.showsUpdateBadge)
+        }
+    }
+
+    func testUpdateSignatureVerifierAcceptsContractVectorAndRejectsModifiedManifest() throws {
+        let publicKey = try XCTUnwrap(Data(base64Encoded: "EMOTR6+Fb1+w7DIjYiZuTC7Bqj6ZuO26B7xYBIDvDyA="))
+        let verifier = UpdateSignatureVerifier(publicKeys: ["test-vector-1": publicKey])
+        let manifest = try XCTUnwrap(Data(base64Encoded: "eyJzY2hlbWEiOjEsImJ1bmRsZUlkZW50aWZpZXIiOiJjb20uaHVhbm1lbmcwNi5CYWxhbmNlQmFyLmFwcCIsInZlcnNpb24iOiI5LjkuMSIsImNoYW5uZWwiOiJiZXRhIiwidGFnIjoidjkuOS4xIiwiYXNzZXQiOnsibmFtZSI6IkJhbGFuY2VCYXItOS45LjEuZG1nIiwic2l6ZSI6MTA0ODU3Niwic2hhMjU2IjoiNWQwZjZhMWM2ZTJhM2Q0YjhmOWUwYTFiMmMzZDRlNWY2MDcxODI5M2E0YjVjNmQ3ZThmOTAxMjM0NTY3ODlhYiJ9LCJzb3VyY2UiOnsicmVwb3NpdG9yeSI6Imh1YW5tZW5nMDYvQmFsYW5jZUJhciIsImNvbW1pdCI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmMDEyMzQ1NjciLCJydW5JZCI6IjEyMzQ1Njc4OTAiLCJydW5BdHRlbXB0IjoiMSJ9LCJzaWduZWRBdCI6IjIwMjYtMTEtMjZUMDA6MDA6MDBaIn0K"))
+        let signature = Data(#"{"schema":1,"algorithm":"ed25519","keyId":"test-vector-1","signature":"jgTUjyF3OYBAPqlePVqLvGNMY60E0PCCtZ75d3bOlJctW8L5UtIbGSZX0UdcHF88SpjPFeC6SSSOaPlT9V/EAw=="}"#.utf8)
+
+        XCTAssertEqual(try verifier.verify(manifestData: manifest, signatureData: signature).version, "9.9.1")
+        let unknownKeySignature = Data(#"{"schema":1,"algorithm":"ed25519","keyId":"unknown","signature":"jgTUjyF3OYBAPqlePVqLvGNMY60E0PCCtZ75d3bOlJctW8L5UtIbGSZX0UdcHF88SpjPFeC6SSSOaPlT9V/EAw=="}"#.utf8)
+        XCTAssertThrowsError(try verifier.verify(manifestData: manifest, signatureData: unknownKeySignature))
+        let unknownAlgorithm = Data(#"{"schema":1,"algorithm":"rsa","keyId":"test-vector-1","signature":"jgTUjyF3OYBAPqlePVqLvGNMY60E0PCCtZ75d3bOlJctW8L5UtIbGSZX0UdcHF88SpjPFeC6SSSOaPlT9V/EAw=="}"#.utf8)
+        XCTAssertThrowsError(try verifier.verify(manifestData: manifest, signatureData: unknownAlgorithm))
+        let unsupportedSchema = Data(#"{"schema":2,"algorithm":"ed25519","keyId":"test-vector-1","signature":"jgTUjyF3OYBAPqlePVqLvGNMY60E0PCCtZ75d3bOlJctW8L5UtIbGSZX0UdcHF88SpjPFeC6SSSOaPlT9V/EAw=="}"#.utf8)
+        XCTAssertThrowsError(try verifier.verify(manifestData: manifest, signatureData: unsupportedSchema))
+        var modifiedManifest = manifest
+        modifiedManifest[modifiedManifest.count - 3] ^= 1
+        XCTAssertThrowsError(try verifier.verify(manifestData: modifiedManifest, signatureData: signature))
+    }
+
+    func testUpdateSignatureVerifierRejectsAbsentTrustedKeyAndOversizedPayloads() throws {
+        let manifest = Data("{}".utf8)
+        let signature = Data("{}".utf8)
+        XCTAssertThrowsError(try UpdateSignatureVerifier(publicKeys: [:]).verify(manifestData: manifest, signatureData: signature))
+
+        let publicKey = try XCTUnwrap(Data(base64Encoded: "EMOTR6+Fb1+w7DIjYiZuTC7Bqj6ZuO26B7xYBIDvDyA="))
+        let verifier = UpdateSignatureVerifier(publicKeys: ["test-vector-1": publicKey])
+        XCTAssertThrowsError(try verifier.verify(
+            manifestData: Data(repeating: 0, count: 16 * 1024 + 1),
+            signatureData: signature
+        ))
+        XCTAssertThrowsError(try verifier.verify(
+            manifestData: manifest,
+            signatureData: Data(repeating: 0, count: 4 * 1024 + 1)
+        ))
+    }
+
+    func testDevelopmentUpdateAssetFixtureDownloadsByExactAssetName() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("BalanceBar-update-fixture-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let contents = Data("fixture asset".utf8)
+        try contents.write(to: directory.appendingPathComponent("BalanceBar-99.0.0.dmg"))
+        let asset = GitHubReleaseAsset(
+            name: "BalanceBar-99.0.0.dmg",
+            browserDownloadURL: URL(string: "https://github.com/huanmeng06/BalanceBar/releases/download/v99.0.0/BalanceBar-99.0.0.dmg"),
+            size: contents.count,
+            digest: nil
+        )
+        let downloader = DevelopmentUpdateAssetFixture(directoryURL: directory)
+        var result: Result<URL, UpdateAssetDownloadError>?
+
+        downloader.download(asset: asset) { result = $0 }
+
+        let downloadedURL = try XCTUnwrap(try result?.get())
+        XCTAssertEqual(try Data(contentsOf: downloadedURL), contents)
+        downloader.cleanupDownloadedFile(at: downloadedURL)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: downloadedURL.deletingLastPathComponent().path))
+    }
+
     private struct StubURLResult {
         let statusCode: Int
         let data: Data?
@@ -1582,6 +1799,50 @@ final class UpdateTests: XCTestCase {
             XCTAssertEqual(error as? UpdateInstallationError, .relaunchFailed)
         }
         XCTAssertEqual(LiveUpdateFileSystem().bundleMetadata(at: currentApp)?.shortVersion, "1.0.0")
+    }
+
+    func testInstallerDoesNotReplaceCurrentAppWithIncompleteBackup() throws {
+        let root = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let current = try makeAppBundle(at: root.appendingPathComponent("Current.app"), version: "1.0.0")
+        let mount = root.appendingPathComponent("Mounted")
+        try makeAppBundle(at: mount.appendingPathComponent("BalanceBar.app"), version: "1.0.1")
+        let image = root.appendingPathComponent("update.dmg")
+        try Data("test".utf8).write(to: image)
+        let relauncher = StubRelauncher()
+        let installer = UpdateApplicationInstaller(
+            fileSystem: IncompleteBackupFileSystem(current: current),
+            mounter: StubMounter(mountPoint: mount), relauncher: relauncher
+        )
+        XCTAssertThrowsError(try installer.install(
+            diskImageURL: image, expectedVersion: try XCTUnwrap(AppSemanticVersion("1.0.1")),
+            currentApplicationURL: current, expectedBundleIdentifier: "com.huanmeng06.BalanceBar.app"
+        )) { XCTAssertEqual($0 as? UpdateInstallationError, .replacementFailed) }
+        XCTAssertEqual(LiveUpdateFileSystem().bundleMetadata(at: current)?.shortVersion, "1.0.0")
+        XCTAssertEqual(relauncher.relaunchCount, 0)
+        XCTAssertFalse(try FileManager.default.contentsOfDirectory(atPath: root.path).contains { $0.hasPrefix(".BalanceBar.previous-") })
+    }
+
+    private struct IncompleteBackupFileSystem: UpdateFileSystem {
+        let current: URL
+        private let live = LiveUpdateFileSystem()
+
+        func makeTemporaryDirectory() throws -> URL { try live.makeTemporaryDirectory() }
+        func fileExists(at url: URL) -> Bool { live.fileExists(at: url) }
+        func isRegularFile(at url: URL) -> Bool { live.isRegularFile(at: url) }
+        func removeItem(at url: URL) throws { try live.removeItem(at: url) }
+        func bundleMetadata(at url: URL) -> UpdateApplicationBundleMetadata? { live.bundleMetadata(at: url) }
+        func replaceItem(at target: URL, withItemAt replacement: URL, backupItemName: String?) throws {
+            try live.replaceItem(at: target, withItemAt: replacement, backupItemName: backupItemName)
+        }
+
+        func copyItem(at source: URL, to destination: URL) throws {
+            if source == current {
+                try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: false)
+                throw CocoaError(.fileWriteOutOfSpace)
+            }
+            try live.copyItem(at: source, to: destination)
+        }
     }
 
     func testHdiutilMounterParsesMountPointAndDetachesThroughProcessBoundary() throws {
@@ -4459,6 +4720,143 @@ final class UpdateTests: XCTestCase {
             .appendingPathComponent("BalanceBar-UpdateTests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
+    }
+
+    private func verifyInterruptedUpdate(replaced: Bool) throws {
+        let root = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let target = try makeAppBundle(at: root.appendingPathComponent("A.app"), version: replaced ? "1.8.9" : "1.8.8")
+        let other = try makeAppBundle(at: root.appendingPathComponent("B.app"), version: "1.8.9")
+        let backup = try makeAppBundle(at: root.appendingPathComponent("previous.app"), version: "1.8.8")
+        let journal = root.appendingPathComponent("installation.json")
+        let record = try JSONSerialization.data(withJSONObject: [
+            "stage": "backed-up", "applicationPath": target.path, "backupPath": backup.path,
+            "version": "1.8.9", "launchAttempted": false
+        ])
+        try record.write(to: journal)
+
+        XCTAssertTrue(AutomaticUpdateCommand.prepareForLaunch(applicationURL: other, transactionURL: journal))
+        AutomaticUpdateCommand.confirmSuccessfulLaunch(applicationURL: other, transactionURL: journal)
+        XCTAssertEqual(try Data(contentsOf: journal), record)
+        XCTAssertTrue(AutomaticUpdateCommand.prepareForLaunch(applicationURL: target, transactionURL: journal))
+        if replaced {
+            XCTAssertTrue(FileManager.default.fileExists(atPath: backup.path))
+            AutomaticUpdateCommand.confirmSuccessfulLaunch(applicationURL: target, transactionURL: journal)
+        } else {
+            XCTAssertEqual(AutomaticUpdateCommand.takePreviousInstallationFailure(applicationURL: target, transactionURL: journal)?.version, "1.8.9")
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: journal.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: backup.path))
+        XCTAssertEqual(LiveUpdateFileSystem().bundleMetadata(at: target)?.shortVersion, replaced ? "1.8.9" : "1.8.8")
+    }
+
+    private func verifyAutomaticCachePruning(restore: Bool, offline: Bool = false, tamperBeforeInstall: Bool = false) throws {
+        let support = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: support) }
+        let files = FileManager.default
+        let bundleID = "com.huanmeng06.BalanceBar.app"
+        let app = support.appendingPathComponent("BalanceBar.app")
+        let updates = support.appendingPathComponent(bundleID).appendingPathComponent("Updates")
+        let version = "1.8.10"
+        let olderCache = updates.appendingPathComponent("1.8.9")
+        let candidateCache = updates.appendingPathComponent(version)
+        let assets = support.appendingPathComponent("assets")
+        let stagingNames: Set<String> = [".download-in-progress", "preflight-in-progress"]
+        for directory in [olderCache, assets] + stagingNames.map({ updates.appendingPathComponent($0) }) {
+            try files.createDirectory(at: directory, withIntermediateDirectories: true)
+        }
+        let dmgName = "BalanceBar-\(version).dmg"
+        let dmg = Data("test disk image".utf8)
+        let manifest = try JSONSerialization.data(withJSONObject: [
+            "schema": 1, "bundleIdentifier": bundleID, "version": version,
+            "channel": "beta", "tag": "v\(version)",
+            "asset": ["name": dmgName, "size": dmg.count, "sha256": sha256(dmg)],
+            "source": ["repository": "huanmeng06/BalanceBar", "commit": String(repeating: "0", count: 40), "runId": "1", "runAttempt": "1"],
+            "signedAt": "2026-11-26T00:00:00Z"
+        ])
+        let key = Curve25519.Signing.PrivateKey()
+        let signature = try JSONSerialization.data(withJSONObject: [
+            "schema": 1, "algorithm": "ed25519", "keyId": "test-key",
+            "signature": key.signature(for: manifest).base64EncodedString()
+        ])
+        let releaseAssets = [
+            (dmgName, dmg), ("BalanceBar-\(version).update.json", manifest),
+            ("BalanceBar-\(version).update.json.sig", signature)
+        ]
+        let release = makeRelease(tag: "v\(version)", prerelease: true, assets: releaseAssets.map { name, contents in
+            ["name": name, "size": contents.count,
+             "browser_download_url": "https://github.com/huanmeng06/BalanceBar/releases/download/v\(version)/\(name)"]
+        })
+        if restore {
+            try files.createDirectory(at: candidateCache, withIntermediateDirectories: true)
+            let context = try JSONSerialization.data(withJSONObject: ["applicationPath": app.path, "channel": "beta"])
+            try context.write(to: candidateCache.appendingPathComponent("install-context.json"))
+        }
+        let assetDirectory = restore ? candidateCache : assets
+        for (name, contents) in releaseAssets {
+            try contents.write(to: assetDirectory.appendingPathComponent(name))
+        }
+        let fetcher = StubReleaseFetcher()
+        let installer = StubInstaller()
+        let service = UpdateService(
+            releaseFetcher: fetcher, downloader: DevelopmentUpdateAssetFixture(directoryURL: assets), installer: installer,
+            currentVersionString: "1.8.8", currentApplicationURL: app,
+            currentBundleIdentifier: bundleID, updateChannel: .beta, minimumCheckingDuration: 0,
+            applicationSupportDirectory: support,
+            stageAutomaticUpdateApplication: { _, destination, _, _ in
+                XCTAssertFalse(restore, "Restoring a cache should skip downloading and staging")
+                XCTAssertTrue(files.fileExists(atPath: olderCache.path))
+                try files.createDirectory(at: destination, withIntermediateDirectories: false)
+            }
+        )
+        let verifier = UpdateSignatureVerifier(publicKeys: ["test-key": key.publicKey.rawRepresentation])
+        if offline {
+            let current = try XCTUnwrap(AppSemanticVersion("1.8.8"))
+            let latest = try XCTUnwrap(AppSemanticVersion(version))
+            let ready = UpdateCheckState.automaticReady(current: current, latest: latest)
+            service.restoreAutomaticUpdateOnLaunch(verifier: verifier)
+            XCTAssertEqual(service.state, ready)
+            XCTAssertNotNil(service.automaticUpdateInstallationRequest)
+            service.checkForUpdatesIfNeeded()
+            XCTAssertEqual(service.state, ready)
+            fetcher.resolve(.failure(.transport))
+            let response = expectation(description: "offline check leaves the cache ready")
+            DispatchQueue.main.async {
+                XCTAssertEqual(service.state, ready)
+                XCTAssertNotNil(service.automaticUpdateInstallationRequest)
+                response.fulfill()
+            }
+            wait(for: [response], timeout: 2)
+
+            if tamperBeforeInstall {
+                let cacheURL = candidateCache.appendingPathComponent(dmgName)
+                try Data(repeating: 0, count: dmg.count).write(to: cacheURL)
+            }
+            let expected: UpdateCheckState = tamperBeforeInstall
+                ? .automaticDownloadFailed(current: current, latest: latest, failure: .verificationFailed)
+                : .restarting(current: current, latest: latest)
+            let installed = waitForState(service, queue: .main) { $0 == expected }
+            service.installAvailableUpdate()
+            wait(for: [installed], timeout: 2)
+            XCTAssertEqual(installer.installCount, tamperBeforeInstall ? 0 : 1)
+            return
+        }
+        let available = waitForState(service, queue: .main) {
+            if case .available = $0 { return true }
+            return false
+        }
+        service.checkForUpdates()
+        fetcher.resolve(.success([release]))
+        wait(for: [available], timeout: 2)
+
+        let prepared = expectation(description: "candidate cache is ready")
+        service.prepareAutomaticUpdate(verifier: verifier) { result in
+            XCTAssertEqual(try? result.get()?.path, candidateCache.appendingPathComponent(dmgName).path)
+            XCTAssertEqual(service.state, .automaticReady(current: AppSemanticVersion("1.8.8")!, latest: AppSemanticVersion(version)!))
+            XCTAssertEqual(try? Set(files.contentsOfDirectory(atPath: updates.path)), stagingNames.union([version]))
+            prepared.fulfill()
+        }
+        wait(for: [prepared], timeout: 5)
     }
 
     @discardableResult

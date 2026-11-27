@@ -2660,6 +2660,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var statusItemAttachmentCheckScheduled = false
     private var statusItemReanchorAttempts = 0
     private var isStatusMenuTracking = false
+    var isMenuTracking: Bool { isStatusMenuTracking }
     private var statusMenuNeedsRebuild = false
     private var statusMenuNeedsNativeStructureRebuild = false
     private var menuDismissalTrace: MenuDismissalTrace?

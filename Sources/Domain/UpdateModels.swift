@@ -268,7 +268,7 @@ struct UpdateReleaseCandidate: Equatable {
     let version: AppSemanticVersion
 }
 
-enum UpdateFailure: Equatable {
+enum UpdateFailure: Error, Equatable {
     case network
     case httpStatus(Int)
     /// GitHub rate limiting with a server-guided cooldown. `retryAfter` is the
@@ -297,6 +297,13 @@ enum UpdateCheckState: Equatable {
     /// and installable; `failure` describes this attempt, not the update.
     case recheckFailed(current: AppSemanticVersion, latest: AppSemanticVersion, failure: UpdateFailure)
     case downloading(current: AppSemanticVersion, latest: AppSemanticVersion, progress: Int)
+    case automaticDownloading(current: AppSemanticVersion, latest: AppSemanticVersion, progress: Int)
+    case automaticReady(current: AppSemanticVersion, latest: AppSemanticVersion)
+    case automaticDownloadReady(current: AppSemanticVersion, latest: AppSemanticVersion)
+    case automaticIdleUpdated(current: AppSemanticVersion)
+    case automaticInstallationFailed(current: AppSemanticVersion, latest: AppSemanticVersion)
+    case automaticDownloadFailed(current: AppSemanticVersion, latest: AppSemanticVersion, failure: UpdateFailure)
+    case automaticNeedsManual(current: AppSemanticVersion, latest: AppSemanticVersion)
     case installing(current: AppSemanticVersion, latest: AppSemanticVersion, progress: Int)
     case restarting(current: AppSemanticVersion, latest: AppSemanticVersion)
     case failed(UpdateFailure)

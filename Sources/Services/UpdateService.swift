@@ -247,9 +247,12 @@ protocol UpdateAssetDownloading {
     )
 
     func cleanupDownloadedFile(at url: URL)
+    func cancelDownloads()
 }
 
 extension UpdateAssetDownloading {
+    func cancelDownloads() {}
+
     func download(
         asset: GitHubReleaseAsset,
         completion: @escaping (Result<URL, UpdateAssetDownloadError>) -> Void
@@ -324,7 +327,7 @@ enum UpdateAssetVerifier {
     }
 }
 
-private enum SHA256Hex {
+enum SHA256Hex {
     static func digest(_ data: Data) -> String {
         #if canImport(CryptoKit)
         return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
@@ -342,6 +345,8 @@ private enum SHA256Hex {
 final class URLSessionUpdateAssetDownloader: UpdateAssetDownloading {
     private let sessionConfiguration: URLSessionConfiguration
     private let fileManager: FileManager
+    private let sessionLock = NSLock()
+    private var activeSessions: [UUID: URLSession] = [:]
 
     init(session: URLSession = .shared, fileManager: FileManager = .default) {
         self.sessionConfiguration = session.configuration
@@ -364,19 +369,88 @@ final class URLSessionUpdateAssetDownloader: UpdateAssetDownloading {
         request.timeoutInterval = 120
         request.setValue("application/octet-stream", forHTTPHeaderField: "Accept")
         request.setValue("BalanceBar", forHTTPHeaderField: "User-Agent")
+        let sessionID = UUID()
         let delegate = UpdateAssetDownloadDelegate(
+            sessionID: sessionID,
             asset: asset,
             fileManager: fileManager,
             progress: progress,
-            completion: completion
+            completion: completion,
+            restrictRedirectsToGitHub: url.host?.lowercased() == "github.com",
+            didFinish: { [weak self] id in self?.removeSession(id) }
         )
         let session = URLSession(
             configuration: sessionConfiguration,
             delegate: delegate,
             delegateQueue: nil
         )
+        sessionLock.lock()
+        activeSessions[sessionID] = session
+        sessionLock.unlock()
         progress(0)
         session.dataTask(with: request).resume()
+    }
+
+    func cleanupDownloadedFile(at url: URL) {
+        try? fileManager.removeItem(at: url.deletingLastPathComponent())
+    }
+
+    func cancelDownloads() {
+        sessionLock.lock()
+        let sessions = Array(activeSessions.values)
+        activeSessions.removeAll()
+        sessionLock.unlock()
+        sessions.forEach { $0.invalidateAndCancel() }
+    }
+
+    private func removeSession(_ id: UUID) {
+        sessionLock.lock()
+        activeSessions[id] = nil
+        sessionLock.unlock()
+    }
+}
+
+final class DevelopmentUpdateAssetFixture: UpdateAssetDownloading {
+    private let directoryURL: URL
+    private let fileManager: FileManager
+
+    init(directoryURL: URL, fileManager: FileManager = .default) {
+        self.directoryURL = directoryURL
+        self.fileManager = fileManager
+    }
+
+    func download(
+        asset: GitHubReleaseAsset,
+        completion: @escaping (Result<URL, UpdateAssetDownloadError>) -> Void
+    ) {
+        download(asset: asset, progress: { _ in }, completion: completion)
+    }
+
+    func download(
+        asset: GitHubReleaseAsset,
+        progress: @escaping (Int) -> Void,
+        completion: @escaping (Result<URL, UpdateAssetDownloadError>) -> Void
+    ) {
+        guard URL(fileURLWithPath: asset.name).lastPathComponent == asset.name,
+              let data = try? Data(contentsOf: directoryURL.appendingPathComponent(asset.name)) else {
+            completion(.failure(.invalidAsset))
+            return
+        }
+        do {
+            try UpdateAssetVerifier.verify(data: data, asset: asset)
+            let destination = fileManager.temporaryDirectory
+                .appendingPathComponent("BalanceBar-update-\(UUID().uuidString)", isDirectory: true)
+            try fileManager.createDirectory(at: destination, withIntermediateDirectories: true)
+            progress(0)
+            let fileURL = destination.appendingPathComponent(asset.name)
+            try data.write(to: fileURL, options: .atomic)
+            progress(100)
+            completion(.success(fileURL))
+        } catch let error as UpdateAssetDownloadError {
+            completion(.failure(error))
+        } catch {
+            completion(.failure(.writeFailed))
+        }
     }
 
     func cleanupDownloadedFile(at url: URL) {
@@ -385,25 +459,35 @@ final class URLSessionUpdateAssetDownloader: UpdateAssetDownloading {
 }
 
 private final class UpdateAssetDownloadDelegate: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+    private let sessionID: UUID
     private let asset: GitHubReleaseAsset
     private let fileManager: FileManager
     private let progress: (Int) -> Void
     private let completion: (Result<URL, UpdateAssetDownloadError>) -> Void
+    private let restrictRedirectsToGitHub: Bool
+    private let didFinish: (UUID) -> Void
     private var response: HTTPURLResponse?
     private var expectedByteCount: Int64 = NSURLSessionTransferSizeUnknown
     private var receivedData = Data()
     private var didComplete = false
+    private var didExceedAssetSize = false
 
     init(
+        sessionID: UUID,
         asset: GitHubReleaseAsset,
         fileManager: FileManager,
         progress: @escaping (Int) -> Void,
-        completion: @escaping (Result<URL, UpdateAssetDownloadError>) -> Void
+        completion: @escaping (Result<URL, UpdateAssetDownloadError>) -> Void,
+        restrictRedirectsToGitHub: Bool,
+        didFinish: @escaping (UUID) -> Void
     ) {
+        self.sessionID = sessionID
         self.asset = asset
         self.fileManager = fileManager
         self.progress = progress
         self.completion = completion
+        self.restrictRedirectsToGitHub = restrictRedirectsToGitHub
+        self.didFinish = didFinish
     }
 
     func urlSession(
@@ -412,12 +496,30 @@ private final class UpdateAssetDownloadDelegate: NSObject, URLSessionDataDelegat
         didReceive response: URLResponse,
         completionHandler: @escaping (URLSession.ResponseDisposition) -> Void
     ) {
+        if restrictRedirectsToGitHub {
+            let host = response.url?.host?.lowercased()
+            guard host == "github.com" || host == "release-assets.githubusercontent.com" else {
+                completionHandler(.cancel)
+                return
+            }
+        }
         self.response = response as? HTTPURLResponse
         expectedByteCount = response.expectedContentLength
+        if let assetSize = asset.size, expectedByteCount > Int64(assetSize) {
+            didExceedAssetSize = true
+            completionHandler(.cancel)
+            return
+        }
         completionHandler(.allow)
     }
 
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        if let assetSize = asset.size,
+           Int64(receivedData.count) + Int64(data.count) > Int64(assetSize) {
+            didExceedAssetSize = true
+            dataTask.cancel()
+            return
+        }
         receivedData.append(data)
         guard expectedByteCount > 0 else { return }
         let fraction = Double(receivedData.count) / Double(expectedByteCount)
@@ -427,8 +529,15 @@ private final class UpdateAssetDownloadDelegate: NSObject, URLSessionDataDelegat
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         guard !didComplete else { return }
         didComplete = true
-        defer { session.finishTasksAndInvalidate() }
+        defer {
+            didFinish(sessionID)
+            session.finishTasksAndInvalidate()
+        }
 
+        if didExceedAssetSize {
+            completion(.failure(.sizeMismatch))
+            return
+        }
         if error != nil {
             completion(.failure(.transport))
             return
@@ -539,6 +648,7 @@ struct LiveUpdateFileSystem: UpdateFileSystem {
             shortVersion: object["CFBundleShortVersionString"] as? String
         )
     }
+
 }
 
 struct MountedUpdateDiskImage {
@@ -597,6 +707,7 @@ enum UpdateInstallationError: Error, Equatable {
     case mountFailed
     case applicationNotFound
     case bundleMetadataMismatch
+    case manualInstallationRequired
     case stagingFailed
     case replacementFailed
     case relaunchFailed
@@ -851,18 +962,34 @@ final class UpdateApplicationInstaller: UpdateApplicationInstalling {
         let backupURL = currentApplicationURL
             .deletingLastPathComponent()
             .appendingPathComponent(backupName)
+        var backupComplete = false
+        var replaced = false
         do {
             // Keep an explicit backup until the relaunched process is known to
             // start. Relying on FileManager's optional backup name makes the
             // backup location/availability platform-dependent and can leave
             // the new bundle in place after a failed relaunch.
             try fileSystem.copyItem(at: currentApplicationURL, to: backupURL)
+            backupComplete = true
             try fileSystem.replaceItem(
                 at: currentApplicationURL,
                 withItemAt: stagedApp,
                 backupItemName: nil
             )
+            replaced = true
+            if currentApplicationURL.standardizedFileURL == Bundle.main.bundleURL.standardizedFileURL {
+                try AutomaticUpdateCommand.recordSuccessfulReplacement(
+                    applicationURL: currentApplicationURL,
+                    backupURL: backupURL,
+                    version: expectedVersion.description
+                )
+            }
         } catch {
+            if replaced {
+                try? fileSystem.replaceItem(at: currentApplicationURL, withItemAt: backupURL, backupItemName: nil)
+            } else if !backupComplete {
+                try? fileSystem.removeItem(at: backupURL)
+            }
             throw UpdateInstallationError.replacementFailed
         }
         progress(80)
@@ -871,15 +998,13 @@ final class UpdateApplicationInstaller: UpdateApplicationInstalling {
             try relauncher.relaunchApplication(at: currentApplicationURL)
         } catch {
             // Restore the old app if the new process could not be started.
-            try? fileSystem.replaceItem(
-                at: currentApplicationURL,
-                withItemAt: backupURL,
-                backupItemName: nil
-            )
+            if (try? fileSystem.replaceItem(at: currentApplicationURL, withItemAt: backupURL, backupItemName: nil)) != nil,
+               currentApplicationURL.standardizedFileURL == Bundle.main.bundleURL.standardizedFileURL {
+                AutomaticUpdateCommand.clearTransaction()
+            }
             throw UpdateInstallationError.relaunchFailed
         }
         progress(95)
-        try? fileSystem.removeItem(at: backupURL)
         progress(100)
     }
 }
@@ -915,6 +1040,8 @@ final class UpdateService {
     private let currentVersion: AppSemanticVersion?
     private let currentApplicationURL: URL
     private let currentBundleIdentifier: String?
+    private let automaticUpdatesDirectory: URL?
+    private let stageAutomaticUpdateApplication: (URL, URL, String, AppSemanticVersion) throws -> Void
     private let callbackQueue: DispatchQueue
     private let workQueue: DispatchQueue
     private let scheduler: UpdateScheduling
@@ -926,6 +1053,10 @@ final class UpdateService {
     private var checkingStartedAt: TimeInterval?
     private var lastCheckStartedAtByChannel: [UpdateChannel: TimeInterval] = [:]
     private var updateCheckGeneration: UInt64 = 0
+    private var automaticDownloadGeneration: UInt64 = 0
+    private var automaticCachedUpdateURL: URL?
+    private var cachedAutomaticRelease: GitHubRelease?
+    private var automaticCacheVerifier: UpdateSignatureVerifier?
 
     private(set) var state: UpdateCheckState
     /// Last verified update per channel. It survives re-checks and check
@@ -949,6 +1080,13 @@ final class UpdateService {
     var updateChannel: UpdateChannel {
         didSet {
             guard oldValue != updateChannel else { return }
+            cancelAutomaticUpdateDownload(transitionToAvailable: false)
+            switch state {
+            case .installing, .restarting:
+                break
+            default:
+                discardAutomaticCache()
+            }
             updateCheckGeneration &+= 1
             checkingStartedAt = nil
             applyRetainedUpdatePresentation(for: updateChannel)
@@ -959,6 +1097,12 @@ final class UpdateService {
                 // An update transaction already in progress is independent of
                 // the channel selected for the next check.
                 break
+            case .automaticDownloading:
+                if let retained = retainedUpdatesByChannel[updateChannel] {
+                    transition(to: .available(current: currentVersion, latest: retained.latest))
+                } else {
+                    transition(to: .idle(current: currentVersion))
+                }
             default:
                 if let retained = retainedUpdatesByChannel[updateChannel] {
                     transition(to: .available(current: currentVersion, latest: retained.latest))
@@ -983,6 +1127,97 @@ final class UpdateService {
     /// remains available separately for installation and its GitHub link.
     var availableReleasesForPresentation: [GitHubRelease] { availableReleases }
 
+    var automaticUpdateInstallationRequest: AutomaticUpdateInstallationRequest? {
+        guard case .automaticReady(_, let version) = state,
+              let automaticCachedUpdateURL else { return nil }
+        return AutomaticUpdateInstallationRequest(
+            diskImageURL: automaticCachedUpdateURL,
+            applicationURL: currentApplicationURL,
+            expectedVersion: version.description,
+            channel: updateChannel,
+            processIdentifier: ProcessInfo.processInfo.processIdentifier
+        )
+    }
+
+    private func discardAutomaticCache() {
+        if let automaticCachedUpdateURL {
+            try? FileManager.default.removeItem(at: automaticCachedUpdateURL.deletingLastPathComponent())
+        }
+        automaticCachedUpdateURL = nil
+        cachedAutomaticRelease = nil
+        automaticCacheVerifier = nil
+    }
+
+    func removeInstalledUpdateCaches() {
+        removeAutomaticUpdateCacheDirectories { name in
+            if name.hasPrefix(".download-") || name.hasPrefix("preflight-") {
+                return true
+            }
+            guard let currentVersion, let version = AppSemanticVersion(name) else { return false }
+            return version <= currentVersion
+        }
+    }
+
+    private func pruneAutomaticUpdateCaches(keeping version: AppSemanticVersion) {
+        removeAutomaticUpdateCacheDirectories { name in
+            AppSemanticVersion(name) != nil && name != version.description
+        }
+    }
+
+    private func removeAutomaticUpdateCacheDirectories(where shouldRemove: (String) -> Bool) {
+        switch state {
+        case .installing, .restarting:
+            return
+        default:
+            break
+        }
+        let keys: Set<URLResourceKey> = [.isDirectoryKey, .isSymbolicLinkKey]
+        guard let updates = automaticUpdatesDirectory,
+              (try? updates.deletingLastPathComponent().resourceValues(forKeys: keys).isSymbolicLink) == false,
+              let properties = try? updates.resourceValues(forKeys: keys),
+              properties.isDirectory == true, properties.isSymbolicLink == false,
+              let children = try? FileManager.default.contentsOfDirectory(at: updates, includingPropertiesForKeys: Array(keys))
+        else { return }
+
+        for child in children where shouldRemove(child.lastPathComponent) {
+            guard let properties = try? child.resourceValues(forKeys: keys),
+                  properties.isDirectory == true, properties.isSymbolicLink == false else { continue }
+            try? FileManager.default.removeItem(at: child)
+        }
+    }
+
+    func restoreAutomaticUpdateOnLaunch(verifier: UpdateSignatureVerifier) {
+        guard case .idle(let current) = state, let updates = automaticUpdatesDirectory,
+              let bundleID = currentBundleIdentifier,
+              let directories = try? FileManager.default.contentsOfDirectory(at: updates, includingPropertiesForKeys: nil)
+        else { return }
+        let channel = updateChannel
+        for version in directories.compactMap({ AppSemanticVersion($0.lastPathComponent) }).sorted(by: >) {
+            guard version > current, ignoredVersionStore.ignoredVersion(for: channel) != version else { continue }
+            let directory = updates.appendingPathComponent(version.description)
+            let dmg = directory.appendingPathComponent("BalanceBar-\(version).dmg")
+            guard let cache = try? VerifiedUpdateCache(
+                at: dmg, application: currentApplicationURL, bundleIdentifier: bundleID, channel: channel,
+                current: current, expected: version, verifier: verifier
+            ) else { continue }
+            let manifest = cache.manifest
+            let asset = GitHubReleaseAsset(
+                name: manifest.asset.name,
+                browserDownloadURL: URL(string: "https://github.com/huanmeng06/BalanceBar/releases/download/\(manifest.tag)/\(manifest.asset.name)"),
+                size: cache.diskImage.count, digest: "sha256:\(manifest.asset.sha256)"
+            )
+            let release = GitHubRelease(tagName: manifest.tag, draft: false, prerelease: channel == .beta, assets: [asset])
+            retainedUpdatesByChannel[channel] = RetainedUpdate(release: release, releases: [], latest: version)
+            availableRelease = release
+            automaticCachedUpdateURL = dmg
+            cachedAutomaticRelease = release
+            automaticCacheVerifier = verifier
+            pruneAutomaticUpdateCaches(keeping: version)
+            transition(to: .automaticReady(current: current, latest: version))
+            return
+        }
+    }
+
     init(
         releaseFetcher: GitHubReleaseFetching = GitHubReleaseClient(),
         downloader: UpdateAssetDownloading = URLSessionUpdateAssetDownloader(),
@@ -996,7 +1231,10 @@ final class UpdateService {
         scheduler: UpdateScheduling = DispatchUpdateScheduler(),
         minimumCheckingDuration: TimeInterval = 1.0,
         automaticCheckMinimumInterval: TimeInterval = 15 * 60,
-        ignoredVersionStore: UpdateVersionIgnoring = UserDefaultsUpdateVersionIgnoreStore()
+        ignoredVersionStore: UpdateVersionIgnoring = UserDefaultsUpdateVersionIgnoreStore(),
+        applicationSupportDirectory: URL? = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first,
+        stageAutomaticUpdateApplication: @escaping (URL, URL, String, AppSemanticVersion) throws -> Void =
+            AutomaticUpdateCommand.stageVerifiedApplication
     ) {
         self.releaseFetcher = releaseFetcher
         self.downloader = downloader
@@ -1004,6 +1242,10 @@ final class UpdateService {
         self.currentVersion = currentVersionString.flatMap(AppSemanticVersion.init)
         self.currentApplicationURL = currentApplicationURL
         self.currentBundleIdentifier = currentBundleIdentifier
+        self.automaticUpdatesDirectory = applicationSupportDirectory?
+            .appendingPathComponent(currentBundleIdentifier ?? "com.huanmeng06.BalanceBar.app", isDirectory: true)
+            .appendingPathComponent("Updates", isDirectory: true)
+        self.stageAutomaticUpdateApplication = stageAutomaticUpdateApplication
         self.updateChannel = updateChannel
         self.callbackQueue = callbackQueue
         self.workQueue = workQueue
@@ -1045,7 +1287,7 @@ final class UpdateService {
 
     private func performCheck(respectingRateLimitCooldown: Bool) {
         guard let currentVersion,
-              !isBusy
+              !isBusy, checkingStartedAt == nil
         else { return }
         if respectingRateLimitCooldown, let remainingWait = rateLimitRemainingWait() {
             // A rate-limited endpoint stays rate limited no matter how the
@@ -1066,7 +1308,9 @@ final class UpdateService {
         if let retained = retainedUpdatesByChannel[updateChannel] {
             availableRelease = retained.release
             availableReleases = retained.releases
-            transition(to: .revalidating(current: currentVersion, latest: retained.latest))
+            if automaticUpdateInstallationRequest == nil {
+                transition(to: .revalidating(current: currentVersion, latest: retained.latest))
+            }
         } else {
             availableRelease = nil
             availableReleases = []
@@ -1094,6 +1338,11 @@ final class UpdateService {
         switch state {
         case .available(_, let advertised):
             latest = advertised
+        case .automaticDownloading(_, let advertised, _):
+            latest = advertised
+        case .automaticReady(_, let advertised), .automaticInstallationFailed(_, let advertised),
+             .automaticDownloadFailed(_, let advertised, _), .automaticNeedsManual(_, let advertised):
+            latest = advertised
         case .revalidating(_, let advertised):
             latest = advertised
         case .recheckFailed(_, let advertised, _):
@@ -1103,10 +1352,302 @@ final class UpdateService {
         }
         guard let currentVersion else { return }
         ignoredVersionStore.ignore(version: latest, for: updateChannel)
+        cancelAutomaticUpdateDownload(transitionToAvailable: false)
+        discardAutomaticCache()
         retainedUpdatesByChannel[updateChannel] = nil
         availableRelease = nil
         availableReleases = []
         transition(to: .latest(current: currentVersion))
+    }
+
+    func prepareAutomaticUpdate(
+        verifier: UpdateSignatureVerifier = UpdateSignatureVerifier(),
+        completion: @escaping (Result<URL?, UpdateFailure>) -> Void
+    ) {
+        let candidate: (release: GitHubRelease, version: AppSemanticVersion)
+        switch state {
+        case .available(_, let version), .revalidating(_, let version), .recheckFailed(_, let version, _):
+            guard let release = availableRelease else { return }
+            candidate = (release, version)
+        default:
+            return
+        }
+        guard let currentVersion else { return }
+        let channel = updateChannel
+        guard let dmgAsset = candidate.release.matchingAsset(for: candidate.version),
+              let manifestAsset = candidate.release.assets.first(where: { $0.name == "BalanceBar-\(candidate.version).update.json" }),
+              let signatureAsset = candidate.release.assets.first(where: { $0.name == "BalanceBar-\(candidate.version).update.json.sig" }) else {
+            transition(to: .automaticNeedsManual(current: currentVersion, latest: candidate.version))
+            callbackQueue.async { completion(.success(nil)) }
+            return
+        }
+        guard verifier.hasTrustedKeys else {
+            transition(to: .automaticNeedsManual(current: currentVersion, latest: candidate.version))
+            callbackQueue.async { completion(.success(nil)) }
+            return
+        }
+        guard Self.isOfficialReleaseAsset(manifestAsset),
+              Self.isOfficialReleaseAsset(signatureAsset),
+              Self.isOfficialReleaseAsset(dmgAsset),
+              let manifestSize = manifestAsset.size, (1...16 * 1024).contains(manifestSize),
+              let signatureSize = signatureAsset.size, (1...4 * 1024).contains(signatureSize) else {
+            transition(to: .automaticNeedsManual(current: currentVersion, latest: candidate.version))
+            callbackQueue.async { completion(.success(nil)) }
+            return
+        }
+
+        if let cachedUpdate = restoreCachedAutomaticUpdate(
+            for: candidate.version,
+            release: candidate.release,
+            dmgAsset: dmgAsset,
+            verifier: verifier,
+            currentVersion: currentVersion
+        ) {
+            automaticCachedUpdateURL = cachedUpdate
+            cachedAutomaticRelease = candidate.release
+            automaticCacheVerifier = verifier
+            pruneAutomaticUpdateCaches(keeping: candidate.version)
+            transition(to: .automaticReady(current: currentVersion, latest: candidate.version))
+            callbackQueue.async { completion(.success(cachedUpdate)) }
+            return
+        }
+
+        automaticDownloadGeneration &+= 1
+        automaticCacheVerifier = verifier
+        let generation = automaticDownloadGeneration
+        transition(to: .automaticDownloading(current: currentVersion, latest: candidate.version, progress: 0))
+        downloader.download(asset: manifestAsset, progress: { [weak self] percent in
+            self?.reportAutomaticProgress(min(10, max(0, percent / 10)), generation: generation, version: candidate.version)
+        }) { [weak self] manifestResult in
+            guard let self else { return }
+            guard self.automaticDownloadGeneration == generation else {
+                if case .success(let url) = manifestResult { self.downloader.cleanupDownloadedFile(at: url) }
+                return
+            }
+            guard case .success(let manifestURL) = manifestResult else {
+                self.finishAutomaticUpdate(
+                    .failure(Self.failure(for: manifestResult)),
+                    generation: generation,
+                    completion: completion
+                )
+                return
+            }
+            defer { self.downloader.cleanupDownloadedFile(at: manifestURL) }
+            guard let manifestData = try? Data(contentsOf: manifestURL),
+                  manifestData.count <= 16 * 1024 else {
+                self.finishAutomaticUpdate(.failure(.verificationFailed), generation: generation, completion: completion)
+                return
+            }
+            self.downloader.download(asset: signatureAsset, progress: { [weak self] percent in
+                self?.reportAutomaticProgress(10 + min(10, max(0, percent / 10)), generation: generation, version: candidate.version)
+            }) { [weak self] signatureResult in
+                guard let self else { return }
+                guard self.automaticDownloadGeneration == generation else {
+                    if case .success(let url) = signatureResult { self.downloader.cleanupDownloadedFile(at: url) }
+                    return
+                }
+                guard case .success(let signatureURL) = signatureResult else {
+                    self.finishAutomaticUpdate(
+                        .failure(Self.failure(for: signatureResult)),
+                        generation: generation,
+                        completion: completion
+                    )
+                    return
+                }
+                defer { self.downloader.cleanupDownloadedFile(at: signatureURL) }
+                guard let signatureData = try? Data(contentsOf: signatureURL),
+                      let manifest = try? verifier.verify(manifestData: manifestData, signatureData: signatureData),
+                      manifest.version == candidate.version.description,
+                      manifest.tag == candidate.release.tagName,
+                      manifest.channel == channel.rawValue,
+                      candidate.release.prerelease == (channel == .beta),
+                      manifest.bundleIdentifier == self.currentBundleIdentifier,
+                      manifest.asset.size == Int64(dmgAsset.size ?? -1),
+                      manifest.asset.name == dmgAsset.name,
+                      candidate.version > currentVersion else {
+                    self.finishAutomaticUpdate(.failure(.verificationFailed), generation: generation, completion: completion)
+                    return
+                }
+                self.downloader.download(asset: dmgAsset, progress: { [weak self] percent in
+                    self?.reportAutomaticProgress(20 + min(80, max(0, percent * 80 / 100)), generation: generation, version: candidate.version)
+                }) { [weak self] dmgResult in
+                    guard let self else { return }
+                    guard self.automaticDownloadGeneration == generation else {
+                        if case .success(let url) = dmgResult { self.downloader.cleanupDownloadedFile(at: url) }
+                        return
+                    }
+                    guard case .success(let downloadedDMG) = dmgResult else {
+                        self.finishAutomaticUpdate(
+                            .failure(Self.failure(for: dmgResult)),
+                            generation: generation,
+                            completion: completion
+                        )
+                        return
+                    }
+                    self.workQueue.async {
+                        defer { self.downloader.cleanupDownloadedFile(at: downloadedDMG) }
+                        guard let dmgData = try? Data(contentsOf: downloadedDMG, options: .mappedIfSafe),
+                              Int64(dmgData.count) == manifest.asset.size,
+                              SHA256Hex.digest(dmgData) == manifest.asset.sha256 else {
+                            self.finishAutomaticUpdate(.failure(.verificationFailed), generation: generation, completion: completion)
+                            return
+                        }
+                        do {
+                            guard let updates = self.automaticUpdatesDirectory else { throw UpdateFailure.downloadFailed }
+                            let bundleIdentifier = self.currentBundleIdentifier ?? "com.huanmeng06.BalanceBar.app"
+                            let directory = updates.appendingPathComponent(".download-\(UUID().uuidString)", isDirectory: true)
+                            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                            let stagedApp = directory.appendingPathComponent("BalanceBar.app", isDirectory: true)
+                            do {
+                                try self.stageAutomaticUpdateApplication(downloadedDMG, stagedApp, bundleIdentifier, candidate.version)
+                                try FileManager.default.removeItem(at: stagedApp)
+                            } catch {
+                                try? FileManager.default.removeItem(at: directory)
+                                self.finishAutomaticUpdate(.failure(.verificationFailed), generation: generation, completion: completion)
+                                return
+                            }
+                            let cachedDMG = directory.appendingPathComponent(dmgAsset.name)
+                            let cachedManifest = directory.appendingPathComponent(manifestAsset.name)
+                            let cachedSignature = directory.appendingPathComponent(signatureAsset.name)
+                            try dmgData.write(to: cachedDMG, options: .atomic)
+                            try manifestData.write(to: cachedManifest, options: .atomic)
+                            try signatureData.write(to: cachedSignature, options: .atomic)
+                            let context = [
+                                "applicationPath": self.currentApplicationURL.path,
+                                "channel": channel.rawValue,
+                                "version": candidate.version.description,
+                                "sha256": manifest.asset.sha256
+                            ]
+                            let contextData = try JSONSerialization.data(withJSONObject: context, options: [.sortedKeys])
+                            try contextData.write(
+                                to: directory.appendingPathComponent("install-context.json"),
+                                options: .atomic
+                            )
+                            self.callbackQueue.async {
+                                defer { try? FileManager.default.removeItem(at: directory) }
+                                guard self.automaticDownloadGeneration == generation else { return }
+                                let destination = updates.appendingPathComponent(candidate.version.description, isDirectory: true)
+                                do {
+                                    if FileManager.default.fileExists(atPath: destination.path) {
+                                        try FileManager.default.removeItem(at: destination)
+                                    }
+                                    try FileManager.default.moveItem(at: directory, to: destination)
+                                    self.finishAutomaticUpdate(
+                                        .success(destination.appendingPathComponent(dmgAsset.name)),
+                                        generation: generation, completion: completion
+                                    )
+                                } catch {
+                                    self.finishAutomaticUpdate(.failure(.downloadFailed), generation: generation, completion: completion)
+                                }
+                            }
+                        } catch {
+                            self.finishAutomaticUpdate(.failure(.downloadFailed), generation: generation, completion: completion)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    func cancelAutomaticUpdateDownload(transitionToAvailable: Bool = true) {
+        automaticDownloadGeneration &+= 1
+        if case .automaticDownloading(let current, let latest, _) = state {
+            downloader.cancelDownloads()
+            if transitionToAvailable {
+                transition(to: .available(current: current, latest: latest))
+            }
+        }
+    }
+
+    func automaticUpdatesWereDisabled() {
+        cancelAutomaticUpdateDownload()
+        switch state {
+        case .automaticReady(let current, let latest), .automaticInstallationFailed(let current, let latest):
+            transition(to: .available(current: current, latest: latest))
+        case .automaticDownloadFailed(let current, let latest, _), .automaticNeedsManual(let current, let latest):
+            transition(to: .available(current: current, latest: latest))
+        default:
+            break
+        }
+    }
+
+    private func finishAutomaticUpdate(
+        _ result: Result<URL?, UpdateFailure>,
+        generation: UInt64,
+        completion: @escaping (Result<URL?, UpdateFailure>) -> Void
+    ) {
+        callbackQueue.async {
+            guard self.automaticDownloadGeneration == generation else { return }
+            switch result {
+            case .success(let url):
+                guard let currentVersion = self.currentVersion else { return }
+                if let url {
+                    self.automaticCachedUpdateURL = url
+                    self.cachedAutomaticRelease = self.availableRelease
+                    guard case .automaticDownloading(_, let latest, _) = self.state else { return }
+                    self.pruneAutomaticUpdateCaches(keeping: latest)
+                    self.transition(to: .automaticReady(current: currentVersion, latest: latest))
+                }
+            case .failure(let failure):
+                guard case .automaticDownloading(let current, let latest, _) = self.state else { return }
+                self.transition(to: .automaticDownloadFailed(current: current, latest: latest, failure: failure))
+            }
+            completion(result)
+        }
+    }
+
+    private func reportAutomaticProgress(_ progress: Int, generation: UInt64, version: AppSemanticVersion) {
+        callbackQueue.async {
+            guard self.automaticDownloadGeneration == generation,
+                  case .automaticDownloading(let current, let latest, _) = self.state,
+                  latest == version else { return }
+            self.transition(to: .automaticDownloading(
+                current: current,
+                latest: latest,
+                progress: Self.clampProgress(progress)
+            ))
+        }
+    }
+
+    private static func isOfficialReleaseAsset(_ asset: GitHubReleaseAsset) -> Bool {
+        guard let url = asset.browserDownloadURL,
+              url.scheme?.lowercased() == "https",
+              url.host?.lowercased() == "github.com" else { return false }
+        return url.path.hasPrefix("/huanmeng06/BalanceBar/releases/download/")
+    }
+
+    private static func failure(for result: Result<URL, UpdateAssetDownloadError>) -> UpdateFailure {
+        guard case .failure(let error) = result else { return .downloadFailed }
+        switch error {
+        case .sizeMismatch, .digestMismatch, .emptyData:
+            return .verificationFailed
+        case .invalidAsset, .transport, .httpStatus, .writeFailed:
+            return .downloadFailed
+        }
+    }
+
+    private func restoreCachedAutomaticUpdate(
+        for version: AppSemanticVersion,
+        release: GitHubRelease,
+        dmgAsset: GitHubReleaseAsset,
+        verifier: UpdateSignatureVerifier,
+        currentVersion: AppSemanticVersion
+    ) -> URL? {
+        guard let updates = automaticUpdatesDirectory else { return nil }
+        let directory = updates.appendingPathComponent(version.description, isDirectory: true)
+        let dmg = directory.appendingPathComponent(dmgAsset.name)
+        guard FileManager.default.fileExists(atPath: directory.path) else { return nil }
+        guard let bundleID = currentBundleIdentifier,
+              let cache = try? VerifiedUpdateCache(
+                at: dmg, application: currentApplicationURL, bundleIdentifier: bundleID, channel: updateChannel,
+                current: currentVersion, expected: version, verifier: verifier
+              ),
+              cache.manifest.tag == release.tagName, updateChannel.accepts(release),
+              (try? UpdateAssetVerifier.verify(data: cache.diskImage, asset: dmgAsset)) != nil else {
+            try? FileManager.default.removeItem(at: directory)
+            return nil
+        }
+        return dmg
     }
 
     private func finishReleaseResultAfterMinimumCheckingDuration(
@@ -1120,7 +1661,6 @@ final class UpdateService {
         let elapsed = checkingStartedAt.map { scheduler.now - $0 } ?? minimumCheckingDuration
         let remaining = max(0, minimumCheckingDuration - elapsed)
         guard remaining > 0 else {
-            checkingStartedAt = nil
             handleReleaseResult(
                 result,
                 currentVersion: currentVersion,
@@ -1135,7 +1675,6 @@ final class UpdateService {
             self.callbackQueue.async {
                 guard self.updateCheckGeneration == updateCheckGeneration,
                       self.isReleaseCheckInFlight else { return }
-                self.checkingStartedAt = nil
                 self.handleReleaseResult(
                     result,
                     currentVersion: currentVersion,
@@ -1155,6 +1694,12 @@ final class UpdateService {
         // the state guards once the download transaction owns the state.
         let latestVersion: AppSemanticVersion
         switch state {
+        case .automaticReady(_, let advertised):
+            latestVersion = advertised
+        case .automaticInstallationFailed(_, let advertised):
+            latestVersion = advertised
+        case .automaticNeedsManual(_, let advertised):
+            latestVersion = advertised
         case .available(_, let latest):
             latestVersion = latest
         case .revalidating(_, let latest):
@@ -1168,6 +1713,10 @@ final class UpdateService {
               let release = availableRelease,
               let asset = release.matchingAsset(for: latestVersion)
         else { return }
+        if let automaticCachedUpdateURL, automaticCachedUpdateURL.lastPathComponent == asset.name {
+            handleDownloadResult(.success(automaticCachedUpdateURL), currentVersion: currentVersion, latestVersion: latestVersion)
+            return
+        }
         transition(to: .downloading(current: currentVersion, latest: latestVersion, progress: 0))
         downloader.download(
             asset: asset,
@@ -1202,17 +1751,18 @@ final class UpdateService {
 
     private var isBusy: Bool {
         switch state {
-        case .checking, .revalidating, .downloading, .installing, .restarting:
+        case .checking, .revalidating, .downloading, .automaticDownloading, .installing, .restarting:
             return true
-        case .idle, .latest, .available, .recheckFailed, .failed:
+        case .idle, .latest, .available, .automaticReady, .automaticDownloadReady, .automaticIdleUpdated, .automaticInstallationFailed,
+             .automaticDownloadFailed, .automaticNeedsManual, .recheckFailed, .failed:
             return false
         }
     }
 
     private var isReleaseCheckInFlight: Bool {
         switch state {
-        case .checking, .revalidating:
-            return true
+        case .checking, .revalidating, .automaticReady:
+            return checkingStartedAt != nil
         default:
             return false
         }
@@ -1240,6 +1790,7 @@ final class UpdateService {
         updateChannel: UpdateChannel
     ) {
         checkingStartedAt = nil
+        if case .automaticReady = state { return }
         if let retained = retainedUpdatesByChannel[updateChannel] {
             transition(to: .recheckFailed(
                 current: currentVersion,
@@ -1274,6 +1825,7 @@ final class UpdateService {
     ) {
         guard self.updateCheckGeneration == updateCheckGeneration,
               isReleaseCheckInFlight else { return }
+        checkingStartedAt = nil
         switch result {
         case .failure(let error):
             switch error {
@@ -1331,10 +1883,16 @@ final class UpdateService {
                     releases: notesReleases,
                     latest: candidate.version
                 )
+                if let cachedAutomaticRelease, cachedAutomaticRelease.tagName != candidate.release.tagName {
+                    discardAutomaticCache()
+                }
                 availableRelease = candidate.release
                 availableReleases = notesReleases
+                if case .automaticReady(_, let version) = state, version == candidate.version,
+                   automaticCachedUpdateURL != nil { return }
                 transition(to: .available(current: currentVersion, latest: candidate.version))
             } else {
+                discardAutomaticCache()
                 // A successful response is authoritative: a confirmed "no new
                 // version" (or an ignored/unusable one) retires the retained
                 // entry for this channel.
@@ -1424,45 +1982,73 @@ final class UpdateService {
                 transition(to: .failed(.downloadFailed))
             }
         case .success(let downloadedURL):
+            let isAutomaticCache = automaticCachedUpdateURL == downloadedURL
+            let channel = updateChannel
+            let verifier = automaticCacheVerifier
+            checkingStartedAt = nil
             transition(to: .installing(current: currentVersion, latest: latestVersion, progress: 0))
             guard let bundleIdentifier = currentBundleIdentifier else {
-                downloader.cleanupDownloadedFile(at: downloadedURL)
+                if !isAutomaticCache { downloader.cleanupDownloadedFile(at: downloadedURL) }
                 transition(to: .failed(.installationFailed))
                 return
             }
             workQueue.async { [weak self] in
                 guard let self else { return }
                 do {
-                    try self.installer.install(
-                        diskImageURL: downloadedURL,
-                        expectedVersion: latestVersion,
-                        currentApplicationURL: self.currentApplicationURL,
-                        expectedBundleIdentifier: bundleIdentifier,
-                        progress: { [weak self] progress in
-                            guard let self else { return }
-                            self.callbackQueue.async {
-                                guard case .installing(let current, let latest, _) = self.state,
-                                      current == currentVersion,
-                                      latest == latestVersion
-                                else { return }
-                                self.transition(
-                                    to: .installing(
-                                        current: currentVersion,
-                                        latest: latestVersion,
-                                        progress: Self.clampProgress(progress)
+                    func install(_ image: URL) throws {
+                        try self.installer.install(
+                            diskImageURL: image,
+                            expectedVersion: latestVersion,
+                            currentApplicationURL: self.currentApplicationURL,
+                            expectedBundleIdentifier: bundleIdentifier,
+                            progress: { [weak self] progress in
+                                guard let self else { return }
+                                self.callbackQueue.async {
+                                    guard case .installing(let current, let latest, _) = self.state,
+                                          current == currentVersion,
+                                          latest == latestVersion
+                                    else { return }
+                                    self.transition(
+                                        to: .installing(
+                                            current: currentVersion,
+                                            latest: latestVersion,
+                                            progress: Self.clampProgress(progress)
+                                        )
                                     )
-                                )
+                                }
                             }
+                        )
+                    }
+                    if isAutomaticCache {
+                        guard let verifier, let cache = try? VerifiedUpdateCache(
+                            at: downloadedURL, application: self.currentApplicationURL, bundleIdentifier: bundleIdentifier,
+                            channel: channel, current: currentVersion, expected: latestVersion, verifier: verifier
+                        ) else {
+                            self.callbackQueue.async {
+                                self.discardAutomaticCache()
+                                self.transition(to: .automaticDownloadFailed(current: currentVersion, latest: latestVersion, failure: .verificationFailed))
+                            }
+                            return
                         }
-                    )
-                    self.downloader.cleanupDownloadedFile(at: downloadedURL)
+                        try cache.withDiskImage(install)
+                    } else {
+                        try install(downloadedURL)
+                    }
+                    if !isAutomaticCache {
+                        self.downloader.cleanupDownloadedFile(at: downloadedURL)
+                    }
                     self.callbackQueue.async {
+                        if isAutomaticCache { self.automaticCachedUpdateURL = nil }
                         self.transition(to: .restarting(current: currentVersion, latest: latestVersion))
                     }
                 } catch {
-                    self.downloader.cleanupDownloadedFile(at: downloadedURL)
+                    if !isAutomaticCache {
+                        self.downloader.cleanupDownloadedFile(at: downloadedURL)
+                    }
                     self.callbackQueue.async {
-                        self.transition(to: .failed(.installationFailed))
+                        self.transition(to: isAutomaticCache
+                            ? .automaticInstallationFailed(current: currentVersion, latest: latestVersion)
+                            : .failed(.installationFailed))
                     }
                 }
             }
@@ -1470,6 +2056,12 @@ final class UpdateService {
     }
 
     private func transition(to newState: UpdateCheckState) {
+        switch newState {
+        case .checking, .revalidating, .automaticReady:
+            break
+        default:
+            checkingStartedAt = nil
+        }
         state = newState
         onStateChange?(newState)
     }

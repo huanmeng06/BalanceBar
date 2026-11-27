@@ -171,20 +171,43 @@ final class AppDelegateCompositionTests: XCTestCase {
         )
     }
 
-    func testAvailableStateIsTheOnlySourceOfTheStatusMenuBadgePresentation() throws {
-        let source = try balanceBarSource()
-        let propertyStart = try XCTUnwrap(source.range(of: "private var showsAvailableUpdateBadge: Bool"))
-        let propertyEnd = try XCTUnwrap(
-            source.range(of: "private func reloadCurrentProviderNameCache(", range: propertyStart.upperBound..<source.endIndex)
-        )
-        let property = String(source[propertyStart.lowerBound..<propertyEnd.lowerBound])
+    func testStatusMenuBadgeReflectsAvailableAndPendingUpdateStates() throws {
+        let current = try XCTUnwrap(AppSemanticVersion("1.8.8"))
+        let latest = try XCTUnwrap(AppSemanticVersion("1.8.9"))
+        let advertised: [UpdateCheckState] = [
+            .available(current: current, latest: latest),
+            .revalidating(current: current, latest: latest),
+            .recheckFailed(current: current, latest: latest, failure: .network),
+            .automaticDownloading(current: current, latest: latest, progress: 10),
+            .automaticReady(current: current, latest: latest),
+            .automaticDownloadReady(current: current, latest: latest),
+            .automaticInstallationFailed(current: current, latest: latest),
+            .automaticDownloadFailed(current: current, latest: latest, failure: .verificationFailed),
+            .automaticNeedsManual(current: current, latest: latest),
+            .failed(.installationFailed)
+        ]
+        let hidden: [UpdateCheckState] = [
+            .idle(current: current), .checking(current: current), .latest(current: current),
+            .automaticIdleUpdated(current: current), .failed(.network),
+            .downloading(current: current, latest: latest, progress: 10),
+            .installing(current: current, latest: latest, progress: 10), .restarting(current: current, latest: latest)
+        ]
+        for state in advertised { XCTAssertTrue(AppDelegate.showsAvailableUpdateBadge(for: state), String(describing: state)) }
+        for state in hidden { XCTAssertFalse(AppDelegate.showsAvailableUpdateBadge(for: state), String(describing: state)) }
+    }
 
-        // The badge derives from the update states that advertise a verified
-        // or retained update, never from presentation objects or version math.
-        XCTAssertTrue(property.contains("case .available, .revalidating, .recheckFailed:"))
-        XCTAssertTrue(property.contains("updateService.state"))
-        XCTAssertFalse(property.contains("availableReleaseForPresentation"))
-        XCTAssertFalse(property.contains("latest > current"))
+    @MainActor
+    func testVisibleStandaloneUpdateWindowBlocksIdleInstallationUntilClosed() {
+        let window = NSWindow(
+            contentRect: NSRect(x: -9000, y: -9000, width: 300, height: 200),
+            styleMask: [.titled, .closable], backing: .buffered, defer: false
+        )
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        window.orderFront(nil)
+        XCTAssertTrue(AppDelegate.hasVisibleUpdateInteraction(in: [window]))
+        window.close()
+        XCTAssertFalse(AppDelegate.hasVisibleUpdateInteraction(in: [window]))
     }
 
     func testCompositionLayerOwnsConcreteResponsibilitiesByModule() throws {

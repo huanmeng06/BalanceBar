@@ -959,3 +959,21 @@
 "dashboard.general.and.refresh.pages.connection_mode_requires_cc_switch" = "Requiere CC Switch";
 "dashboard.general.and.refresh.pages.download_cc_switch" = "Descargar CC Switch";
 "status.item.controller.download_cc_switch" = "Descargar CC Switch";
+
+"dashboard.general.and.refresh.pages.automatic_update_download" = "Descargar nuevas versiones automáticamente";
+"dashboard.general.and.refresh.pages.automatic_update_download_description" = "Descarga y verifica nuevas versiones en segundo plano.";
+"dashboard.general.and.refresh.pages.automatic_update_install" = "Instalar nuevas versiones automáticamente";
+"dashboard.general.and.refresh.pages.automatic_update_install_description" = "Instálalas al salir de BalanceBar o al alejarte del Mac.";
+"dashboard.general.and.refresh.pages.automatic_update_download_failed" = "Falló la descarga en segundo plano. Vuelve a comprobar si hay actualizaciones.";
+"dashboard.general.and.refresh.pages.automatic_update_verification_failed" = "Falló la verificación de la firma o del archivo. No se instaló la actualización. Vuelve a comprobarlo.";
+
+"dashboard.general.and.refresh.pages.automatic_update_downloading" = "Descargando actualización…";
+
+"dashboard.general.and.refresh.pages.automatic_update_ready" = "%1$@ descargada y lista para instalar";
+"dashboard.general.and.refresh.pages.automatic_idle_updated" = "Se actualizó a %1$@ mientras estabas ausente.";
+
+"dashboard.general.and.refresh.pages.automatic_update_install_failed" = "No se pudo instalar la actualización. Vuelve a intentarlo o instálala manualmente.";
+
+"dashboard.general.and.refresh.pages.automatic_update_manual" = "Esta versión requiere instalación manual.";
+
+"dashboard.general.and.refresh.pages.install_now" = "Instalar ahora";

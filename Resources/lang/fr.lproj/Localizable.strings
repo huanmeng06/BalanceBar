@@ -959,3 +959,21 @@
 "dashboard.general.and.refresh.pages.connection_mode_requires_cc_switch" = "Nécessite CC Switch";
 "dashboard.general.and.refresh.pages.download_cc_switch" = "Télécharger CC Switch";
 "status.item.controller.download_cc_switch" = "Télécharger CC Switch";
+
+"dashboard.general.and.refresh.pages.automatic_update_download" = "Télécharger automatiquement les nouvelles versions";
+"dashboard.general.and.refresh.pages.automatic_update_download_description" = "Téléchargez et vérifiez les nouvelles versions en arrière-plan.";
+"dashboard.general.and.refresh.pages.automatic_update_install" = "Installer automatiquement les nouvelles versions";
+"dashboard.general.and.refresh.pages.automatic_update_install_description" = "Installez-les en quittant BalanceBar ou pendant votre absence.";
+"dashboard.general.and.refresh.pages.automatic_update_download_failed" = "Le téléchargement en arrière-plan a échoué. Relancez la recherche de mises à jour.";
+"dashboard.general.and.refresh.pages.automatic_update_verification_failed" = "La vérification de la signature ou du fichier a échoué. La mise à jour n’a pas été installée. Relancez la recherche.";
+
+"dashboard.general.and.refresh.pages.automatic_update_downloading" = "Téléchargement de la mise à jour…";
+
+"dashboard.general.and.refresh.pages.automatic_update_ready" = "%1$@ téléchargée, prête à être installée";
+"dashboard.general.and.refresh.pages.automatic_idle_updated" = "Mise à jour vers %1$@ pendant votre absence.";
+
+"dashboard.general.and.refresh.pages.automatic_update_install_failed" = "La mise à jour n’a pas pu être installée. Réessayez ou installez-la manuellement.";
+
+"dashboard.general.and.refresh.pages.automatic_update_manual" = "Cette version doit être installée manuellement.";
+
+"dashboard.general.and.refresh.pages.install_now" = "Installer maintenant";
