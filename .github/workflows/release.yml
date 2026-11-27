@@ -123,6 +123,10 @@ jobs:
     if: needs.plan.outputs.should_release == 'true' && needs.plan.outputs.skip != 'true'
     runs-on: macos-26
     timeout-minutes: 35
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     env:
       BALANCEBAR_DEPLOYMENT_TARGET: "14.0"
       BALANCEBAR_REQUIRED_SDK_MAJOR: "26"
@@ -144,6 +148,8 @@ jobs:
 
       - name: Build the production app and DMG
         shell: bash
+        env:
+          BALANCEBAR_RELEASE_COMMIT: ${{ needs.plan.outputs.merge_sha }}
         run: |
           set -Eeuo pipefail
           ./scripts/build.sh production
@@ -152,6 +158,11 @@ jobs:
             --app build/BalanceBar.app \
             --version "$VERSION" \
             --output "$RUNNER_TEMP/release-dmg/BalanceBar-${VERSION}.dmg"
+
+      - name: Attest the DMG build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: ${{ runner.temp }}/release-dmg/BalanceBar-${{ needs.plan.outputs.version }}.dmg
 
       - name: Upload the DMG
         uses: actions/upload-artifact@v4
@@ -491,6 +502,44 @@ jobs:
           path: ${{ runner.temp }}/release
           merge-multiple: true
 
+      - name: Create and sign the update manifest
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+          TAG: ${{ needs.plan.outputs.tag }}
+          PRERELEASE: ${{ needs.plan.outputs.prerelease }}
+          VERSION_SHA: ${{ needs.plan.outputs.merge_sha }}
+          UPDATE_SIGNING_KEY: ${{ secrets.BALANCEBAR_UPDATE_SIGNING_KEY }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ -n "$UPDATE_SIGNING_KEY" ]] || { echo "BALANCEBAR_UPDATE_SIGNING_KEY is required." >&2; exit 1; }
+          dmg="$RUNNER_TEMP/release/BalanceBar-${VERSION}.dmg"
+          manifest="$RUNNER_TEMP/release/BalanceBar-${VERSION}.update.json"
+          signature="$manifest.sig"
+          key_file="$RUNNER_TEMP/update-signing-key.pem"
+          cleanup() { rm -f "$key_file"; }
+          trap cleanup EXIT
+          umask 077
+          printf '%s' "$UPDATE_SIGNING_KEY" > "$key_file"
+          chmod 600 "$key_file"
+          channel=stable
+          if [[ "$PRERELEASE" == "true" ]]; then channel=beta; fi
+
+          node scripts/release/update-manifest.mjs create \
+            --dmg "$dmg" --version "$VERSION" --tag "$TAG" --channel "$channel" \
+            --commit "$VERSION_SHA" --run-id "$RUN_ID" --run-attempt "$RUN_ATTEMPT" \
+            --output "$manifest"
+          node scripts/release/update-manifest.mjs sign \
+            --manifest "$manifest" --private-key "$key_file" --plist Resources/Info.plist \
+            --output "$signature"
+          node scripts/release/update-manifest.mjs verify \
+            --manifest "$manifest" --signature "$signature" --dmg "$dmg" \
+            --plist Resources/Info.plist
+          echo "RELEASE_MANIFEST=$manifest" >> "$GITHUB_ENV"
+          echo "RELEASE_SIGNATURE=$signature" >> "$GITHUB_ENV"
+
       - name: Locate Release assets
         env:
           VERSION: ${{ needs.plan.outputs.version }}
@@ -519,7 +568,7 @@ jobs:
             tag -a "$TAG" "$VERSION_SHA" -m "BalanceBar ${VERSION}"
           git push origin "$TAG"
 
-      - name: Publish the GitHub Release
+      - name: Create the draft GitHub Release
         env:
           TAG: ${{ needs.plan.outputs.tag }}
           VERSION: ${{ needs.plan.outputs.version }}
@@ -535,12 +584,47 @@ jobs:
 
           gh release create "$TAG" \
             "$RELEASE_DMG" \
+            "$RELEASE_MANIFEST" \
+            "$RELEASE_SIGNATURE" \
             --repo "$GITHUB_REPOSITORY" \
             --verify-tag \
             --title "$title" \
             --notes-file "$RELEASE_NOTES" \
+            --draft \
             "${release_flags[@]}"
 
+      - name: Download and verify draft Release assets
+        env:
+          TAG: ${{ needs.plan.outputs.tag }}
+          VERSION: ${{ needs.plan.outputs.version }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          verify_dir="$RUNNER_TEMP/release-round-trip"
+          mkdir -p "$verify_dir"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "BalanceBar-${VERSION}.*" --dir "$verify_dir"
+          dmg="$verify_dir/BalanceBar-${VERSION}.dmg"
+          manifest="$verify_dir/BalanceBar-${VERSION}.update.json"
+          signature="$manifest.sig"
+          [[ -s "$dmg" && -s "$manifest" && -s "$signature" ]] \
+            || { echo "Draft Release does not contain all three expected assets." >&2; exit 1; }
+          asset_count="$(find "$verify_dir" -maxdepth 1 -type f | wc -l | tr -d '[:space:]')"
+          [[ "$asset_count" == "3" ]] || { echo "Draft Release contains unexpected assets." >&2; exit 1; }
+          node scripts/release/update-manifest.mjs verify \
+            --manifest "$manifest" --signature "$signature" --dmg "$dmg" \
+            --plist Resources/Info.plist
+
+      - name: Publish the verified Release
+        env:
+          TAG: ${{ needs.plan.outputs.tag }}
+          VERSION: ${{ needs.plan.outputs.version }}
+          PRERELEASE: ${{ needs.plan.outputs.prerelease }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          release_flags=(--latest)
+          if [[ "$PRERELEASE" == "true" ]]; then release_flags=(--prerelease --latest=false); fi
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false "${release_flags[@]}"
           release_url="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json url --jq '.url')"
           echo "Published $release_url"
 
@@ -579,6 +663,11 @@ jobs:
           [[ "$REBUILD_VERSION" == "$plist_version" ]] \
             || { echo "Requested $REBUILD_VERSION but main contains $plist_version." >&2; exit 1; }
           gh release view "v${REBUILD_VERSION}" --repo "$GITHUB_REPOSITORY" >/dev/null
+          existing_assets="$(gh release view "v${REBUILD_VERSION}" --repo "$GITHUB_REPOSITORY" --json assets --jq '[.assets[].name] | join("\n")')"
+          if grep -Eq '\.update\.json(\.sig)?$' <<< "$existing_assets"; then
+            echo "Release v${REBUILD_VERSION} is signed and immutable; publish a new version instead." >&2
+            exit 1
+          fi
           echo "REBUILD_TARGET_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
       - name: Verify macOS 26 build environment

@@ -143,6 +143,8 @@
 "dashboard.navigation.forward" = "앞으로";
 "dashboard.about.page.github_repository" = "GitHub 저장소";
 "dashboard.about.page.version_value" = "버전 %1$@";
+"dashboard.about.page.github_actions_build" = "GitHub Actions 빌드 #%1$@";
+"dashboard.about.page.github_actions_build_help" = "이 버전은 GitHub Actions가 오픈 소스 코드로 빌드했습니다. 클릭하여 실행 기록을 확인하세요.";
 "dashboard.about.page.a_cc_switch_based_menu_bar_balance_viewer" = "메뉴 막대에서 공식 할당량 보기, CC Switch와 함께 사용하면 타사 잔액도 확인";
 "dashboard.about.page.open_the_balancebar_github_repository" = "BalanceBar GitHub 저장소 열기";
 "dashboard.advanced.page.reload" = "다시 불러오기";

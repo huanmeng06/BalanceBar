@@ -1635,5 +1635,83 @@ test("manual rebuild is guarded and preserves a DMG-only Release", () => {
   assert.match(rebuildScript, /restoring tag/);
   assert.match(rebuildScript, /restoring DMG/);
   assert.match(rebuildScript, /must contain only \$asset_name after rebuilding/);
+  assert.match(rebuildScript, /already has a signed update manifest/);
+  assert.match(workflow, /Release v\$\{REBUILD_VERSION\} is signed and immutable/);
   assert.doesNotMatch(rebuildScript, /\.sha256/);
+});
+
+test("new Releases attest, sign, round-trip verify, then publish draft assets", () => {
+  const workflow = fs.readFileSync(".github/workflows/release.yml", "utf8");
+  const buildJob = workflow.slice(workflow.indexOf("  build-dmg:"), workflow.indexOf("  notes:"));
+  const publishJob = workflow.slice(workflow.indexOf("  publish:"), workflow.indexOf("  rebuild-existing-release:"));
+
+  assert.match(buildJob, /id-token: write/);
+  assert.match(buildJob, /attestations: write/);
+  assert.match(buildJob, /actions\/attest-build-provenance@v2/);
+  assert.match(buildJob, /BALANCEBAR_RELEASE_COMMIT: \$\{\{ needs\.plan\.outputs\.merge_sha \}\}/);
+  assert.match(publishJob, /UPDATE_SIGNING_KEY: \$\{\{ secrets\.BALANCEBAR_UPDATE_SIGNING_KEY \}\}/);
+  assert.match(publishJob, /BALANCEBAR_UPDATE_SIGNING_KEY is required/);
+  assert.match(publishJob, /chmod 600 "\$key_file"/);
+  assert.match(publishJob, /trap cleanup EXIT/);
+  assert.match(publishJob, /--draft/);
+  assert.match(publishJob, /gh release download "\$TAG"/);
+  assert.match(publishJob, /release-round-trip/);
+  assert.match(publishJob, /gh release edit "\$TAG"[\s\S]+--draft=false/);
+  assert.ok(publishJob.indexOf("Download and verify draft Release assets") < publishJob.indexOf("Publish the verified Release"));
+});
+
+test("update-manifest verifies the shared vector, rejects changes, and round-trips Ed25519", (t) => {
+  const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "balancebar-update-signing-"));
+  t.after(() => fs.rmSync(temporaryDirectory, { recursive: true, force: true }));
+  const script = "scripts/release/update-manifest.mjs";
+  const vectorManifest = Buffer.from(
+    "eyJzY2hlbWEiOjEsImJ1bmRsZUlkZW50aWZpZXIiOiJjb20uaHVhbm1lbmcwNi5CYWxhbmNlQmFyLmFwcCIsInZlcnNpb24iOiI5LjkuMSIsImNoYW5uZWwiOiJiZXRhIiwidGFnIjoidjkuOS4xIiwiYXNzZXQiOnsibmFtZSI6IkJhbGFuY2VCYXItOS45LjEuZG1nIiwic2l6ZSI6MTA0ODU3Niwic2hhMjU2IjoiNWQwZjZhMWM2ZTJhM2Q0YjhmOWUwYTFiMmMzZDRlNWY2MDcxODI5M2E0YjVjNmQ3ZThmOTAxMjM0NTY3ODlhYiJ9LCJzb3VyY2UiOnsicmVwb3NpdG9yeSI6Imh1YW5tZW5nMDYvQmFsYW5jZUJhciIsImNvbW1pdCI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmMDEyMzQ1NjciLCJydW5JZCI6IjEyMzQ1Njc4OTAiLCJydW5BdHRlbXB0IjoiMSJ9LCJzaWduZWRBdCI6IjIwMjYtMTEtMjZUMDA6MDA6MDBaIn0K",
+    "base64",
+  );
+  const vectorSignature = Buffer.from(
+    '{"schema":1,"algorithm":"ed25519","keyId":"test-vector-1","signature":"jgTUjyF3OYBAPqlePVqLvGNMY60E0PCCtZ75d3bOlJctW8L5UtIbGSZX0UdcHF88SpjPFeC6SSSOaPlT9V/EAw=="}\n',
+  );
+  const manifestPath = path.join(temporaryDirectory, "vector.update.json");
+  const signaturePath = `${manifestPath}.sig`;
+  fs.writeFileSync(manifestPath, vectorManifest);
+  fs.writeFileSync(signaturePath, vectorSignature);
+  const run = (args) => execFileSync("node", [script, ...args], { encoding: "utf8" });
+  run([
+    "verify", "--manifest", manifestPath, "--signature", signaturePath,
+    "--public-key-base64", "EMOTR6+Fb1+w7DIjYiZuTC7Bqj6ZuO26B7xYBIDvDyA=",
+  ]);
+
+  const modifiedManifest = Buffer.from(vectorManifest);
+  modifiedManifest[70] ^= 1;
+  fs.writeFileSync(manifestPath, modifiedManifest);
+  assert.throws(() => run([
+    "verify", "--manifest", manifestPath, "--signature", signaturePath,
+    "--public-key-base64", "EMOTR6+Fb1+w7DIjYiZuTC7Bqj6ZuO26B7xYBIDvDyA=",
+  ]));
+
+  const privateKeyPath = path.join(temporaryDirectory, "test-private.pem");
+  const dmgPath = path.join(temporaryDirectory, "BalanceBar-1.2.3.dmg");
+  const roundTripManifest = path.join(temporaryDirectory, "BalanceBar-1.2.3.update.json");
+  const roundTripSignature = `${roundTripManifest}.sig`;
+  execFileSync("openssl", ["genpkey", "-algorithm", "ED25519", "-out", privateKeyPath]);
+  const publicDER = execFileSync("openssl", ["pkey", "-in", privateKeyPath, "-pubout", "-outform", "DER"]);
+  const publicKey = publicDER.subarray(-32).toString("base64");
+  const trustedPlistPath = path.join(temporaryDirectory, "Info.plist");
+  fs.writeFileSync(trustedPlistPath, `<?xml version="1.0"?><plist><dict><key>BalanceBarUpdateSigningKeys</key><array><dict><key>keyId</key><string>test-key</string><key>publicKey</key><string>${publicKey}</string></dict></array></dict></plist>`);
+  fs.writeFileSync(dmgPath, "test-dmg-content");
+  run([
+    "create", "--dmg", dmgPath, "--version", "1.2.3", "--tag", "v1.2.3",
+    "--channel", "beta", "--commit", "0123456789abcdef0123456789abcdef01234567",
+    "--run-id", "1234567890", "--run-attempt", "1", "--output", roundTripManifest,
+  ]);
+  run(["sign", "--manifest", roundTripManifest, "--private-key", privateKeyPath, "--plist", trustedPlistPath, "--output", roundTripSignature]);
+  run([
+    "verify", "--manifest", roundTripManifest, "--signature", roundTripSignature,
+    "--plist", trustedPlistPath, "--dmg", dmgPath,
+  ]);
+  fs.appendFileSync(dmgPath, "changed");
+  assert.throws(() => run([
+    "verify", "--manifest", roundTripManifest, "--signature", roundTripSignature,
+    "--plist", trustedPlistPath, "--dmg", dmgPath,
+  ]));
 });

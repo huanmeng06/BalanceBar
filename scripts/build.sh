@@ -369,6 +369,16 @@ if [[ "$variant" == "dev" ]]; then
     plutil -replace CFBundleName -string "$bundle_name" "$bundle_plist"
     plutil -replace CFBundleDisplayName -string "$bundle_name" "$bundle_plist"
 fi
+if [[ "$variant" == "production" \
+    && "${GITHUB_ACTIONS:-}" == "true" \
+    && "${GITHUB_REPOSITORY:-}" == "huanmeng06/BalanceBar" \
+    && "${GITHUB_RUN_ID:-}" =~ ^[0-9]+$ \
+    && "${GITHUB_RUN_ATTEMPT:-}" =~ ^[0-9]+$ \
+    && "${BALANCEBAR_RELEASE_COMMIT:-}" =~ ^[0-9a-f]{40}$ ]]; then
+    plutil -replace BalanceBarReleaseRunID -string "$GITHUB_RUN_ID" "$bundle_plist"
+    plutil -replace BalanceBarReleaseRunAttempt -string "$GITHUB_RUN_ATTEMPT" "$bundle_plist"
+    plutil -replace BalanceBarReleaseCommit -string "$BALANCEBAR_RELEASE_COMMIT" "$bundle_plist"
+fi
 if [[ -n "$demo_mode" ]]; then
     plutil -replace CFBundleName -string "$bundle_name" "$bundle_plist"
     plutil -replace CFBundleDisplayName -string "$bundle_name" "$bundle_plist"

@@ -184,6 +184,8 @@
     case keyDashboardAboutPageVersionValue = "dashboard.about.page.version_value"
     case keyDashboardAboutPageACcSwitchBasedMenuBarBalanceViewer = "dashboard.about.page.a_cc_switch_based_menu_bar_balance_viewer"
     case keyDashboardAboutPageOpenTheBalancebarGithubRepository = "dashboard.about.page.open_the_balancebar_github_repository"
+    case keyDashboardAboutPageGithubActionsBuild = "dashboard.about.page.github_actions_build"
+    case keyDashboardAboutPageGithubActionsBuildHelp = "dashboard.about.page.github_actions_build_help"
     case keyDashboardAdvancedPageReload = "dashboard.advanced.page.reload"
     case keyDashboardAdvancedPageShowInFinder = "dashboard.advanced.page.show_in_finder"
     case keyDashboardAdvancedPageDiagnostics = "dashboard.advanced.page.diagnostics"

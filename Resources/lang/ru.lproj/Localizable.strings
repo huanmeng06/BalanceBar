@@ -143,6 +143,8 @@
 "dashboard.navigation.forward" = "Вперёд";
 "dashboard.about.page.github_repository" = "Репозиторий GitHub";
 "dashboard.about.page.version_value" = "Версия %1$@";
+"dashboard.about.page.github_actions_build" = "Сборка GitHub Actions №%1$@";
+"dashboard.about.page.github_actions_build_help" = "Эта версия собрана GitHub Actions из исходного открытого кода. Нажмите, чтобы открыть запись запуска.";
 "dashboard.about.page.a_cc_switch_based_menu_bar_balance_viewer" = "Официальные квоты в строке меню, а с CC Switch — и балансы сторонних провайдеров";
 "dashboard.about.page.open_the_balancebar_github_repository" = "Открыть репозиторий BalanceBar на GitHub";
 "dashboard.advanced.page.reload" = "Перезагрузить";
