@@ -2427,13 +2427,11 @@ final class MenuHoverLinkHostView: NSView {
     }
 
     func ticketScrollDidOccur(_ phase: TicketScrollPhase) {
-        guard !isMenuDismissing, let window, let clipView = ticketScrollView?.contentView else { return }
+        guard !isMenuDismissing, window != nil, ticketScrollView != nil else { return }
         if !isTicketScrolling {
             guard phase != .gestureEnded, phase != .momentumEnded else { return }
             isTicketScrolling = true
-            let viewport = clipView.bounds.intersection(clipView.visibleRect)
-            let screenRect = viewport.isEmpty ? NSRect.zero : window.convertToScreen(clipView.convert(viewport, to: nil))
-            scrollingTicketCards.forEach { $0.beginScrollDrop(viewportScreenRect: screenRect) }
+            scrollingTicketCards.forEach { $0.beginScrollDrop() }
         }
         invalidateTicketScrollSettleTimer()
         switch phase {

@@ -1240,6 +1240,40 @@ final class MenuBarAnimationTests: XCTestCase {
         XCTAssertEqual(card.alphaValue, 1)
     }
 
+    func testFallingTicketClipTracksOuterScrollViewport() throws {
+        let (window, host, scroll, cards) = makeScrollingTicketHost()
+        defer { window.orderOut(nil) }
+        let outer = NSScrollView(frame: host.frame)
+        window.contentView = outer
+        let document = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 400))
+        outer.documentView = document
+        host.frame.origin.y = 20
+        document.addSubview(host)
+        host.displayIfNeeded()
+
+        let card = cards[0]
+        defer { card.resetHover(animated: false) }
+        card.setHoverForTesting(at: NSPoint(x: card.frame.midX, y: card.frame.midY))
+        let overlay = try XCTUnwrap(card.liftOverlayForTesting)
+        let clipLayer = try XCTUnwrap(overlay.cardLayer.superlayer)
+        host.ticketScrollDidOccur(.wheel)
+        let initialClip = overlay.convertToScreen(clipLayer.frame)
+
+        outer.contentView.scroll(to: NSPoint(x: 0, y: 60))
+
+        let clipView = scroll.contentView
+        let visibleRect = clipView.bounds.intersection(clipView.visibleRect)
+        let expectedClip = window.convertToScreen(clipView.convert(visibleRect, to: nil))
+        XCTAssertFalse(visibleRect.isEmpty)
+        XCTAssertLessThan(visibleRect.height, clipView.bounds.height)
+        XCTAssertNotEqual(initialClip, expectedClip)
+        XCTAssertEqual(overlay.convertToScreen(clipLayer.frame), expectedClip)
+
+        outer.contentView.scroll(to: NSPoint(x: 0, y: 160))
+        XCTAssertTrue(clipLayer.masksToBounds)
+        XCTAssertTrue(clipLayer.frame.isEmpty)
+    }
+
     func testTicketHoverIsSuppressedUntilScrollSettlesUnderPointer() throws {
         let (window, host, scroll, cards) = makeScrollingTicketHost()
         defer { window.orderOut(nil) }

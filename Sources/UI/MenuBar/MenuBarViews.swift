@@ -562,9 +562,10 @@ final class BankedResetChromeView: NSView {
     /// Draws the opaque lifted surface; only set while taking a snapshot.
     private var drawsLiftedSurface = false
     private var overlay: BankedResetLiftOverlayWindow?
+    private var isDroppingDuringScroll = false
     /// Original views hidden behind the overlay, with their alpha to restore.
     private var hiddenViews: [(view: NSView, alpha: CGFloat)] = []
-    private var scrollObserver: NSObjectProtocol?
+    private var scrollObservers: [NSObjectProtocol] = []
     /// Content the current snapshot was taken from.
     private var liftedSignature: [String] = []
 
@@ -587,7 +588,7 @@ final class BankedResetChromeView: NSView {
     deinit {
         displayLink?.invalidate()
         overlay?.orderOut(nil)
-        if let scrollObserver { NotificationCenter.default.removeObserver(scrollObserver) }
+        scrollObservers.forEach { NotificationCenter.default.removeObserver($0) }
     }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -627,7 +628,10 @@ final class BankedResetChromeView: NSView {
     func beginHover(atWindowPoint point: NSPoint) {
         guard !isScrollSuppressed, !isMenuDismissing,
               !(reduceMotionForTesting ?? NSWorkspace.shared.accessibilityDisplayShouldReduceMotion) else { return }
-        overlay?.setClipRect(nil)
+        if isDroppingDuringScroll {
+            isDroppingDuringScroll = false
+            positionOverlay()
+        }
         isHovering = true
         setPointer(convert(point, from: nil))
         startAnimating()
@@ -659,9 +663,10 @@ final class BankedResetChromeView: NSView {
         }
     }
 
-    func beginScrollDrop(viewportScreenRect: NSRect) {
+    func beginScrollDrop() {
         isScrollSuppressed = true
-        overlay?.setClipRect(viewportScreenRect)
+        isDroppingDuringScroll = overlay != nil
+        positionOverlay()
         resetHover(animated: true)
     }
 
@@ -670,7 +675,7 @@ final class BankedResetChromeView: NSView {
     }
 
     func resetScrollDrop() {
-        if overlay?.isClipped == true { resetHover(animated: false) }
+        if isDroppingDuringScroll { resetHover(animated: false) }
     }
 
     /// Test seam mirroring the tracking-area path with a point in the
@@ -817,13 +822,18 @@ final class BankedResetChromeView: NSView {
         hiddenViews = views.map { ($0, $0.alphaValue) }
         views.forEach { $0.alphaValue = 0 }
 
-        if let clipView = enclosingScrollView?.contentView {
+        // An outer menu scroll also moves and clips the ticket list.
+        var ancestorScrollView = enclosingScrollView
+        while let scrollView = ancestorScrollView {
+            let clipView = scrollView.contentView
             clipView.postsBoundsChangedNotifications = true
-            scrollObserver = NotificationCenter.default.addObserver(
+            let observer = NotificationCenter.default.addObserver(
                 forName: NSView.boundsDidChangeNotification, object: clipView, queue: .main
             ) { [weak self] _ in
                 self?.positionOverlay()
             }
+            scrollObservers.append(observer)
+            ancestorScrollView = scrollView.enclosingScrollView
         }
         return overlay
     }
@@ -874,17 +884,26 @@ final class BankedResetChromeView: NSView {
         liftedSignature = []
         overlay.orderOut(nil)
         self.overlay = nil
+        isDroppingDuringScroll = false
         hiddenViews.forEach { $0.view.alphaValue = $0.alpha }
         hiddenViews.removeAll()
-        if let scrollObserver {
-            NotificationCenter.default.removeObserver(scrollObserver)
-            self.scrollObserver = nil
-        }
+        scrollObservers.forEach { NotificationCenter.default.removeObserver($0) }
+        scrollObservers.removeAll()
     }
 
     private func positionOverlay() {
         guard let overlay, let window else { return }
-        overlay.place(cardScreenFrame: window.convertToScreen(convert(bounds, to: nil)))
+        var clipScreenRect: NSRect?
+        if isDroppingDuringScroll {
+            clipScreenRect = .zero
+            if let clipView = enclosingScrollView?.contentView {
+                let visible = clipView.bounds.intersection(clipView.visibleRect)
+                if !visible.isEmpty {
+                    clipScreenRect = window.convertToScreen(clipView.convert(visible, to: nil))
+                }
+            }
+        }
+        overlay.place(cardScreenFrame: window.convertToScreen(convert(bounds, to: nil)), clipScreenRect: clipScreenRect)
     }
 
     /// Draws the superview region under this card (the chrome plus the views
@@ -989,15 +1008,10 @@ final class BankedResetLiftOverlayWindow: NSPanel {
         CATransaction.commit()
     }
 
-    func place(cardScreenFrame: NSRect) {
+    func place(cardScreenFrame: NSRect, clipScreenRect: NSRect?) {
         let target = cardScreenFrame.insetBy(dx: -Self.padding, dy: -Self.padding)
         if frame != target { setFrame(target, display: false) }
-        updateClipGeometry()
-    }
-
-    func setClipRect(_ screenRect: NSRect?) {
-        guard clipScreenRect != screenRect else { return }
-        clipScreenRect = screenRect
+        self.clipScreenRect = clipScreenRect
         updateClipGeometry()
     }
 
