@@ -7076,7 +7076,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         } else {
             baseFrame = existing.first?.originalTitleFrame ?? title.frame
         }
-        let available = max(0, time.frame.minX - 6 - baseFrame.minX)
+        let trailingLimit = overviewTitleTrailingLimit(for: time, in: header)
+        let available = max(0, trailingLimit - 6 - baseFrame.minX)
         var titleFrame = baseFrame
         if time is StatusSlotView { titleFrame.size.width = min(baseFrame.width, available) }
         let raw = context.noteTags ?? context.notes.map { [$0] } ?? []
@@ -7712,7 +7713,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         if snapshot.kind == .official || snapshot.kind == .balance {
             let time = updateOverviewRefreshTime(for: context, frame: headerFrame(layout.refreshTime), in: headerHost)
             if time is StatusSlotView {
-                titleFrame.size.width = max(0, min(titleFrame.width, time.frame.minX - titleFrame.minX - 6))
+                titleFrame.size.width = max(0, min(titleFrame.width,
+                    overviewTitleTrailingLimit(for: time, in: headerHost) - titleFrame.minX - 6))
             }
         }
         updateOverviewProviderTitle(for: snapshot, font: .systemFont(ofSize: 15, weight: .semibold),
@@ -9100,6 +9102,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             let slot = (existing as? StatusSlotView)
                 ?? StatusSlotView(localize: StatusSlotText.appLocalize, timeZone: settings.displayTimeZone)
             slot.updateTimeZone(settings.displayTimeZone)
+            slot.onVisibleContentWidthChange = { [weak self, weak header] in
+                guard let self, let header else { return }
+                let card = (header as? MenuHoverLinkHostView) ?? header.superview
+                guard let card else { return }
+                self.updateOverviewHeaderNotes(in: card, context: context)
+            }
             applyQuotaStatus(quotaStatus, reason: staleReason, to: slot)
             slot.frame = Self.statusSlotFrame(in: frame)
             time = slot
@@ -9117,6 +9125,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             header.addSubview(time)
         }
         return time
+    }
+
+    private func overviewTitleTrailingLimit(for time: NSView, in header: NSView) -> CGFloat {
+        guard let slot = time as? StatusSlotView else { return time.frame.minX }
+        return header.convert(NSPoint(x: slot.visibleContentMinX, y: 0), from: slot).x
     }
 
     /// Right-aligns the fixed-size status slot inside the refresh-time frame.

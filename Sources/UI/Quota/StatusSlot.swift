@@ -185,6 +185,14 @@ final class StatusSlotView: NSView {
     private(set) var externalActivityDetected = false
 
     var textForTesting: String { label.stringValue }
+    var visibleContentWidth: CGFloat {
+        let font = label.font ?? .systemFont(ofSize: Self.fontSize)
+        let measuredText = ceil((label.stringValue as NSString).size(withAttributes: [.font: font]).width)
+        let cellWidth = ceil(label.cell?.cellSize.width ?? 0)
+        return max(measuredText, cellWidth) + (dot.isHidden ? 0 : Self.dotDiameter + 3)
+    }
+    var visibleContentMinX: CGFloat { bounds.maxX - visibleContentWidth }
+    var onVisibleContentWidthChange: (() -> Void)?
     var textColorForTesting: NSColor? { label.textColor }
     var fontForTesting: NSFont? { label.font }
     var isDotVisibleForTesting: Bool { !dot.isHidden }
@@ -324,6 +332,7 @@ final class StatusSlotView: NSView {
     private func time(_ date: Date?) -> String { StatusSlotAppearance.timeText(date, timeZone: timeZone) }
 
     private func apply() {
+        let oldVisibleContentWidth = visibleContentWidth
         dot.isHidden = true
         switch state {
         case .refreshing:
@@ -353,6 +362,7 @@ final class StatusSlotView: NSView {
         toolTip = hoverText
         setAccessibilityLabel(String(format: localize(.accessibilityStatus), label.stringValue))
         setAccessibilityHelp(hoverText)
+        if visibleContentWidth != oldVisibleContentWidth { onVisibleContentWidthChange?() }
     }
 
     override func viewDidChangeEffectiveAppearance() {
