@@ -1834,6 +1834,7 @@ final class MenuHoverLinkHostView: NSView {
     deinit {
         if let menuDismissalObserver { NotificationCenter.default.removeObserver(menuDismissalObserver) }
         if let ticketBoundsObserver { NotificationCenter.default.removeObserver(ticketBoundsObserver) }
+        ticketScrollSettleTimer?.invalidate()
         if let ticketScrollMonitor { NSEvent.removeMonitor(ticketScrollMonitor) }
         if let resignActiveObserver { NotificationCenter.default.removeObserver(resignActiveObserver) }
     }
@@ -1872,6 +1873,7 @@ final class MenuHoverLinkHostView: NSView {
 
     private func beginMenuDismissal() {
         guard !isMenuDismissing else { return }
+        cancelTicketScrollSettle()
         dismissalTrace?.record("dismissal.begin", view: self)
         guard let departingWindow = window, departingWindow.isVisible else {
             activeLinks.forEach { $0.clearHoverState() }
@@ -1889,7 +1891,7 @@ final class MenuHoverLinkHostView: NSView {
         dismissalPaceViews = paceViews
         sectionFocus.suspendForMenuDismissal()
         // Lifted tickets float in their own window; drop them before the menu fades.
-        resetBankedResetTicketHover()
+        resetBankedResetTicketHover(animated: false)
         dismissalPaceViews.forEach { $0.stopMenuInteractionPreservingVisuals() }
         removeTrackingAreaReference()
         removeTicketScrollMonitor()
@@ -1923,7 +1925,7 @@ final class MenuHoverLinkHostView: NSView {
         isMenuDismissing = false
         dismissalWindow = nil
         sectionFocus.finishMenuDismissal()
-        resetBankedResetTicketHover()
+        resetBankedResetTicketHover(animated: false)
         clearPeerBlur()
         var visited = Set<ObjectIdentifier>()
         for pace in dismissalPaceViews + paceViews where visited.insert(ObjectIdentifier(pace)).inserted {
@@ -2073,12 +2075,12 @@ final class MenuHoverLinkHostView: NSView {
         visit(self)
     }
 
-    private func resetBankedResetTicketHover() {
+    private func resetBankedResetTicketHover(animated: Bool, in root: NSView? = nil) {
         func visit(_ node: NSView) {
-            (node as? BankedResetChromeView)?.resetHover(animated: false)
+            (node as? BankedResetChromeView)?.resetHover(animated: animated)
             node.subviews.forEach(visit)
         }
-        visit(self)
+        visit(root ?? self)
     }
 
     func prepareForMenuWindowDetachment() -> Bool {
@@ -2102,6 +2104,10 @@ final class MenuHoverLinkHostView: NSView {
     private let links = NSHashTable<HoverLinkTextField>.weakObjects()
     private var activeLinks: [HoverLinkTextField] { links.allObjects.filter { $0.isDescendant(of: self) } }
     private weak var ticketScrollView: BankedResetTicketScrollView?
+    private var ticketScrollSettleTimer: Timer?
+    private var scrollingTicketCards: [BankedResetChromeView] {
+        ticketScrollView?.documentView?.subviews.compactMap { $0 as? BankedResetChromeView } ?? []
+    }
     private var trackingAreaReference: NSTrackingArea?
     private var ticketScrollMonitor: Any?
     private var resignActiveObserver: NSObjectProtocol?
@@ -2239,7 +2245,9 @@ final class MenuHoverLinkHostView: NSView {
     }
 
     func trackTicketScroll(_ scrollView: BankedResetTicketScrollView) {
+        if ticketScrollView !== scrollView { cancelTicketScrollSettle() }
         ticketScrollView = scrollView
+        refreshTrackingArea()
         if let ticketBoundsObserver { NotificationCenter.default.removeObserver(ticketBoundsObserver) }
         scrollView.contentView.postsBoundsChangedNotifications = true
         ticketBoundsObserver = NotificationCenter.default.addObserver(
@@ -2298,6 +2306,9 @@ final class MenuHoverLinkHostView: NSView {
     override func mouseExited(with event: NSEvent) {
         activeLinks.forEach { $0.clearHoverState() }
         paceViews.forEach { $0.updateHover(at: NSPoint(x: -100, y: -100)) }
+        for card in scrollingTicketCards where card.isHovering {
+            card.resetHover(animated: true)
+        }
     }
 
     override func removeFromSuperview() {
@@ -2311,6 +2322,10 @@ final class MenuHoverLinkHostView: NSView {
 
     func forwardHover(atHostPoint point: NSPoint) {
         activeLinks.forEach { $0.updateHover(atHostPoint: point, in: self) }
+        let pointInWindow = convert(point, to: nil)
+        for card in scrollingTicketCards where card.isHovering && !card.containsVisiblePoint(pointInWindow) {
+            card.resetHover(animated: true)
+        }
         let next = paceViews.first { $0.isMenuTracking && $0.markerHitRect.contains($0.convert(point, from: self)) }
         // Deliver the new target first so a late leave cannot cancel its timeline.
         if let next { next.updateHover(at: next.convert(point, from: self)) }
@@ -2321,7 +2336,7 @@ final class MenuHoverLinkHostView: NSView {
 
     private func installTrackingArea() {
         guard !isMenuDismissing else { return }
-        guard (!activeLinks.isEmpty || !paceViews.isEmpty), !bounds.isEmpty else { return }
+        guard (!activeLinks.isEmpty || !paceViews.isEmpty || ticketScrollView != nil), !bounds.isEmpty else { return }
         let area = NSTrackingArea(
             rect: .zero,
             options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect],
@@ -2368,14 +2383,51 @@ final class MenuHoverLinkHostView: NSView {
     }
 
     func containsTicketScrollPoint(_ pointInWindow: NSPoint) -> Bool {
-        guard let ticketScrollView else { return false }
-        return ticketScrollView.bounds.contains(ticketScrollView.convert(pointInWindow, from: nil))
+        guard let ticketScrollView, ticketScrollView.isDescendant(of: self),
+              !ticketScrollView.isHiddenOrHasHiddenAncestor else { return false }
+        let clipView = ticketScrollView.contentView
+        return clipView.bounds.intersection(clipView.visibleRect).contains(clipView.convert(pointInWindow, from: nil))
     }
 
     private func handleTicketScroll(_ event: NSEvent) -> Bool {
         guard let ticketScrollView, containsTicketScrollPoint(event.locationInWindow) else { return false }
+        // Remove the separate overlay window before the clip view moves.
+        if !isMenuDismissing { ticketScrollDidOccur(in: ticketScrollView) }
         ticketScrollView.scrollWheel(with: event)
         return true
+    }
+
+    private func ticketScrollDidOccur(in scrollView: BankedResetTicketScrollView) {
+        if ticketScrollSettleTimer == nil {
+            scrollingTicketCards.forEach { $0.isScrollSuppressed = true }
+            resetBankedResetTicketHover(animated: false, in: scrollView)
+        }
+        ticketScrollSettleTimer?.invalidate()
+        let timer = Timer(timeInterval: 0.12, repeats: false) { [weak self] _ in
+            self?.ticketScrollDidSettle()
+        }
+        ticketScrollSettleTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    private func ticketScrollDidSettle() {
+        cancelTicketScrollSettle()
+        guard !isMenuDismissing, let window, window.isVisible else { return }
+        let point = focusPointerLocationForTesting.map { convert($0, to: nil) }
+            ?? window.mouseLocationOutsideOfEventStream
+        guard containsTicketScrollPoint(point) else { return }
+        scrollingTicketCards.first { $0.containsVisiblePoint(point) }?.beginHover(atWindowPoint: point)
+    }
+
+    private func cancelTicketScrollSettle() {
+        guard let timer = ticketScrollSettleTimer else { return }
+        timer.invalidate()
+        ticketScrollSettleTimer = nil
+        scrollingTicketCards.forEach { $0.isScrollSuppressed = false }
+    }
+
+    func settleTicketScrollForTesting() {
+        ticketScrollSettleTimer?.fire()
     }
 
     private func installTicketScrollMonitor() {
@@ -2407,6 +2459,7 @@ final class MenuHoverLinkHostView: NSView {
     }
 
     private func removeTicketScrollMonitor() {
+        cancelTicketScrollSettle()
         monitoredWindow = nil
         monitoredViews.removeAll()
         if let resignActiveObserver {

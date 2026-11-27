@@ -548,6 +548,8 @@ final class BankedResetChromeView: NSView {
 
     private var hoverTrackingArea: NSTrackingArea?
     private(set) var isHovering = false
+    var isScrollSuppressed = false
+    var reduceMotionForTesting: Bool?
     /// 0 at rest, 1 fully lifted (overshoots slightly while springing).
     private var lift = Spring(0)
     /// Normalized pointer offset from the center, -1...1, y up.
@@ -617,15 +619,25 @@ final class BankedResetChromeView: NSView {
 
     override func mouseEntered(with event: NSEvent) {
         super.mouseEntered(with: event)
-        guard !isMenuDismissing, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
+        beginHover(atWindowPoint: event.locationInWindow)
+    }
+
+    func beginHover(atWindowPoint point: NSPoint) {
+        guard !isScrollSuppressed, !isMenuDismissing,
+              !(reduceMotionForTesting ?? NSWorkspace.shared.accessibilityDisplayShouldReduceMotion) else { return }
         isHovering = true
-        setPointer(convert(event.locationInWindow, from: nil))
+        setPointer(convert(point, from: nil))
         startAnimating()
+    }
+
+    func containsVisiblePoint(_ pointInWindow: NSPoint) -> Bool {
+        // A view that doesn't clip its drawing can have a visibleRect beyond its bounds.
+        !isHiddenOrHasHiddenAncestor && bounds.intersection(visibleRect).contains(convert(pointInWindow, from: nil))
     }
 
     override func mouseMoved(with event: NSEvent) {
         super.mouseMoved(with: event)
-        guard isHovering, !isMenuDismissing else { return }
+        guard isHovering, !isScrollSuppressed, !isMenuDismissing else { return }
         setPointer(convert(event.locationInWindow, from: nil))
         startAnimating()
     }
