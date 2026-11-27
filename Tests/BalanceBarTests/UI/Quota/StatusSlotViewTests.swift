@@ -167,6 +167,33 @@ final class StatusSlotViewTests: XCTestCase {
         XCTAssertEqual(view.textForTesting, "6 分钟前 · OAuth API", "the age keeps counting while the slot is shown")
     }
 
+    func testVisibleContentWidthIncludesDotAndNotifiesOnlyWhenWidthChanges() {
+        var clock = time.addingTimeInterval(9 * 60)
+        let view = StatusSlotView(timeZone: utc, now: { clock })
+        var widthChanges = 0
+        view.onVisibleContentWidthChange = { widthChanges += 1 }
+        view.update(state: .official(at: time, source: .mod))
+        let initialChangeCount = widthChanges
+
+        clock = time.addingTimeInterval(10 * 60)
+        view.refreshAgeForTesting()
+        XCTAssertEqual(widthChanges, initialChangeCount + 1)
+        view.refreshAgeForTesting()
+        XCTAssertEqual(widthChanges, initialChangeCount + 1, "an unchanged age width does not trigger layout")
+
+        let font = view.fontForTesting ?? .systemFont(ofSize: StatusSlotView.fontSize)
+        func measuredContentWidth() -> CGFloat {
+            let measure = NSTextField(labelWithString: view.textForTesting)
+            measure.font = font
+            return ceil(max((view.textForTesting as NSString).size(withAttributes: [.font: font]).width,
+                measure.cell?.cellSize.width ?? 0))
+        }
+        XCTAssertEqual(view.visibleContentWidth - measuredContentWidth(), StatusSlotView.dotDiameter + 3, accuracy: 0.01)
+
+        view.update(state: .error(at: time, source: .mod))
+        XCTAssertEqual(view.visibleContentWidth, measuredContentWidth(), accuracy: 0.01)
+    }
+
     func testResolveCarriesTheLastSourceIntoStaleAndFailedStates() {
         var context = StatusSlotContext(source: .official, updatedAt: time, lastSource: .mod)
         XCTAssertEqual(StatusSlotState.resolve(model: model(), context: context), .official(at: time, source: .mod))

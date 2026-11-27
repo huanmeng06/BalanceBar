@@ -5822,7 +5822,8 @@ extension StatusItemControllerTests {
         let title = try XCTUnwrap(providerTitle(in: card).view as? AccountMarqueeView)
         XCTAssertEqual(slot.textForTesting, "⚠︎ 59 мин назад · OAuth API")
         XCTAssertEqual(slot.frame.width, 166)
-        XCTAssertEqual(title.frame.maxX + 6, slot.frame.minX, accuracy: 0.01)
+        let visibleContentMinX = header.convert(NSPoint(x: slot.visibleContentMinX, y: 0), from: slot).x
+        XCTAssertEqual(title.frame.maxX + 6, visibleContentMinX, accuracy: 0.01)
         XCTAssertEqual(title.accountLabel.stringValue, "ChatGPT Official")
         XCTAssertEqual(title.accountLabel.lineBreakMode, .byClipping)
         XCTAssertGreaterThan(title.accountLabel.frame.width, title.frame.width)
@@ -5851,6 +5852,54 @@ extension StatusItemControllerTests {
         controller.update(snapshot: shortSnapshot, refreshDate: date, menuInput: input, settings: settings)
         XCTAssertEqual(try providerTitle(in: card).view.frame, initial.view.frame)
         XCTAssertFalse(header.subviews.contains { $0 is StatusSlotView })
+    }
+
+    @MainActor
+    func testClaudeTitleUsesVisibleStatusContentAndTracksWidthChangesInPlace() throws {
+        let previous = AppLanguage.selected
+        defer { AppLanguage.selected = previous }
+        let date = Date()
+        let liveSnapshot = Snapshot.official("Claude Official", 80, "5h", nil, date)
+        let input = makeMenuInput()
+        let settings = makeSettings()
+
+        for language in [AppLanguage.english, .simplifiedChinese] {
+            AppLanguage.selected = language
+            let controller = makeController()
+            defer { controller.teardown() }
+            var snapshot = liveSnapshot
+            snapshot.quotaStatus = .realtime(.mod, at: date)
+            controller.start(snapshot: snapshot, refreshDate: date, menuInput: input, settings: settings)
+            let card = try XCTUnwrap(controller.statusMenuForTesting.items.first?.view as? MenuHoverLinkHostView)
+            let title = try providerTitle(in: card)
+            let header = try XCTUnwrap(title.view.superview)
+            let slot = try XCTUnwrap(header.subviews.compactMap { $0 as? StatusSlotView }.first)
+            let visibleContentMinX = header.convert(NSPoint(x: slot.visibleContentMinX, y: 0), from: slot).x
+
+            XCTAssertTrue(title.view is NSTextField, "\(language)")
+            XCTAssertLessThanOrEqual(title.view.frame.maxX + 6, visibleContentMinX + 0.01, "\(language)")
+        }
+
+        AppLanguage.selected = .russian
+        let controller = makeController()
+        defer { controller.teardown() }
+        var snapshot = liveSnapshot
+        snapshot.quotaStatus = .realtime(.mod, at: date)
+        controller.start(snapshot: snapshot, refreshDate: date, menuInput: input, settings: settings)
+        let menu = controller.statusMenuForTesting
+        let card = try XCTUnwrap(menu.items.first?.view as? MenuHoverLinkHostView)
+        controller.menuWillOpen(menu)
+        defer { controller.menuDidClose(menu) }
+
+        snapshot.quotaStatus = .error(at: date.addingTimeInterval(-59 * 60), source: .oauthAPI)
+        controller.update(snapshot: snapshot, refreshDate: date, menuInput: input, settings: settings)
+        XCTAssertTrue(menu.items.first?.view === card)
+        XCTAssertTrue(try providerTitle(in: card).view is AccountMarqueeView)
+
+        snapshot.quotaStatus = .realtime(.mod, at: date)
+        controller.update(snapshot: snapshot, refreshDate: date, menuInput: input, settings: settings)
+        XCTAssertTrue(menu.items.first?.view === card)
+        XCTAssertTrue(try providerTitle(in: card).view is NSTextField)
     }
 
     @MainActor
@@ -5990,13 +6039,14 @@ extension StatusItemControllerTests {
         XCTAssertLessThan(title.frame.width, initial.view.frame.width)
         let tags = header.subviews.compactMap { $0 as? AggregationNoteTagView }
         let slot = try XCTUnwrap(header.subviews.compactMap { $0 as? StatusSlotView }.first)
+        let visibleContentMinX = header.convert(NSPoint(x: slot.visibleContentMinX, y: 0), from: slot).x
         XCTAssertEqual(tags.count, 2)
-        XCTAssertTrue(tags.allSatisfy { $0.frame.minX >= title.frame.maxX + 8 && $0.frame.maxX <= slot.frame.minX - 6 })
+        XCTAssertTrue(tags.allSatisfy { $0.frame.minX >= title.frame.maxX + 8 && $0.frame.maxX <= visibleContentMinX - 6 })
         controller.updateMenu(input: input(notes: []))
         XCTAssertTrue(menu.items.first?.view === card)
         let restored = try providerTitle(in: card)
         XCTAssertTrue(restored.view is NSTextField)
-        XCTAssertEqual(restored.view.frame, initial.view.frame)
+        XCTAssertEqual(restored.view.frame.maxX + 6, visibleContentMinX, accuracy: 0.01)
     }
 
     @MainActor
