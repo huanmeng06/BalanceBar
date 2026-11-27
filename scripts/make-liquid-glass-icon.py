@@ -18,7 +18,7 @@ W = 64                                   # ray width
 TEAL, ORANGE, YELLOW = '#35ADB3', '#F97B1C', '#FC9F0B'
 DOT = '#30D158'                          # system green
 GRADIENT = 'url(#g)'                     # teal -> yellow, bottom ray only
-BACKGROUND = 'srgb:0.89804,0.88235,0.87059,1.00000'   # #E5E1DE, system builds the gradient
+BACKGROUND = 'srgb:1.00000,1.00000,1.00000,1.00000'   # white; the system adds a subtle top-to-bottom gradient
 
 # Every ray starts at CENTER (the green dot) and runs straight out to its tip.
 CENTER = (514, 519)
