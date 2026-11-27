@@ -46,10 +46,10 @@ final class DashboardKeyboardNavigationTests: XCTestCase {
         XCTAssertNil(generalSwitch.window)
         let aboutPage = try XCTUnwrap(composition.pageContainerForTesting.currentPage?.view)
         let githubButton = try XCTUnwrap(
-            descendant(in: aboutPage, as: DashboardAboutGitHubButton.self)
+            descendant(in: aboutPage, as: DashboardAboutActionButton.self) { $0.identifier?.rawValue == "about.githubLink" }
         )
         XCTAssertTrue(githubButton.window === window)
-        XCTAssertEqual(githubButton.accessibilityRole(), .button)
+        XCTAssertEqual(githubButton.accessibilityRole(), .link)
         XCTAssertFalse(githubButton.accessibilityLabel()?.isEmpty ?? true)
 
         composition.showSection(.general)

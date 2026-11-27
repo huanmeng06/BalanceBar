@@ -298,6 +298,8 @@ final class SettingsRowView: NSView {
     private var labelsContainer: SettingsLabelsContainerView?
     private let ownsTitleLabel: Bool
     private let ownsDetailLabel: Bool
+    private let leadingAccessory: NSView?
+    private var leadingAccessoryInset: CGFloat { leadingAccessory == nil ? 0 : 34 }
     private var stacksVertically = false
     private var detailWidthConstraint: NSLayoutConstraint?
     private var inlineContentConstraints: [NSLayoutConstraint] = []
@@ -331,7 +333,8 @@ final class SettingsRowView: NSView {
         accessoryView: NSView? = nil,
         minimumHeight: CGFloat = SettingsRowView.minimumHeight,
         verticalPadding: CGFloat = SettingsRowView.verticalPadding,
-        forceDedicatedControlRow: Bool = false
+        forceDedicatedControlRow: Bool = false,
+        leadingAccessory: NSView? = nil
     ) {
         ownsTitleLabel = titleLabel == nil
         ownsDetailLabel = detailLabel == nil
@@ -342,6 +345,7 @@ final class SettingsRowView: NSView {
         rowMinimumHeight = max(SettingsRowView.minimumHeight, minimumHeight)
         rowVerticalPadding = max(0, verticalPadding)
         self.forceDedicatedControlRow = forceDedicatedControlRow
+        self.leadingAccessory = leadingAccessory
         super.init(frame: .zero)
         configure(
             title: title,
@@ -721,7 +725,7 @@ final class SettingsRowView: NSView {
     }
 
     private func wrappingWidthForLabels() -> CGFloat {
-        let available = max(0, bounds.width - Self.horizontalPadding * 2)
+        let available = max(0, bounds.width - Self.horizontalPadding * 2 - leadingAccessoryInset)
         guard available > 1 else { return 0 }
         if accessoryView?.isHidden == true {
             return available
@@ -849,6 +853,15 @@ final class SettingsRowView: NSView {
         }
 
         addSubview(contentStack)
+        if let leadingAccessory {
+            leadingAccessory.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(leadingAccessory)
+            NSLayoutConstraint.activate([
+                leadingAccessory.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Self.horizontalPadding),
+                leadingAccessory.trailingAnchor.constraint(equalTo: contentStack.leadingAnchor, constant: -8),
+                leadingAccessory.centerYAnchor.constraint(equalTo: centerYAnchor)
+            ])
+        }
         let accessory = accessoryView
         if let accessory {
             inlineContentConstraints = [
@@ -884,7 +897,7 @@ final class SettingsRowView: NSView {
             ]
             accessoryWidthLimitConstraint = accessory.widthAnchor.constraint(
                 lessThanOrEqualTo: widthAnchor,
-                constant: -(Self.horizontalPadding * 2)
+                constant: -(Self.horizontalPadding * 2 + leadingAccessoryInset)
             )
         } else {
             inlineContentConstraints = [
@@ -906,7 +919,7 @@ final class SettingsRowView: NSView {
         let constraints: [NSLayoutConstraint] = [
             contentStack.leadingAnchor.constraint(
                 equalTo: leadingAnchor,
-                constant: Self.horizontalPadding
+                constant: Self.horizontalPadding + leadingAccessoryInset
             ),
             contentStack.trailingAnchor.constraint(
                 equalTo: trailingAnchor,
@@ -998,7 +1011,7 @@ final class SettingsRowView: NSView {
             applyHiddenAccessoryLayout()
             return
         }
-        let availableWidth = max(0, bounds.width - Self.horizontalPadding * 2)
+        let availableWidth = max(0, bounds.width - Self.horizontalPadding * 2 - leadingAccessoryInset)
         if let adaptive = accessoryView as? SettingsRowAccessoryLayout {
             adaptive.updateAvailableRowWidth(availableWidth)
         }

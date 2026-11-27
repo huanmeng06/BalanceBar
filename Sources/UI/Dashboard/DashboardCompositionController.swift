@@ -1328,8 +1328,8 @@ final class DashboardCompositionController {
             query: query,
             runtimeTexts: settingsSearchRuntimeTexts()
         )
-        let orderedSettingsSections = DashboardSection.allCases.filter { $0 != .about }
-        var candidateSections = ranked.map(\.section).filter { $0 != .about }
+        let orderedSettingsSections = DashboardSection.allCases
+        var candidateSections = ranked.map(\.section)
         if !candidateSections.contains(section) {
             candidateSections.append(section)
         }
@@ -1488,13 +1488,7 @@ final class DashboardCompositionController {
     }
 
     private func makeSectionPageController(for section: DashboardSection) -> NSViewController {
-        let pageView = makeSectionPage(for: section)
-        switch section {
-        case .about:
-            return DashboardHostedPageViewController(wrapping: pageView)
-        default:
-            return DashboardScrollablePageViewController(wrapping: pageView)
-        }
+        DashboardScrollablePageViewController(wrapping: makeSectionPage(for: section))
     }
 
     private func makeProviderPageController(for choice: ProviderChoice) -> NSViewController {

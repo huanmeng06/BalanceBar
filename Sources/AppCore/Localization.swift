@@ -202,7 +202,7 @@ enum AppLanguage: String, CaseIterable {
         }
     }
 
-    fileprivate var resourceLocalization: String {
+    var resourceLocalization: String {
         switch self {
         case .system:
             return AppLanguage.resolved.resourceLocalization
