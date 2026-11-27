@@ -310,7 +310,7 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
         )
     }
 
-    func testCompositionSettingsPagesUseScrollableControllerAndAboutDoesNot() throws {
+    func testCompositionSettingsPagesAndAboutUseScrollableController() throws {
         let appDelegate = AppDelegate(
             repository: CCSwitchRepository(
                 databaseURL: URL(fileURLWithPath: "/nonexistent/issue-389-scrollable-page.db")
@@ -337,16 +337,24 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
 
         composition.showSection(.about)
         window.layoutIfNeeded()
-        XCTAssertNil(composition.scrollablePageForTesting)
+        let aboutPage = try XCTUnwrap(composition.scrollablePageForTesting)
+        XCTAssertTrue(aboutPage.clipViewObserverInstalledForTesting)
         XCTAssertTrue(
-            composition.pageContainerForTesting.currentPage is DashboardHostedPageViewController
-        )
-        XCTAssertNil(
             firstDescendant(
                 of: try XCTUnwrap(composition.pageContainerForTesting.currentPage?.view),
                 as: NSScrollView.self
-            )
+            ) === aboutPage.pageScrollView
         )
+        window.setContentSize(NSSize(width: 800, height: 540))
+        window.layoutIfNeeded()
+        aboutPage.settleInitialLayout()
+        let aboutContent = try XCTUnwrap(aboutPage.hostedContent.subviews.first as? NSStackView)
+        XCTAssertLessThanOrEqual(aboutContent.bounds.width, 560)
+        XCTAssertEqual(
+            aboutContent.convert(NSPoint(x: aboutContent.bounds.midX, y: 0), to: aboutPage.hostedContent).x,
+            aboutPage.hostedContent.bounds.midX, accuracy: 1
+        )
+        XCTAssertGreaterThan(aboutPage.pageScrollView.documentView?.bounds.height ?? 0, aboutPage.pageScrollView.contentView.bounds.height)
 
         composition.showSection(.menuBar)
         window.setContentSize(NSSize(width: 880, height: 620))

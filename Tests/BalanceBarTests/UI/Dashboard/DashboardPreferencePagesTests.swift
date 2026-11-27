@@ -10289,102 +10289,209 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertNotNil(styled.attribute(.font, at: nsText.range(of: "42").location, effectiveRange: nil))
     }
 
+    func testAboutUsesSharedSettingsCards() throws {
+        let page = makeAbout()
+        let content = try XCTUnwrap(descendant(withIdentifier: DashboardPageSearch.aboutContentIdentifier.rawValue, in: page) as? NSStackView)
+        XCTAssertEqual(content.arrangedSubviews.compactMap { $0 as? SettingsSectionView }.count, 2)
+    }
+
     func testAboutVersionPreservesBundleFallback() {
         XCTAssertEqual(DashboardAboutPage.BuildVersion(shortVersion: nil, isDevBuild: false).value, "0.11.14")
         XCTAssertEqual(DashboardAboutPage.BuildVersion(shortVersion: nil, isDevBuild: true).value, "0.11.14 (Dev)")
     }
 
-    func testAboutAppIconCanFillItsImageView() throws {
-        let page = DashboardAboutPage.make(devBundleIdentifier: "com.huanmeng06.BalanceBar.dev")
-        let stack = try XCTUnwrap(descendant(withIdentifier: DashboardPageSearch.aboutContentIdentifier.rawValue, in: page) as? NSStackView)
-        let iconView = try XCTUnwrap(stack.arrangedSubviews.first as? NSImageView)
-        let image = try XCTUnwrap(iconView.image)
-        XCTAssertGreaterThanOrEqual(image.size.width, 72)
-        XCTAssertGreaterThanOrEqual(image.size.height, 72)
+    func testAboutAppIconCanFillItsButton() throws {
+        let page = makeAbout()
+        let button = try XCTUnwrap(descendant(withIdentifier: "about.appIcon", in: page) as? NSButton)
+        let icon = try XCTUnwrap(button.superview?.subviews.compactMap { $0 as? NSImageView }.first)
+        let image = try XCTUnwrap(icon.image)
+        XCTAssertGreaterThanOrEqual(image.size.width, 112)
+        XCTAssertGreaterThanOrEqual(image.size.height, 112)
+        XCTAssertEqual(button.accessibilityLabel(), "BalanceBar")
     }
 
-    func testAboutPageAndMenuShowTheSameLocalizedBuildVersion() throws {
+    func testAboutChannelsBuildRowsAndReleaseLinks() throws {
         let previous = AppLanguage.selected
         defer { AppLanguage.selected = previous }
         AppLanguage.selected = .english
-        let devID = "com.huanmeng06.BalanceBar.dev"
-        let sha = "416559d347888094343958934b27f227aeb7c05b"
-        let cases: [(Bool, String?, String?, String)] = [
-            (false, "721", sha, "Version 1.2.3"),
-            (true, "721", sha, "Version 1.2.3 (Dev #721)"),
-            (true, nil, sha, "Version 1.2.3 (Dev 416559d)"),
-            (true, nil, nil, "Version 1.2.3 (Dev)")
+        let cases: [(String, Bool, String?, String?, String?, String?, String?, String?, String)] = [
+            ("1.8.0", false, nil, nil, "12345", "Stable", "GitHub Actions #12345", "actions/runs/12345", "releases/tag/v1.8.0"),
+            ("1.8.10", false, nil, nil, "abc", "Beta", nil, nil, "releases/tag/v1.8.10"),
+            ("1.8.10", false, nil, nil, nil, "Beta", nil, nil, "releases/tag/v1.8.10"),
+            ("1.8.10", true, "738", "76ce0a75", "12345", "Dev #738 ↗", "PR #738 · 76ce0a7", "pull/738", "releases"),
+            ("1.8.10", true, nil, "76ce0a75", nil, "Dev", "76ce0a7", "commit/76ce0a75", "releases"),
+            ("1.8.10", true, nil, nil, nil, "Dev", nil, nil, "releases"),
+            ("invalid", true, nil, nil, nil, nil, nil, nil, "releases")
         ]
-        let fixtures = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        defer { try? FileManager.default.removeItem(at: fixtures) }
-        for (index, entry) in cases.enumerated() {
-            let (isDev, pr, buildSHA, expected) = entry
-            let bundleURL = fixtures.appendingPathComponent("Build-\(index).bundle")
-            let contents = bundleURL.appendingPathComponent("Contents")
-            try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
-            var info = ["CFBundleIdentifier": isDev ? devID : "com.huanmeng06.BalanceBar.app",
-                        "CFBundleShortVersionString": "1.2.3"]
-            info["BalanceBarBuildPR"] = pr
-            info["BalanceBarBuildSHA"] = buildSHA
-            let data = try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0)
-            try data.write(to: contents.appendingPathComponent("Info.plist"))
-            let bundle = try XCTUnwrap(Bundle(url: bundleURL))
-            let page = DashboardAboutPage.make(bundle: bundle, devBundleIdentifier: devID)
-            let version = try XCTUnwrap(descendant(withIdentifier: "about.version", in: page) as? NSTextField)
-            let menu = StatusItemController.VersionMenu(buildVersion: .init(bundle: bundle, devBundleIdentifier: devID))
-            XCTAssertEqual(version.stringValue, expected)
-            XCTAssertEqual(menu.title, version.stringValue)
+        for (number, dev, pr, sha, run, channel, build, buildPath, releasePath) in cases {
+            var opened: [URL] = []
+            try withAboutBundle(version: number, dev: dev, pr: pr, sha: sha, run: run) { bundle in
+                let page = makeAbout(bundle: bundle, openURL: { opened.append($0); return true })
+                let capsule = descendant(withIdentifier: "about.channel", in: page)
+                let capsuleLink = capsule?.subviews.first as? DashboardAboutActionButton
+                let capsuleTitle = capsuleLink?.title ?? (capsule?.subviews.first as? NSTextField)?.stringValue
+                XCTAssertEqual(capsuleTitle, channel)
+                XCTAssertEqual(capsuleLink != nil, pr != nil)
+                if let pr, let capsuleLink {
+                    XCTAssertEqual(capsuleLink.accessibilityRole(), .link)
+                    capsuleLink.activate()
+                    XCTAssertEqual(opened.removeLast(), DashboardAboutPage.githubRepositoryURL.appendingPathComponent("pull/\(pr)"))
+                }
+                let link = descendant(withIdentifier: "about.githubActionsRun", in: page) as? DashboardAboutActionButton
+                XCTAssertEqual(link?.title, build.map { $0 + " ↗" })
+                XCTAssertEqual(descendant(withIdentifier: "about.build", in: page) != nil, dev || build != nil)
+                if let link, let buildPath {
+                    XCTAssertEqual(link.toolTip, tr(.keyDashboardAboutPageGithubActionsBuildHelp))
+                    link.activate()
+                    XCTAssertEqual(opened.removeLast(), DashboardAboutPage.githubRepositoryURL.appendingPathComponent(buildPath))
+                }
+                let releases = try XCTUnwrap(descendant(withIdentifier: "about.releasesLink", in: page) as? DashboardAboutActionButton)
+                releases.activate()
+                XCTAssertEqual(opened, [DashboardAboutPage.githubRepositoryURL.appendingPathComponent(releasePath)])
+                let version = try XCTUnwrap(descendant(withIdentifier: "about.version", in: page) as? NSTextField)
+                XCTAssertTrue(version.isSelectable)
+                let displayedChannel = channel?.replacingOccurrences(of: " ↗", with: "")
+                XCTAssertEqual(version.stringValue, displayedChannel.map { "\(number) (\($0))" } ?? number)
+            }
         }
     }
 
-    func testAboutPageShowsOnlyNumericReleaseRunIDAndOpensItsActionsRun() throws {
-        let previousLanguage = AppLanguage.selected
-        defer { AppLanguage.selected = previousLanguage }
-        AppLanguage.selected = .english
-        var openedURLs: [URL] = []
-        let fixtures = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        defer { try? FileManager.default.removeItem(at: fixtures) }
-        let bundleURL = fixtures.appendingPathComponent("Release.bundle")
-        let contents = bundleURL.appendingPathComponent("Contents")
+    func testAboutCopyVersionUsesEnglishAndResetsConfirmation() throws {
+        let previous = AppLanguage.selected
+        defer { AppLanguage.selected = previous }
+        AppLanguage.selected = .simplifiedChinese
+        let version = DashboardAboutPage.BuildVersion(shortVersion: "1.8.10", isDevBuild: true,
+                                                      buildPR: "738", buildSHA: "76ce0a75")
+        XCTAssertEqual(version.clipboardText(osVersion: "26.2", osBuild: "25C56",
+                                            architecture: "Apple Silicon", language: "zh-Hans"), """
+        BalanceBar 1.8.10 (dev)
+        Build: Dev PR #738 · 76ce0a7
+        macOS 26.2 (25C56) · Apple Silicon
+        Language: zh-Hans
+        """)
+        let release = DashboardAboutPage.BuildVersion(shortVersion: "1.8.10", isDevBuild: false, releaseRunID: "12345")
+        XCTAssertEqual(release.clipboardText(osVersion: "26.2", osBuild: "25C56",
+                                            architecture: "Apple Silicon", language: "zh-Hans"), """
+        BalanceBar 1.8.10 (beta)
+        Build: GitHub Actions #12345
+        macOS 26.2 (25C56) · Apple Silicon
+        Language: zh-Hans
+        """)
+        XCTAssertTrue(DashboardAboutPage.BuildVersion(shortVersion: "1.8.0", isDevBuild: false).clipboardText.contains("Build: local"))
+        var clipboard: [String] = []
+        try withAboutBundle(version: "1.8.10", dev: true, pr: "738", sha: "76ce0a75") { bundle in
+            let page = makeAbout(bundle: bundle, writeClipboard: { clipboard.append($0) })
+            let copy = try XCTUnwrap(descendant(withIdentifier: "about.copyVersion", in: page) as? DashboardAboutActionButton)
+            let originalTitle = copy.title
+            copy.activate()
+            XCTAssertEqual(clipboard, [version.clipboardText])
+            XCTAssertEqual(copy.title, tr(.keyDashboardAboutPageCopied) + " ✓")
+            let restored = expectation(description: "copy confirmation expires")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
+                XCTAssertEqual(copy.title, originalTitle)
+                restored.fulfill()
+            }
+            wait(for: [restored], timeout: 3)
+        }
+    }
+
+    func testAboutLicenseLoadsResourceAndHandlesMissingResource() throws {
+        let resourceBundle = Bundle(for: DashboardAboutPage.self)
+        let license = DashboardAboutPage.licenseContent(in: resourceBundle)
+        XCTAssertTrue(license.text.hasPrefix("MIT License"))
+        XCTAssertTrue(license.text.contains("Permission is hereby granted"))
+        XCTAssertNil(license.referenceURL)
+        try withAboutBundle(version: "1.8.0", dev: false) { bundle in
+            let fallback = DashboardAboutPage.licenseContent(in: bundle)
+            XCTAssertEqual(fallback.text, "MIT License · \(DashboardAboutPage.copyright)")
+            XCTAssertEqual(fallback.referenceURL, DashboardAboutPage.githubRepositoryURL.appendingPathComponent("blob/main/LICENSE"))
+        }
+    }
+
+    func testAboutUpdateMatchesGeneralAcrossEveryStateAndUsesSharedActions() throws {
+        let current = AppSemanticVersion("1.8.0")!
+        let latest = AppSemanticVersion("1.9.0")!
+        let relay = DashboardPreferencePageRelay()
+        var actions: [String] = []
+        relay.onCheckForUpdates = { actions.append("check") }
+        relay.onInstallUpdate = { actions.append("install") }
+        relay.onOpenUpdateNotes = { actions.append("notes") }
+        let general = DashboardGeneralPage()
+        let generalView = general.make(.init(preferences: AppPreferences(), relay: relay, updateState: .idle(current: current)))
+        let generalButton = try XCTUnwrap(descendant(withIdentifier: "checkForUpdatesButton", in: generalView) as? NSButton)
+        let generalNotes = try XCTUnwrap(descendant(withIdentifier: "viewUpdateNotesButton", in: generalView) as? NSButton)
+        let generalSubtitle = try XCTUnwrap(descendant(withIdentifier: "checkForUpdatesSubtitle", in: generalView) as? NSTextField)
+        let generalBadge = try XCTUnwrap(SettingsRowView.enclosing(generalSubtitle)?.titleAccessory)
+        for forSearch in [false, true] {
+            let about = DashboardAboutPage()
+            let view = about.make(devBundleIdentifier: "dev", relay: relay, updateState: .idle(current: current), forSearch: forSearch)
+            let button = try XCTUnwrap(descendant(withIdentifier: "about.update", in: view) as? NSButton)
+            let notes = try XCTUnwrap(descendant(withIdentifier: "about.updateNotes", in: view) as? NSButton)
+            let subtitle = try XCTUnwrap(descendant(withIdentifier: "about.updateSubtitle", in: view) as? NSTextField)
+            let badge = try XCTUnwrap(descendant(withIdentifier: "about.updateBadge", in: view))
+            button.performClick(nil)
+            let states: [UpdateCheckState] = [
+                .idle(current: current), .checking(current: current), .latest(current: current),
+                .available(current: current, latest: latest),
+                .revalidating(current: current, latest: latest),
+                .recheckFailed(current: current, latest: latest, failure: .network),
+                .downloading(current: current, latest: latest, progress: 42),
+                .automaticDownloading(current: current, latest: latest, progress: 42),
+                .automaticReady(current: current, latest: latest),
+                .automaticDownloadReady(current: current, latest: latest),
+                .automaticIdleUpdated(current: current),
+                .automaticInstallationFailed(current: current, latest: latest),
+                .automaticDownloadFailed(current: current, latest: latest, failure: .network),
+                .automaticNeedsManual(current: current, latest: latest),
+                .installing(current: current, latest: latest, progress: 42),
+                .restarting(current: current, latest: latest),
+                .failed(.network)
+            ]
+            for state in states {
+                general.refresh(updateState: state)
+                about.refresh(updateState: state)
+                XCTAssertEqual(subtitle.stringValue, generalSubtitle.stringValue)
+                XCTAssertEqual(button.title, generalButton.title)
+                XCTAssertEqual(button.isEnabled, generalButton.isEnabled)
+                XCTAssertEqual(button.tag, generalButton.tag)
+                XCTAssertEqual(notes.isHidden, generalNotes.isHidden)
+                XCTAssertEqual(notes.isEnabled, generalNotes.isEnabled)
+                XCTAssertEqual(badge.isHidden, generalBadge.isHidden)
+            }
+            about.refresh(updateState: .available(current: current, latest: latest))
+            notes.performClick(nil)
+            button.performClick(nil)
+        }
+        XCTAssertEqual(actions, ["check", "notes", "install", "check", "notes", "install"])
+    }
+
+    private func makeAbout(
+        bundle: Bundle = .main,
+        openURL: @escaping (URL) -> Bool = { _ in false },
+        writeClipboard: @escaping (String) -> Void = { _ in }
+    ) -> NSView {
+        DashboardAboutPage().make(bundle: bundle, devBundleIdentifier: "com.huanmeng06.BalanceBar.dev",
+                                  relay: DashboardPreferencePageRelay(),
+                                  updateState: .idle(current: AppSemanticVersion("1.8.0")!),
+                                  openURL: openURL, writeClipboard: writeClipboard)
+    }
+
+    private func withAboutBundle(
+        version: String, dev: Bool, pr: String? = nil, sha: String? = nil, run: String? = nil,
+        _ use: (Bundle) throws -> Void
+    ) throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID()).bundle")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let contents = url.appendingPathComponent("Contents")
         try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
-        let info: [String: Any] = [
-            "CFBundleIdentifier": "com.huanmeng06.BalanceBar.app",
-            "CFBundleShortVersionString": "1.2.3",
-            "BalanceBarReleaseRunID": "1234567890"
-        ]
+        var info = ["CFBundleIdentifier": "com.huanmeng06.BalanceBar." + (dev ? "dev" : "app"),
+                    "CFBundleShortVersionString": version]
+        info["BalanceBarBuildPR"] = pr
+        info["BalanceBarBuildSHA"] = sha
+        info["BalanceBarReleaseRunID"] = run
         let data = try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0)
         try data.write(to: contents.appendingPathComponent("Info.plist"))
-        let bundle = try XCTUnwrap(Bundle(url: bundleURL))
-        let page = DashboardAboutPage.make(
-            bundle: bundle,
-            devBundleIdentifier: "com.huanmeng06.BalanceBar.dev",
-            openURL: { url in openedURLs.append(url); return true }
-        )
-        let button = try XCTUnwrap(descendant(withIdentifier: "about.githubActionsRun", in: page) as? DashboardAboutRunButton)
-        XCTAssertEqual(button.title, "GitHub Actions build #1234567890")
-        XCTAssertEqual(button.toolTip, tr(.keyDashboardAboutPageGithubActionsBuildHelp))
-        XCTAssertEqual(button.accessibilityLabel(), button.title)
-        XCTAssertEqual(button.accessibilityHelp(), tr(.keyDashboardAboutPageGithubActionsBuildHelp))
-        XCTAssertEqual(button.destinationURL.absoluteString, "https://github.com/huanmeng06/BalanceBar/actions/runs/1234567890")
-        button.activate(nil)
-        XCTAssertEqual(openedURLs, [button.destinationURL])
-
-        for (bundleIdentifier, runID) in [
-            ("com.huanmeng06.BalanceBar.app", "12abc"),
-            ("com.huanmeng06.BalanceBar.dev", "1234567890")
-        ] {
-            var invalidInfo = info
-            invalidInfo["CFBundleIdentifier"] = bundleIdentifier
-            invalidInfo["BalanceBarReleaseRunID"] = runID
-            let invalidURL = fixtures.appendingPathComponent("Invalid-\(bundleIdentifier).bundle")
-            let invalidContents = invalidURL.appendingPathComponent("Contents")
-            try FileManager.default.createDirectory(at: invalidContents, withIntermediateDirectories: true)
-            let invalidData = try PropertyListSerialization.data(fromPropertyList: invalidInfo, format: .xml, options: 0)
-            try invalidData.write(to: invalidContents.appendingPathComponent("Info.plist"))
-            let invalidBundle = try XCTUnwrap(Bundle(url: invalidURL))
-            let invalidPage = DashboardAboutPage.make(bundle: invalidBundle, devBundleIdentifier: "com.huanmeng06.BalanceBar.dev")
-            XCTAssertNil(descendant(withIdentifier: "about.githubActionsRun", in: invalidPage))
-        }
+        try use(XCTUnwrap(Bundle(url: url)))
     }
 
     func testAdvancedPageContainsOnlyActiveSettingsSections() throws {
@@ -10908,58 +11015,25 @@ final class DashboardPreferencePagesTests: XCTestCase {
         return top
     }
 
-    func testAboutPageGitHubEntryIsCenteredAccessibleAndOpensOnce() throws {
+    func testAboutLinkRowsAreAccessibleAndOpenTheirDestinations() throws {
         var openedURLs: [URL] = []
-        let resourceBundle = Bundle(for: DashboardAboutGitHubButton.self)
-        let page = DashboardAboutPage.make(
-            bundle: resourceBundle,
-            devBundleIdentifier: "com.huanmeng06.BalanceBar.dev",
-            openURL: { url in
-                openedURLs.append(url)
-                return true
-            }
-        )
-        page.frame = NSRect(x: 0, y: 0, width: 320, height: 300)
-        page.layoutSubtreeIfNeeded()
-
-        let row = try XCTUnwrap(descendant(withIdentifier: "about.githubRow", in: page) as? NSStackView)
-        let button = try XCTUnwrap(descendant(withIdentifier: "about.githubButton", in: page) as? DashboardAboutGitHubButton)
-        let rowCenter = row.convert(NSPoint(x: row.bounds.midX, y: row.bounds.midY), to: page).x
-
-        XCTAssertEqual(rowCenter, page.bounds.midX, accuracy: 0.5)
-        XCTAssertNotNil(button.image)
-        XCTAssertNotNil(resourceBundle.url(forResource: "GitHub", withExtension: "svg"))
-        XCTAssertFalse(button.isBordered)
-        XCTAssertEqual(button.bezelStyle, .regularSquare)
-        XCTAssertEqual(button.bounds.width, button.bounds.height, accuracy: 0.5)
-        XCTAssertEqual(button.circularBackgroundFrameForTesting.width, button.circularBackgroundFrameForTesting.height, accuracy: 0.5)
-        XCTAssertEqual(button.circularBackgroundFrameForTesting.midX, button.bounds.midX, accuracy: 0.5)
-        XCTAssertEqual(button.circularBackgroundFrameForTesting.midY, button.bounds.midY, accuracy: 0.5)
-        let iconWidth = try XCTUnwrap(button.image?.size.width)
-        XCTAssertEqual(iconWidth, DashboardAboutGitHubButton.iconSize, accuracy: 0.5)
-        XCTAssertLessThan(iconWidth, button.circularBackgroundFrameForTesting.width)
-        XCTAssertEqual(button.destinationURL, DashboardAboutPage.githubRepositoryURL)
-        guard let accessibilityLabel = button.accessibilityLabel() else {
-            return XCTFail("Expected a localized GitHub accessibility label")
+        let page = makeAbout(openURL: { openedURLs.append($0); return true })
+        let links = [
+            ("github", DashboardAboutPage.githubRepositoryURL),
+            ("feedback", DashboardAboutPage.githubRepositoryURL.appendingPathComponent("issues/new/choose")),
+            ("ccSwitch", DashboardAboutPage.ccSwitchRepositoryURL)
+        ]
+        for (identifier, _) in links {
+            let row = try XCTUnwrap(descendant(withIdentifier: "about.\(identifier)Row", in: page) as? SettingsRowView)
+            let link = try XCTUnwrap(descendant(withIdentifier: "about.\(identifier)Link", in: row) as? DashboardAboutActionButton)
+            XCTAssertTrue(link.acceptsFirstResponder)
+            XCTAssertEqual(link.focusRingType, .default)
+            XCTAssertEqual(link.accessibilityRole(), .link)
+            XCTAssertEqual(link.accessibilityLabel(), row.titleLabel.stringValue)
+            XCTAssertFalse(link.accessibilityHelp()?.isEmpty ?? true)
+            link.activate()
         }
-        let supportedAccessibilityLabels = [
-            AppLanguage.simplifiedChinese,
-            .traditionalChineseTaiwan,
-            .traditionalChineseHongKong,
-            .japanese,
-            .english,
-            .korean,
-            .spanish,
-            .german,
-            .french
-        ].map { tr(.keyDashboardAboutPageGithubRepository, language: $0) }
-        XCTAssertTrue(supportedAccessibilityLabels.contains(accessibilityLabel))
-
-        XCTAssertTrue(button.target === button)
-        XCTAssertEqual(button.action, #selector(DashboardAboutGitHubButton.activate(_:)))
-        button.activate(nil)
-
-        XCTAssertEqual(openedURLs, [DashboardAboutPage.githubRepositoryURL])
+        XCTAssertEqual(openedURLs, links.map(\.1))
     }
 
     private func descendant(withIdentifier identifier: String, in view: NSView) -> NSView? {

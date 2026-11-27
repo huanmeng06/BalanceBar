@@ -1158,6 +1158,30 @@ final class DashboardPageSearchTests: XCTestCase {
         }
     }
 
+    func testGlobalSearchFindsAboutVersionCopyLicenseAndFeedback() throws {
+        let previous = AppLanguage.selected
+        defer { AppLanguage.selected = previous }
+        let appDelegate = AppDelegate(repository: CCSwitchRepository(
+            databaseURL: URL(fileURLWithPath: "/nonexistent/issue-743-about-search.db")
+        ))
+        let composition = appDelegate.dashboardCompositionForTesting
+        defer { composition.teardownForTesting() }
+        let window = try XCTUnwrap(composition.makeWindowForTesting(showing: .general))
+        window.setContentSize(NSSize(width: 1000, height: 700))
+        for (query, titleKey) in [
+            ("复制版本信息", LocalizationKey.keyDashboardAboutPageVersion),
+            ("许可", .keyDashboardAboutPageLicense),
+            ("反馈问题", .keyDashboardAboutPageFeedback)
+        ] {
+            AppLanguage.selected = .simplifiedChinese
+            XCTAssertEqual(DashboardSettingsSearchCatalog.firstMatchingSection(query: query), .about, query)
+            composition.applySearchQueryForTesting(query)
+            let titles = visibleSearchableRowTitles(in: composition.currentHostedPageContentForTesting())
+            XCTAssertTrue(titles.contains(tr(titleKey, language: .simplifiedChinese)), "\(query): \(titles)")
+            composition.applySearchQueryForTesting("")
+        }
+    }
+
     func testAboutToSettingsWithActiveQueryEntersGlobalSearchWithoutRestoringAbout() throws {
         let appDelegate = AppDelegate(
             repository: CCSwitchRepository(
@@ -1203,7 +1227,6 @@ final class DashboardPageSearchTests: XCTestCase {
             let expectedSections = Set(
                 DashboardSettingsSearchCatalog.rankedSections(query: query)
                     .map(\.section)
-                    .filter { $0 != .about }
             ).union([.general])
             XCTAssertGreaterThanOrEqual(
                 DashboardPageSearchDiagnostics.globalSearchPagesMaterializedCount,

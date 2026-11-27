@@ -339,6 +339,10 @@ enum DashboardSettingsSearchCatalog {
         "dashboard.advanced.page.egress_guard_detected_unlisted",
         "dashboard.refresh.official_every_seconds",
         "dashboard.about.page.version_value",
+        "dashboard.about.page.version_channel",
+        "dashboard.about.page.version_release_notes",
+        "dashboard.about.page.dev_pull_request",
+        "dashboard.about.page.github_actions_build",
         "dashboard.general.and.refresh.pages.current_provider_value",
         "dashboard.general.and.refresh.pages.connection_mode_line",
         "dashboard.general.and.refresh.pages.connection_mode_line_only",
@@ -657,12 +661,7 @@ enum DashboardSettingsSearchCatalog {
                 .keyDashboardAdvancedPageDebugLog
             ]
         case .about:
-            return [
-                .keyDashboardAboutPageGithubRepository,
-                .keyDashboardAboutPageACcSwitchBasedMenuBarBalanceViewer,
-                .keyDashboardAboutPageOpenTheBalancebarGithubRepository,
-                .keyDashboardAboutPageGithubActionsBuild
-            ]
+            return []
         case .notifications:
             return []
         }
@@ -679,10 +678,7 @@ enum DashboardSettingsSearchCatalog {
                 tr(.keyDashboardMenuBarPageSevenDayQuota)
             ] + DashboardSettingsFormattedCopy.sharedVisibleTexts(for: .menuBar)
         case .about:
-            return [
-                "BalanceBar",
-                tr(.keyDashboardAboutPageVersionValue, arguments: [""])
-            ]
+            return ["BalanceBar", "CC Switch", "MIT License", "Beta", "Dev"]
         case .general, .menu, .advanced:
             var texts = DashboardSettingsFormattedCopy.sharedVisibleTexts(for: section)
             if section == .advanced { texts.append(DashboardAdvancedPage.officialValidityDetail) }
@@ -2016,19 +2012,18 @@ final class DashboardPageSearchFilter {
     }
 
     private func hideAboutContentIfPresent(in root: NSView) {
-        aboutContent(in: root).forEach { hideForSearch($0) }
+        aboutExtras(in: root).forEach { hideForSearch($0) }
     }
 
     private func restoreAboutContent(in root: NSView) {
-        // Restoration of search-hidden views is handled by restoreSearchHiddens.
-        _ = aboutContent(in: root)
+        aboutExtras(in: root).forEach { _ = restoreSearchHiddenView($0) }
     }
 
-    private func aboutContent(in view: NSView) -> [NSView] {
-        if view.identifier == DashboardPageSearch.aboutContentIdentifier {
-            return [view]
+    private func aboutExtras(in view: NSView) -> [NSView] {
+        if let stack = view as? NSStackView, stack.identifier == DashboardPageSearch.aboutContentIdentifier {
+            return stack.arrangedSubviews.filter { !($0 is SettingsSectionView) }
         }
-        return view.subviews.flatMap { aboutContent(in: $0) }
+        return view.subviews.flatMap { aboutExtras(in: $0) }
     }
 
 }

@@ -57,6 +57,7 @@ final class DashboardPreferencePages {
     private let launchWithChatGPTController: LaunchWithChatGPTController
     private let relay = DashboardPreferencePageRelay()
     private let generalPage = DashboardGeneralPage()
+    private let aboutPage = DashboardAboutPage()
     private let menuPage = DashboardMenuPage()
     private let menuBarPage = DashboardMenuBarPage()
     private let advancedPage = DashboardAdvancedPage()
@@ -65,6 +66,7 @@ final class DashboardPreferencePages {
     // Global Search projects content into a detached tree. Keep its page
     // models separate from the cached production pages.
     private let searchGeneralPage = DashboardGeneralPage(expandsClaudeSourcesFootnote: true)
+    private let searchAboutPage = DashboardAboutPage()
     private let searchMenuPage = DashboardMenuPage()
     private let searchMenuBarPage = DashboardMenuBarPage()
     private let searchAdvancedPage = DashboardAdvancedPage()
@@ -200,8 +202,11 @@ final class DashboardPreferencePages {
             notificationsPage?.showRoot()
             return notificationsPage?.make() ?? DashboardSettingsComponents.makeSettingsPageContent([])
         case .about:
-            return DashboardAboutPage.make(
-                devBundleIdentifier: devBundleIdentifier
+            return (forSearch ? searchAboutPage : aboutPage).make(
+                devBundleIdentifier: devBundleIdentifier,
+                relay: relay,
+                updateState: updateState,
+                forSearch: forSearch
             )
         }
     }
@@ -454,8 +459,10 @@ final class DashboardPreferencePages {
 
     func refreshUpdateState(_ updateState: UpdateCheckState) {
         generalPage.refresh(updateState: updateState)
+        aboutPage.refresh(updateState: updateState)
         if isSearchProjectionActive {
             searchGeneralPage.refresh(updateState: updateState)
+            searchAboutPage.refresh(updateState: updateState)
         }
     }
 

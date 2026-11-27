@@ -1186,15 +1186,12 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         let aboutPage = try XCTUnwrap(
             appDelegate.dashboardCompositionForTesting.pageContainerForTesting.currentPage?.view
         )
-        XCTAssertNil(
-            firstDescendant(of: aboutPage, as: NSScrollView.self),
-            "About is a centered identity page, not a settings scroll host"
-        )
+        XCTAssertNotNil(firstDescendant(of: aboutPage, as: NSScrollView.self))
         let githubButton = try XCTUnwrap(
-            firstDescendant(of: aboutPage, as: DashboardAboutGitHubButton.self)
+            descendants(of: aboutPage, as: DashboardAboutActionButton.self).first { $0.identifier?.rawValue == "about.githubLink" }
         )
-        XCTAssertEqual(githubButton.focusRingType, .none)
-        XCTAssertEqual(githubButton.accessibilityRole(), .button)
+        XCTAssertEqual(githubButton.focusRingType, .default)
+        XCTAssertEqual(githubButton.accessibilityRole(), .link)
 
         let choices = [
             ProviderChoice(id: "current", name: "Current", isCurrent: true)
@@ -1235,9 +1232,9 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         XCTAssertFalse(aboutPage === generalPage)
         XCTAssertNil(generalPage.superview)
         let githubButton = try XCTUnwrap(
-            firstDescendant(of: aboutPage, as: DashboardAboutGitHubButton.self)
+            descendants(of: aboutPage, as: DashboardAboutActionButton.self).first { $0.identifier?.rawValue == "about.githubLink" }
         )
-        XCTAssertEqual(githubButton.accessibilityRole(), .button)
+        XCTAssertEqual(githubButton.accessibilityRole(), .link)
 
         composition.showSection(.general)
         window.layoutIfNeeded()

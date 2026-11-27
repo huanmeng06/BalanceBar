@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		AD7430000000000000000002 /* LICENSE in Resources */ = {isa = PBXBuildFile; fileRef = AD7430000000000000000001 /* LICENSE */; };
 		A74400000000000000000002 /* BalanceBarAppIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = A74400000000000000000001 /* BalanceBarAppIcon.swift */; };
 		D53000000000000000000011 /* ClaudeRealtimeTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = D53000000000000000000001 /* ClaudeRealtimeTracker.swift */; };
 		E68600000000000000000011 /* ClaudeEgressGuard.swift in Sources */ = {isa = PBXBuildFile; fileRef = E68600000000000000000001 /* ClaudeEgressGuard.swift */; };
@@ -249,6 +250,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		AD7430000000000000000001 /* LICENSE */ = {isa = PBXFileReference; lastKnownFileType = text; path = LICENSE; sourceTree = "<group>"; };
 		A74400000000000000000001 /* BalanceBarAppIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BalanceBarAppIcon.swift; sourceTree = "<group>"; };
 		D53000000000000000000001 /* ClaudeRealtimeTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeRealtimeTracker.swift; sourceTree = "<group>"; };
 		E68600000000000000000001 /* ClaudeEgressGuard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeEgressGuard.swift; sourceTree = "<group>"; };
@@ -611,6 +613,7 @@
 		A1000000000000000000001B /* BalanceBar */ = {
 			isa = PBXGroup;
 			children = (
+				AD7430000000000000000001 /* LICENSE */,
 				A40000000000000000000001 /* Sources */,
 				A40000000000000000000004 /* Resources */,
 				A1000000000000000000002C /* Tests */,
@@ -1460,6 +1463,7 @@
 				A32600000000000000000002 /* GrokIdle.svg in Resources */,
 				A31900000000000000000002 /* GrokThinking in Resources */,
 				A100000000000000000000E1 /* GitHub.svg in Resources */,
+				AD7430000000000000000002 /* LICENSE in Resources */,
 				A34000000000000000000002 /* BankedResetTicket.svg in Resources */,
 				A100000000000000000000F0 /* Localizable.strings in Resources */,
 				A4700000000000000000000E /* Notifications.strings in Resources */,

@@ -240,6 +240,7 @@ trap 'status=$?; printf "build-balancebar: command failed at line %s (exit %s): 
 [[ -d "$resources_src" ]] || die "resources directory does not exist: $resources_src"
 
 for required_file in \
+    "$repo_root/LICENSE" \
     "$resources_src/Info.plist" \
     "$images_src/BalanceBar.icon/icon.json" \
     "$images_src/BalanceBar.icns" \
@@ -416,6 +417,7 @@ do
 done
 # actool's legacy icon tops out at 256 pixels. Ship the full-size rendering.
 cp "$images_src/BalanceBar.icns" "$resources_dir/BalanceBar.icns"
+cp "$repo_root/LICENSE" "$resources_dir/LICENSE"
 
 for resource_file in GitHub.svg BankedResetTicket.svg CodexIcon.svg Claude.svg ClaudeThinking.svg Grok.svg Grok.png GrokIdle.svg
 do
