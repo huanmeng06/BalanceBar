@@ -1096,8 +1096,7 @@ final class DashboardGeneralPage {
         let alert = NSAlert()
         // Set the icon explicitly: the default app icon can be omitted in a sheet.
         // NSAlert puts an explicit icon above the title, outside the accessory.
-        let iconURL = Bundle.main.url(forResource: "BalanceBar", withExtension: "icns")
-        alert.icon = iconURL.flatMap(NSImage.init(contentsOf:)) ?? NSApp.applicationIconImage
+        alert.icon = BalanceBarAppIcon.image()
         alert.messageText = tr(ips.isEmpty ? .keyClaudeTokenRefreshEmptyTitle : .keyClaudeTokenRefreshConfirmTitle)
         alert.informativeText = tr(ips.isEmpty ? .keyClaudeTokenRefreshEmptyMessage : .keyClaudeTokenRefreshConfirmMessage)
         if !ips.isEmpty {

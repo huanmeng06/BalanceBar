@@ -10294,6 +10294,15 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(DashboardAboutPage.BuildVersion(shortVersion: nil, isDevBuild: true).value, "0.11.14 (Dev)")
     }
 
+    func testAboutAppIconCanFillItsImageView() throws {
+        let page = DashboardAboutPage.make(devBundleIdentifier: "com.huanmeng06.BalanceBar.dev")
+        let stack = try XCTUnwrap(descendant(withIdentifier: DashboardPageSearch.aboutContentIdentifier.rawValue, in: page) as? NSStackView)
+        let iconView = try XCTUnwrap(stack.arrangedSubviews.first as? NSImageView)
+        let image = try XCTUnwrap(iconView.image)
+        XCTAssertGreaterThanOrEqual(image.size.width, 72)
+        XCTAssertGreaterThanOrEqual(image.size.height, 72)
+    }
+
     func testAboutPageAndMenuShowTheSameLocalizedBuildVersion() throws {
         let previous = AppLanguage.selected
         defer { AppLanguage.selected = previous }
