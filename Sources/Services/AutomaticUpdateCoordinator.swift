@@ -1,28 +1,100 @@
-import Foundation
+import AppKit
+import CoreGraphics
 
 final class AutomaticUpdateCoordinator {
+    static let idleThreshold: TimeInterval = 10 * 60
     private let preferences: AppPreferences
     private let updateService: UpdateService
     private let verifier: UpdateSignatureVerifier
     private var preparingVersion: AppSemanticVersion?
+    private var preparingChannel: UpdateChannel?
+    private let idleThreshold: TimeInterval
+    private let secondsSinceInput: () -> TimeInterval
+    private var idleTimer: Timer?
+    private var workspaceObservers: [NSObjectProtocol] = []
+    private var sleeping = false
+    private var sessionInactive = false
+    private var shuttingDown = false
 
     init(
         preferences: AppPreferences,
         updateService: UpdateService,
-        verifier: UpdateSignatureVerifier = UpdateSignatureVerifier()
+        verifier: UpdateSignatureVerifier = UpdateSignatureVerifier(),
+        idleThreshold: TimeInterval = AutomaticUpdateCoordinator.configuredIdleThreshold(),
+        secondsSinceInput: @escaping () -> TimeInterval = {
+            CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: .init(rawValue: UInt32.max)!)
+        }
     ) {
         self.preferences = preferences
         self.updateService = updateService
         self.verifier = verifier
+        self.idleThreshold = idleThreshold
+        self.secondsSinceInput = secondsSinceInput
     }
 
-    func start() {
+    static func configuredIdleThreshold(
+        bundleIdentifier: String? = Bundle.main.bundleIdentifier,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> TimeInterval {
+        if let bundleIdentifier, UpdateSignatureVerifier.isDevelopmentBundleIdentifier(bundleIdentifier),
+           let value = environment["BALANCEBAR_UPDATE_IDLE_SECONDS"].flatMap(Double.init),
+           value.isFinite, value >= 30 {
+            return value
+        }
+        return idleThreshold
+    }
+
+    func start(onIdle: @escaping () -> Void) {
+        removeInstalledUpdateCaches()
         updateCheckChanged(updateService.state)
+        let center = NSWorkspace.shared.notificationCenter
+        workspaceObservers = [
+            center.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in self?.sleeping = true },
+            center.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in self?.sleeping = false },
+            center.addObserver(forName: NSWorkspace.sessionDidResignActiveNotification, object: nil, queue: .main) { [weak self] _ in self?.sessionInactive = true },
+            center.addObserver(forName: NSWorkspace.sessionDidBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in self?.sessionInactive = false },
+            center.addObserver(forName: NSWorkspace.willPowerOffNotification, object: nil, queue: .main) { [weak self] _ in self?.shuttingDown = true }
+        ]
+        let timer = Timer(timeInterval: 5, repeats: true) { _ in onIdle() }
+        idleTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
     }
 
-    func setEnabled(_ enabled: Bool) {
+    private func removeInstalledUpdateCaches() {
+        guard let current = updateService.installedVersion, let identifier = Bundle.main.bundleIdentifier,
+              let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { return }
+        let updates = root.appendingPathComponent(identifier).appendingPathComponent("Updates")
+        guard let directories = try? FileManager.default.contentsOfDirectory(at: updates, includingPropertiesForKeys: nil) else { return }
+        for directory in directories {
+            if let version = AppSemanticVersion(directory.lastPathComponent), version <= current {
+                try? FileManager.default.removeItem(at: directory)
+            }
+        }
+    }
+
+    func stop() {
+        idleTimer?.invalidate()
+        idleTimer = nil
+        workspaceObservers.forEach(NSWorkspace.shared.notificationCenter.removeObserver)
+        workspaceObservers.removeAll()
+    }
+
+    func idleRequest(interfaceInUse: Bool) -> AutomaticUpdateInstallationRequest? {
+        guard !interfaceInUse, !sleeping, !sessionInactive, !shuttingDown,
+              let request = quitRequest(),
+              !AutomaticUpdateCommand.idleAttemptFailed(for: request),
+              secondsSinceInput() >= idleThreshold else { return nil }
+        return request
+    }
+
+    func quitRequest() -> AutomaticUpdateInstallationRequest? {
+        guard preferences.permitsAutomaticInstallation(for: preferences.updateChannel), verifier.hasTrustedKeys else { return nil }
+        return updateService.automaticUpdateInstallationRequest
+    }
+
+    func setDownloadEnabled(_ enabled: Bool) {
         let channel = preferences.updateChannel
-        preferences.setAutomaticUpdateEnabled(enabled, for: channel)
+        preferences.setAutomaticDownloadEnabled(enabled, for: channel)
         guard enabled else {
             preparingVersion = nil
             updateService.automaticUpdatesWereDisabled()
@@ -32,21 +104,25 @@ final class AutomaticUpdateCoordinator {
     }
 
     func updateCheckChanged(_ state: UpdateCheckState) {
-        guard preferences.automaticUpdateEnabled(for: preferences.updateChannel),
+        let channel = preferences.updateChannel
+        guard preferences.automaticDownloadEnabled(for: channel),
               verifier.hasTrustedKeys else { return }
         let version: AppSemanticVersion
         switch state {
-        case .available(_, let latest), .revalidating(_, let latest), .recheckFailed(_, let latest, _):
+        case .available(_, let latest), .recheckFailed(_, let latest, _):
             version = latest
+        case .idle, .latest:
+            preparingVersion = nil
+            return
         default:
             return
         }
-        guard preparingVersion != version else { return }
+        guard preparingVersion != version || preparingChannel != channel else { return }
         preparingVersion = version
-        updateService.prepareAutomaticUpdate(verifier: verifier) { [weak self] result in
-            guard let self, self.preparingVersion == version else { return }
-            if case .failure = result { self.preparingVersion = nil }
-            if case .success(nil) = result { self.preparingVersion = nil }
+        preparingChannel = channel
+        updateService.prepareAutomaticUpdate(verifier: verifier) { [weak self] _ in
+            guard let self, self.preparingVersion == version, self.preparingChannel == channel else { return }
+            self.preparingVersion = nil
         }
     }
 }
@@ -60,6 +136,9 @@ struct AutomaticUpdateInstallationRequest {
 }
 
 enum AutomaticUpdateCommand {
+    static var isBackgroundRelaunch: Bool {
+        CommandLine.arguments.contains("--automatic-update-relaunch")
+    }
     private struct CacheContext: Codable {
         let applicationPath: String
         let channel: String
@@ -71,9 +150,12 @@ enum AutomaticUpdateCommand {
         var backupPath: String
         var version: String
         var launchAttempted: Bool
+        var idle: Bool? = nil
+        var launchedAt: Date? = nil
+        var noticeRead: Bool? = nil
     }
 
-    static func launch(_ request: AutomaticUpdateInstallationRequest) throws {
+    static func launch(_ request: AutomaticUpdateInstallationRequest, relaunch: Bool = false) throws {
         let fileManager = FileManager.default
         let support = try fileManager.url(
             for: .applicationSupportDirectory,
@@ -97,7 +179,8 @@ enum AutomaticUpdateCommand {
             request.applicationURL.path,
             request.expectedVersion,
             request.channel.rawValue,
-            String(request.processIdentifier)
+            String(request.processIdentifier),
+            relaunch ? "idle" : "quit"
         ]
         try process.run()
     }
@@ -140,58 +223,221 @@ enum AutomaticUpdateCommand {
             .appendingPathComponent(".balancebar-update-preflight-\(UUID().uuidString)")
         guard FileManager.default.createFile(atPath: writeProbe.path, contents: Data()) else { return false }
         try? FileManager.default.removeItem(atPath: writeProbe.path)
-        guard let image = try? HdiutilUpdateDiskImageMounter().mount(diskImageURL: diskImageURL) else { return false }
-        defer { try? HdiutilUpdateDiskImageMounter().unmount(image) }
-        let application = image.mountPoint.appendingPathComponent("BalanceBar.app", isDirectory: true)
-        guard let metadata = LiveUpdateFileSystem().bundleMetadata(at: application),
-              metadata.bundleIdentifier == manifest.bundleIdentifier,
-              AppSemanticVersion(metadata.shortVersion ?? "") == expectedVersion else { return false }
         let preflightDirectory = support
             .appendingPathComponent(Bundle.main.bundleIdentifier ?? "com.huanmeng06.BalanceBar.app", isDirectory: true)
             .appendingPathComponent("Updates", isDirectory: true)
             .appendingPathComponent("preflight-\(UUID().uuidString)", isDirectory: true)
         let stagedApp = preflightDirectory.appendingPathComponent("BalanceBar.app", isDirectory: true)
         do {
+            defer { try? FileManager.default.removeItem(at: preflightDirectory) }
             try FileManager.default.createDirectory(at: preflightDirectory, withIntermediateDirectories: true)
-            try FileManager.default.copyItem(at: application, to: stagedApp)
-            let valid = UpdateApplicationPreflight.validate(appURL: stagedApp)
-            try? FileManager.default.removeItem(at: preflightDirectory)
-            return valid
+            try stageVerifiedApplication(from: diskImageURL, at: stagedApp, bundleIdentifier: manifest.bundleIdentifier, version: expectedVersion)
+            return true
         } catch {
-            try? FileManager.default.removeItem(at: preflightDirectory)
             return false
         }
     }
 
+    static func stageVerifiedApplication(
+        from diskImage: URL, at stagedApp: URL, bundleIdentifier: String, version: AppSemanticVersion
+    ) throws {
+        let mounter = HdiutilUpdateDiskImageMounter()
+        let mount = try mounter.mount(diskImageURL: diskImage)
+        var mounted = true
+        defer { if mounted { try? mounter.unmount(mount) } }
+        let source = mount.mountPoint.appendingPathComponent("BalanceBar.app", isDirectory: true)
+        let properties = try source.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+        guard properties.isDirectory == true, properties.isSymbolicLink == false else {
+            throw UpdateInstallationError.manualInstallationRequired
+        }
+        try FileManager.default.copyItem(at: source, to: stagedApp)
+        guard UpdateApplicationPreflight.validate(appURL: stagedApp),
+              let metadata = LiveUpdateFileSystem().bundleMetadata(at: stagedApp),
+              metadata.bundleIdentifier == bundleIdentifier,
+              AppSemanticVersion(metadata.shortVersion ?? "") == version else {
+            throw UpdateInstallationError.manualInstallationRequired
+        }
+        try mounter.unmount(mount)
+        mounted = false
+    }
+
     static func run(arguments: [String]) -> Int32 {
-        guard arguments.count == 5,
+        guard arguments.count == 6,
               let expectedVersion = AppSemanticVersion(arguments[2]),
               let channel = UpdateChannel(rawValue: arguments[3]),
-              let processIdentifier = Int32(arguments[4]) else { return 2 }
+              let processIdentifier = Int32(arguments[4]), processIdentifier > 0,
+              ["idle", "quit"].contains(arguments[5]) else { return 2 }
+        let idle = arguments[5] == "idle"
+        let application = URL(fileURLWithPath: arguments[1])
+        let request = AutomaticUpdateInstallationRequest(
+            diskImageURL: URL(fileURLWithPath: arguments[0]),
+            applicationURL: application,
+            expectedVersion: expectedVersion.description,
+            channel: channel,
+            processIdentifier: processIdentifier
+        )
         do {
+            try waitForProcessExit(processIdentifier)
             try install(
-                diskImageURL: URL(fileURLWithPath: arguments[0]),
-                applicationURL: URL(fileURLWithPath: arguments[1]),
+                diskImageURL: request.diskImageURL,
+                applicationURL: application,
                 expectedVersion: expectedVersion,
                 channel: channel,
-                processIdentifier: processIdentifier
+                idle: idle
             )
+            if idle {
+                try reopen(application)
+                try waitForSuccessfulLaunch {
+                    guard let record = readTransaction(), record.idle == true,
+                          record.applicationPath == application.path, record.version == request.expectedVersion,
+                          record.launchedAt != nil else { return false }
+                    try? FileManager.default.removeItem(atPath: record.backupPath)
+                    return true
+                }
+            }
             return 0
         } catch {
-            if arguments.count >= 3,
-               let version = AppSemanticVersion(arguments[2]),
-               let applicationURL = arguments.dropFirst(1).first.map({ URL(fileURLWithPath: $0) }) {
-                recordFailure(applicationURL: applicationURL, version: version.description)
+            if idle {
+                recordIdleFailure(for: request)
+                recoverAndReopen(request)
+            } else {
+                recordFailure(applicationURL: application, version: expectedVersion.description)
             }
+            NSLog("BalanceBar updater: automatic installation failed (idle=%@)", idle ? "yes" : "no")
             return 1
         }
     }
 
+    private static func reopen(_ application: URL) throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        process.arguments = ["-g", "-a", application.path]
+        if let identifier = Bundle.main.bundleIdentifier, UpdateSignatureVerifier.isDevelopmentBundleIdentifier(identifier) {
+            let environment = ProcessInfo.processInfo.environment
+            for name in ["BALANCEBAR_RELEASE_FIXTURE_PATH", "BALANCEBAR_UPDATE_ASSET_DIRECTORY",
+                         "BALANCEBAR_UPDATE_TEST_PUBLIC_KEY", "BALANCEBAR_UPDATE_IDLE_SECONDS"] {
+                if let value = environment[name] { process.arguments?.append(contentsOf: ["--env", "\(name)=\(value)"]) }
+            }
+        }
+        process.arguments?.append(contentsOf: ["--args", "--automatic-update-relaunch"])
+        try process.run()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else { throw UpdateInstallationError.relaunchFailed }
+    }
+
+    static func waitForSuccessfulLaunch(timeout: TimeInterval = 60, confirmed: () -> Bool) throws {
+        let deadline = ProcessInfo.processInfo.systemUptime + timeout
+        repeat {
+            if confirmed() { return }
+            if ProcessInfo.processInfo.systemUptime >= deadline { break }
+            Thread.sleep(forTimeInterval: 0.1)
+        } while true
+        throw UpdateInstallationError.relaunchFailed
+    }
+
+    private static func recoverAndReopen(_ request: AutomaticUpdateInstallationRequest) {
+        let application = request.applicationURL
+        var fallback: URL?
+        if let record = readTransaction(), record.idle == true, record.stage == "replaced",
+           record.applicationPath == application.path, record.version == request.expectedVersion {
+            let backup = URL(fileURLWithPath: record.backupPath)
+            fallback = backup
+            let running = NSRunningApplication.runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "")
+                .filter { $0.bundleURL?.resolvingSymlinksInPath() == application.resolvingSymlinksInPath() && !$0.isTerminated }
+            for app in running {
+                app.forceTerminate()
+                try? waitForProcessExit(app.processIdentifier)
+            }
+            do {
+                try restoreBackup(backup, to: application)
+                try? FileManager.default.removeItem(at: backup)
+                fallback = nil
+            } catch {
+                NSLog("BalanceBar updater: restoring the previous installation failed")
+            }
+        } else if let record = readTransaction(), record.stage == "rollback-failed",
+                  record.applicationPath == application.path, record.version == request.expectedVersion {
+            fallback = URL(fileURLWithPath: record.backupPath)
+        }
+        recordFailure(applicationURL: application, version: request.expectedVersion)
+        let destination = fallback ?? application
+        for _ in 0..<3 {
+            if (try? reopen(destination)) != nil,
+               waitForRunningApplication(at: destination) { return }
+            Thread.sleep(forTimeInterval: 0.5)
+        }
+        NSLog("BalanceBar updater: reopening the previous version failed")
+    }
+
+    private static func waitForRunningApplication(at url: URL) -> Bool {
+        let expectedPath = url.resolvingSymlinksInPath().path
+        let identifier = Bundle.main.bundleIdentifier ?? ""
+        for _ in 0..<40 {
+            if NSRunningApplication.runningApplications(withBundleIdentifier: identifier).contains(where: {
+                $0.bundleURL?.resolvingSymlinksInPath().path == expectedPath && $0.isFinishedLaunching && !$0.isTerminated
+            }) { return true }
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+        return false
+    }
+
+    private static func restoreBackup(_ backup: URL, to application: URL) throws {
+        let files = FileManager.default
+        let staging = application.deletingLastPathComponent()
+            .appendingPathComponent(".BalanceBar-recovery-\(UUID().uuidString).app")
+        defer { try? files.removeItem(at: staging) }
+        try files.copyItem(at: backup, to: staging)
+        if files.fileExists(atPath: application.path) {
+            _ = try files.replaceItemAt(application, withItemAt: staging, options: .usingNewMetadataOnly)
+        } else {
+            try files.moveItem(at: staging, to: application)
+        }
+    }
+
+    private static func readTransaction() -> Transaction? {
+        guard let url = transactionURL(), let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode(Transaction.self, from: data)
+    }
+
+    private static func idleFailureURL(for request: AutomaticUpdateInstallationRequest) -> URL? {
+        transactionURL()?.deletingLastPathComponent().appendingPathComponent("idle-failed-\(request.expectedVersion)")
+    }
+
+    static func idleAttemptFailed(for request: AutomaticUpdateInstallationRequest) -> Bool {
+        guard let url = idleFailureURL(for: request) else { return false }
+        return FileManager.default.fileExists(atPath: url.path)
+    }
+
+    static func recordIdleFailure(for request: AutomaticUpdateInstallationRequest) {
+        guard let url = idleFailureURL(for: request) else { return }
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? Data().write(to: url, options: .atomic)
+    }
+
+    static func idleUpdateNotice(markRead: Bool = false) -> String? {
+        guard let url = transactionURL(), var record = readTransaction(),
+              record.idle == true, record.noticeRead != true, let launchedAt = record.launchedAt,
+              Date().timeIntervalSince(launchedAt) < 24 * 60 * 60,
+              Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String == record.version else { return nil }
+        if markRead {
+            record.noticeRead = true
+            try? save(record, to: url)
+        }
+        return record.version
+    }
+
     static func confirmSuccessfulLaunch() {
         guard let transactionURL = transactionURL(),
-              let transaction = try? JSONDecoder().decode(Transaction.self, from: Data(contentsOf: transactionURL)),
+              var transaction = readTransaction(),
               transaction.stage == "replaced",
+              Bundle.main.bundleURL.resolvingSymlinksInPath().path == URL(fileURLWithPath: transaction.applicationPath).resolvingSymlinksInPath().path,
               AppSemanticVersion(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")?.description == transaction.version else { return }
+        if transaction.idle == true {
+            guard transaction.launchedAt == nil else { return }
+            transaction.launchedAt = Date()
+            try? save(transaction, to: transactionURL)
+            return
+        }
         try? FileManager.default.removeItem(atPath: transaction.backupPath)
         try? FileManager.default.removeItem(at: transactionURL)
     }
@@ -220,7 +466,7 @@ enum AutomaticUpdateCommand {
     static func prepareForLaunch() -> Bool {
         guard let transactionURL = transactionURL(),
               var transaction = try? JSONDecoder().decode(Transaction.self, from: Data(contentsOf: transactionURL)),
-              transaction.stage == "replaced" else { return true }
+              transaction.stage == "replaced", transaction.idle != true else { return true }
         guard transaction.launchAttempted else {
             transaction.launchAttempted = true
             try? save(transaction, to: transactionURL)
@@ -252,9 +498,8 @@ enum AutomaticUpdateCommand {
         applicationURL: URL,
         expectedVersion: AppSemanticVersion,
         channel: UpdateChannel,
-        processIdentifier: Int32
+        idle: Bool
     ) throws {
-        try waitForProcessExit(processIdentifier)
         let fileManager = FileManager.default
         let bundleIdentifier = Bundle.main.bundleIdentifier ?? "com.huanmeng06.BalanceBar.app"
         let contextURL = diskImageURL.deletingLastPathComponent().appendingPathComponent("install-context.json")
@@ -289,17 +534,6 @@ enum AutomaticUpdateCommand {
             throw UpdateInstallationError.bundleMetadataMismatch
         }
 
-        let mount = try HdiutilUpdateDiskImageMounter().mount(diskImageURL: diskImageURL)
-        var mountIsActive = true
-        defer {
-            if mountIsActive { try? HdiutilUpdateDiskImageMounter().unmount(mount) }
-        }
-        let sourceApp = mount.mountPoint.appendingPathComponent("BalanceBar.app", isDirectory: true)
-        guard let sourceMetadata = LiveUpdateFileSystem().bundleMetadata(at: sourceApp),
-              sourceMetadata.bundleIdentifier == bundleIdentifier,
-              AppSemanticVersion(sourceMetadata.shortVersion ?? "") == expectedVersion else {
-            throw UpdateInstallationError.manualInstallationRequired
-        }
         let parent = applicationURL.deletingLastPathComponent()
         let probe = parent.appendingPathComponent(".balancebar-update-write-check-\(UUID().uuidString)")
         guard fileManager.createFile(atPath: probe.path, contents: Data()),
@@ -318,18 +552,14 @@ enum AutomaticUpdateCommand {
             applicationPath: applicationURL.path,
             backupPath: backup.path,
             version: expectedVersion.description,
-            launchAttempted: false
+            launchAttempted: false,
+            idle: idle
         )
         try save(record, to: transaction)
 
         let stagedApp = parent.appendingPathComponent(".BalanceBar-staged-\(UUID().uuidString).app", isDirectory: true)
         do {
-            try fileManager.copyItem(at: sourceApp, to: stagedApp)
-            guard UpdateApplicationPreflight.validate(appURL: stagedApp) else {
-                throw UpdateInstallationError.manualInstallationRequired
-            }
-            try HdiutilUpdateDiskImageMounter().unmount(mount)
-            mountIsActive = false
+            try stageVerifiedApplication(from: diskImageURL, at: stagedApp, bundleIdentifier: bundleIdentifier, version: expectedVersion)
             try fileManager.copyItem(at: applicationURL, to: backup)
             record.stage = "backed-up"
             try save(record, to: transaction)

@@ -145,18 +145,31 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertEqual(reloaded.updateChannel, .stable)
     }
 
-    func testAutomaticUpdatePreferenceDefaultsOffAndPersistsPerChannel() {
+    func testAutomaticUpdatePreferencesDefaultOffAndPersistPerChannel() {
         let (preferences, defaults, suite) = makePreferences()
         defer { defaults.removePersistentDomain(forName: suite) }
 
-        XCTAssertFalse(preferences.automaticUpdateEnabled(for: .stable))
-        XCTAssertFalse(preferences.automaticUpdateEnabled(for: .beta))
-        XCTAssertTrue(PreferencesMigrationPlan.allKeys.contains(AppPreferences.automaticUpdateEnabledKey))
-        preferences.setAutomaticUpdateEnabled(true, for: .beta)
+        for channel in UpdateChannel.allCases {
+            XCTAssertFalse(preferences.automaticDownloadEnabled(for: channel))
+            XCTAssertFalse(preferences.automaticInstallEnabled(for: channel))
+        }
+        XCTAssertTrue(PreferencesMigrationPlan.allKeys.contains(AppPreferences.automaticDownloadKey))
+        XCTAssertTrue(PreferencesMigrationPlan.allKeys.contains(AppPreferences.automaticInstallKey))
+        // The original single-switch preference carries over as download-only consent.
+        defaults.set(["beta": true], forKey: "automaticUpdateEnabledByChannel")
 
         let reloaded = AppPreferences(defaults: defaults)
-        XCTAssertFalse(reloaded.automaticUpdateEnabled(for: .stable))
-        XCTAssertTrue(reloaded.automaticUpdateEnabled(for: .beta))
+        XCTAssertTrue(reloaded.automaticDownloadEnabled(for: .beta))
+        XCTAssertFalse(reloaded.permitsAutomaticInstallation(for: .beta))
+        reloaded.setAutomaticInstallEnabled(true, for: .beta)
+        XCTAssertTrue(reloaded.permitsAutomaticInstallation(for: .beta))
+        reloaded.setAutomaticDownloadEnabled(false, for: .beta)
+        XCTAssertTrue(reloaded.automaticInstallEnabled(for: .beta))
+        XCTAssertFalse(reloaded.permitsAutomaticInstallation(for: .beta))
+        reloaded.setAutomaticDownloadEnabled(true, for: .beta)
+        XCTAssertTrue(AppPreferences(defaults: defaults).permitsAutomaticInstallation(for: .beta))
+        XCTAssertFalse(reloaded.automaticDownloadEnabled(for: .stable))
+        XCTAssertFalse(reloaded.automaticInstallEnabled(for: .stable))
     }
 
     func testMenuBarQuotaWindowPreferenceDefaultsPersistsAcrossReloadAndRejectsUnknownValues() {

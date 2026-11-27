@@ -958,14 +958,18 @@
 "dashboard.general.and.refresh.pages.download_cc_switch" = "Скачать CC Switch";
 "status.item.controller.download_cc_switch" = "Скачать CC Switch";
 
-"dashboard.general.and.refresh.pages.automatic_update" = "Автоматические обновления";
-"dashboard.general.and.refresh.pages.automatic_update_description" = "Загружать новые версии в фоновом режиме и устанавливать их при выходе из BalanceBar.";
+"dashboard.general.and.refresh.pages.automatic_update_download" = "Автоматически загружать новые версии";
+"dashboard.general.and.refresh.pages.automatic_update_download_description" = "Загружать и проверять новые версии в фоновом режиме.";
+"dashboard.general.and.refresh.pages.automatic_update_install" = "Автоматически устанавливать новые версии";
+"dashboard.general.and.refresh.pages.automatic_update_install_description" = "Устанавливать при выходе из BalanceBar или в ваше отсутствие.";
+"dashboard.general.and.refresh.pages.automatic_update_download_ready" = "Версия %1$@ загружена и готова к установке.";
 "dashboard.general.and.refresh.pages.automatic_update_download_failed" = "Не удалось загрузить обновление в фоновом режиме. Повторите проверку обновлений.";
 "dashboard.general.and.refresh.pages.automatic_update_verification_failed" = "Не удалось проверить подпись или файл. Обновление не установлено. Повторите проверку.";
 
 "dashboard.general.and.refresh.pages.automatic_update_downloading" = "Загрузка обновления…";
 
-"dashboard.general.and.refresh.pages.automatic_update_ready" = "Загружено и проверено. Установка произойдёт при выходе из BalanceBar.";
+"dashboard.general.and.refresh.pages.automatic_update_ready" = "Загружено. Обновление установится при выходе из BalanceBar или в ваше отсутствие.";
+"dashboard.general.and.refresh.pages.automatic_idle_updated" = "В ваше отсутствие установлена версия %1$@.";
 
 "dashboard.general.and.refresh.pages.automatic_update_install_failed" = "Не удалось установить обновление. Повторите попытку или установите его вручную.";
 

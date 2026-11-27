@@ -958,14 +958,18 @@
 "dashboard.general.and.refresh.pages.download_cc_switch" = "Download CC Switch";
 "status.item.controller.download_cc_switch" = "Download CC Switch";
 
-"dashboard.general.and.refresh.pages.automatic_update" = "Automatic Updates";
-"dashboard.general.and.refresh.pages.automatic_update_description" = "Download new versions in the background and install them when you quit BalanceBar.";
+"dashboard.general.and.refresh.pages.automatic_update_download" = "Automatically Download New Versions";
+"dashboard.general.and.refresh.pages.automatic_update_download_description" = "Download and verify new versions in the background.";
+"dashboard.general.and.refresh.pages.automatic_update_install" = "Automatically Install New Versions";
+"dashboard.general.and.refresh.pages.automatic_update_install_description" = "Install when you quit BalanceBar or step away from your Mac.";
+"dashboard.general.and.refresh.pages.automatic_update_download_ready" = "Version %1$@ is downloaded and ready to install.";
 "dashboard.general.and.refresh.pages.automatic_update_download_failed" = "The background download failed. Retry the update check.";
 "dashboard.general.and.refresh.pages.automatic_update_verification_failed" = "Signature or file verification failed. The update was not installed. Retry the update check.";
 
 "dashboard.general.and.refresh.pages.automatic_update_downloading" = "Downloading update…";
 
-"dashboard.general.and.refresh.pages.automatic_update_ready" = "Downloaded and verified. It will install when you quit BalanceBar.";
+"dashboard.general.and.refresh.pages.automatic_update_ready" = "Downloaded. It will install when you quit BalanceBar or step away from your Mac.";
+"dashboard.general.and.refresh.pages.automatic_idle_updated" = "Updated to %1$@ while you were away.";
 
 "dashboard.general.and.refresh.pages.automatic_update_install_failed" = "The update could not be installed. Retry or install it manually.";
 

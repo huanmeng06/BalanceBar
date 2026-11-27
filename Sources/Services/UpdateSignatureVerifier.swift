@@ -130,15 +130,20 @@ struct UpdateSignatureVerifier {
             }
         }
         let bundleIdentifier = bundle.bundleIdentifier ?? ""
-        if bundleIdentifier == "com.huanmeng06.BalanceBar.dev",
+        let isDevelopmentBundle = Self.isDevelopmentBundleIdentifier(bundleIdentifier)
+        if isDevelopmentBundle,
            let encoded = environment["BALANCEBAR_UPDATE_TEST_PUBLIC_KEY"],
            let bytes = Data(base64Encoded: encoded),
            let key = try? Curve25519.Signing.PublicKey(rawRepresentation: bytes) {
             keys["dev-test"] = key
         }
         self.publicKeys = keys
-        self.developmentBundleIdentifier = bundleIdentifier == "com.huanmeng06.BalanceBar.dev"
-            && keys["dev-test"] != nil ? bundleIdentifier : nil
+        self.developmentBundleIdentifier = isDevelopmentBundle && keys["dev-test"] != nil ? bundleIdentifier : nil
+    }
+
+    static func isDevelopmentBundleIdentifier(_ identifier: String) -> Bool {
+        let developmentIdentifier = "com.huanmeng06.BalanceBar.dev"
+        return identifier == developmentIdentifier || identifier.hasPrefix(developmentIdentifier + ".")
     }
 
     init(publicKeys: [String: Data]) {

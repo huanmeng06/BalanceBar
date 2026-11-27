@@ -28,6 +28,51 @@ private final class DashboardNotificationTestClient: BalanceNotificationClient {
 
 @MainActor
 final class DashboardPreferencePagesTests: XCTestCase {
+    func testAutomaticUpdateRowsFollowChannelAndDownloadDependency() throws {
+        let suite = "DashboardPreferencePagesTests.Updates.\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        let version = try XCTUnwrap(AppSemanticVersion("1.0.0"))
+        let controller = DashboardGeneralPage()
+        func makePage(hasKeys: Bool) -> NSView {
+            controller.make(.init(
+                preferences: preferences, relay: DashboardPreferencePageRelay(),
+                updateState: .idle(current: version), showsAutomaticUpdateSettings: hasKeys
+            ))
+        }
+        func updateSwitches(_ page: NSView) -> [NSSwitch] {
+            descendants(of: page).compactMap { $0 as? NSSwitch }.filter {
+                $0.identifier?.rawValue == AppPreferences.automaticDownloadKey
+                    || $0.identifier?.rawValue == AppPreferences.automaticInstallKey
+            }
+        }
+        XCTAssertTrue(updateSwitches(makePage(hasKeys: false)).isEmpty)
+        let page = makePage(hasKeys: true)
+        let switches = updateSwitches(page)
+        XCTAssertEqual(switches.map { $0.identifier?.rawValue }, [AppPreferences.automaticDownloadKey, AppPreferences.automaticInstallKey])
+        let download = try XCTUnwrap(switches.first)
+        let install = try XCTUnwrap(switches.last)
+        XCTAssertEqual(download.state, .off)
+        XCTAssertFalse(install.isEnabled)
+        preferences.setAutomaticDownloadEnabled(true, for: .stable)
+        preferences.setAutomaticInstallEnabled(true, for: .stable)
+        controller.refreshAutomaticUpdatePreference(preferences)
+        XCTAssertEqual(download.state, .on)
+        XCTAssertEqual(install.state, .on)
+        XCTAssertTrue(install.isEnabled)
+        preferences.updateChannel = .beta
+        controller.refreshAutomaticUpdatePreference(preferences)
+        XCTAssertEqual(download.state, .off)
+        XCTAssertEqual(install.state, .off)
+        XCTAssertFalse(install.isEnabled)
+        preferences.updateChannel = .stable
+        preferences.setAutomaticDownloadEnabled(false, for: .stable)
+        controller.refreshAutomaticUpdatePreference(preferences)
+        XCTAssertEqual(install.state, .on)
+        XCTAssertFalse(install.isEnabled)
+    }
+
     func testNotificationRootEditsDefaultRulesDirectlyAndKeepsSettingsWhenPermissionIsDenied() throws {
         let suiteName = "DashboardPreferencePagesTests.NotificationRoot.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))

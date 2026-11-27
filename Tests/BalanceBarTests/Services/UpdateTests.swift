@@ -7,6 +7,49 @@ import CryptoKit
 @testable import BalanceBar
 
 final class UpdateTests: XCTestCase {
+    func testIdleThresholdOverrideAppliesOnlyToDevelopmentBundles() {
+        let environment = ["BALANCEBAR_UPDATE_IDLE_SECONDS": "30"]
+        XCTAssertEqual(AutomaticUpdateCoordinator.configuredIdleThreshold(
+            bundleIdentifier: "com.huanmeng06.BalanceBar.dev.update-test.fixture", environment: environment
+        ), 30)
+        XCTAssertEqual(AutomaticUpdateCoordinator.configuredIdleThreshold(
+            bundleIdentifier: "com.huanmeng06.BalanceBar.app", environment: environment
+        ), 600)
+        XCTAssertEqual(AutomaticUpdateCoordinator.configuredIdleThreshold(
+            bundleIdentifier: "com.huanmeng06.BalanceBar.dev", environment: ["BALANCEBAR_UPDATE_IDLE_SECONDS": "nan"]
+        ), 600)
+    }
+
+    func testIdleInstallerRequiresExplicitLaunchConfirmation() throws {
+        XCTAssertNoThrow(try AutomaticUpdateCommand.waitForSuccessfulLaunch(timeout: 0) { true })
+        XCTAssertThrowsError(try AutomaticUpdateCommand.waitForSuccessfulLaunch(timeout: 0) { false }) {
+            XCTAssertEqual($0 as? UpdateInstallationError, .relaunchFailed)
+        }
+    }
+
+    func testIdleUpdatePresentationShowsInstalledVersionWithoutBadge() throws {
+        LocalizationRuntime.configure(bundle: Bundle(for: Self.self))
+        defer { LocalizationRuntime.configure() }
+        let version = try XCTUnwrap(AppSemanticVersion("90.1.0"))
+        let presentation = DashboardUpdatePresentation.make(for: .automaticIdleUpdated(current: version), language: .english)
+        XCTAssertEqual(presentation.subtitle, "Updated to 90.1.0 while you were away.")
+        XCTAssertFalse(presentation.showsUpdateBadge)
+    }
+
+    func testDownloadOnlyPresentationOffersImmediateInstallation() throws {
+        LocalizationRuntime.configure(bundle: Bundle(for: Self.self))
+        defer { LocalizationRuntime.configure() }
+        let current = try XCTUnwrap(AppSemanticVersion("90.0.0"))
+        let latest = try XCTUnwrap(AppSemanticVersion("90.1.0"))
+        let presentation = DashboardUpdatePresentation.make(
+            for: .automaticDownloadReady(current: current, latest: latest), language: .english
+        )
+        XCTAssertEqual(presentation.subtitle, "Version 90.1.0 is downloaded and ready to install.")
+        XCTAssertEqual(presentation.buttonTitle, "Install Now")
+        XCTAssertTrue(presentation.performsInstall)
+        XCTAssertTrue(presentation.showsUpdateBadge)
+    }
+
     func testUpdateSignatureVerifierAcceptsContractVectorAndRejectsModifiedManifest() throws {
         let publicKey = try XCTUnwrap(Data(base64Encoded: "EMOTR6+Fb1+w7DIjYiZuTC7Bqj6ZuO26B7xYBIDvDyA="))
         let verifier = UpdateSignatureVerifier(publicKeys: ["test-vector-1": publicKey])

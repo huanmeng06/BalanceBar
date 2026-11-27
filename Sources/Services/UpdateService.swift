@@ -1049,6 +1049,7 @@ final class UpdateService {
     private var updateCheckGeneration: UInt64 = 0
     private var automaticDownloadGeneration: UInt64 = 0
     private var automaticCachedUpdateURL: URL?
+    private var cachedAutomaticRelease: GitHubRelease?
 
     private(set) var state: UpdateCheckState
     /// Last verified update per channel. It survives re-checks and check
@@ -1073,6 +1074,12 @@ final class UpdateService {
         didSet {
             guard oldValue != updateChannel else { return }
             cancelAutomaticUpdateDownload(transitionToAvailable: false)
+            switch state {
+            case .installing, .restarting:
+                break
+            default:
+                discardAutomaticCache()
+            }
             updateCheckGeneration &+= 1
             checkingStartedAt = nil
             applyRetainedUpdatePresentation(for: updateChannel)
@@ -1124,6 +1131,14 @@ final class UpdateService {
             channel: updateChannel,
             processIdentifier: ProcessInfo.processInfo.processIdentifier
         )
+    }
+
+    private func discardAutomaticCache() {
+        if let automaticCachedUpdateURL {
+            try? FileManager.default.removeItem(at: automaticCachedUpdateURL.deletingLastPathComponent())
+        }
+        automaticCachedUpdateURL = nil
+        cachedAutomaticRelease = nil
     }
 
     func automaticUpdateRequiresManualInstallation() {
@@ -1261,10 +1276,7 @@ final class UpdateService {
         guard let currentVersion else { return }
         ignoredVersionStore.ignore(version: latest, for: updateChannel)
         cancelAutomaticUpdateDownload(transitionToAvailable: false)
-        if let automaticCachedUpdateURL {
-            try? FileManager.default.removeItem(at: automaticCachedUpdateURL.deletingLastPathComponent())
-            self.automaticCachedUpdateURL = nil
-        }
+        discardAutomaticCache()
         retainedUpdatesByChannel[updateChannel] = nil
         availableRelease = nil
         availableReleases = []
@@ -1284,6 +1296,7 @@ final class UpdateService {
             return
         }
         guard let currentVersion else { return }
+        let channel = updateChannel
         guard let dmgAsset = candidate.release.matchingAsset(for: candidate.version),
               let manifestAsset = candidate.release.assets.first(where: { $0.name == "BalanceBar-\(candidate.version).update.json" }),
               let signatureAsset = candidate.release.assets.first(where: { $0.name == "BalanceBar-\(candidate.version).update.json.sig" }) else {
@@ -1316,6 +1329,7 @@ final class UpdateService {
             currentVersion: currentVersion
         ) {
             automaticCachedUpdateURL = cachedUpdate
+            cachedAutomaticRelease = candidate.release
             transition(to: .automaticReady(current: currentVersion, latest: candidate.version))
             callbackQueue.async { completion(.success(cachedUpdate)) }
             return
@@ -1367,8 +1381,8 @@ final class UpdateService {
                       let manifest = try? verifier.verify(manifestData: manifestData, signatureData: signatureData),
                       manifest.version == candidate.version.description,
                       manifest.tag == candidate.release.tagName,
-                      manifest.channel == self.updateChannel.rawValue,
-                      candidate.release.prerelease == (self.updateChannel == .beta),
+                      manifest.channel == channel.rawValue,
+                      candidate.release.prerelease == (channel == .beta),
                       manifest.bundleIdentifier == self.currentBundleIdentifier,
                       manifest.asset.size == Int64(dmgAsset.size ?? -1),
                       manifest.asset.name == dmgAsset.name,
@@ -1392,44 +1406,75 @@ final class UpdateService {
                         )
                         return
                     }
-                    defer { self.downloader.cleanupDownloadedFile(at: downloadedDMG) }
-                    guard let dmgData = try? Data(contentsOf: downloadedDMG),
-                          Int64(dmgData.count) == manifest.asset.size,
-                          SHA256Hex.digest(dmgData) == manifest.asset.sha256 else {
-                        self.finishAutomaticUpdate(.failure(.verificationFailed), generation: generation, completion: completion)
-                        return
-                    }
-                    do {
-                        let support = try FileManager.default.url(
-                            for: .applicationSupportDirectory,
-                            in: .userDomainMask,
-                            appropriateFor: nil,
-                            create: true
-                        )
-                        let bundleIdentifier = self.currentBundleIdentifier ?? "com.huanmeng06.BalanceBar.app"
-                        let directory = support
-                            .appendingPathComponent(bundleIdentifier, isDirectory: true)
-                            .appendingPathComponent("Updates", isDirectory: true)
-                            .appendingPathComponent(candidate.version.description, isDirectory: true)
-                        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-                        let cachedDMG = directory.appendingPathComponent(dmgAsset.name)
-                        let cachedManifest = directory.appendingPathComponent(manifestAsset.name)
-                        let cachedSignature = directory.appendingPathComponent(signatureAsset.name)
-                        try dmgData.write(to: cachedDMG, options: .atomic)
-                        try manifestData.write(to: cachedManifest, options: .atomic)
-                        try signatureData.write(to: cachedSignature, options: .atomic)
-                        let context = [
-                            "applicationPath": self.currentApplicationURL.path,
-                            "channel": self.updateChannel.rawValue
-                        ]
-                        let contextData = try JSONSerialization.data(withJSONObject: context, options: [.sortedKeys])
-                        try contextData.write(
-                            to: directory.appendingPathComponent("install-context.json"),
-                            options: .atomic
-                        )
-                        self.finishAutomaticUpdate(.success(cachedDMG), generation: generation, completion: completion)
-                    } catch {
-                        self.finishAutomaticUpdate(.failure(.downloadFailed), generation: generation, completion: completion)
+                    self.workQueue.async {
+                        defer { self.downloader.cleanupDownloadedFile(at: downloadedDMG) }
+                        guard let dmgData = try? Data(contentsOf: downloadedDMG, options: .mappedIfSafe),
+                              Int64(dmgData.count) == manifest.asset.size,
+                              SHA256Hex.digest(dmgData) == manifest.asset.sha256 else {
+                            self.finishAutomaticUpdate(.failure(.verificationFailed), generation: generation, completion: completion)
+                            return
+                        }
+                        do {
+                            let support = try FileManager.default.url(
+                                for: .applicationSupportDirectory,
+                                in: .userDomainMask,
+                                appropriateFor: nil,
+                                create: true
+                            )
+                            let bundleIdentifier = self.currentBundleIdentifier ?? "com.huanmeng06.BalanceBar.app"
+                            let updates = support
+                                .appendingPathComponent(bundleIdentifier, isDirectory: true)
+                                .appendingPathComponent("Updates", isDirectory: true)
+                            let directory = updates.appendingPathComponent(".download-\(UUID().uuidString)", isDirectory: true)
+                            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                            let stagedApp = directory.appendingPathComponent("BalanceBar.app", isDirectory: true)
+                            do {
+                                try AutomaticUpdateCommand.stageVerifiedApplication(
+                                    from: downloadedDMG, at: stagedApp, bundleIdentifier: bundleIdentifier, version: candidate.version
+                                )
+                                try FileManager.default.removeItem(at: stagedApp)
+                            } catch {
+                                try? FileManager.default.removeItem(at: directory)
+                                self.finishAutomaticUpdate(.failure(.verificationFailed), generation: generation, completion: completion)
+                                return
+                            }
+                            let cachedDMG = directory.appendingPathComponent(dmgAsset.name)
+                            let cachedManifest = directory.appendingPathComponent(manifestAsset.name)
+                            let cachedSignature = directory.appendingPathComponent(signatureAsset.name)
+                            try dmgData.write(to: cachedDMG, options: .atomic)
+                            try manifestData.write(to: cachedManifest, options: .atomic)
+                            try signatureData.write(to: cachedSignature, options: .atomic)
+                            let context = [
+                                "applicationPath": self.currentApplicationURL.path,
+                                "channel": channel.rawValue,
+                                "version": candidate.version.description,
+                                "sha256": manifest.asset.sha256
+                            ]
+                            let contextData = try JSONSerialization.data(withJSONObject: context, options: [.sortedKeys])
+                            try contextData.write(
+                                to: directory.appendingPathComponent("install-context.json"),
+                                options: .atomic
+                            )
+                            self.callbackQueue.async {
+                                defer { try? FileManager.default.removeItem(at: directory) }
+                                guard self.automaticDownloadGeneration == generation else { return }
+                                let destination = updates.appendingPathComponent(candidate.version.description, isDirectory: true)
+                                do {
+                                    if FileManager.default.fileExists(atPath: destination.path) {
+                                        try FileManager.default.removeItem(at: destination)
+                                    }
+                                    try FileManager.default.moveItem(at: directory, to: destination)
+                                    self.finishAutomaticUpdate(
+                                        .success(destination.appendingPathComponent(dmgAsset.name)),
+                                        generation: generation, completion: completion
+                                    )
+                                } catch {
+                                    self.finishAutomaticUpdate(.failure(.downloadFailed), generation: generation, completion: completion)
+                                }
+                            }
+                        } catch {
+                            self.finishAutomaticUpdate(.failure(.downloadFailed), generation: generation, completion: completion)
+                        }
                     }
                 }
             }
@@ -1470,6 +1515,7 @@ final class UpdateService {
                 guard let currentVersion = self.currentVersion else { return }
                 if let url {
                     self.automaticCachedUpdateURL = url
+                    self.cachedAutomaticRelease = self.availableRelease
                     guard case .automaticDownloading(_, let latest, _) = self.state else { return }
                     self.transition(to: .automaticReady(current: currentVersion, latest: latest))
                 }
@@ -1633,6 +1679,7 @@ final class UpdateService {
               let asset = release.matchingAsset(for: latestVersion)
         else { return }
         if let automaticCachedUpdateURL,
+           automaticCachedUpdateURL.lastPathComponent == asset.name,
            FileManager.default.fileExists(atPath: automaticCachedUpdateURL.path) {
             handleDownloadResult(.success(automaticCachedUpdateURL), currentVersion: currentVersion, latestVersion: latestVersion)
             return
@@ -1673,7 +1720,7 @@ final class UpdateService {
         switch state {
         case .checking, .revalidating, .downloading, .automaticDownloading, .installing, .restarting:
             return true
-        case .idle, .latest, .available, .automaticReady, .automaticInstallationFailed,
+        case .idle, .latest, .available, .automaticReady, .automaticDownloadReady, .automaticIdleUpdated, .automaticInstallationFailed,
              .automaticDownloadFailed, .automaticNeedsManual, .recheckFailed, .failed:
             return false
         }
@@ -1801,10 +1848,14 @@ final class UpdateService {
                     releases: notesReleases,
                     latest: candidate.version
                 )
+                if let cachedAutomaticRelease, cachedAutomaticRelease != candidate.release {
+                    discardAutomaticCache()
+                }
                 availableRelease = candidate.release
                 availableReleases = notesReleases
                 transition(to: .available(current: currentVersion, latest: candidate.version))
             } else {
+                discardAutomaticCache()
                 // A successful response is authoritative: a confirmed "no new
                 // version" (or an ignored/unusable one) retires the retained
                 // entry for this channel.
