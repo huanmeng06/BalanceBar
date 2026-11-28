@@ -3,6 +3,7 @@ import os
 
 enum DashboardPageInstrumentation {
     enum Phase: String {
+        case sidebarSelectionDisplay = "sidebar-selection-display"
         case sidebarSelectionCallback = "sidebar-selection-callback"
         case prepareForPageReplacement = "prepare-for-page-replacement"
         case preferencePagesSuspend = "preference-pages-suspend"
@@ -81,6 +82,7 @@ final class DashboardPageSession {
     private var showsUpdateAvailableBadge = false
     private var isTornDown = false
     private weak var window: NSWindow?
+    private var pendingSidebarSelection: DispatchWorkItem?
     private var cachedSectionPages: [DashboardSection: NSViewController] = [:]
 
     var contentHost: NSView { pageContainer.view }
@@ -101,22 +103,27 @@ final class DashboardPageSession {
 
     func installShell(on windowController: DashboardWindowController) {
         guard let window = windowController.window, !isTornDown else { return }
+        cancelPendingSidebarSelection()
         self.window = window
-        let reuseSplit = toolbarController.isSearchActive
-            || toolbarController.hostsSearchResponder(window.firstResponder)
         sourceListController?.teardown()
-        let sourceList = DashboardSourceListController(layoutPolicy: sidebarScrollLayoutPolicy)
+        let sourceList = DashboardSourceListController(
+            layoutPolicy: sidebarScrollLayoutPolicy,
+            capabilities: platformCapabilities
+        )
         sourceList.setShowsUpdateAvailableBadge(showsUpdateAvailableBadge)
-        sourceList.onSelectSection = { [weak self] section in
-            self?.selectSection(section)
+        sourceList.onSelectSection = { [weak self] section, isMouseSelection in
+            if isMouseSelection {
+                self?.deferSidebarSelection(section)
+            } else {
+                self?.selectSection(section)
+            }
         }
         sourceListController = sourceList
-        let sidebar = sourceList.makeSidebar(in: window)
+        let sidebar = sourceList.makeSidebar()
         sidebar.translatesAutoresizingMaskIntoConstraints = false
         accessoryHost.platformCapabilities = platformCapabilities
         let splitController: DashboardSplitViewController
-        if reuseSplit,
-           let existing = window.contentViewController as? DashboardSplitViewController,
+        if let existing = window.contentViewController as? DashboardSplitViewController,
            existing.contentController === pageContainer {
             existing.onSidebarGeometryDidChange = nil
             existing.replaceSidebar(with: sidebar)
@@ -125,18 +132,17 @@ final class DashboardPageSession {
             detachPageContainerFromParent()
             splitController = DashboardSplitViewController(
                 sidebarView: sidebar,
+                sidebarHeader: toolbarController.sidebarSearchView,
                 content: pageContainer,
                 capabilities: platformCapabilities
             )
         }
-        windowController.attachShell(
-            splitController,
-            toolbar: toolbarController,
-            accessoryHost: accessoryHost,
-            applySidebarInset: { hostedWindow in
-                sourceList.applyViewportTopInset(in: hostedWindow)
-            }
-        )
+        toolbarController.onRevealSearch = { [weak splitController] in
+            guard let sidebarItem = splitController?.splitViewItems.first, sidebarItem.isCollapsed else { return }
+            sidebarItem.isCollapsed = false
+            splitController?.view.window?.layoutIfNeeded()
+        }
+        windowController.attachShell(splitController, toolbar: toolbarController, accessoryHost: accessoryHost)
     }
 
     func rebuild(on windowController: DashboardWindowController) {
@@ -144,9 +150,9 @@ final class DashboardPageSession {
         let searchWindow = window as? DashboardSearchWindow
         if toolbarController.isSearchActive
             || toolbarController.hostsSearchResponder(window.firstResponder) {
-            searchWindow?.preservesToolbarSearchEditing = true
+            searchWindow?.preservesSidebarSearchEditing = true
         }
-        defer { searchWindow?.preservesToolbarSearchEditing = false }
+        defer { searchWindow?.preservesSidebarSearchEditing = false }
         invalidateCachedSectionPages()
         DashboardSettingsComponents.disconnectPopUpButtonActions(in: contentHost)
         DashboardSettingsComponents.disconnectPopUpButtonActions(in: window.contentView)
@@ -196,7 +202,24 @@ final class DashboardPageSession {
         }
     }
 
+    private func deferSidebarSelection(_ section: DashboardSection) {
+        cancelPendingSidebarSelection()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.pendingSidebarSelection = nil
+            self.selectSection(section)
+        }
+        pendingSidebarSelection = work
+        DispatchQueue.main.async(execute: work)
+    }
+
+    private func cancelPendingSidebarSelection() {
+        pendingSidebarSelection?.cancel()
+        pendingSidebarSelection = nil
+    }
+
     func selectSection(_ section: DashboardSection) {
+        cancelPendingSidebarSelection()
         guard !isTornDown else { return }
         if shouldPreserveSectionSelection?(section) == true {
             self.section = section
@@ -258,6 +281,7 @@ final class DashboardPageSession {
 
     private func goBack() {
         guard let destination = navigationHistory.goBack() else { return }
+        cancelPendingSidebarSelection()
         guard canPresent(destination), present(destination) else {
             _ = navigationHistory.goForward()
             return
@@ -267,6 +291,7 @@ final class DashboardPageSession {
 
     private func goForward() {
         guard let destination = navigationHistory.goForward() else { return }
+        cancelPendingSidebarSelection()
         guard canPresent(destination), present(destination) else {
             _ = navigationHistory.goBack()
             return
@@ -279,6 +304,7 @@ final class DashboardPageSession {
         recordingHistory: Bool
     ) {
         guard !isTornDown, canPresent(destination) else { return }
+        cancelPendingSidebarSelection()
         guard present(destination) else { return }
         if recordingHistory {
             navigationHistory.push(destination)
@@ -361,12 +387,14 @@ final class DashboardPageSession {
     func teardown() {
         guard !isTornDown else { return }
         isTornDown = true
+        cancelPendingSidebarSelection()
         invalidateCachedSectionPages()
         accessoryHost.detach()
         toolbarController.detach()
         sourceListController?.teardown()
         sourceListController = nil
         pageContainer.removeCurrentPage()
+        (window?.contentViewController as? DashboardSplitViewController)?.removeContentScrollEdgeAccessory()
         window = nil
     }
 

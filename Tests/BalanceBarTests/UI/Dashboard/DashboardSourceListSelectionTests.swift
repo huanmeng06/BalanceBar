@@ -32,7 +32,7 @@ final class DashboardSourceListSelectionTests: XCTestCase {
         }
     }
 
-    func testSectionRowsUseUnemphasizedRowViewAndKeepAppKitSelection() throws {
+    func testSectionRowsKeepAppKitEmphasisAndUpdateTitleColor() throws {
         let controller = makeController()
         defer { controller.teardown() }
         controller.open()
@@ -59,11 +59,12 @@ final class DashboardSourceListSelectionTests: XCTestCase {
             XCTAssertTrue(rowView.isSelected)
             XCTAssertEqual(rowView.identifier, DashboardSourceListRowView.identifier)
 
-            rowView.isEmphasized = true
-            window.layoutIfNeeded()
-            XCTAssertFalse(rowView.isEmphasized)
-
             let cell = try sectionCell(in: outline, row: row)
+            rowView.isEmphasized = true
+            XCTAssertTrue(rowView.isEmphasized)
+            XCTAssertEqual(cell.textField?.textColor, .white)
+            rowView.isEmphasized = false
+            XCTAssertEqual(cell.textField?.textColor, .unemphasizedSelectedTextColor)
             XCTAssertEqual(cell.textField?.stringValue, section.title)
             XCTAssertEqual(cell.accessibilityLabel(), section.title)
             XCTAssertFalse(cell.textField?.stringValue.isEmpty ?? true)
@@ -97,11 +98,7 @@ final class DashboardSourceListSelectionTests: XCTestCase {
         let outline = sourceList.outlineView
         let appearance = try XCTUnwrap(sourceList.roots.first { $0.group == .appearance })
         let system = try XCTUnwrap(sourceList.roots.first { $0.group == .system })
-        XCTAssertTrue(sourceList.outlineView(outline, isGroupItem: appearance))
-        XCTAssertTrue(sourceList.outlineView(outline, isGroupItem: system))
         XCTAssertFalse(sourceList.outlineView(outline, shouldSelectItem: appearance))
-        XCTAssertNil(sourceList.outlineView(outline, rowViewForItem: appearance))
-        XCTAssertNil(sourceList.outlineView(outline, rowViewForItem: system))
         XCTAssertNil(sourceList.outlineView(outline, tintConfigurationForItem: appearance))
         XCTAssertNil(sourceList.outlineView(outline, tintConfigurationForItem: system))
 
@@ -110,11 +107,12 @@ final class DashboardSourceListSelectionTests: XCTestCase {
             XCTAssertGreaterThanOrEqual(row, 0)
             let rowView = try XCTUnwrap(outline.rowView(atRow: row, makeIfNecessary: true))
             XCTAssertFalse(rowView is DashboardSourceListRowView)
+            XCTAssertFalse(rowView.isAccessibilityElement())
             XCTAssertFalse(outline.isRowSelected(row))
         }
     }
 
-    func testProviderPageClearsSelectionWithoutLeavingEmphasizedRows() throws {
+    func testProviderPageClearsSelection() throws {
         let choices = [
             ProviderChoice(id: "current", name: "Current", isCurrent: true),
             ProviderChoice(id: "other", name: "Other", isCurrent: false)
@@ -138,12 +136,11 @@ final class DashboardSourceListSelectionTests: XCTestCase {
             )
             XCTAssertFalse(sourceList.outlineView.isRowSelected(row))
             XCTAssertFalse(rowView.isSelected)
-            rowView.isEmphasized = true
-            XCTAssertFalse(rowView.isEmphasized)
+            XCTAssertEqual(rowView.identifier, DashboardSourceListRowView.identifier)
         }
     }
 
-    func testKeyboardAndGroupClicksKeepUnemphasizedRowViewStrategy() throws {
+    func testKeyboardAndGroupClicksKeepNativeSelection() throws {
         var pageShows = 0
         let controller = makeController(didShowPage: { pageShows += 1 })
         defer { controller.teardown() }
@@ -160,7 +157,7 @@ final class DashboardSourceListSelectionTests: XCTestCase {
 
         outline.moveDown(nil)
         XCTAssertEqual(sourceList.selectedSection(), .menuBar)
-        try assertSelectedSectionUsesPinnedRowView(.menuBar, in: sourceList)
+        try assertSelectedSectionUsesNativeRowView(.menuBar, in: sourceList)
 
         let appearance = try XCTUnwrap(sourceList.roots.first { $0.group == .appearance })
         let appearanceRow = outline.row(forItem: appearance)
@@ -168,45 +165,10 @@ final class DashboardSourceListSelectionTests: XCTestCase {
         XCTAssertEqual(sourceList.selectedSection(), .menuBar)
         XCTAssertFalse(outline.isRowSelected(appearanceRow))
         XCTAssertEqual(pageShows, afterGeneral + 1)
-        try assertSelectedSectionUsesPinnedRowView(.menuBar, in: sourceList)
+        try assertSelectedSectionUsesNativeRowView(.menuBar, in: sourceList)
     }
 
-    func testResigningKeyKeepsUnemphasizedSelectionAndAccentTint() throws {
-        let controller = makeController()
-        defer { controller.teardown() }
-        controller.open()
-        let window = try XCTUnwrap(controller.window)
-        window.layoutIfNeeded()
-        window.displayIfNeeded()
-
-        let sourceList = try XCTUnwrap(controller.sourceListForTesting)
-        sourceList.applySelection(.about)
-        window.layoutIfNeeded()
-        XCTAssertEqual(sourceList.selectedSection(), .about)
-
-        NotificationCenter.default.post(name: NSWindow.didResignKeyNotification, object: window)
-        window.layoutIfNeeded()
-        window.displayIfNeeded()
-
-        XCTAssertEqual(sourceList.selectedSection(), .about)
-        try assertSelectedSectionUsesPinnedRowView(.about, in: sourceList)
-        let row = try XCTUnwrap(sourceList.row(for: .about))
-        let cell = try sectionCell(in: sourceList.outlineView, row: row)
-        XCTAssertNotNil(cell.textField?.textColor)
-        let node = try XCTUnwrap(sourceList.node(for: .about))
-        let tint = sourceList.outlineView(sourceList.outlineView, tintConfigurationForItem: node)
-        XCTAssertTrue(
-            tint?.isEqual(NSTintConfiguration.default) ?? false,
-            "selected item must keep default Accent tint after resign-key"
-        )
-        let generalNode = try XCTUnwrap(sourceList.node(for: .general))
-        XCTAssertTrue(
-            sourceList.outlineView(sourceList.outlineView, tintConfigurationForItem: generalNode)?
-                .isEqual(NSTintConfiguration.default) ?? false
-        )
-    }
-
-    func testRebuildLanguageSwitchAndBadgeKeepUnemphasizedRowView() throws {
+    func testRebuildLanguageSwitchAndBadgeKeepNativeRowView() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
 
@@ -219,7 +181,7 @@ final class DashboardSourceListSelectionTests: XCTestCase {
         window.displayIfNeeded()
 
         let first = try XCTUnwrap(controller.sourceListForTesting)
-        try assertEverySectionUsesPinnedRowView(in: first)
+        try assertEverySectionUsesNativeRowView(in: first)
         try assertGeneralBadge(in: first, visible: true)
 
         controller.showSection(.menuBar)
@@ -230,12 +192,93 @@ final class DashboardSourceListSelectionTests: XCTestCase {
         let rebuilt = try XCTUnwrap(controller.sourceListForTesting)
         XCTAssertTrue(rebuilt.outlineView !== first.outlineView)
         XCTAssertEqual(rebuilt.selectedSection(), .menuBar)
-        try assertEverySectionUsesPinnedRowView(in: rebuilt)
+        try assertEverySectionUsesNativeRowView(in: rebuilt)
         try assertGeneralBadge(in: rebuilt, visible: true)
 
         controller.setShowsUpdateAvailableBadge(false)
-        try assertEverySectionUsesPinnedRowView(in: rebuilt)
+        try assertEverySectionUsesNativeRowView(in: rebuilt)
         try assertGeneralBadge(in: rebuilt, visible: false)
+    }
+
+    func testMouseSelectionDrawsBeforeNavigationAndKeepsSidebarFocus() async throws {
+        var builds: [DashboardSection] = []
+        let controller = DashboardShellTestHarness(
+            actions: DashboardWindowControllerActions(
+                makeSectionPage: { section in
+                    builds.append(section)
+                    return DashboardHostedPageViewController()
+                },
+                makeProviderPage: { _ in DashboardHostedPageViewController() },
+                providerChoices: { [] },
+                prepareForPageReplacement: {},
+                didShowPage: {},
+                didClose: {},
+                didResize: {}
+            )
+        )
+        defer { controller.teardown() }
+        controller.open()
+        let window = try XCTUnwrap(controller.window)
+        let list = try XCTUnwrap(controller.sourceListForTesting)
+        let outline = list.outlineView
+        XCTAssertTrue(window.makeFirstResponder(controller.pageSession.toolbarController.searchField))
+        var completedPhases: [DashboardPageInstrumentation.Phase] = []
+        DashboardPageInstrumentation.eventRecorder = { phase, boundary in
+            if boundary == .end { completedPhases.append(phase) }
+        }
+        defer { DashboardPageInstrumentation.eventRecorder = nil }
+
+        try mouseDown(on: .menuBar, in: list)
+        XCTAssertTrue(window.firstResponder === outline)
+        XCTAssertEqual(list.selectedSection(), .menuBar)
+        XCTAssertEqual(controller.section, .general)
+        XCTAssertEqual(builds, [.general])
+        XCTAssertTrue(completedPhases.contains(.sidebarSelectionDisplay))
+        XCTAssertFalse(completedPhases.contains(.totalSelectionToReady))
+
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async { continuation.resume() }
+        }
+        XCTAssertTrue(window.firstResponder === outline)
+        XCTAssertEqual(controller.section, .menuBar)
+        XCTAssertEqual(builds, [.general, .menuBar])
+        XCTAssertTrue(completedPhases.contains(.totalSelectionToReady))
+
+        try mouseDown(on: .advanced, in: list)
+        try mouseDown(on: .general, in: list)
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async { continuation.resume() }
+        }
+        XCTAssertEqual(controller.section, .general)
+        XCTAssertEqual(builds, [.general, .menuBar])
+
+        try mouseDown(on: .advanced, in: list)
+        controller.showSection(.menuBar)
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async { continuation.resume() }
+        }
+        XCTAssertEqual(controller.section, .menuBar)
+        XCTAssertEqual(list.selectedSection(), .menuBar)
+        XCTAssertEqual(builds, [.general, .menuBar])
+    }
+
+    private func mouseDown(on section: DashboardSection, in list: DashboardSourceListController) throws {
+        let outline = list.outlineView
+        let row = try XCTUnwrap(list.row(for: section))
+        let rect = outline.rect(ofRow: row)
+        let point = outline.convert(NSPoint(x: rect.midX, y: rect.midY), to: nil)
+        let event = try XCTUnwrap(NSEvent.mouseEvent(
+            with: .leftMouseDown,
+            location: point,
+            modifierFlags: [],
+            timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: outline.window?.windowNumber ?? 0,
+            context: nil,
+            eventNumber: 1,
+            clickCount: 1,
+            pressure: 1
+        ))
+        outline.mouseDown(with: event)
     }
 
     private func makeController(
@@ -272,7 +315,7 @@ final class DashboardSourceListSelectionTests: XCTestCase {
         )
     }
 
-    private func assertSelectedSectionUsesPinnedRowView(
+    private func assertSelectedSectionUsesNativeRowView(
         _ section: DashboardSection,
         in sourceList: DashboardSourceListController
     ) throws {
@@ -283,11 +326,10 @@ final class DashboardSourceListSelectionTests: XCTestCase {
         )
         XCTAssertEqual(sourceList.selectedSection(), section)
         XCTAssertTrue(outline.isRowSelected(row))
-        rowView.isEmphasized = true
-        XCTAssertFalse(rowView.isEmphasized)
+        XCTAssertTrue(rowView.isSelected)
     }
 
-    private func assertEverySectionUsesPinnedRowView(
+    private func assertEverySectionUsesNativeRowView(
         in sourceList: DashboardSourceListController
     ) throws {
         XCTAssertEqual(sourceList.outlineView.style, .sourceList)
@@ -298,8 +340,7 @@ final class DashboardSourceListSelectionTests: XCTestCase {
                 sourceList.outlineView.rowView(atRow: row, makeIfNecessary: true)
                     as? DashboardSourceListRowView
             )
-            rowView.isEmphasized = true
-            XCTAssertFalse(rowView.isEmphasized)
+            XCTAssertEqual(rowView.identifier, DashboardSourceListRowView.identifier)
         }
     }
 
@@ -310,11 +351,6 @@ final class DashboardSourceListSelectionTests: XCTestCase {
         let row = try XCTUnwrap(sourceList.row(for: .general))
         let cell = try sectionCell(in: sourceList.outlineView, row: row)
         XCTAssertEqual(cell.updateBadgeView.isHidden, !visible)
-        let rowView = try XCTUnwrap(
-            sourceList.outlineView.rowView(atRow: row, makeIfNecessary: true)
-                as? DashboardSourceListRowView
-        )
-        XCTAssertFalse(rowView.isEmphasized)
     }
 
     private func clickTrailingBlank(of row: Int, in outline: NSOutlineView) {

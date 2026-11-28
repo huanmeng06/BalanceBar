@@ -2554,25 +2554,11 @@ enum DashboardSection: Int, CaseIterable {
         }
     }
 
-    var symbolName: String {
-        switch self {
-        case .general: return "gearshape.fill"
-        case .menuBar: return "menubar.rectangle"
-        case .menu: return "filemenu.and.selection"
-        case .advanced: return "slider.horizontal.3"
-        case .about: return "info.circle.fill"
-        case .notifications: return "bell.badge.fill"
-        }
-    }
-
     var chipColor: NSColor {
         switch self {
-        case .general: return .systemGray
-        case .menuBar: return .systemBlue
-        case .menu: return .systemTeal
-        case .advanced: return .systemPurple
-        case .about: return .systemGreen
-        case .notifications: return .systemOrange
+        case .general, .advanced: return .systemGray
+        case .menuBar, .menu, .about: return .systemBlue
+        case .notifications: return .systemRed
         }
     }
 }

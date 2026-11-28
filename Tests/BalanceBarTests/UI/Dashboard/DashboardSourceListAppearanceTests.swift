@@ -4,52 +4,76 @@ import XCTest
 
 @MainActor
 final class DashboardSourceListAppearanceTests: XCTestCase {
-    func testSourceListRowAppearanceLeavesTypographyAndTintToAppKit() throws {
-        let source = try sourceListSource()
-        let sectionSource = try typeSource(named: "DashboardSourceListCellView", in: source)
-        let groupSource = try typeSource(named: "DashboardSourceListGroupCellView", in: source)
+    func testSidebarIconCacheSeparatesAppearanceScaleAndPalette() throws {
+        let renderer = DashboardSidebarIconRenderer()
+        let light = try XCTUnwrap(NSAppearance(named: .aqua))
+        let dark = try XCTUnwrap(NSAppearance(named: .darkAqua))
+        func icon(_ appearance: NSAppearance, _ scale: CGFloat, modern: Bool = true) -> NSImage {
+            renderer.image(for: .menuBar, appearance: appearance, scale: scale, usesDarkIcons: modern)
+        }
+        let one = icon(light, 1)
+        let two = icon(light, 2)
+        let modernDark = icon(dark, 2)
+        XCTAssertIdentical(one, icon(light, 1))
+        XCTAssertIdentical(two, icon(light, 2))
+        XCTAssertIdentical(modernDark, icon(dark, 2))
+        XCTAssertNotIdentical(one, two)
+        XCTAssertNotIdentical(two, modernDark)
+        XCTAssertNotIdentical(modernDark, icon(dark, 2, modern: false))
+        XCTAssertEqual(one.representations.first?.pixelsWide, 24)
+        XCTAssertEqual(two.representations.first?.pixelsWide, 48)
+        XCTAssertEqual(two.size, NSSize(width: 24, height: 24))
+        XCTAssertFalse(two.isTemplate)
+        let image = try XCTUnwrap(two.representations.first as? NSBitmapImageRep)
+        let darkImage = try XCTUnwrap(modernDark.representations.first as? NSBitmapImageRep)
+        for (x, y) in [(8, 24), (39, 24), (24, 8), (24, 39)] {
+            let edge = try XCTUnwrap(image.colorAt(x: x, y: y))
+            XCTAssertGreaterThan(edge.alphaComponent, 0.95, "Tile is clipped at \(x), \(y)")
+        }
+        XCTAssertNotEqual(image.colorAt(x: 8, y: 24), darkImage.colorAt(x: 8, y: 24))
+        XCTAssertNotEqual(image.colorAt(x: 8, y: 10), image.colorAt(x: 8, y: 36))
+    }
 
-        XCTAssertTrue(source.contains("style = .sourceList"))
-        XCTAssertTrue(source.contains("rowSizeStyle = .default"))
-        XCTAssertFalse(sectionSource.contains("systemFont(ofSize: 13, weight: .medium)"))
-        XCTAssertFalse(sectionSource.contains("contentTintColor"))
-        XCTAssertFalse(sectionSource.contains("symbolConfiguration"))
-        XCTAssertFalse(sectionSource.contains("allowsVibrancy"))
-        XCTAssertFalse(sectionSource.contains("VibrantLabel"))
-        XCTAssertTrue(sectionSource.contains("controlTextColor"))
-        XCTAssertFalse(sectionSource.contains("secondaryLabelColor"))
-        XCTAssertFalse(sectionSource.contains("unemphasizedSelectedTextColor"))
-        XCTAssertFalse(groupSource.contains("weight: .medium"))
-        XCTAssertFalse(groupSource.contains("systemFont(ofSize: 11, weight: .medium)"))
-        XCTAssertTrue(groupSource.contains("smallSystemFontSize"))
-        XCTAssertTrue(groupSource.contains("tertiaryLabelColor"))
-        XCTAssertTrue(source.contains("tintConfigurationForItem"))
-        XCTAssertTrue(source.contains("NSTintConfiguration.default"))
-        XCTAssertFalse(source.contains("NSTintConfiguration.monochrome"))
-        XCTAssertFalse(source.contains("sidebarUsesInactiveForeground"))
-
-        let forbidden = [
-            "drawSelection",
-            "NSColor(red:",
-            "calibratedRed",
-            "srgbRed",
-            "#colorLiteral",
-            "NSScrollPocket",
-            "value(forKey:",
-            "NSClassFromString",
-            "if #available(macOS 27",
-            "tintConfigurationWithFixedColor",
-            "tintConfigurationWithPreferredColor",
-            "controlAccentColor",
-            "chipColor",
-            "unemphasizedSelectedContentBackgroundColor"
+    func testSidebarSymbolsAreCenteredAndSizedAtDeviceScale() throws {
+        let renderer = DashboardSidebarIconRenderer()
+        let fractions: [(DashboardSection, CGFloat)] = [
+            (.general, 0.75), (.menuBar, 0.74), (.menu, 0.70), (.notifications, 0.70), (.advanced, 0.74)
         ]
-        for token in forbidden {
-            XCTAssertFalse(source.contains(token), "source-list file must not contain \(token)")
+        for name in [NSAppearance.Name.aqua, .darkAqua] {
+            let appearance = try XCTUnwrap(NSAppearance(named: name))
+            for scale: CGFloat in [1, 2] {
+                for (section, fraction) in fractions {
+                    let image = renderer.image(for: section, appearance: appearance, scale: scale, usesDarkIcons: true)
+                    let bitmap = try XCTUnwrap(image.representations.first as? NSBitmapImageRep)
+                    let inset = Int(4 * scale)
+                    var bounds = CGRect.null
+                    for y in inset..<(bitmap.pixelsHigh - inset) {
+                        let background = try XCTUnwrap(
+                            bitmap.colorAt(x: inset - 1, y: y)?.usingColorSpace(.deviceRGB)
+                        )
+                        for x in inset..<(bitmap.pixelsWide - inset) {
+                            guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB) else { continue }
+                            let contrast = max(
+                                color.redComponent - background.redComponent,
+                                color.greenComponent - background.greenComponent,
+                                color.blueComponent - background.blueComponent
+                            )
+                            if contrast > 0.16 {
+                                bounds = bounds.union(CGRect(x: x, y: y, width: 1, height: 1))
+                            }
+                        }
+                    }
+                    let label = "\(section), \(name.rawValue), \(scale)×"
+                    XCTAssertFalse(bounds.isNull, label)
+                    XCTAssertEqual(bounds.midX, CGFloat(bitmap.pixelsWide) / 2, accuracy: 1, label)
+                    XCTAssertEqual(bounds.midY, CGFloat(bitmap.pixelsHigh) / 2, accuracy: 1, label)
+                    XCTAssertEqual(max(bounds.width, bounds.height), (20 * fraction * scale).rounded(), accuracy: 2, label)
+                }
+            }
         }
     }
 
-    func testSectionRowsKeepAppKitTintAndRemainReadableAcrossBackgroundStyles() throws {
+    func testSectionRowsUseFixedAlignedIconsAcrossBackgroundStyles() throws {
         let controller = makeController()
         defer { controller.teardown() }
         controller.open()
@@ -60,7 +84,8 @@ final class DashboardSourceListAppearanceTests: XCTestCase {
         let sourceList = try XCTUnwrap(controller.sourceListForTesting)
         let outline = sourceList.outlineView
         XCTAssertEqual(outline.style, .sourceList)
-        XCTAssertEqual(outline.rowSizeStyle, .default)
+        XCTAssertEqual(outline.rowHeight, 30)
+        var iconOrigins: [CGFloat] = []
         XCTAssertEqual(sourceList.selectedSection(), .general)
 
         for section in DashboardSection.allCases {
@@ -68,16 +93,22 @@ final class DashboardSourceListAppearanceTests: XCTestCase {
             let cell = try sectionCell(in: outline, row: row)
             XCTAssertEqual(cell.textField?.stringValue, section.title)
             XCTAssertNotNil(cell.imageView?.image)
-            XCTAssertFalse(
-                cell.imageView?.contentTintColor?.isEqual(NSColor.labelColor) ?? false,
-                "\(section) icon must not lock contentTintColor to labelColor"
-            )
+            let imageView = try XCTUnwrap(cell.imageView)
+            let chip = try XCTUnwrap(imageView.superview)
+            let title = try XCTUnwrap(cell.textField)
+            XCTAssertEqual(imageView.frame.size, NSSize(width: 24, height: 24))
+            XCTAssertEqual(chip.frame.size, NSSize(width: 20, height: 20))
+            let tileFrame = chip.convert(chip.bounds, to: outline)
+            let labelAlignmentRect = title.alignmentRect(forFrame: title.frame)
+            let labelFrame = try XCTUnwrap(title.superview).convert(labelAlignmentRect, to: outline)
+            XCTAssertEqual(labelFrame.minX - tileFrame.maxX, 9, accuracy: 0.5)
+            iconOrigins.append(tileFrame.minX)
             try assertTitleColor(of: cell, selected: outline.isRowSelected(row), section: section)
             let node = try XCTUnwrap(sourceList.node(for: section))
             let tint = sourceList.outlineView(outline, tintConfigurationForItem: node)
             XCTAssertTrue(
                 tint?.isEqual(NSTintConfiguration.default) ?? false,
-                "\(section) must keep default source-list tint so the selected mark stays on Accent when inactive"
+                "\(section) must keep native source-list tint"
             )
             assertRowReadable(cell)
 
@@ -88,6 +119,10 @@ final class DashboardSourceListAppearanceTests: XCTestCase {
             rowView.isEmphasized = false
             window.layoutIfNeeded()
             assertRowReadable(cell)
+        }
+        let firstOrigin = try XCTUnwrap(iconOrigins.first)
+        for origin in iconOrigins {
+            XCTAssertEqual(origin, firstOrigin, accuracy: 0.5)
         }
     }
 
@@ -119,15 +154,15 @@ final class DashboardSourceListAppearanceTests: XCTestCase {
         XCTAssertEqual(generalCell.textField?.isAccessibilityElement(), false)
         XCTAssertNotEqual(generalCell.updateBadgeView.accessibilityLabel(), DashboardSection.general.title)
 
-        let appearance = try XCTUnwrap(sourceList.roots.first { $0.group == .appearance })
-        let groupRow = outline.row(forItem: appearance)
-        let groupCell = try XCTUnwrap(
-            outline.view(atColumn: 0, row: groupRow, makeIfNecessary: true)
-                as? DashboardSourceListGroupCellView
-        )
-        XCTAssertEqual(groupCell.accessibilityLabel(), appearance.title)
-        XCTAssertEqual(groupCell.textField?.isAccessibilityElement(), false)
-        XCTAssertEqual(groupCell.textField?.textColor, NSColor.tertiaryLabelColor)
+        for group in sourceList.roots.filter(\.isGroup) {
+            let groupRow = outline.row(forItem: group)
+            let spacer = try XCTUnwrap(outline.rowView(atRow: groupRow, makeIfNecessary: true))
+            XCTAssertFalse(spacer.isAccessibilityElement())
+            XCTAssertNil(outline.view(atColumn: 0, row: groupRow, makeIfNecessary: true))
+            let gap = outline.rect(ofRow: groupRow + 1).minY - outline.rect(ofRow: groupRow - 1).maxY
+            XCTAssertGreaterThanOrEqual(gap, 8)
+            XCTAssertLessThanOrEqual(gap, 10)
+        }
     }
 
     func testRebuildLanguageSwitchAndBadgeKeepAppKitAppearanceOwnership() throws {
@@ -184,23 +219,6 @@ final class DashboardSourceListAppearanceTests: XCTestCase {
                 didResize: {}
             )
         )
-    }
-
-    private func sourceListSource() throws -> String {
-        let repositoryRoot = try TestRepositoryRoot.locate(from: #filePath)
-        return try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "Sources/UI/Dashboard/DashboardSourceListController.swift"
-            ),
-            encoding: .utf8
-        )
-    }
-
-    private func typeSource(named name: String, in source: String) throws -> String {
-        let start = try XCTUnwrap(source.range(of: "final class \(name)"))
-        let remainder = source[start.upperBound...]
-        let end = remainder.range(of: "\nfinal class ")?.lowerBound ?? source.endIndex
-        return String(source[start.lowerBound..<end])
     }
 
     private func sectionCell(in outline: NSOutlineView, row: Int) throws -> DashboardSourceListCellView {

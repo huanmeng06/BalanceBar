@@ -875,12 +875,14 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
             try XCTUnwrap(splitController.contentSplitViewItem).titlebarSeparatorStyle,
             .automatic
         )
-        if #available(macOS 26.0, *) {
-            XCTAssertEqual(
-                try XCTUnwrap(splitController.contentSplitViewItem)
-                    .topAlignedAccessoryViewControllers.count,
-                0
+        if #available(macOS 26.1, *) {
+            let edge = try XCTUnwrap(
+                splitController.contentScrollEdgeAccessory as? NSSplitViewItemAccessoryViewController
             )
+            XCTAssertEqual(splitController.contentSplitViewItem?.topAlignedAccessoryViewControllers, [edge])
+            XCTAssertIdentical(edge.preferredScrollEdgeEffectStyle, NSScrollEdgeEffectStyle.soft)
+            let search = try XCTUnwrap(splitController.splitViewItems[0].topAlignedAccessoryViewControllers.first)
+            XCTAssertIdentical(search.preferredScrollEdgeEffectStyle, NSScrollEdgeEffectStyle.soft)
         }
 
         let viewportFrameInPage = page.pageScrollView.convert(
@@ -1129,7 +1131,7 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
     /// Diagnostic only: the public `preferredScrollEdgeEffectStyle` setter
     /// exists on split-item accessories. Production pages must not install an
     /// accessory or force `.soft` / `.hard`; AppKit chooses the edge style.
-    func testScrollEdgeStyleAPIExistsOnlyOnAccessoriesAndIsUnusedByProductionPages() throws {
+    func testShellScrollEdgeAccessorySurvivesPageAccessoryMountAndRemoval() throws {
         try XCTSkipUnless(
             ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 26,
             "Public scroll-edge style APIs and split-item accessories require macOS 26"
@@ -1194,13 +1196,13 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
         XCTAssertEqual(dashboard.accessoryHostForTesting.mountedKind, .none)
 
         guard #available(macOS 26.0, *) else { return }
-        XCTAssertEqual(dashboardContentItem.topAlignedAccessoryViewControllers.count, 0)
+        let shellAccessories = dashboardContentItem.topAlignedAccessoryViewControllers
 
         dashboard.showSection(.menu)
         dashboardWindow.layoutIfNeeded()
         dashboardWindow.displayIfNeeded()
         XCTAssertEqual(dashboard.accessoryHostForTesting.mountedKind, .contentSplitItem)
-        XCTAssertEqual(dashboardContentItem.topAlignedAccessoryViewControllers.count, 1)
+        XCTAssertEqual(dashboardContentItem.topAlignedAccessoryViewControllers.count, shellAccessories.count + 1)
         let accessory = try XCTUnwrap(
             dashboard.accessoryHostForTesting.contentSplitItemAccessoryForTesting
                 as? NSSplitViewItemAccessoryViewController
@@ -1210,24 +1212,15 @@ final class DashboardScrollablePageViewControllerTests: XCTestCase {
         let mountedChrome = try XCTUnwrap(chromePage)
         XCTAssertTrue(mountedChrome.scrollPage.pageScrollView.automaticallyAdjustsContentInsets)
         XCTAssertGreaterThan(mountedChrome.scrollPage.pageScrollView.contentInsets.top, 1)
-        if #available(macOS 26.1, *) {
-            // Mechanism probe only: the setter is reachable on an accessory.
-            // Production never assigns `.soft` or `.hard`.
-            accessory.preferredScrollEdgeEffectStyle = NSScrollEdgeEffectStyle.hard
-            XCTAssertIdentical(
-                accessory.preferredScrollEdgeEffectStyle,
-                NSScrollEdgeEffectStyle.hard
-            )
-        }
         mountedChrome.scrollPage.restoreScrollOffset(120)
         dashboardWindow.layoutIfNeeded()
         XCTAssertGreaterThan(mountedChrome.scrollPage.scrollOffset, 1)
-        XCTAssertEqual(dashboardContentItem.topAlignedAccessoryViewControllers.count, 1)
+        XCTAssertEqual(dashboardContentItem.topAlignedAccessoryViewControllers.count, shellAccessories.count + 1)
 
         dashboard.showSection(.general)
         dashboardWindow.layoutIfNeeded()
         XCTAssertEqual(dashboard.accessoryHostForTesting.mountedKind, .none)
-        XCTAssertTrue(dashboardContentItem.topAlignedAccessoryViewControllers.isEmpty)
+        XCTAssertEqual(dashboardContentItem.topAlignedAccessoryViewControllers, shellAccessories)
     }
 
     private static let compactClipHeight: CGFloat = 620

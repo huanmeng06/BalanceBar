@@ -476,32 +476,10 @@ final class DashboardScrollClampingTests: XCTestCase {
             DashboardSidebarScrollLayoutPolicy.forCapabilities(.current)
         )
 
-        XCTAssertEqual(DashboardSidebarScrollLayoutPolicy.preTahoeExtraClearance, 14)
         XCTAssertTrue(DashboardSidebarScrollLayoutPolicy.systemScrollEdge.automaticallyAdjustsContentInsets)
         XCTAssertFalse(DashboardSidebarScrollLayoutPolicy.systemScrollEdge.zerosManualInsets)
-        XCTAssertEqual(
-            DashboardSidebarScrollLayoutPolicy.systemScrollEdge.viewportTopInset(titlebarHeight: 32),
-            0,
-            accuracy: 0.001
-        )
-        XCTAssertEqual(
-            DashboardSidebarScrollLayoutPolicy.systemScrollEdge.viewportTopInset(titlebarHeight: 52),
-            0,
-            accuracy: 0.001
-        )
-
         XCTAssertFalse(DashboardSidebarScrollLayoutPolicy.titlebarClearance.automaticallyAdjustsContentInsets)
         XCTAssertTrue(DashboardSidebarScrollLayoutPolicy.titlebarClearance.zerosManualInsets)
-        XCTAssertEqual(
-            DashboardSidebarScrollLayoutPolicy.titlebarClearance.viewportTopInset(titlebarHeight: 32),
-            46,
-            accuracy: 0.001
-        )
-        XCTAssertEqual(
-            DashboardSidebarScrollLayoutPolicy.titlebarClearance.viewportTopInset(titlebarHeight: 0),
-            DashboardSidebarScrollLayoutPolicy.preTahoeExtraClearance,
-            accuracy: 0.001
-        )
     }
 
     func testScrollLayoutPolicySourcesDoNotReadOperatingSystemMajorVersion() throws {

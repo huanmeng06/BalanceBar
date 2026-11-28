@@ -134,8 +134,6 @@
 "dashboard.components.menu" = "菜单";
 "dashboard.components.advanced" = "高级";
 "dashboard.components.about" = "关于";
-"dashboard.window.controller.appearance" = "外观";
-"dashboard.window.controller.system" = "系统";
 "dashboard.search.placeholder" = "搜索";
 "dashboard.search.no_results" = "无结果";
 "dashboard.search.no_results_detail" = "没有符合此搜索的设置项。";

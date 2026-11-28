@@ -134,8 +134,6 @@
 "dashboard.components.menu" = "Меню";
 "dashboard.components.advanced" = "Дополнительно";
 "dashboard.components.about" = "О программе";
-"dashboard.window.controller.appearance" = "Оформление";
-"dashboard.window.controller.system" = "Система";
 "dashboard.search.placeholder" = "Поиск";
 "dashboard.search.no_results" = "Нет результатов";
 "dashboard.search.no_results_detail" = "Нет настроек, соответствующих этому запросу.";

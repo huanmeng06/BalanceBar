@@ -1603,13 +1603,10 @@ final class DashboardComponentsTests: XCTestCase {
         let sections = DashboardSection.allCases
 
         XCTAssertEqual(sections.map(\.rawValue), Array(0..<5))
-        XCTAssertEqual(sections.map(\.symbolName), [
-            "gearshape.fill",
-            "menubar.rectangle",
-            "filemenu.and.selection",
-            "slider.horizontal.3",
-            "info.circle.fill"
+        XCTAssertEqual(sections.map(\.chipColor), [
+            .systemGray, .systemBlue, .systemBlue, .systemGray, .systemBlue
         ])
+        XCTAssertEqual(DashboardSection.notifications.chipColor, .systemRed)
         XCTAssertTrue(sections.allSatisfy { !$0.title.isEmpty })
         XCTAssertEqual(DashboardSection(rawValue: 2), .menu)
         XCTAssertNil(DashboardSection(rawValue: 5))

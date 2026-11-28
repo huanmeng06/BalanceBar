@@ -1,37 +1,22 @@
 import AppKit
 
-/// The sole native toolbar owner. Search is a public `NSSearchToolbarItem`
-/// (same class NetNewsWire installs in `MainWindowController`).
-///
-/// AppKit owns the item view (`view` is unavailable), compact/expanded
-/// representation, keyboard focus, and transition. This controller only
-/// configures the public item, forwards Cmd+F / Esc to
-/// `beginSearchInteraction()` / `endSearchInteraction()`, keeps draft text
-/// separate from the committed query, and submits through Return/search.
+/// Owns the native toolbar and the persistent sidebar search field.
 final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegate {
     static let identifier = NSToolbar.Identifier("BalanceBarDashboardToolbar")
-    static let searchItemIdentifier = NSToolbarItem.Identifier("BalanceBarDashboardSearch")
-    static let refreshItemIdentifier = NSToolbarItem.Identifier("BalanceBarDashboardRefresh")
     static let navigationItemIdentifier = NSToolbarItem.Identifier("BalanceBarDashboardNavigation")
     static let defaultItemIdentifiers: [NSToolbarItem.Identifier] = [
         .flexibleSpace,
         .toggleSidebar,
         .sidebarTrackingSeparator,
-        navigationItemIdentifier,
-        .flexibleSpace,
-        refreshItemIdentifier,
-        searchItemIdentifier
+        navigationItemIdentifier
     ]
-    /// `NSSearchToolbarItem.preferredWidthForSearchField` defaults to 240.
-    /// Trimmed slightly for the content pane; AppKit applies it when the
-    /// item receives keyboard focus.
-    static let expandedSearchFieldWidth: CGFloat = 220
 
     let sessionIdentifier = NSToolbar.Identifier("BalanceBarDashboardToolbar.\(UUID().uuidString)")
     private(set) var searchQuery = ""
     private(set) var draftQuery = ""
     private(set) var isSearchEditing = false
     var onSearchQueryChanged: ((String) -> Void)?
+    var onRevealSearch: (() -> Void)?
     var onManualRefresh: (() -> Void)?
     var onGoBack: (() -> Void)?
     var onGoForward: (() -> Void)?
@@ -40,7 +25,24 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         isSearchEditing || !draftQuery.isEmpty || !searchQuery.isEmpty
     }
 
-    private let searchItem: NSSearchToolbarItem
+    private static let searchTopInset: CGFloat = 9.5
+    private static let searchToListSpacing: CGFloat = 10
+
+    let searchField = NSSearchField()
+    private(set) lazy var sidebarSearchView: NSView = {
+        let container = NSView()
+        searchField.translatesAutoresizingMaskIntoConstraints = false
+        // The native accessory and the legacy sidebar both place this header
+        // below the title bar. Inset within that header on both paths.
+        container.addSubview(searchField)
+        NSLayoutConstraint.activate([
+            searchField.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 10),
+            searchField.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -10),
+            searchField.topAnchor.constraint(equalTo: container.topAnchor, constant: Self.searchTopInset),
+            searchField.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -Self.searchToListSpacing)
+        ])
+        return container
+    }()
     private lazy var navigationControl: NSSegmentedControl = {
         let control = NSSegmentedControl(
             images: [
@@ -65,12 +67,6 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         item.autovalidates = false
         return item
     }()
-    private lazy var refreshItem: NSToolbarItem = {
-        let item = NSToolbarItem(itemIdentifier: Self.refreshItemIdentifier)
-        item.target = self
-        item.action = #selector(manualRefresh(_:))
-        return item
-    }()
     private weak var window: NSWindow?
     private weak var toolbar: NSToolbar?
     private var isEndingSearch = false
@@ -78,9 +74,14 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
     private var canGoForward = false
 
     override init() {
-        searchItem = NSSearchToolbarItem(itemIdentifier: Self.searchItemIdentifier)
         super.init()
-        configureSearchItem()
+        updateSearchFieldLabels()
+        searchField.controlSize = .large
+        searchField.sendsSearchStringImmediately = false
+        searchField.sendsWholeSearchString = true
+        searchField.target = self
+        searchField.action = #selector(submitSearch(_:))
+        searchField.delegate = self
     }
 
     func install(on window: NSWindow) {
@@ -90,8 +91,7 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         if let toolbar, window.toolbar === toolbar {
             updateNavigationItemLabels()
             setNavigationState(canGoBack: canGoBack, canGoForward: canGoForward)
-            updateSearchItemLabels()
-            updateRefreshItemLabels()
+            updateSearchFieldLabels()
             return
         }
         let toolbar = NSToolbar(identifier: sessionIdentifier)
@@ -118,21 +118,21 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
     }
 
     func setQuery(_ query: String) {
-        guard (searchItem.searchField.currentEditor() as? NSTextView)?.hasMarkedText() != true else {
+        guard (searchField.currentEditor() as? NSTextView)?.hasMarkedText() != true else {
             return
         }
         draftQuery = query
-        if searchItem.searchField.stringValue != query {
-            searchItem.searchField.stringValue = query
+        if searchField.stringValue != query {
+            searchField.stringValue = query
         }
         commitQuery(query)
     }
 
     func detach() {
-        searchItem.searchField.delegate = nil
+        searchField.delegate = nil
         if let window {
-            _ = searchItem.searchField.abortEditing()
-            window.endEditing(for: searchItem.searchField)
+            _ = searchField.abortEditing()
+            window.endEditing(for: searchField)
             window.makeFirstResponder(nil)
         }
         if window?.toolbar === toolbar {
@@ -146,26 +146,25 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         canGoForward = false
         navigationControl.setEnabled(false, forSegment: 0)
         navigationControl.setEnabled(false, forSegment: 1)
+        onRevealSearch = nil
         onGoBack = nil
         onGoForward = nil
     }
 
     func hostsSearchResponder(_ responder: NSResponder?) -> Bool {
         guard let responder else { return false }
-        if responder === searchItem.searchField { return true }
+        if responder === searchField { return true }
         if let textView = responder as? NSTextView,
            textView.isFieldEditor,
-           textView.delegate as AnyObject? === searchItem.searchField {
+           textView.delegate as AnyObject? === searchField {
             return true
         }
         return false
     }
 
     @objc func beginSearch(_ sender: Any? = nil) {
-        if toolbar?.isVisible == false {
-            toolbar?.isVisible = true
-        }
-        searchItem.beginSearchInteraction()
+        onRevealSearch?()
+        window?.makeFirstResponder(searchField)
     }
 
     @objc func cancelSearch(_ sender: Any? = nil) {
@@ -173,9 +172,13 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         isEndingSearch = true
         defer { isEndingSearch = false }
         draftQuery = ""
-        searchItem.searchField.stringValue = ""
+        searchField.stringValue = ""
         commitQuery("")
-        searchItem.endSearchInteraction()
+        if let window, hostsSearchResponder(window.firstResponder) {
+            _ = searchField.abortEditing()
+            window.makeFirstResponder(nil)
+        }
+        isSearchEditing = false
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -191,17 +194,9 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
         willBeInsertedIntoToolbar flag: Bool
     ) -> NSToolbarItem? {
-        if itemIdentifier == Self.navigationItemIdentifier {
-            updateNavigationItemLabels()
-            return navigationItem
-        }
-        if itemIdentifier == Self.refreshItemIdentifier {
-            configureRefreshItem()
-            return refreshItem
-        }
-        guard itemIdentifier == Self.searchItemIdentifier else { return nil }
-        configureSearchItem()
-        return searchItem
+        guard itemIdentifier == Self.navigationItemIdentifier else { return nil }
+        updateNavigationItemLabels()
+        return navigationItem
     }
 
     @objc func manualRefresh(_ sender: Any?) {
@@ -247,7 +242,7 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
     }
 
     func controlTextDidEndEditing(_ obj: Notification) {
-        if (window as? DashboardSearchWindow)?.preservesToolbarSearchEditing == true {
+        if (window as? DashboardSearchWindow)?.preservesSidebarSearchEditing == true {
             return
         }
         isSearchEditing = false
@@ -258,13 +253,13 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
     func searchFieldDidEndSearching(_ sender: NSSearchField) {
         guard !isEndingSearch,
               (sender.currentEditor() as? NSTextView)?.hasMarkedText() != true,
-              (window as? DashboardSearchWindow)?.preservesToolbarSearchEditing != true else { return }
+              (window as? DashboardSearchWindow)?.preservesSidebarSearchEditing != true else { return }
         draftQuery = sender.stringValue
         commitQuery(draftQuery)
     }
 
     func control(_ control: NSControl, textShouldEndEditing fieldEditor: NSText) -> Bool {
-        (window as? DashboardSearchWindow)?.preservesToolbarSearchEditing != true
+        (window as? DashboardSearchWindow)?.preservesSidebarSearchEditing != true
     }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
@@ -280,32 +275,10 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         commitQuery(draftQuery)
     }
 
-    private func configureSearchItem() {
-        updateSearchItemLabels()
-        searchItem.preferredWidthForSearchField = Self.expandedSearchFieldWidth
-        searchItem.resignsFirstResponderWithCancel = true
-        searchItem.searchField.sendsSearchStringImmediately = false
-        searchItem.searchField.sendsWholeSearchString = true
-        searchItem.searchField.target = self
-        searchItem.searchField.action = #selector(submitSearch(_:))
-        searchItem.searchField.delegate = self
-        if (searchItem.searchField.currentEditor() as? NSTextView)?.hasMarkedText() != true {
-            searchItem.searchField.stringValue = draftQuery
-        }
-    }
-
-    private func updateSearchItemLabels() {
+    private func updateSearchFieldLabels() {
         let label = tr(.keyDashboardSearchPlaceholder)
-        searchItem.label = label
-        searchItem.paletteLabel = label
-        searchItem.toolTip = label
-        searchItem.searchField.placeholderString = label
-    }
-
-    private func configureRefreshItem() {
-        updateRefreshItemLabels()
-        refreshItem.target = self
-        refreshItem.action = #selector(manualRefresh(_:))
+        searchField.placeholderString = label
+        searchField.setAccessibilityLabel(label)
     }
 
     private func updateNavigationItemLabels() {
@@ -330,17 +303,6 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
         navigationItem.autovalidates = false
     }
 
-    private func updateRefreshItemLabels() {
-        let label = tr(.keyDashboardGeneralAndRefreshPagesRefreshNow)
-        refreshItem.label = label
-        refreshItem.paletteLabel = label
-        refreshItem.toolTip = label
-        refreshItem.image = NSImage(
-            systemSymbolName: "arrow.clockwise",
-            accessibilityDescription: label
-        )
-    }
-
     private func commitQuery(_ raw: String) {
         guard raw != searchQuery else { return }
         searchQuery = raw
@@ -351,20 +313,19 @@ final class DashboardToolbarController: NSObject, NSToolbarDelegate, NSSearchFie
 /// Window-scoped shortcut without a global event monitor or menu dependency.
 final class DashboardSearchWindow: NSWindow {
     weak var searchController: DashboardToolbarController?
-    /// AppKit ends window editing when replacing `contentViewController`.
-    /// Toolbar search lives outside that view, so a shell rebuild must keep
-    /// the same field editor and any marked text.
-    var preservesToolbarSearchEditing = false
+    /// A shell rebuild can change page and sidebar selection. Keep the live
+    /// sidebar field editor and its marked text through those changes.
+    var preservesSidebarSearchEditing = false
 
     override func endEditing(for object: Any?) {
-        if preservesToolbarSearchEditing, searchController?.hostsSearchResponder(firstResponder) == true {
+        if preservesSidebarSearchEditing, searchController?.hostsSearchResponder(firstResponder) == true {
             return
         }
         super.endEditing(for: object)
     }
 
     override func makeFirstResponder(_ responder: NSResponder?) -> Bool {
-        if preservesToolbarSearchEditing,
+        if preservesSidebarSearchEditing,
            searchController?.hostsSearchResponder(firstResponder) == true,
            searchController?.hostsSearchResponder(responder) != true {
             return true
@@ -386,10 +347,17 @@ final class DashboardSearchWindow: NSWindow {
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         if event.type == .keyDown,
            event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.capsLock, .numericPad]) == .command,
-           event.charactersIgnoringModifiers?.lowercased() == "f",
            let searchController {
-            searchController.beginSearch(nil)
-            return true
+            switch event.charactersIgnoringModifiers?.lowercased() {
+            case "f":
+                searchController.beginSearch(nil)
+                return true
+            case "r":
+                searchController.manualRefresh(nil)
+                return true
+            default:
+                break
+            }
         }
         return super.performKeyEquivalent(with: event)
     }

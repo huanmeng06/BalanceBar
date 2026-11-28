@@ -134,8 +134,6 @@
 "dashboard.components.menu" = "メニュー";
 "dashboard.components.advanced" = "詳細";
 "dashboard.components.about" = "情報";
-"dashboard.window.controller.appearance" = "外観";
-"dashboard.window.controller.system" = "システム";
 "dashboard.search.placeholder" = "検索";
 "dashboard.search.no_results" = "結果なし";
 "dashboard.search.no_results_detail" = "この検索に一致する設定はありません。";

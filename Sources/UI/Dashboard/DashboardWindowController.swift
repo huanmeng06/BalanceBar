@@ -106,7 +106,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         )
         window.title = initialSection.title
         window.minSize = NSSize(width: 800, height: 540)
-        window.titleVisibility = .hidden
+        window.titleVisibility = .visible
         if capabilities.usesNativeWindowSurface {
             // Native scroll-edge composition needs the title bar in the
             // window surface. A transparent title bar leaves inset geometry
@@ -133,8 +133,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
     func attachShell(
         _ splitController: DashboardSplitViewController,
         toolbar: DashboardToolbarController,
-        accessoryHost: DashboardAccessoryHost,
-        applySidebarInset: (NSWindow) -> Void
+        accessoryHost: DashboardAccessoryHost
     ) {
         guard let window, !isTornDown else { return }
         let liveSidebar = liveSidebarSeed()
@@ -156,9 +155,9 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         isApplyingRestoration = true
         let requestedFrame = window.frame
         let searchWindow = window as? DashboardSearchWindow
-        let wasPreservingSearch = searchWindow?.preservesToolbarSearchEditing ?? false
-        searchWindow?.preservesToolbarSearchEditing = true
-        defer { searchWindow?.preservesToolbarSearchEditing = wasPreservingSearch }
+        let wasPreservingSearch = searchWindow?.preservesSidebarSearchEditing ?? false
+        searchWindow?.preservesSidebarSearchEditing = true
+        defer { searchWindow?.preservesSidebarSearchEditing = wasPreservingSearch }
         if window.contentViewController !== splitController {
             window.contentViewController = splitController
         }
@@ -183,8 +182,6 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
                 sidebarItem: splitController.splitViewItems.first,
                 contentItem: splitController.contentSplitViewItem
             )
-        window.layoutIfNeeded()
-        applySidebarInset(window)
         window.layoutIfNeeded()
         if collapsed {
             splitController.splitViewItems[0].isCollapsed = true
@@ -399,7 +396,7 @@ enum DashboardKeyViewLoop {
     }
 
     /// Ends editing and resigns page controls before the current page is
-    /// removed. Toolbar search and the source list stay first responder.
+    /// removed. Sidebar search and the source list stay first responder.
     static func prepareForPageReplacement(_ window: NSWindow?) {
         guard let window else { return }
         guard let responder = window.firstResponder,

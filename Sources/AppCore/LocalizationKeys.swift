@@ -173,8 +173,6 @@
     case keyDashboardComponentsMenu = "dashboard.components.menu"
     case keyDashboardComponentsAdvanced = "dashboard.components.advanced"
     case keyDashboardComponentsAbout = "dashboard.components.about"
-    case keyDashboardWindowControllerAppearance = "dashboard.window.controller.appearance"
-    case keyDashboardWindowControllerSystem = "dashboard.window.controller.system"
     case keyDashboardSearchPlaceholder = "dashboard.search.placeholder"
     case keyDashboardSearchNoResults = "dashboard.search.no_results"
     case keyDashboardSearchNoResultsDetail = "dashboard.search.no_results_detail"

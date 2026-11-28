@@ -24,12 +24,10 @@ final class DashboardWindowControllerTests: XCTestCase {
             ),
             encoding: .utf8
         )
-        let start = try XCTUnwrap(sourceListSource.range(of: "func makeSidebar(in window: NSWindow)"))
-        let end = try XCTUnwrap(sourceListSource.range(of: "func applyViewportTopInset(in window: NSWindow)"))
+        let start = try XCTUnwrap(sourceListSource.range(of: "func makeSidebar()"))
+        let end = try XCTUnwrap(sourceListSource.range(of: "func selectedSection()"))
         let makeSidebarSource = String(sourceListSource[start.lowerBound..<end.lowerBound])
-        XCTAssertTrue(
-            makeSidebarSource.contains("layoutPolicy.viewportTopInset(titlebarHeight:")
-        )
+        XCTAssertTrue(makeSidebarSource.contains("equalTo: sidebar.topAnchor"))
         XCTAssertFalse(makeSidebarSource.contains("NSGlassEffectView"))
         XCTAssertFalse(makeSidebarSource.contains("NSClassFromString"))
         XCTAssertFalse(makeSidebarSource.contains("makeDashboardGlassEffectView"))
@@ -38,8 +36,8 @@ final class DashboardWindowControllerTests: XCTestCase {
         XCTAssertFalse(makeSidebarSource.contains("cornerRadius"))
         XCTAssertFalse(makeSidebarSource.contains("shadowOpacity"))
         XCTAssertFalse(makeSidebarSource.contains("material = .sidebar"))
-        XCTAssertTrue(sessionSource.contains("DashboardSourceListController(layoutPolicy: sidebarScrollLayoutPolicy)"))
-        XCTAssertTrue(sessionSource.contains("sourceList.makeSidebar(in: window)"))
+        XCTAssertTrue(sessionSource.contains("layoutPolicy: sidebarScrollLayoutPolicy"))
+        XCTAssertTrue(sessionSource.contains("sourceList.makeSidebar()"))
         XCTAssertTrue(sessionSource.contains("var sidebarScrollLayoutPolicy = DashboardSidebarScrollLayoutPolicy.current"))
         XCTAssertTrue(sessionSource.contains("var platformCapabilities = DashboardPlatformCapabilities.current"))
         XCTAssertTrue(sessionSource.contains("accessoryHost.platformCapabilities = platformCapabilities"))
@@ -78,14 +76,13 @@ final class DashboardWindowControllerTests: XCTestCase {
         XCTAssertTrue(source.contains(".flexibleSpace"))
         XCTAssertTrue(source.contains(".toggleSidebar"))
         XCTAssertTrue(source.contains(".sidebarTrackingSeparator"))
-        XCTAssertTrue(source.contains("NSSearchToolbarItem"))
-        XCTAssertTrue(source.contains("beginSearchInteraction"))
-        XCTAssertTrue(source.contains("endSearchInteraction"))
-        XCTAssertTrue(source.contains("preferredWidthForSearchField"))
+        XCTAssertFalse(source.contains("NSSearchToolbarItem"))
+        XCTAssertFalse(source.contains("beginSearchInteraction"))
+        XCTAssertFalse(source.contains("endSearchInteraction"))
+        XCTAssertFalse(source.contains("preferredWidthForSearchField"))
         XCTAssertTrue(source.contains("controlTextDidBeginEditing"))
         XCTAssertTrue(source.contains("isSearchEditing"))
         XCTAssertTrue(source.contains("cancelSearch"))
-        XCTAssertFalse(source.contains("endSearchInteraction()\n        isSearchEditing = false"))
         XCTAssertFalse(source.contains("widthAnchor.constraint"))
         XCTAssertFalse(source.contains("collapsedSearchFieldWidth"))
         XCTAssertFalse(source.contains("isSearchExpanded"))
@@ -94,7 +91,7 @@ final class DashboardWindowControllerTests: XCTestCase {
         XCTAssertFalse(source.contains("collapseAfterEditing"))
         XCTAssertFalse(source.contains("handleCollapsedSearchClick"))
         XCTAssertFalse(source.contains("sendEvent"))
-        XCTAssertFalse(source.contains("makeFirstResponder(searchItem.searchField)"))
+        XCTAssertTrue(source.contains("makeFirstResponder(searchField)"))
         XCTAssertFalse(source.contains("accessibilityDisplayShouldReduceMotion"))
         XCTAssertFalse(source.contains("shouldFlushSearchLayout"))
         XCTAssertFalse(source.contains("NSAnimationContext"))
@@ -112,7 +109,7 @@ final class DashboardWindowControllerTests: XCTestCase {
         XCTAssertFalse(source.contains("forKey:"))
         XCTAssertFalse(source.contains("NSClassFromString"))
         XCTAssertFalse(source.contains("NSGlassEffectView"))
-        XCTAssertFalse(source.contains("NSView("))
+        XCTAssertTrue(source.contains("sidebarSearchView"))
         XCTAssertFalse(source.contains("NSTitlebarAccessoryViewController"))
         XCTAssertFalse(source.contains("NSSplitViewItemAccessoryViewController"))
         XCTAssertFalse(source.contains("NSScrollPocket"))
@@ -479,11 +476,15 @@ final class DashboardWindowControllerTests: XCTestCase {
         let container = controller.pageContainerForTesting
         XCTAssertTrue(splitController.contentController === container)
 
+        func pageChildren() -> [NSViewController] {
+            container.children.filter { $0 !== splitController.contentScrollEdgeAccessory }
+        }
+
         let generalPage = try XCTUnwrap(container.currentPage)
         XCTAssertTrue(generalPage.parent === container)
-        XCTAssertEqual(container.children.count, 1)
-        XCTAssertTrue(container.children.first === generalPage)
-        XCTAssertTrue(generalPage.view === container.view.subviews.first)
+        XCTAssertEqual(pageChildren().count, 1)
+        XCTAssertTrue(pageChildren().first === generalPage)
+        XCTAssertTrue(generalPage.view.superview === container.view)
         XCTAssertEqual(generalPage.view.identifier?.rawValue, "section-\(DashboardSection.general.rawValue)")
 
         controller.showSection(.menu)
@@ -492,8 +493,8 @@ final class DashboardWindowControllerTests: XCTestCase {
         XCTAssertNil(generalPage.parent)
         XCTAssertNil(generalPage.view.superview)
         XCTAssertTrue(menuPage.parent === container)
-        XCTAssertEqual(container.children.count, 1)
-        XCTAssertTrue(container.children.first === menuPage)
+        XCTAssertEqual(pageChildren().count, 1)
+        XCTAssertTrue(pageChildren().first === menuPage)
         XCTAssertEqual(menuPage.view.identifier?.rawValue, "section-\(DashboardSection.menu.rawValue)")
 
         controller.showProvider("current")
@@ -501,7 +502,7 @@ final class DashboardWindowControllerTests: XCTestCase {
         XCTAssertNil(menuPage.parent)
         XCTAssertNil(menuPage.view.superview)
         XCTAssertTrue(providerPage.parent === container)
-        XCTAssertEqual(container.children.count, 1)
+        XCTAssertEqual(pageChildren().count, 1)
         XCTAssertEqual(providerPage.view.identifier?.rawValue, "provider-current")
 
         controller.teardown()
@@ -716,7 +717,7 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         XCTAssertTrue(window.styleMask.contains(.resizable))
         XCTAssertTrue(window.styleMask.contains(.fullSizeContentView))
         XCTAssertFalse(window.styleMask.contains(.fullScreen))
-        XCTAssertEqual(window.titleVisibility, .hidden)
+        XCTAssertEqual(window.titleVisibility, .visible)
         if #available(macOS 26.0, *) {
             XCTAssertFalse(
                 window.titlebarAppearsTransparent,
@@ -1008,7 +1009,7 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
     func testSidebarSourceListTitlebarClearanceKeepsFirstRowOutOfTitlebar() throws {
         let controller = makeController()
         defer { controller.teardown() }
-        controller.sidebarScrollLayoutPolicy = .titlebarClearance
+        controller.applyPlatformCapabilities(.legacyCompatibility)
         controller.open()
         let window = try XCTUnwrap(controller.window)
         window.setContentSize(NSSize(width: 880, height: 620))
@@ -1244,10 +1245,11 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         window.displayIfNeeded()
         let restoredGeneral = try XCTUnwrap(composition.pageContainerForTesting.currentPage?.view)
         XCTAssertNotNil(firstDescendant(of: restoredGeneral, as: NSSwitch.self))
-        XCTAssertEqual(
-            composition.pageContainerForTesting.children.count,
-            1
-        )
+        let split = try XCTUnwrap(window.contentViewController as? DashboardSplitViewController)
+        let pageChildren = composition.pageContainerForTesting.children.filter {
+            $0 !== split.contentScrollEdgeAccessory
+        }
+        XCTAssertEqual(pageChildren.count, 1)
         XCTAssertTrue(
             composition.pageContainerForTesting.currentPage?.parent
                 === composition.pageContainerForTesting
@@ -1320,51 +1322,18 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
                 .flexibleSpace,
                 .toggleSidebar,
                 .sidebarTrackingSeparator,
-                DashboardToolbarController.navigationItemIdentifier,
-                .flexibleSpace,
-                DashboardToolbarController.refreshItemIdentifier,
-                DashboardToolbarController.searchItemIdentifier
+                DashboardToolbarController.navigationItemIdentifier
             ],
             file: file,
             line: line
         )
         XCTAssertEqual(
-            DashboardToolbarController.defaultItemIdentifiers,
             toolbar.items.map(\.itemIdentifier),
+            DashboardToolbarController.defaultItemIdentifiers,
             file: file,
             line: line
         )
-
-        let identifiers = toolbar.items.map(\.itemIdentifier)
-        XCTAssertEqual(
-            identifiers,
-            [
-                .flexibleSpace,
-                .toggleSidebar,
-                .sidebarTrackingSeparator,
-                DashboardToolbarController.navigationItemIdentifier,
-                .flexibleSpace,
-                DashboardToolbarController.refreshItemIdentifier,
-                DashboardToolbarController.searchItemIdentifier
-            ],
-            "System flexible spaces should preserve the sidebar layout and push content-pane search to the trailing edge",
-            file: file,
-            line: line
-        )
-        let customIdentifiers = identifiers.filter {
-            $0 != .flexibleSpace
-                && $0 != .toggleSidebar
-                && $0 != .sidebarTrackingSeparator
-                && $0 != DashboardToolbarController.navigationItemIdentifier
-                && $0 != DashboardToolbarController.refreshItemIdentifier
-                && $0 != DashboardToolbarController.searchItemIdentifier
-        }
-        XCTAssertTrue(
-            customIdentifiers.isEmpty,
-            "Do not add unrelated or spacer toolbar items: \(customIdentifiers)",
-            file: file,
-            line: line
-        )
+        XCTAssertEqual(window.titleVisibility, .visible, file: file, line: line)
         let navigationItem = try XCTUnwrap(
             toolbar.items.first { $0.itemIdentifier == DashboardToolbarController.navigationItemIdentifier },
             file: file,
@@ -1387,39 +1356,6 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
             file: file,
             line: line
         )
-        let refreshItems = toolbar.items.filter {
-            $0.itemIdentifier == DashboardToolbarController.refreshItemIdentifier
-        }
-        XCTAssertEqual(refreshItems.count, 1, file: file, line: line)
-        let refreshItem = try XCTUnwrap(refreshItems.first, file: file, line: line)
-        let refreshLabel = tr(.keyDashboardGeneralAndRefreshPagesRefreshNow)
-        XCTAssertEqual(refreshItem.label, refreshLabel, file: file, line: line)
-        XCTAssertEqual(refreshItem.toolTip, refreshLabel, file: file, line: line)
-        XCTAssertEqual(refreshItem.image?.accessibilityDescription, refreshLabel, file: file, line: line)
-        XCTAssertEqual(refreshItem.action, #selector(DashboardToolbarController.manualRefresh(_:)), file: file, line: line)
-        let searchItem = try XCTUnwrap(
-            toolbar.items.last as? NSSearchToolbarItem,
-            file: file,
-            line: line
-        )
-        XCTAssertEqual(
-            searchItem.itemIdentifier,
-            DashboardToolbarController.searchItemIdentifier,
-            file: file,
-            line: line
-        )
-        let owner = try XCTUnwrap(toolbar.delegate as? DashboardToolbarController)
-        window.layoutIfNeeded()
-        XCTAssertEqual(
-            searchItem.preferredWidthForSearchField,
-            DashboardToolbarController.expandedSearchFieldWidth,
-            file: file,
-            line: line
-        )
-        XCTAssertEqual(searchItem.toolTip, tr(.keyDashboardSearchPlaceholder), file: file, line: line)
-        if owner.isSearchActive {
-            XCTAssertFalse(searchItem.searchField.isHidden, file: file, line: line)
-        }
     }
 
     private func sidebarWidth(in window: NSWindow) -> CGFloat? {
@@ -1710,32 +1646,43 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         let sidebar = sidebarItem.viewController.view
         guard sidebar.frame.width > 1, sidebar.frame.height > 1, !sidebarItem.isCollapsed else { return }
 
-        let viewportInSidebar = scrollView.convert(scrollView.bounds, to: sidebar)
-        let viewportGap = sidebar.bounds.maxY - viewportInSidebar.maxY
-        let titlebarHeight = window.frame.height - window.contentLayoutRect.height
-        let titlebarClearance = titlebarHeight
-            + DashboardSidebarScrollLayoutPolicy.preTahoeExtraClearance
+        let viewport = scrollView.convert(scrollView.bounds, to: nil)
+        let searchHeader = controller.pageSession.toolbarController.sidebarSearchView
+        let headerFrame = searchHeader.convert(searchHeader.bounds, to: nil)
+        let searchField = controller.pageSession.toolbarController.searchField
+        let fieldFrame = searchField.convert(searchField.bounds, to: nil)
+        XCTAssertEqual(headerFrame.maxY - fieldFrame.maxY, 9.5, accuracy: 0.5, file: file, line: line)
+        XCTAssertEqual(searchField.controlSize, .large, file: file, line: line)
+        // AppKit can round the top and bottom edges independently in the native accessory.
+        XCTAssertEqual(
+            fieldFrame.height,
+            searchField.intrinsicContentSize.height,
+            accuracy: 1,
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(fieldFrame.minY - headerFrame.minY, 10, accuracy: 0.5, file: file, line: line)
+        XCTAssertEqual(headerFrame.width, sidebar.bounds.width, accuracy: 1, file: file, line: line)
 
         if policy.automaticallyAdjustsContentInsets {
-            XCTAssertEqual(viewportGap, 0, accuracy: 1, file: file, line: line)
-            XCTAssertGreaterThan(scrollView.contentInsets.top, 0, file: file, line: line)
-            XCTAssertNotEqual(
-                viewportGap,
-                titlebarClearance,
+            XCTAssertGreaterThan(viewport.maxY, headerFrame.minY, file: file, line: line)
+            XCTAssertEqual(
+                viewport.maxY - scrollView.contentInsets.top,
+                headerFrame.minY,
                 accuracy: 1,
                 file: file,
                 line: line
             )
         } else {
-            XCTAssertFalse(scrollView.automaticallyAdjustsContentInsets, file: file, line: line)
             XCTAssertEqual(scrollView.contentInsets.top, 0, accuracy: 0.001, file: file, line: line)
             XCTAssertEqual(scrollView.scrollerInsets.top, 0, accuracy: 0.001, file: file, line: line)
-            XCTAssertEqual(viewportGap, titlebarClearance, accuracy: 1, file: file, line: line)
+            XCTAssertEqual(viewport.maxY, headerFrame.minY, accuracy: 1, file: file, line: line)
         }
         let outline = sourceList.outlineView
         XCTAssertGreaterThan(outline.numberOfRows, 0, file: file, line: line)
         let firstRow = outline.convert(outline.rect(ofRow: 0), to: nil)
         XCTAssertGreaterThan(firstRow.height, 0, file: file, line: line)
+        XCTAssertEqual(fieldFrame.minY - firstRow.maxY, 10, accuracy: 1, file: file, line: line)
         if let closeButton = window.standardWindowButton(.closeButton) {
             let closeFrame = closeButton.convert(closeButton.bounds, to: nil)
             XCTAssertFalse(
@@ -1844,7 +1791,6 @@ final class DashboardSourceListContractTests: XCTestCase {
         let outline = sourceList.outlineView
         let appearance = try XCTUnwrap(sourceList.roots.first { $0.group == .appearance })
         let system = try XCTUnwrap(sourceList.roots.first { $0.group == .system })
-        XCTAssertTrue(sourceList.outlineView(outline, isGroupItem: appearance))
         XCTAssertFalse(sourceList.outlineView(outline, shouldSelectItem: appearance))
         XCTAssertFalse(sourceList.outlineView(outline, shouldSelectItem: system))
         XCTAssertTrue(
@@ -1968,11 +1914,9 @@ final class DashboardSourceListContractTests: XCTestCase {
 
         let appearance = try XCTUnwrap(sourceList.roots.first { $0.group == .appearance })
         let groupRow = outline.row(forItem: appearance)
-        let groupCell = try XCTUnwrap(
-            outline.view(atColumn: 0, row: groupRow, makeIfNecessary: true) as? DashboardSourceListGroupCellView
-        )
-        XCTAssertEqual(groupCell.textField?.stringValue, appearance.title)
-        XCTAssertEqual(groupCell.accessibilityLabel(), appearance.title)
+        let spacer = try XCTUnwrap(outline.rowView(atRow: groupRow, makeIfNecessary: true))
+        XCTAssertFalse(spacer.isAccessibilityElement())
+        XCTAssertNil(outline.view(atColumn: 0, row: groupRow, makeIfNecessary: true))
     }
 
     func testRebuildAndTeardownDropOldSourceListOwnership() throws {
@@ -2011,7 +1955,7 @@ final class DashboardSourceListContractTests: XCTestCase {
             ),
             encoding: .utf8
         )
-        XCTAssertTrue(source.contains("init(layoutPolicy: DashboardSidebarScrollLayoutPolicy = .current)"))
+        XCTAssertTrue(source.contains("layoutPolicy: DashboardSidebarScrollLayoutPolicy = .current"))
         XCTAssertTrue(source.contains("layoutPolicy.apply(to: scrollView)"))
         XCTAssertFalse(source.contains("DashboardSidebarScrollLayoutPolicy.current.apply(to: scrollView)"))
         XCTAssertFalse(source.contains("automaticallyAdjustsContentInsets = false"))
