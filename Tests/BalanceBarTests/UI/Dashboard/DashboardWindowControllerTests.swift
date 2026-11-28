@@ -1653,7 +1653,14 @@ final class DashboardNativeUIBaselineTests: XCTestCase {
         let fieldFrame = searchField.convert(searchField.bounds, to: nil)
         XCTAssertEqual(headerFrame.maxY - fieldFrame.maxY, 9.5, accuracy: 0.5, file: file, line: line)
         XCTAssertEqual(searchField.controlSize, .large, file: file, line: line)
-        XCTAssertEqual(fieldFrame.height, searchField.intrinsicContentSize.height, accuracy: 0.5, file: file, line: line)
+        // AppKit can round the top and bottom edges independently in the native accessory.
+        XCTAssertEqual(
+            fieldFrame.height,
+            searchField.intrinsicContentSize.height,
+            accuracy: 1,
+            file: file,
+            line: line
+        )
         XCTAssertEqual(fieldFrame.minY - headerFrame.minY, 10, accuracy: 0.5, file: file, line: line)
         XCTAssertEqual(headerFrame.width, sidebar.bounds.width, accuracy: 1, file: file, line: line)
 
